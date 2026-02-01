@@ -10,11 +10,14 @@
 import logging
 import os
 import asyncio
+import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
+    MessageHandler,
+    filters,
     ContextTypes,
     ConversationHandler,
 )
@@ -44,6 +47,23 @@ STAGE_1, STAGE_2, STAGE_3, RESULT = range(4)
 # ============================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ============================================
+
+def remove_emoji(text):
+    """Удаляет все эмодзи из текста"""
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # эмоции
+        "\U0001F300-\U0001F5FF"  # символы и пиктограммы
+        "\U0001F680-\U0001F6FF"  # транспорт и символы
+        "\U0001F1E0-\U0001F1FF"  # флаги
+        "\U00002702-\U000027B0"
+        "\U000024C2-\U0001F251"
+        "\U0001F900-\U0001F9FF"  # дополнительные эмодзи
+        "\U0001FA70-\U0001FAFF"
+        "]+",
+        flags=re.UNICODE
+    )
+    return emoji_pattern.sub('', text).strip()
 
 def calculate_progress(current: int, total: int) -> str:
     """Вычисляет прогресс с прогресс-баром"""
@@ -109,7 +129,7 @@ def calculate_dilts_level(dilts_answers):
 # ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /start - ОБНОВЛЁННАЯ"""
+    """Команда /start"""
     user = update.effective_user
     
     welcome_text = (
@@ -138,7 +158,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
 
 async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало теста С ЗАЩИТОЙ ОТ ЗАВИСАНИЙ"""
+    """Начало теста"""
     query = update.callback_query
     await query.answer()
     
@@ -190,8 +210,8 @@ async def ask_adaptive_question(update: Update, context: ContextTypes.DEFAULT_TY
     
     keyboard = []
     for option_id, option in question["options"].items():
-        # УБИРАЕМ ВСЕ ЭМОДЗИ ИЗ ТЕКСТА КНОПОК
-        clean_text = option["text"].replace("🎯", "").replace("💪", "").replace("🧠", "").replace("❤️", "").strip()
+        # УДАЛЯЕМ ВСЕ ЭМОДЗИ ИЗ ТЕКСТА КНОПОК
+        clean_text = remove_emoji(option["text"])
         keyboard.append([
             InlineKeyboardButton(
                 clean_text, 
@@ -204,7 +224,7 @@ async def ask_adaptive_question(update: Update, context: ContextTypes.DEFAULT_TY
     return STAGE_1
 
 async def handle_adaptive_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка адаптивного ответа ЭТАПА 1 С ЗАЩИТОЙ ОТ ДУБЛИРОВАНИЯ"""
+    """Обработка адаптивного ответа ЭТАПА 1"""
     query = update.callback_query
     
     # ЗАЩИТА ОТ ПОВТОРНЫХ НАЖАТИЙ
@@ -255,7 +275,7 @@ async def handle_adaptive_answer(update: Update, context: ContextTypes.DEFAULT_T
         context.user_data["processing"] = False
 
 async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение ЭТАПА 1 - КОМПАКТНЫЙ ТЕКСТ"""
+    """Завершение ЭТАПА 1"""
     query = update.callback_query
     
     scores = context.user_data.get("scores", {})
@@ -319,8 +339,8 @@ async def ask_stage2_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     keyboard = []
     for option_id, option in question["options"].items():
-        # УБИРАЕМ ВСЕ ЭМОДЗИ ИЗ ТЕКСТА КНОПОК
-        clean_text = option["text"].replace("🎯", "").replace("💪", "").replace("🧠", "").replace("❤️", "").replace("⚡", "").replace("🌟", "").strip()
+        # УДАЛЯЕМ ВСЕ ЭМОДЗИ ИЗ ТЕКСТА КНОПОК
+        clean_text = remove_emoji(option["text"])
         keyboard.append([
             InlineKeyboardButton(
                 clean_text, 
@@ -333,7 +353,7 @@ async def ask_stage2_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     return STAGE_2
 
 async def handle_stage2_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка ответа ЭТАПА 2 С ЗАЩИТОЙ ОТ ДУБЛИРОВАНИЯ"""
+    """Обработка ответа ЭТАПА 2"""
     query = update.callback_query
     
     # ЗАЩИТА ОТ ПОВТОРНЫХ НАЖАТИЙ
@@ -383,7 +403,7 @@ async def handle_stage2_answer(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data["processing"] = False
 
 async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение ЭТАПА 2 - КОМПАКТНЫЙ ТЕКСТ"""
+    """Завершение ЭТАПА 2"""
     query = update.callback_query
     
     suit = context.user_data.get("suit")
@@ -452,8 +472,8 @@ async def ask_stage3_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     keyboard = []
     for option_id, option in question["options"].items():
-        # УБИРАЕМ ВСЕ ЭМОДЗИ ИЗ ТЕКСТА КНОПОК
-        clean_text = option["text"].replace("🎯", "").replace("💪", "").replace("🧠", "").replace("❤️", "").replace("⚡", "").replace("🌟", "").strip()
+        # УДАЛЯЕМ ВСЕ ЭМОДЗИ ИЗ ТЕКСТА КНОПОК
+        clean_text = remove_emoji(option["text"])
         keyboard.append([
             InlineKeyboardButton(
                 clean_text, 
@@ -466,7 +486,7 @@ async def ask_stage3_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     return STAGE_3
 
 async def handle_stage3_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка ответа ЭТАПА 3 С ЗАЩИТОЙ ОТ ДУБЛИРОВАНИЯ"""
+    """Обработка ответа ЭТАПА 3"""
     query = update.callback_query
     
     # ЗАЩИТА ОТ ПОВТОРНЫХ НАЖАТИЙ
@@ -531,7 +551,7 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показ финального результата С ПОЛНЫМИ ДАННЫМИ"""
+    """Показ финального результата"""
     query = update.callback_query
     
     card = context.user_data.get("card", "?")
@@ -551,8 +571,8 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(error_text, reply_markup=reply_markup, parse_mode="HTML")
         return ConversationHandler.END
     
-    # РЕЗУЛЬТАТ С ПОЛНЫМИ ДАННЫМИ
-    result_text = (
+    # РЕЗУЛЬТАТ - ЧАСТЬ 1
+    part1 = (
         f"🎉 <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
         f"📖 <b>Описание вашей конфигурации мышления и поведения</b>\n\n"
         f"👤 <b>КТО ТЫ</b>\n"
@@ -562,7 +582,11 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🌑 <b>ТЕНЬ</b>\n"
         f"{card_data.get('shadow', 'Описание тени отсутствует')}\n\n"
         f"⚠️ <b>ЛОВУШКА</b>\n"
-        f"{card_data.get('trap', 'Описание ловушки отсутствует')}\n\n"
+        f"{card_data.get('trap', 'Описание ловушки отсутствует')}"
+    )
+    
+    # РЕЗУЛЬТАТ - ЧАСТЬ 2
+    part2 = (
         f"✅ <b>ЧТО ДЕЛАТЬ</b>\n"
         f"{card_data.get('what_to_do', 'Рекомендации отсутствуют')}\n\n"
         f"🚀 <b>КАК РАСТИ</b>\n"
@@ -582,60 +606,17 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👉 @meysternlp"
     )
     
-    # Если текст слишком длинный, разбиваем на 2 части
-    if len(result_text) > 4096:
-        part1 = (
-            f"🎉 <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-            f"📖 <b>Описание вашей конфигурации мышления и поведения</b>\n\n"
-            f"👤 <b>КТО ТЫ</b>\n"
-            f"{card_data.get('who', card_data.get('description', 'Описание отсутствует'))}\n\n"
-            f"💭 <b>НАРРАТИВ</b>\n"
-            f"{card_data.get('narrative', card_data.get('archetype', 'Нарратив отсутствует'))}\n\n"
-            f"🌑 <b>ТЕНЬ</b>\n"
-            f"{card_data.get('shadow', 'Описание тени отсутствует')}\n\n"
-            f"⚠️ <b>ЛОВУШКА</b>\n"
-            f"{card_data.get('trap', 'Описание ловушки отсутствует')}"
-        )
-        
-        part2 = (
-            f"✅ <b>ЧТО ДЕЛАТЬ</b>\n"
-            f"{card_data.get('what_to_do', 'Рекомендации отсутствуют')}\n\n"
-            f"🚀 <b>КАК РАСТИ</b>\n"
-            f"{card_data.get('how_to_grow', 'Рекомендации по росту отсутствуют')}\n\n"
-            f"⚡ <b>ТРИГГЕР ПЕРЕХОДА</b>\n"
-            f"{card_data.get('trigger', 'Триггер не определён')}\n\n"
-            f"💰 <b>ДЕНЬГИ</b>\n"
-            f"{card_data.get('money', 'Информация о деньгах отсутствует')}\n\n"
-            f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ</b>\n"
-            f"💡 Твой инструмент который корректирует конфигурацию поведения, на уровне конфигурации мышления – это метафорическая форма.\n\n"
-            f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽)</b>\n"
-            f"✓ Полное описание архетипа и персональные рекомендации (15+ страниц)\n"
-            f"✓ Персональная терапевтическая сказка для коррекции других конфликтующих частей\n"
-            f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf) для самостоятельной коррекции на уровне конфигурации восприятия\n\n"
-            f"💬 <b>Хочешь разобраться глубже?</b>\n"
-            f"Получить персональную консультацию:\n"
-            f"👉 @meysternlp"
-        )
-        
-        await query.message.reply_text(part1, parse_mode="HTML")
-        
-        keyboard = [
-            [InlineKeyboardButton("📖 Читать сказку", url=card_data.get('link', 'https://t.me/meysternlp'))],
-            [InlineKeyboardButton("💳 Получить полный пакет (960 ₽)", url="https://t.me/meysternlp")],
-            [InlineKeyboardButton("📤 Поделиться тестом", url="https://t.me/share/url?url=https://t.me/YOUR_BOT&text=Пройди тест и узнай свой архетип!")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.message.reply_text(part2, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
-    else:
-        keyboard = [
-            [InlineKeyboardButton("📖 Читать сказку", url=card_data.get('link', 'https://t.me/meysternlp'))],
-            [InlineKeyboardButton("💳 Получить полный пакет (960 ₽)", url="https://t.me/meysternlp")],
-            [InlineKeyboardButton("📤 Поделиться тестом", url="https://t.me/share/url?url=https://t.me/YOUR_BOT&text=Пройди тест и узнай свой архетип!")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.message.reply_text(result_text, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
+    # Отправляем две части
+    await query.message.reply_text(part1, parse_mode="HTML")
+    
+    keyboard = [
+        [InlineKeyboardButton("📖 Читать сказку", url=card_data.get('link', 'https://t.me/meysternlp'))],
+        [InlineKeyboardButton("💳 Получить полный пакет (960 ₽)", url="https://t.me/meysternlp")],
+        [InlineKeyboardButton("📤 Поделиться тестом", url="https://t.me/share/url?url=https://t.me/YOUR_BOT&text=Пройди тест и узнай свой архетип!")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.message.reply_text(part2, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
     
     await query.delete_message()
     
@@ -693,7 +674,7 @@ def main():
     """Запуск бота"""
     application = Application.builder().token(TOKEN).build()
     
-    # ConversationHandler С ТАЙМАУТОМ
+    # ConversationHandler
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
