@@ -19,7 +19,7 @@ from telegram.ext import (
 )
 
 # Импорты вопросов
-from adaptive_questions import STAGE_1_ADAPTIVE, SUIT_DESCRIPTIONS
+from adaptive_questions import STAGE_1_ADAPTIVE
 from stage2_questions import STAGE_2_QUESTIONS
 from stage3_questions import STAGE_3_BASE_QUESTIONS
 from card_data import CARDS
@@ -45,7 +45,7 @@ STAGE_1, STAGE_2, STAGE_3, RESULT = range(4)
 # ============================================
 
 def calculate_progress(current: int, total: int) -> str:
-    """Вычисляет прогресс"""
+    """Вычисляет прогресс с прогресс-баром"""
     progress = int((current / total) * 100)
     filled = int(progress / 10)
     bar = "▓" * filled + "░" * (10 - filled)
@@ -108,7 +108,7 @@ def calculate_dilts_level(dilts_answers):
 # ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /start"""
+    """Команда /start - КАК В ТВОЁМ КОДЕ"""
     user = update.effective_user
     
     welcome_text = (
@@ -116,22 +116,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎴 <b>Добро пожаловать в диагностику архетипов!</b>\n\n"
         f"🔍 <b>Узнай, почему ты принимаешь именно такие решения</b>\n\n"
         f"Этот тест поможет определить твой текущий архетип и понять:\n"
-        f"• Почему ты реагируешь именно так\n"
-        f"• Откуда берутся твои страхи и желания\n"
-        f"• Как изменить то, что тебя не устраивает\n\n"
+        f"• Почему ты реагируешь именно так 🤔\n"
+        f"• Откуда берутся твои страхи и желания 💭\n"
+        f"• Как изменить то, что тебя не устраивает 🚀\n\n"
         f"🎯 <b>Что тебя ждёт:</b>\n\n"
         f"1️⃣ <b>ЭТАП 1:</b> Определение конфигурации восприятия (6 вопросов)\n"
         f"→ Узнаешь свою базовую программу\n\n"
         f"2️⃣ <b>ЭТАП 2:</b> Определение конфигурации мышления (10 вопросов)\n"
-        f"→ Найдём твою текущую программу\n\n"
-        f"3️⃣ <b>ЭТАП 3:</b> Определение проблемного уровня (6 вопросов)\n"
+        f"→ Найдём твою текущую программу\n"
         f"→ Определим поведенческие паттерны и методы их коррекции\n\n"
         f"⏱ Займёт 10-15 минут\n\n"
         f"📌 Отвечай честно, как есть сейчас, а не как хотелось бы.\n\n"
         f"Готов начать? 🚀"
     )
     
-    keyboard = [[InlineKeyboardButton("Начать тест", callback_data="start_test")]]
+    keyboard = [[InlineKeyboardButton("🚀 Начать тест", callback_data="start_test")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
@@ -148,6 +147,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["current_question_id"] = "q1_focus"
     context.user_data["stage2_answers"] = []
     context.user_data["stage3_answers"] = []
+    context.user_data["total_questions"] = 0
     
     # Переход к первому вопросу
     return await ask_adaptive_question(update, context)
@@ -166,16 +166,23 @@ async def ask_adaptive_question(update: Update, context: ContextTypes.DEFAULT_TY
     if not question:
         return await finish_stage_1(update, context)
     
+    # Подсчёт текущего вопроса
+    context.user_data["total_questions"] = context.user_data.get("total_questions", 0) + 1
+    current_num = context.user_data["total_questions"]
+    
+    # Прогресс-бар
+    progress = calculate_progress(current_num, 6)
+    
     question_text = (
         f"<b>{question['stage']}</b>\n\n"
         f"<b>{question['text']}</b>\n\n"
-        f"{question['progress']}"
+        f"{progress}"
     )
     
     keyboard = []
     for option_id, option in question["options"].items():
-        # УБИРАЕМ ЭМОДЗИ ИЗ ВАРИАНТОВ ОТВЕТОВ
-        clean_text = option["text"]
+        # УБИРАЕМ ВСЕ ЭМОДЗИ ИЗ ТЕКСТА КНОПОК
+        clean_text = option["text"].replace("🎯", "").replace("💪", "").replace("🧠", "").replace("❤️", "").strip()
         keyboard.append([
             InlineKeyboardButton(
                 clean_text, 
@@ -276,6 +283,8 @@ async def ask_stage2_question(update: Update, context: ContextTypes.DEFAULT_TYPE
         return await finish_stage_2(update, context)
     
     question = questions[current]
+    
+    # Прогресс-бар
     progress = calculate_progress(current + 1, len(questions))
     
     question_text = (
@@ -286,8 +295,8 @@ async def ask_stage2_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     keyboard = []
     for option_id, option in question["options"].items():
-        # УБИРАЕМ ЭМОДЗИ ИЗ ВАРИАНТОВ ОТВЕТОВ
-        clean_text = option["text"]
+        # УБИРАЕМ ВСЕ ЭМОДЗИ ИЗ ТЕКСТА КНОПОК
+        clean_text = option["text"].replace("🎯", "").replace("💪", "").replace("🧠", "").replace("❤️", "").replace("⚡", "").replace("🌟", "").strip()
         keyboard.append([
             InlineKeyboardButton(
                 clean_text, 
@@ -390,6 +399,8 @@ async def ask_stage3_question(update: Update, context: ContextTypes.DEFAULT_TYPE
         return await finish_stage_3(update, context)
     
     question = questions[current]
+    
+    # Прогресс-бар
     progress = calculate_progress(current + 1, len(questions))
     
     question_text = (
@@ -400,8 +411,8 @@ async def ask_stage3_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     keyboard = []
     for option_id, option in question["options"].items():
-        # УБИРАЕМ ЭМОДЗИ ИЗ ВАРИАНТОВ ОТВЕТОВ
-        clean_text = option["text"]
+        # УБИРАЕМ ВСЕ ЭМОДЗИ ИЗ ТЕКСТА КНОПОК
+        clean_text = option["text"].replace("🎯", "").replace("💪", "").replace("🧠", "").replace("❤️", "").replace("⚡", "").replace("🌟", "").strip()
         keyboard.append([
             InlineKeyboardButton(
                 clean_text, 
@@ -463,43 +474,99 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показ финального результата БЕЗ КАРТЫ, КАК В ТВОЁМ КОДЕ"""
+    """Показ финального результата - ТОЧНО КАК В ТВОЁМ КОДЕ"""
     query = update.callback_query
     
     card = context.user_data.get("card", "?")
-    dilts_level = context.user_data.get("dilts_level", "ОКРУЖЕНИЕ")
-    
     card_data = CARDS.get(card, {})
     
-    # КОМПАКТНЫЙ РЕЗУЛЬТАТ БЕЗ КАРТЫ
+    # РЕЗУЛЬТАТ БЕЗ НАЗВАНИЯ АРХЕТИПА, МАСТИ, КАРТЫ
     result_text = (
         f"🎉 <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
         f"📖 <b>Описание вашей конфигурации мышления и поведения</b>\n\n"
         f"👤 <b>КТО ТЫ</b>\n"
-        f"{card_data.get('description', '')}\n\n"
-        f"🎭 <b>АРХЕТИП</b>\n"
-        f"{card_data.get('archetype', '')}\n\n"
+        f"{card_data.get('who', card_data.get('description', ''))}\n\n"
+        f"💭 <b>НАРРАТИВ</b>\n"
+        f"{card_data.get('narrative', card_data.get('archetype', ''))}\n\n"
         f"🌑 <b>ТЕНЬ</b>\n"
         f"{card_data.get('shadow', '')}\n\n"
+        f"⚠️ <b>ЛОВУШКА</b>\n"
+        f"{card_data.get('trap', '')}\n\n"
+        f"✅ <b>ЧТО ДЕЛАТЬ</b>\n"
+        f"{card_data.get('what_to_do', '')}\n\n"
+        f"🚀 <b>КАК РАСТИ</b>\n"
+        f"{card_data.get('how_to_grow', '')}\n\n"
+        f"⚡ <b>ТРИГГЕР ПЕРЕХОДА</b>\n"
+        f"{card_data.get('trigger', '')}\n\n"
+        f"💰 <b>ДЕНЬГИ</b>\n"
+        f"{card_data.get('money', '')}\n\n"
         f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ</b>\n"
-        f"💡 Твой проблемный уровень — <b>{dilts_level}</b>.\n"
-        f"Работай на этом уровне для максимального эффекта!\n\n"
-        f"💎 <b>ПОЛНЫЙ ПАКЕТ</b>\n"
-        f"✓ Полное описание архетипа и персональные рекомендации\n"
-        f"✓ Персональная терапевтическая сказка для коррекции\n"
-        f"✓ Книга для самостоятельной коррекции\n\n"
+        f"💡 Твой инструмент который корректирует конфигурацию поведения, на уровне конфигурации мышления – это метафорическая форма.\n\n"
+        f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽)</b>\n"
+        f"✓ Полное описание архетипа и персональные рекомендации (15+ страниц)\n"
+        f"✓ Персональная терапевтическая сказка для коррекции других конфликтующих частей\n"
+        f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf) для самостоятельной коррекции на уровне конфигурации восприятия\n\n"
         f"💬 <b>Хочешь разобраться глубже?</b>\n"
         f"Получить персональную консультацию:\n"
         f"👉 @meysternlp"
     )
     
-    keyboard = [
-        [InlineKeyboardButton("🔄 Пройти заново", callback_data="start_test")],
-        [InlineKeyboardButton("📤 Поделиться тестом", url="https://t.me/share/url?url=https://t.me/YOUR_BOT&text=Пройди тест и узнай свой архетип!")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    # Если текст слишком длинный, разбиваем на 2 части
+    if len(result_text) > 4096:
+        part1 = (
+            f"🎉 <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+            f"📖 <b>Описание вашей конфигурации мышления и поведения</b>\n\n"
+            f"👤 <b>КТО ТЫ</b>\n"
+            f"{card_data.get('who', card_data.get('description', ''))}\n\n"
+            f"💭 <b>НАРРАТИВ</b>\n"
+            f"{card_data.get('narrative', card_data.get('archetype', ''))}\n\n"
+            f"🌑 <b>ТЕНЬ</b>\n"
+            f"{card_data.get('shadow', '')}\n\n"
+            f"⚠️ <b>ЛОВУШКА</b>\n"
+            f"{card_data.get('trap', '')}"
+        )
+        
+        part2 = (
+            f"✅ <b>ЧТО ДЕЛАТЬ</b>\n"
+            f"{card_data.get('what_to_do', '')}\n\n"
+            f"🚀 <b>КАК РАСТИ</b>\n"
+            f"{card_data.get('how_to_grow', '')}\n\n"
+            f"⚡ <b>ТРИГГЕР ПЕРЕХОДА</b>\n"
+            f"{card_data.get('trigger', '')}\n\n"
+            f"💰 <b>ДЕНЬГИ</b>\n"
+            f"{card_data.get('money', '')}\n\n"
+            f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ</b>\n"
+            f"💡 Твой инструмент который корректирует конфигурацию поведения, на уровне конфигурации мышления – это метафорическая форма.\n\n"
+            f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽)</b>\n"
+            f"✓ Полное описание архетипа и персональные рекомендации (15+ страниц)\n"
+            f"✓ Персональная терапевтическая сказка для коррекции других конфликтующих частей\n"
+            f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf) для самостоятельной коррекции на уровне конфигурации восприятия\n\n"
+            f"💬 <b>Хочешь разобраться глубже?</b>\n"
+            f"Получить персональную консультацию:\n"
+            f"👉 @meysternlp"
+        )
+        
+        await query.message.reply_text(part1, parse_mode="HTML")
+        
+        keyboard = [
+            [InlineKeyboardButton("📖 Читать сказку", url=card_data.get('link', 'https://t.me/meysternlp'))],
+            [InlineKeyboardButton("💳 Получить полный пакет (960 ₽)", url="https://t.me/meysternlp")],
+            [InlineKeyboardButton("📤 Поделиться тестом", url="https://t.me/share/url?url=https://t.me/YOUR_BOT&text=Пройди тест и узнай свой архетип!")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.message.reply_text(part2, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
+    else:
+        keyboard = [
+            [InlineKeyboardButton("📖 Читать сказку", url=card_data.get('link', 'https://t.me/meysternlp'))],
+            [InlineKeyboardButton("💳 Получить полный пакет (960 ₽)", url="https://t.me/meysternlp")],
+            [InlineKeyboardButton("📤 Поделиться тестом", url="https://t.me/share/url?url=https://t.me/YOUR_BOT&text=Пройди тест и узнай свой архетип!")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.message.reply_text(result_text, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
     
-    await query.edit_message_text(result_text, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
+    await query.delete_message()
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
