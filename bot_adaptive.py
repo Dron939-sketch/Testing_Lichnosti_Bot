@@ -145,7 +145,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"→ Узнаешь свою базовую программу\n\n"
         f"2️⃣ <b>ЭТАП 2:</b> Определение конфигурации мышления (10 вопросов)\n"
         f"→ Найдём твою текущую программу\n\n"
-        f"3️⃣ <b>ЭТАП 3:</b> Определение стыка конфликтных частей (6 вопросов)\n"
+        f"3️⃣ <b>ЭТАП 3:</b> Поиск конфликтующих частей (6 вопросов)\n"
         f"→ Определим поведенческие паттерны и методы их коррекции\n\n"
         f"⏱ Займёт 10-15 минут\n\n"
         f"📌 Отвечай честно, как есть сейчас, а не как хотелось бы.\n\n"
@@ -210,7 +210,6 @@ async def ask_adaptive_question(update: Update, context: ContextTypes.DEFAULT_TY
     
     keyboard = []
     for option_id, option in question["options"].items():
-        # УДАЛЯЕМ ВСЕ ЭМОДЗИ ИЗ ТЕКСТА КНОПОК
         clean_text = remove_emoji(option["text"])
         keyboard.append([
             InlineKeyboardButton(
@@ -227,7 +226,6 @@ async def handle_adaptive_answer(update: Update, context: ContextTypes.DEFAULT_T
     """Обработка адаптивного ответа ЭТАПА 1"""
     query = update.callback_query
     
-    # ЗАЩИТА ОТ ПОВТОРНЫХ НАЖАТИЙ
     if context.user_data.get("processing", False):
         await query.answer("⏳ Обрабатываю предыдущий ответ...")
         return STAGE_1
@@ -328,7 +326,6 @@ async def ask_stage2_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     question = questions[current]
     
-    # Прогресс-бар
     progress = calculate_progress(current + 1, len(questions))
     
     question_text = (
@@ -339,7 +336,6 @@ async def ask_stage2_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     keyboard = []
     for option_id, option in question["options"].items():
-        # УДАЛЯЕМ ВСЕ ЭМОДЗИ ИЗ ТЕКСТА КНОПОК
         clean_text = remove_emoji(option["text"])
         keyboard.append([
             InlineKeyboardButton(
@@ -356,7 +352,6 @@ async def handle_stage2_answer(update: Update, context: ContextTypes.DEFAULT_TYP
     """Обработка ответа ЭТАПА 2"""
     query = update.callback_query
     
-    # ЗАЩИТА ОТ ПОВТОРНЫХ НАЖАТИЙ
     if context.user_data.get("processing", False):
         await query.answer("⏳ Обрабатываю предыдущий ответ...")
         return STAGE_2
@@ -422,7 +417,7 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result_text = (
         f"✅ <b>ЭТАП 2 ЗАВЕРШЁН!</b>\n\n"
         f"🎯 <b>Конфигурация мышления определена</b>\n\n"
-        f"🔍 Переходим к <b>ЭТАПУ 3</b>: определение стыка конфликтных частей.\n\n"
+        f"🔍 Переходим к <b>ЭТАПУ 3</b>: поиск конфликтующих частей.\n\n"
         f"Готов?"
     )
     
@@ -461,18 +456,16 @@ async def ask_stage3_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     question = questions[current]
     
-    # Прогресс-бар
     progress = calculate_progress(current + 1, len(questions))
     
     question_text = (
-        f"<b>🎯 ЭТАП 3: СТЫК КОНФЛИКТНЫХ ЧАСТЕЙ</b>\n\n"
+        f"<b>🎯 ЭТАП 3: ПОИСК КОНФЛИКТУЮЩИХ ЧАСТЕЙ</b>\n\n"
         f"<b>{question['text']}</b>\n\n"
         f"{progress}"
     )
     
     keyboard = []
     for option_id, option in question["options"].items():
-        # УДАЛЯЕМ ВСЕ ЭМОДЗИ ИЗ ТЕКСТА КНОПОК
         clean_text = remove_emoji(option["text"])
         keyboard.append([
             InlineKeyboardButton(
@@ -489,7 +482,6 @@ async def handle_stage3_answer(update: Update, context: ContextTypes.DEFAULT_TYP
     """Обработка ответа ЭТАПА 3"""
     query = update.callback_query
     
-    # ЗАЩИТА ОТ ПОВТОРНЫХ НАЖАТИЙ
     if context.user_data.get("processing", False):
         await query.answer("⏳ Обрабатываю предыдущий ответ...")
         return STAGE_3
@@ -559,7 +551,6 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"User {update.effective_user.id}: Showing result for card={card}")
     
-    # ПРОВЕРКА НАЛИЧИЯ ДАННЫХ
     if not card_data:
         error_text = (
             f"⚠️ Произошла ошибка при определении архетипа.\n"
@@ -571,8 +562,11 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(error_text, reply_markup=reply_markup, parse_mode="HTML")
         return ConversationHandler.END
     
-    # РЕЗУЛЬТАТ - ЧАСТЬ 1
-    part1 = (
+    # Получаем ссылку на сказку
+    story_link = card_data.get('link', 'https://t.me/meysternlp')
+    
+    # ЕДИНЫЙ РЕЗУЛЬТАТ БЕЗ РАЗБИВКИ
+    result_text = (
         f"🎉 <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
         f"📖 <b>Описание вашей конфигурации мышления и поведения</b>\n\n"
         f"👤 <b>КТО ТЫ</b>\n"
@@ -582,11 +576,7 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🌑 <b>ТЕНЬ</b>\n"
         f"{card_data.get('shadow', 'Описание тени отсутствует')}\n\n"
         f"⚠️ <b>ЛОВУШКА</b>\n"
-        f"{card_data.get('trap', 'Описание ловушки отсутствует')}"
-    )
-    
-    # РЕЗУЛЬТАТ - ЧАСТЬ 2
-    part2 = (
+        f"{card_data.get('trap', 'Описание ловушки отсутствует')}\n\n"
         f"✅ <b>ЧТО ДЕЛАТЬ</b>\n"
         f"{card_data.get('what_to_do', 'Рекомендации отсутствуют')}\n\n"
         f"🚀 <b>КАК РАСТИ</b>\n"
@@ -596,7 +586,7 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 <b>ДЕНЬГИ</b>\n"
         f"{card_data.get('money', 'Информация о деньгах отсутствует')}\n\n"
         f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ</b>\n"
-        f"💡 Твой инструмент который корректирует конфигурацию поведения, на уровне конфигурации мышления – это метафорическая форма.\n\n"
+        f"💡 Твой инструмент который корректирует конфигурацию поведения, на уровне конфигурации мышления – это метафорическая форма (<a href='{story_link}'>ссылка на сказку внизу экрана</a>).\n\n"
         f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽)</b>\n"
         f"✓ Полное описание архетипа и персональные рекомендации (15+ страниц)\n"
         f"✓ Персональная терапевтическая сказка для коррекции других конфликтующих частей\n"
@@ -606,19 +596,19 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👉 @meysternlp"
     )
     
-    # Отправляем две части
-    await query.message.reply_text(part1, parse_mode="HTML")
-    
     keyboard = [
-        [InlineKeyboardButton("📖 Читать сказку", url=card_data.get('link', 'https://t.me/meysternlp'))],
+        [InlineKeyboardButton("📖 Читать сказку", url=story_link)],
         [InlineKeyboardButton("💳 Получить полный пакет (960 ₽)", url="https://t.me/meysternlp")],
         [InlineKeyboardButton("📤 Поделиться тестом", url="https://t.me/share/url?url=https://t.me/YOUR_BOT&text=Пройди тест и узнай свой архетип!")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.message.reply_text(part2, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
-    
-    await query.delete_message()
+    await query.edit_message_text(
+        result_text, 
+        reply_markup=reply_markup, 
+        parse_mode="HTML", 
+        disable_web_page_preview=True
+    )
     
     # Очистка данных после завершения
     context.user_data.clear()
@@ -662,7 +652,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Error sending error message: {e}")
     
-    # Очистка данных пользователя
     if hasattr(context, 'user_data') and context.user_data:
         context.user_data.clear()
 
@@ -674,7 +663,6 @@ def main():
     """Запуск бота"""
     application = Application.builder().token(TOKEN).build()
     
-    # ConversationHandler
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -700,7 +688,7 @@ def main():
             CommandHandler("cancel", cancel),
             CallbackQueryHandler(start_test, pattern="^start_test$")
         ],
-        conversation_timeout=1800,  # 30 минут
+        conversation_timeout=1800,
         allow_reentry=True,
         per_message=False
     )
