@@ -23,6 +23,11 @@ from telegram.ext import (
     ConversationHandler,
 )
 
+# ============================================
+# ИМПОРТ ГЕНЕРАТОРА КОНТЕНТА
+# ============================================
+from content_generator import generate_profile
+
 # Получение токена из переменной окружения
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
@@ -741,46 +746,6 @@ DILTS_LEVELS = {
 }
 
 # ============================================
-# АЛГОРИТМ ОПРЕДЕЛЕНИЯ ПРОФИЛЯ
-# ============================================
-
-def calculate_profile_key(context_data: dict) -> str:
-    """
-    Определяет ключ профиля в формате "SA_1_env"
-    
-    Args:
-        context_data: словарь с данными пользователя
-    
-    Returns:
-        строка вида "SA_1_env"
-    """
-    # 1. Получаем код типа (SA/IA/SP/IP)
-    perception_type = context_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
-    type_code = get_type_code(perception_type)
-    
-    # 2. Получаем уровень (1-9)
-    level = context_data.get("final_level", 1)
-    
-    # 3. Получаем код Дилтса (env/beh/cap/bel/id/mis)
-    dilts_level = context_data.get("dilts_level", "ENVIRONMENT")
-    dilts_code = DILTS_LEVELS.get(dilts_level, DILTS_LEVELS["ENVIRONMENT"])["code"]
-    
-    profile_key = f"{type_code}_{level}_{dilts_code}"
-    
-    logger.info(f"Profile key calculated: {profile_key}")
-    return profile_key
-
-def get_type_code(perception_type: str) -> str:
-    """Возвращает код типа (SA/IA/SP/IP) по названию"""
-    type_map = {
-        "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": "SA",
-        "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ": "IA",
-        "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ": "SP",
-        "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ": "IP"
-    }
-    return type_map.get(perception_type, "SA")
-
-# ============================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ============================================
 
@@ -833,6 +798,42 @@ def calculate_dilts_level(dilts_answers):
     if counter:
         return counter.most_common(1)[0][0]
     return "ENVIRONMENT"
+
+def get_type_code(perception_type: str) -> str:
+    """Возвращает код типа (SA/IA/SP/IP) по названию"""
+    type_map = {
+        "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": "SA",
+        "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ": "IA",
+        "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ": "SP",
+        "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ": "IP"
+    }
+    return type_map.get(perception_type, "SA")
+
+def calculate_profile_key(context_data: dict) -> str:
+    """
+    Определяет ключ профиля в формате "SA_1_env"
+    
+    Args:
+        context_data: словарь с данными пользователя
+    
+    Returns:
+        строка вида "SA_1_env"
+    """
+    # 1. Получаем код типа (SA/IA/SP/IP)
+    perception_type = context_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
+    type_code = get_type_code(perception_type)
+    
+    # 2. Получаем уровень (1-9)
+    level = context_data.get("final_level", 1)
+    
+    # 3. Получаем код Дилтса (env/beh/cap/bel/id)
+    dilts_level = context_data.get("dilts_level", "ENVIRONMENT")
+    dilts_code = DILTS_LEVELS.get(dilts_level, DILTS_LEVELS["ENVIRONMENT"])["code"]
+    
+    profile_key = f"{type_code}_{level}_{dilts_code}"
+    
+    logger.info(f"Profile key calculated: {profile_key}")
+    return profile_key
 
 # ============================================
 # КОМАНДЫ БОТА
@@ -1523,49 +1524,61 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показ финального результата"""
+    """Показ финального результата с использованием генератора контента"""
     query = update.callback_query
     
+    # Получаем данные профиля
     perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
     final_level = context.user_data.get("final_level", 1)
     dilts_level = context.user_data.get("dilts_level", "ENVIRONMENT")
     
-    # Получаем описания
-    level_info = THINKING_LEVELS.get(final_level, THINKING_LEVELS[1])
-    dilts_info = DILTS_LEVELS.get(dilts_level, DILTS_LEVELS["ENVIRONMENT"])
-    
-    # ВЫЧИСЛЯЕМ КЛЮЧ ПРОФИЛЯ
+    # Вычисляем ключ профиля
     profile_key = calculate_profile_key(context.user_data)
+    type_code = get_type_code(perception_type)
+    dilts_code = DILTS_LEVELS.get(dilts_level, DILTS_LEVELS["ENVIRONMENT"])["code"]
+    
+    # ГЕНЕРИРУЕМ КОНТЕНТ ЧЕРЕЗ ГЕНЕРАТОР
+    profile_data = generate_profile(type_code, final_level, dilts_code)
+    
+    # Получаем описания для итогового экрана
+    dilts_info = DILTS_LEVELS.get(dilts_level, DILTS_LEVELS["ENVIRONMENT"])
     
     logger.info(f"User {update.effective_user.id}: Showing result, profile_key={profile_key}")
     
-    # МОДУЛЬНАЯ СБОРКА РЕЗУЛЬТАТА
+    # ФОРМИРУЕМ ИТОГОВЫЙ ЭКРАН
     result_text = (
         f"🎉 <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"<b>📊 ТВОЙ ПРОФИЛЬ:</b>\n\n"
         f"<b>🎯 Тип восприятия:</b>\n{perception_type}\n\n"
-        f"<b>📈 Уровень развития:</b>\n{final_level} — {level_info['name']}\n"
-        f"<i>{level_info['description']}</i>\n\n"
+        f"<b>📖 КТО ТЫ:</b>\n\n"
+        f"{profile_data['who']}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"<b>🎪 Проблемный уровень:</b>\n{dilts_info['name']}\n"
         f"<i>{dilts_info['description']}</i>\n\n"
         f"<b>🚀 ВЕКТОР РАЗВИТИЯ:</b>\n"
         f"{dilts_info['solution']}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"<b>🔑 Код профиля:</b> <code>{profile_key}</code>\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ:</b>\n\n"
-        f"Твой инструмент, который корректирует конфигурацию поведения на уровне конфигурации мышления – это метафорическая форма (ссылка на сказку внизу экрана).\n\n"
-        f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽):</b>\n"
+        f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ</b>\n\n"
+        f"💡 Твой инструмент который корректирует конфигурацию поведения, на уровне конфигурации мышления – это метафорическая форма (ссылка на сказку внизу экрана).\n\n"
+        f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽)</b>\n"
         f"✓ Полное описание архетипа и персональные рекомендации (15+ страниц)\n"
-        f"✓ Персональная терапевтическая сказка\n"
-        f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf)\n\n"
-        f"💬 Персональная консультация: @meysternlp"
+        f"✓ Персональная терапевтическая сказка для коррекции других конфликтующих частей\n"
+        f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf) для самостоятельной коррекции на уровне конфигурации восприятия\n\n"
+        f"💬 <b>Хочешь разобраться глубже?</b>\n"
+        f"Получить персональную консультацию:\n"
+        f"👉 @meysternlp"
     )
     
     story_link = "https://drive.google.com/file/d/1Y0nr2C_sWlQVOF84THLXa3nflFBVSI77/view?usp=sharing"
+    bot_link = "https://t.me/Testing_Lichnosti_bot"
     
     keyboard = [
         [InlineKeyboardButton("📖 Читать сказку", url=story_link)],
         [InlineKeyboardButton("💳 Получить полный пакет (960 ₽)", url="https://t.me/meysternlp")],
+        [InlineKeyboardButton("🎁 Поделиться тестом и получить подарок", url=f"https://t.me/share/url?url={bot_link}&text=Пройди тест и узнай свой психотип!")],
         [InlineKeyboardButton("🔄 Пройти заново", callback_data="start_test")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
