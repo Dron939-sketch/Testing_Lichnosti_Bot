@@ -18,17 +18,18 @@ from telegram.ext import (
     ContextTypes,
     ConversationHandler,
 )
-from dotenv import load_dotenv
 
 # Импорты вопросов
 from adaptive_questions import STAGE_1_ADAPTIVE, SUIT_DESCRIPTIONS
 from stage2_questions import STAGE_2_QUESTIONS
 from stage3_questions import STAGE_3_BASE_QUESTIONS
-from card_data import CARDS  # Старые данные карт для финального результата
+from card_data import CARDS
 
-# Загрузка переменных окружения
-load_dotenv()
+# Получение токена из переменной окружения
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+if not TOKEN:
+    raise ValueError("❌ TELEGRAM_BOT_TOKEN не найден! Установите переменную окружения.")
 
 # Настройка логирования
 logging.basicConfig(
@@ -60,9 +61,6 @@ def calculate_suit(scores):
 
 def calculate_card_level(level_score):
     """Определяет уровень карты по баллам (6-14)"""
-    # level_score от 0 до 20 (10 вопросов * 2 балла макс)
-    # Распределяем на 9 уровней: 6, 7, 8, 9, 10, J(11), Q(12), K(13), A(14)
-    
     if level_score <= 2:
         return 6
     elif level_score <= 4:
@@ -92,11 +90,9 @@ def get_card_name(level):
 
 def calculate_dilts_level(dilts_answers):
     """Определяет проблемный уровень Дилтса"""
-    # Подсчитываем частоту каждого уровня
     from collections import Counter
     counter = Counter(dilts_answers)
     
-    # Возвращаем самый частый
     if counter:
         return counter.most_common(1)[0][0]
     return "ОКРУЖЕНИЕ"
@@ -153,22 +149,18 @@ async def ask_adaptive_question(update: Update, context: ContextTypes.DEFAULT_TY
     """Задаёт адаптивный вопрос ЭТАПА 1"""
     query = update.callback_query
     
-    # Получаем текущий вопрос
     current_q_id = context.user_data.get("current_question_id", "q1_focus")
     question = STAGE_1_ADAPTIVE.get(current_q_id)
     
     if not question:
-        # Если вопроса нет, завершаем этап 1
         return await finish_stage_1(update, context)
     
-    # Формируем текст
     question_text = (
         f"<b>{question['stage']}</b>\n"
         f"📊 Прогресс: {question['progress']}\n\n"
         f"{question['text']}"
     )
     
-    # Формируем кнопки
     keyboard = []
     for option_id, option in question["options"].items():
         keyboard.append([
@@ -187,7 +179,6 @@ async def handle_adaptive_answer(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     await query.answer()
     
-    # Парсим callback_data
     parts = query.data.split("_")
     if len(parts) < 3:
         return STAGE_1
@@ -195,7 +186,6 @@ async def handle_adaptive_answer(update: Update, context: ContextTypes.DEFAULT_T
     question_id = "_".join(parts[1:-1])
     option_id = parts[-1]
     
-    # Получаем данные ответа
     question = STAGE_1_ADAPTIVE.get(question_id)
     if not question:
         return STAGE_1
@@ -204,25 +194,20 @@ async def handle_adaptive_answer(update: Update, context: ContextTypes.DEFAULT_T
     if not selected_option:
         return STAGE_1
     
-    # Начисляем баллы
     for axis, score in selected_option.get("scores", {}).items():
         context.user_data["scores"][axis] = context.user_data["scores"].get(axis, 0) + score
     
-    # Сохраняем историю
     context.user_data["answer_history"].append({
         "question_id": question_id,
         "option_id": option_id,
         "text": selected_option["text"]
     })
     
-    # Определяем следующий вопрос
     next_q_id = selected_option.get("next")
     
-    # Если это конец этапа
     if next_q_id == "finish_stage_1":
         return await finish_stage_1(update, context)
     
-    # Переходим к следующему вопросу
     context.user_data["current_question_id"] = next_q_id
     return await ask_adaptive_question(update, context)
 
@@ -231,15 +216,9 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     
     scores = context.user_data.get("scores", {})
-    
-    # Определяем масть
     suit = calculate_suit(scores)
     context.user_data["suit"] = suit
     
-    # Получаем символ масти
-    suit_symbol = suit.split()[0]
-    
-    # Показываем промежуточный результат
     result_text = (
         f"✅ <b>ЭТАП 1 ЗАВЕРШЁН!</b>\n\n"
         f"🎴 <b>Твоя масть: {suit}</b>\n\n"
@@ -266,7 +245,6 @@ async def start_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    # Инициализация ЭТАПА 2
     context.user_data["stage2_current"] = 0
     context.user_data["stage2_level_score"] = 0
     
@@ -279,16 +257,13 @@ async def ask_stage2_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     suit = context.user_data.get("suit")
     current = context.user_data.get("stage2_current", 0)
     
-    # Получаем вопросы для масти
     questions = STAGE_2_QUESTIONS.get(suit, [])
     
     if current >= len(questions):
-        # Завершаем ЭТАП 2
         return await finish_stage_2(update, context)
     
     question = questions[current]
     
-    # Формируем текст
     question_text = (
         f"<b>🎯 ЭТАП 2: ОПРЕДЕЛЕНИЕ УРОВНЯ</b>\n"
         f"📊 Прогресс: {current + 1}/{len(questions)}\n"
@@ -296,7 +271,6 @@ async def ask_stage2_question(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"{question['text']}"
     )
     
-    # Формируем кнопки
     keyboard = []
     for option_id, option in question["options"].items():
         keyboard.append([
@@ -315,7 +289,6 @@ async def handle_stage2_answer(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     
-    # Парсим callback_data
     parts = query.data.split("_")
     if len(parts) < 3:
         return STAGE_2
@@ -323,7 +296,6 @@ async def handle_stage2_answer(update: Update, context: ContextTypes.DEFAULT_TYP
     current = int(parts[1])
     option_id = parts[2]
     
-    # Получаем вопрос
     suit = context.user_data.get("suit")
     questions = STAGE_2_QUESTIONS.get(suit, [])
     
@@ -336,18 +308,15 @@ async def handle_stage2_answer(update: Update, context: ContextTypes.DEFAULT_TYP
     if not selected_option:
         return STAGE_2
     
-    # Начисляем баллы
     level_score = selected_option.get("level_score", 0)
     context.user_data["stage2_level_score"] = context.user_data.get("stage2_level_score", 0) + level_score
     
-    # Сохраняем ответ
     context.user_data["stage2_answers"].append({
         "question": question["text"],
         "answer": selected_option["text"],
         "score": level_score
     })
     
-    # Переходим к следующему вопросу
     context.user_data["stage2_current"] = current + 1
     return await ask_stage2_question(update, context)
 
@@ -358,17 +327,14 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     suit = context.user_data.get("suit")
     level_score = context.user_data.get("stage2_level_score", 0)
     
-    # Определяем уровень карты
     card_level = calculate_card_level(level_score)
     card_name = get_card_name(card_level)
     
-    # Сохраняем карту
     suit_symbol = suit.split()[0]
     full_card = f"{card_name}{suit_symbol}"
     context.user_data["card"] = full_card
     context.user_data["card_level"] = card_level
     
-    # Показываем промежуточный результат
     result_text = (
         f"✅ <b>ЭТАП 2 ЗАВЕРШЁН!</b>\n\n"
         f"🎴 <b>Твоя карта: {full_card}</b>\n\n"
@@ -392,7 +358,6 @@ async def start_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    # Инициализация ЭТАПА 3
     context.user_data["stage3_current"] = 0
     context.user_data["stage3_dilts_answers"] = []
     
@@ -406,13 +371,11 @@ async def ask_stage3_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     questions = STAGE_3_BASE_QUESTIONS
     
     if current >= len(questions):
-        # Завершаем ЭТАП 3
         return await finish_stage_3(update, context)
     
     question = questions[current]
     card = context.user_data.get("card", "?")
     
-    # Формируем текст
     question_text = (
         f"<b>🎯 ЭТАП 3: ПРОБЛЕМНЫЙ УРОВЕНЬ</b>\n"
         f"📊 Прогресс: {current + 1}/{len(questions)}\n"
@@ -420,7 +383,6 @@ async def ask_stage3_question(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"{question['text']}"
     )
     
-    # Формируем кнопки
     keyboard = []
     for option_id, option in question["options"].items():
         keyboard.append([
@@ -439,7 +401,6 @@ async def handle_stage3_answer(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     
-    # Парсим callback_data
     parts = query.data.split("_")
     if len(parts) < 3:
         return STAGE_3
@@ -447,7 +408,6 @@ async def handle_stage3_answer(update: Update, context: ContextTypes.DEFAULT_TYP
     current = int(parts[1])
     option_id = parts[2]
     
-    # Получаем вопрос
     questions = STAGE_3_BASE_QUESTIONS
     
     if current >= len(questions):
@@ -459,18 +419,15 @@ async def handle_stage3_answer(update: Update, context: ContextTypes.DEFAULT_TYP
     if not selected_option:
         return STAGE_3
     
-    # Сохраняем уровень Дилтса
     dilts_level = selected_option.get("dilts")
     context.user_data["stage3_dilts_answers"].append(dilts_level)
     
-    # Сохраняем ответ
     context.user_data["stage3_answers"].append({
         "question": question["text"],
         "answer": selected_option["text"],
         "dilts": dilts_level
     })
     
-    # Переходим к следующему вопросу
     context.user_data["stage3_current"] = current + 1
     return await ask_stage3_question(update, context)
 
@@ -478,12 +435,10 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Завершение ЭТАПА 3 и показ результата"""
     query = update.callback_query
     
-    # Определяем проблемный уровень
     dilts_answers = context.user_data.get("stage3_dilts_answers", [])
     dilts_level = calculate_dilts_level(dilts_answers)
     context.user_data["dilts_level"] = dilts_level
     
-    # Переходим к результату
     return await show_result(update, context)
 
 # ============================================
@@ -498,7 +453,6 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     suit = context.user_data.get("suit", "?")
     dilts_level = context.user_data.get("dilts_level", "ОКРУЖЕНИЕ")
     
-    # Получаем данные карты из старого словаря
     card_data = CARDS.get(card, {})
     
     result_text = (
@@ -575,6 +529,14 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
+# ERROR HANDLER
+# ============================================
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ошибок"""
+    logger.error(f"Exception while handling an update: {context.error}")
+
+# ============================================
 # MAIN
 # ============================================
 
@@ -610,6 +572,7 @@ def main():
     )
     
     application.add_handler(conv_handler)
+    application.add_error_handler(error_handler)
     
     logger.info("🚀 Бот запущен!")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
