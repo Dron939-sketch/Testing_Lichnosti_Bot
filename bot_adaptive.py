@@ -583,8 +583,8 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💬 Персональная консультация: @meysternlp"
     )
     
-# Ссылка на Google Drive для просмотра сказки
-story_link = "https://drive.google.com/file/d/1Y0nr2C_sWlQVOF84THLXa3nflFBVSI77/view?usp=sharing"
+    # ✅ ИСПРАВЛЕННАЯ ССЫЛКА НА GOOGLE DRIVE (ПРОСМОТР)
+    story_link = "https://drive.google.com/file/d/1Y0nr2C_sWlQVOF84THLXa3nflFBVSI77/view?usp=sharing"
     
     keyboard = [
         [InlineKeyboardButton("📖 Читать сказку", url=story_link)],
