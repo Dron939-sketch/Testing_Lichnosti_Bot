@@ -1,15 +1,14 @@
 # bot_adaptive.py
 """
-АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ КАРТЫ РОЖДЕНИЯ
+АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
 3 этапа:
-1. Определение масти (6 адаптивных вопросов)
-2. Определение уровня (10 вопросов под масть)
-3. Определение проблемного уровня Дилтса (6 вопросов)
+1. Определение конфигурации восприятия (6 адаптивных вопросов)
+2. Определение конфигурации мышления (10 вопросов)
+3. Определение проблемного уровня (6 вопросов)
 """
 
 import logging
 import os
-from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -29,7 +28,7 @@ from card_data import CARDS
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 if not TOKEN:
-    raise ValueError("❌ TELEGRAM_BOT_TOKEN не найден! Установите переменную окружения.")
+    raise ValueError("❌ ОШИБКА: Переменная TELEGRAM_BOT_TOKEN не установлена!")
 
 # Настройка логирования
 logging.basicConfig(
@@ -44,6 +43,13 @@ STAGE_1, STAGE_2, STAGE_3, RESULT = range(4)
 # ============================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ============================================
+
+def calculate_progress(current: int, total: int) -> str:
+    """Вычисляет прогресс"""
+    progress = int((current / total) * 100)
+    filled = int(progress / 10)
+    bar = "▓" * filled + "░" * (10 - filled)
+    return f"{bar} {progress}%\nПройдено: {current}/{total}"
 
 def calculate_suit(scores):
     """Определяет масть по баллам"""
@@ -106,21 +112,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
     welcome_text = (
-        f"👋 Привет, {user.first_name}!\n\n"
-        "🎴 <b>Добро пожаловать в адаптивный тест определения карты рождения!</b>\n\n"
-        "📊 <b>Как это работает:</b>\n\n"
-        "<b>ЭТАП 1:</b> Определение масти (6 вопросов)\n"
-        "→ Узнаем твой фокус внимания и природу страхов\n\n"
-        "<b>ЭТАП 2:</b> Определение уровня (10 вопросов)\n"
-        "→ Уточняем твою карту внутри масти\n\n"
-        "<b>ЭТАП 3:</b> Проблемный уровень (6 вопросов)\n"
-        "→ Определяем, где искать решение\n\n"
-        "⏱️ <b>Время:</b> 10-15 минут\n"
-        "🎯 <b>Результат:</b> Твоя карта рождения + персональные рекомендации\n\n"
-        "Готов начать?"
+        f"Привет, {user.first_name}! 👋\n\n"
+        f"🎴 <b>Добро пожаловать в диагностику архетипов!</b>\n\n"
+        f"🔍 <b>Узнай, почему ты принимаешь именно такие решения</b>\n\n"
+        f"Этот тест поможет определить твой текущий архетип и понять:\n"
+        f"• Почему ты реагируешь именно так\n"
+        f"• Откуда берутся твои страхи и желания\n"
+        f"• Как изменить то, что тебя не устраивает\n\n"
+        f"🎯 <b>Что тебя ждёт:</b>\n\n"
+        f"1️⃣ <b>ЭТАП 1:</b> Определение конфигурации восприятия (6 вопросов)\n"
+        f"→ Узнаешь свою базовую программу\n\n"
+        f"2️⃣ <b>ЭТАП 2:</b> Определение конфигурации мышления (10 вопросов)\n"
+        f"→ Найдём твою текущую программу\n\n"
+        f"3️⃣ <b>ЭТАП 3:</b> Определение проблемного уровня (6 вопросов)\n"
+        f"→ Определим поведенческие паттерны и методы их коррекции\n\n"
+        f"⏱ Займёт 10-15 минут\n\n"
+        f"📌 Отвечай честно, как есть сейчас, а не как хотелось бы.\n\n"
+        f"Готов начать? 🚀"
     )
     
-    keyboard = [[InlineKeyboardButton("🚀 Начать тест", callback_data="start_test")]]
+    keyboard = [[InlineKeyboardButton("Начать тест", callback_data="start_test")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
@@ -156,16 +167,18 @@ async def ask_adaptive_question(update: Update, context: ContextTypes.DEFAULT_TY
         return await finish_stage_1(update, context)
     
     question_text = (
-        f"<b>{question['stage']}</b>\n"
-        f"📊 Прогресс: {question['progress']}\n\n"
-        f"{question['text']}"
+        f"<b>{question['stage']}</b>\n\n"
+        f"<b>{question['text']}</b>\n\n"
+        f"{question['progress']}"
     )
     
     keyboard = []
     for option_id, option in question["options"].items():
+        # УБИРАЕМ ЭМОДЗИ ИЗ ВАРИАНТОВ ОТВЕТОВ
+        clean_text = option["text"]
         keyboard.append([
             InlineKeyboardButton(
-                option["text"], 
+                clean_text, 
                 callback_data=f"adaptive_{current_q_id}_{option_id}"
             )
         ])
@@ -212,21 +225,21 @@ async def handle_adaptive_answer(update: Update, context: ContextTypes.DEFAULT_T
     return await ask_adaptive_question(update, context)
 
 async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение ЭТАПА 1 и определение масти"""
+    """Завершение ЭТАПА 1 БЕЗ ПОКАЗА МАСТИ"""
     query = update.callback_query
     
     scores = context.user_data.get("scores", {})
     suit = calculate_suit(scores)
     context.user_data["suit"] = suit
     
+    # НЕ ПОКАЗЫВАЕМ МАСТЬ ПОЛЬЗОВАТЕЛЮ
     result_text = (
         f"✅ <b>ЭТАП 1 ЗАВЕРШЁН!</b>\n\n"
-        f"🎴 <b>Твоя масть: {suit}</b>\n\n"
-        f"{SUIT_DESCRIPTIONS[suit]}\n\n"
-        f"📊 <b>Твои показатели:</b>\n"
-        f"• ВОВНЕ: {scores.get('ВОВНЕ', 0)} | ВНУТРИ: {scores.get('ВНУТРИ', 0)}\n"
-        f"• УМОЗРИТЕЛЬНОЕ: {scores.get('УМОЗРИТЕЛЬНОЕ', 0)} | ФАКТИЧЕСКОЕ: {scores.get('ФАКТИЧЕСКОЕ', 0)}\n\n"
-        f"🔍 Переходим к <b>ЭТАПУ 2</b>: определение уровня внутри масти.\n\n"
+        f"🎯 <b>Конфигурация восприятия определена</b>\n\n"
+        f"Интересно! Ты склонен к определённому восприятию мира.\n"
+        f"Это формирует твои реакции и решения.\n\n"
+        f"🔍 Переходим к <b>ЭТАПУ 2</b>: определение конфигурации мышления.\n\n"
+        f"Это покажет твои убеждения, ценности и паттерны поведения.\n\n"
         f"Готов продолжить?"
     )
     
@@ -263,19 +276,21 @@ async def ask_stage2_question(update: Update, context: ContextTypes.DEFAULT_TYPE
         return await finish_stage_2(update, context)
     
     question = questions[current]
+    progress = calculate_progress(current + 1, len(questions))
     
     question_text = (
-        f"<b>🎯 ЭТАП 2: ОПРЕДЕЛЕНИЕ УРОВНЯ</b>\n"
-        f"📊 Прогресс: {current + 1}/{len(questions)}\n"
-        f"🎴 Масть: {suit}\n\n"
-        f"{question['text']}"
+        f"<b>🎯 ЭТАП 2: ОПРЕДЕЛЕНИЕ КОНФИГУРАЦИИ МЫШЛЕНИЯ</b>\n\n"
+        f"<b>{question['text']}</b>\n\n"
+        f"{progress}"
     )
     
     keyboard = []
     for option_id, option in question["options"].items():
+        # УБИРАЕМ ЭМОДЗИ ИЗ ВАРИАНТОВ ОТВЕТОВ
+        clean_text = option["text"]
         keyboard.append([
             InlineKeyboardButton(
-                option["text"], 
+                clean_text, 
                 callback_data=f"stage2_{current}_{option_id}"
             )
         ])
@@ -321,7 +336,7 @@ async def handle_stage2_answer(update: Update, context: ContextTypes.DEFAULT_TYP
     return await ask_stage2_question(update, context)
 
 async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение ЭТАПА 2 и определение карты"""
+    """Завершение ЭТАПА 2 БЕЗ ПОКАЗА КАРТЫ"""
     query = update.callback_query
     
     suit = context.user_data.get("suit")
@@ -335,10 +350,11 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["card"] = full_card
     context.user_data["card_level"] = card_level
     
+    # НЕ ПОКАЗЫВАЕМ КАРТУ ПОЛЬЗОВАТЕЛЮ
     result_text = (
         f"✅ <b>ЭТАП 2 ЗАВЕРШЁН!</b>\n\n"
-        f"🎴 <b>Твоя карта: {full_card}</b>\n\n"
-        f"📊 <b>Твой уровень:</b> {level_score} баллов\n\n"
+        f"🎯 <b>Конфигурация мышления определена</b>\n\n"
+        f"Отлично! Теперь я понимаю твою логику мышления в этой системе восприятия.\n\n"
         f"🔍 Переходим к <b>ЭТАПУ 3</b>: определение проблемного уровня.\n\n"
         f"Это последний этап! Готов?"
     )
@@ -374,20 +390,21 @@ async def ask_stage3_question(update: Update, context: ContextTypes.DEFAULT_TYPE
         return await finish_stage_3(update, context)
     
     question = questions[current]
-    card = context.user_data.get("card", "?")
+    progress = calculate_progress(current + 1, len(questions))
     
     question_text = (
-        f"<b>🎯 ЭТАП 3: ПРОБЛЕМНЫЙ УРОВЕНЬ</b>\n"
-        f"📊 Прогресс: {current + 1}/{len(questions)}\n"
-        f"🎴 Твоя карта: {card}\n\n"
-        f"{question['text']}"
+        f"<b>🎯 ЭТАП 3: ПРОБЛЕМНЫЙ УРОВЕНЬ</b>\n\n"
+        f"<b>{question['text']}</b>\n\n"
+        f"{progress}"
     )
     
     keyboard = []
     for option_id, option in question["options"].items():
+        # УБИРАЕМ ЭМОДЗИ ИЗ ВАРИАНТОВ ОТВЕТОВ
+        clean_text = option["text"]
         keyboard.append([
             InlineKeyboardButton(
-                option["text"], 
+                clean_text, 
                 callback_data=f"stage3_{current}_{option_id}"
             )
         ])
@@ -446,86 +463,53 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показ финального результата"""
+    """Показ финального результата БЕЗ КАРТЫ, КАК В ТВОЁМ КОДЕ"""
     query = update.callback_query
     
     card = context.user_data.get("card", "?")
-    suit = context.user_data.get("suit", "?")
     dilts_level = context.user_data.get("dilts_level", "ОКРУЖЕНИЕ")
     
     card_data = CARDS.get(card, {})
     
+    # КОМПАКТНЫЙ РЕЗУЛЬТАТ БЕЗ КАРТЫ
     result_text = (
         f"🎉 <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-        f"🎴 <b>Твоя карта рождения: {card}</b>\n\n"
-        f"<b>📊 ТВОИ РЕЗУЛЬТАТЫ:</b>\n\n"
-        f"🎴 <b>Масть:</b> {suit}\n"
-        f"🎯 <b>Проблемный уровень:</b> {dilts_level}\n\n"
-        f"<b>💡 ОПИСАНИЕ КАРТЫ:</b>\n"
-        f"{card_data.get('description', 'Описание карты')}\n\n"
-        f"<b>🎭 АРХЕТИП:</b>\n"
-        f"{card_data.get('archetype', 'Архетип карты')}\n\n"
-        f"<b>⚠️ ТЕНЕВАЯ СТОРОНА:</b>\n"
-        f"{card_data.get('shadow', 'Теневая сторона')}\n\n"
-        f"<b>🌟 РЕКОМЕНДАЦИИ:</b>\n"
-        f"Твой проблемный уровень — <b>{dilts_level}</b>.\n"
+        f"📖 <b>Описание вашей конфигурации мышления и поведения</b>\n\n"
+        f"👤 <b>КТО ТЫ</b>\n"
+        f"{card_data.get('description', '')}\n\n"
+        f"🎭 <b>АРХЕТИП</b>\n"
+        f"{card_data.get('archetype', '')}\n\n"
+        f"🌑 <b>ТЕНЬ</b>\n"
+        f"{card_data.get('shadow', '')}\n\n"
+        f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ</b>\n"
+        f"💡 Твой проблемный уровень — <b>{dilts_level}</b>.\n"
         f"Работай на этом уровне для максимального эффекта!\n\n"
-        f"Хочешь пройти тест заново?"
+        f"💎 <b>ПОЛНЫЙ ПАКЕТ</b>\n"
+        f"✓ Полное описание архетипа и персональные рекомендации\n"
+        f"✓ Персональная терапевтическая сказка для коррекции\n"
+        f"✓ Книга для самостоятельной коррекции\n\n"
+        f"💬 <b>Хочешь разобраться глубже?</b>\n"
+        f"Получить персональную консультацию:\n"
+        f"👉 @meysternlp"
     )
     
     keyboard = [
         [InlineKeyboardButton("🔄 Пройти заново", callback_data="start_test")],
-        [InlineKeyboardButton("📊 Моя статистика", callback_data="show_stats")]
+        [InlineKeyboardButton("📤 Поделиться тестом", url="https://t.me/share/url?url=https://t.me/YOUR_BOT&text=Пройди тест и узнай свой архетип!")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(result_text, reply_markup=reply_markup, parse_mode="HTML")
+    await query.edit_message_text(result_text, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
     return ConversationHandler.END
-
-async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показ статистики ответов"""
-    query = update.callback_query
-    await query.answer()
-    
-    card = context.user_data.get("card", "?")
-    scores = context.user_data.get("scores", {})
-    level_score = context.user_data.get("stage2_level_score", 0)
-    dilts_answers = context.user_data.get("stage3_dilts_answers", [])
-    
-    from collections import Counter
-    dilts_counter = Counter(dilts_answers)
-    
-    stats_text = (
-        f"📊 <b>ТВОЯ СТАТИСТИКА</b>\n\n"
-        f"🎴 <b>Карта:</b> {card}\n\n"
-        f"<b>ЭТАП 1: МАСТЬ</b>\n"
-        f"• ВОВНЕ: {scores.get('ВОВНЕ', 0)}\n"
-        f"• ВНУТРИ: {scores.get('ВНУТРИ', 0)}\n"
-        f"• УМОЗРИТЕЛЬНОЕ: {scores.get('УМОЗРИТЕЛЬНОЕ', 0)}\n"
-        f"• ФАКТИЧЕСКОЕ: {scores.get('ФАКТИЧЕСКОЕ', 0)}\n\n"
-        f"<b>ЭТАП 2: УРОВЕНЬ</b>\n"
-        f"• Баллы: {level_score}\n\n"
-        f"<b>ЭТАП 3: УРОВНИ ДИЛТСА</b>\n"
-    )
-    
-    for level, count in dilts_counter.most_common():
-        stats_text += f"• {level}: {count}\n"
-    
-    keyboard = [
-        [InlineKeyboardButton("◀️ Назад к результату", callback_data="back_to_result")],
-        [InlineKeyboardButton("🔄 Пройти заново", callback_data="start_test")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(stats_text, reply_markup=reply_markup, parse_mode="HTML")
-
-async def back_to_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат к результату"""
-    return await show_result(update, context)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена теста"""
-    await update.message.reply_text("Тест отменён. Используй /start для начала.")
+    cancel_text = (
+        f"❌ Тест отменён.\n"
+        f"Хочешь начать заново?\n"
+        f"👉 /start"
+    )
+    await update.message.reply_text(cancel_text)
     return ConversationHandler.END
 
 # ============================================
@@ -565,8 +549,6 @@ def main():
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
-            CallbackQueryHandler(show_stats, pattern="^show_stats$"),
-            CallbackQueryHandler(back_to_result, pattern="^back_to_result$"),
             CallbackQueryHandler(start_test, pattern="^start_test$")
         ],
     )
@@ -574,7 +556,7 @@ def main():
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
     
-    logger.info("🚀 Бот запущен!")
+    logger.info("✅ Бот запущен!")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
