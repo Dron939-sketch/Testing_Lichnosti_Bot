@@ -131,18 +131,22 @@ STAGE_1_QUESTIONS = [
 PERCEPTION_TYPES = {
     ("EXTERNAL", "SYMBOLIC"): {
         "name": "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ",
+        "code": "SA",
         "description": "Фокус на внешних отношениях и социальном принятии"
     },
     ("INTERNAL", "SYMBOLIC"): {
         "name": "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ",
+        "code": "IA",
         "description": "Фокус на внутренних смыслах и глубине переживания"
     },
     ("EXTERNAL", "MATERIAL"): {
         "name": "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ",
+        "code": "SP",
         "description": "Фокус на внешних достижениях и результатах"
     },
     ("INTERNAL", "MATERIAL"): {
         "name": "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ",
+        "code": "IP",
         "description": "Фокус на внутреннем порядке и системах понимания"
     }
 }
@@ -706,30 +710,75 @@ THINKING_LEVELS = {
 DILTS_LEVELS = {
     "ENVIRONMENT": {
         "name": "ОКРУЖЕНИЕ",
+        "code": "env",
         "description": "Проблема во внешних условиях",
         "solution": "Измени окружение или отношение к нему"
     },
     "BEHAVIOR": {
         "name": "ПОВЕДЕНИЕ",
+        "code": "beh",
         "description": "Проблема в действиях",
         "solution": "Начни действовать по-другому"
     },
     "CAPABILITIES": {
         "name": "СПОСОБНОСТИ",
+        "code": "cap",
         "description": "Проблема в навыках",
         "solution": "Освой новые навыки"
     },
     "VALUES": {
         "name": "ЦЕННОСТИ",
+        "code": "bel",
         "description": "Проблема в мотивации",
         "solution": "Найди свои истинные ценности"
     },
     "IDENTITY": {
         "name": "ИДЕНТИЧНОСТЬ",
+        "code": "id",
         "description": "Проблема в самоопределении",
         "solution": "Переопредели, кто ты"
     }
 }
+
+# ============================================
+# АЛГОРИТМ ОПРЕДЕЛЕНИЯ ПРОФИЛЯ
+# ============================================
+
+def calculate_profile_key(context_data: dict) -> str:
+    """
+    Определяет ключ профиля в формате "SA_1_env"
+    
+    Args:
+        context_data: словарь с данными пользователя
+    
+    Returns:
+        строка вида "SA_1_env"
+    """
+    # 1. Получаем код типа (SA/IA/SP/IP)
+    perception_type = context_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
+    type_code = get_type_code(perception_type)
+    
+    # 2. Получаем уровень (1-9)
+    level = context_data.get("final_level", 1)
+    
+    # 3. Получаем код Дилтса (env/beh/cap/bel/id/mis)
+    dilts_level = context_data.get("dilts_level", "ENVIRONMENT")
+    dilts_code = DILTS_LEVELS.get(dilts_level, DILTS_LEVELS["ENVIRONMENT"])["code"]
+    
+    profile_key = f"{type_code}_{level}_{dilts_code}"
+    
+    logger.info(f"Profile key calculated: {profile_key}")
+    return profile_key
+
+def get_type_code(perception_type: str) -> str:
+    """Возвращает код типа (SA/IA/SP/IP) по названию"""
+    type_map = {
+        "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": "SA",
+        "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ": "IA",
+        "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ": "SP",
+        "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ": "IP"
+    }
+    return type_map.get(perception_type, "SA")
 
 # ============================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -1052,7 +1101,7 @@ async def show_stage_2_details(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text(details_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_2
 
-async def back_to_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def back_to_stage2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к экрану ЭТАПА 2"""
     return await show_stage_2_intro(update, context)
 
@@ -1210,7 +1259,7 @@ async def show_stage_3_details(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text(details_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_3
 
-async def back_to_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def back_to_stage3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к экрану ЭТАПА 3"""
     return await show_stage_3_intro(update, context)
 
@@ -1375,7 +1424,7 @@ async def show_stage_4_details(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text(details_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_4
 
-async def back_to_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def back_to_stage4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к экрану ЭТАПА 4"""
     return await show_stage_4_intro(update, context)
 
@@ -1485,7 +1534,10 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     level_info = THINKING_LEVELS.get(final_level, THINKING_LEVELS[1])
     dilts_info = DILTS_LEVELS.get(dilts_level, DILTS_LEVELS["ENVIRONMENT"])
     
-    logger.info(f"User {update.effective_user.id}: Showing result")
+    # ВЫЧИСЛЯЕМ КЛЮЧ ПРОФИЛЯ
+    profile_key = calculate_profile_key(context.user_data)
+    
+    logger.info(f"User {update.effective_user.id}: Showing result, profile_key={profile_key}")
     
     # МОДУЛЬНАЯ СБОРКА РЕЗУЛЬТАТА
     result_text = (
@@ -1498,11 +1550,14 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"<i>{dilts_info['description']}</i>\n\n"
         f"<b>🚀 ВЕКТОР РАЗВИТИЯ:</b>\n"
         f"{dilts_info['solution']}\n\n"
+        f"<b>🔑 Код профиля:</b> <code>{profile_key}</code>\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ:</b>\n\n"
+        f"Твой инструмент, который корректирует конфигурацию поведения на уровне конфигурации мышления – это метафорическая форма (ссылка на сказку внизу экрана).\n\n"
         f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽):</b>\n"
-        f"✓ Полное описание профиля (15+ страниц)\n"
+        f"✓ Полное описание архетипа и персональные рекомендации (15+ страниц)\n"
         f"✓ Персональная терапевтическая сказка\n"
-        f"✓ Книга «ВАРИАТИКА» (pdf)\n\n"
+        f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf)\n\n"
         f"💬 Персональная консультация: @meysternlp"
     )
     
@@ -1591,21 +1646,21 @@ def main():
             STAGE_2: [
                 CallbackQueryHandler(show_stage_2_intro, pattern="^show_stage_2_intro$"),
                 CallbackQueryHandler(show_stage_2_details, pattern="^stage2_details$"),
-                CallbackQueryHandler(back_to_stage_2_intro, pattern="^back_to_stage2_intro$"),
+                CallbackQueryHandler(back_to_stage2_intro, pattern="^back_to_stage2_intro$"),
                 CallbackQueryHandler(start_stage_2, pattern="^start_stage_2$"),
                 CallbackQueryHandler(handle_stage_2_answer, pattern="^stage2_")
             ],
             STAGE_3: [
                 CallbackQueryHandler(show_stage_3_intro, pattern="^show_stage_3_intro$"),
                 CallbackQueryHandler(show_stage_3_details, pattern="^stage3_details$"),
-                CallbackQueryHandler(back_to_stage_3_intro, pattern="^back_to_stage3_intro$"),
+                CallbackQueryHandler(back_to_stage3_intro, pattern="^back_to_stage3_intro$"),
                 CallbackQueryHandler(start_stage_3, pattern="^start_stage_3$"),
                 CallbackQueryHandler(handle_stage_3_answer, pattern="^stage3_")
             ],
             STAGE_4: [
                 CallbackQueryHandler(show_stage_4_intro, pattern="^show_stage_4_intro$"),
                 CallbackQueryHandler(show_stage_4_details, pattern="^stage4_details$"),
-                CallbackQueryHandler(back_to_stage_4_intro, pattern="^back_to_stage4_intro$"),
+                CallbackQueryHandler(back_to_stage4_intro, pattern="^back_to_stage4_intro$"),
                 CallbackQueryHandler(start_stage_4, pattern="^start_stage_4$"),
                 CallbackQueryHandler(handle_stage_4_answer, pattern="^stage4_")
             ],
