@@ -4,11 +4,12 @@
 3 этапа:
 1. Определение конфигурации восприятия (6 адаптивных вопросов)
 2. Определение конфигурации мышления (10 вопросов)
-3. Определение проблемного уровня (6 вопросов)
+3. Определение стыка конфликтных частей (6 вопросов)
 """
 
 import logging
 import os
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -108,22 +109,23 @@ def calculate_dilts_level(dilts_answers):
 # ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /start - КАК В ТВОЁМ КОДЕ"""
+    """Команда /start - ОБНОВЛЁННАЯ"""
     user = update.effective_user
     
     welcome_text = (
         f"Привет, {user.first_name}! 👋\n\n"
         f"🎴 <b>Добро пожаловать в диагностику архетипов!</b>\n\n"
-        f"🔍 <b>Узнай, почему ты принимаешь именно такие решения</b>\n\n"
+        f"🔍 <b>Узнай, почему ты принимаешь именно такие решения и какие варианты еще есть, но ты их не замечаешь и почему?</b>\n\n"
         f"Этот тест поможет определить твой текущий архетип и понять:\n"
-        f"• Почему ты реагируешь именно так 🤔\n"
+        f"• Почему ты реагируешь именно так и на какие триггеры 🤔\n"
         f"• Откуда берутся твои страхи и желания 💭\n"
         f"• Как изменить то, что тебя не устраивает 🚀\n\n"
         f"🎯 <b>Что тебя ждёт:</b>\n\n"
         f"1️⃣ <b>ЭТАП 1:</b> Определение конфигурации восприятия (6 вопросов)\n"
         f"→ Узнаешь свою базовую программу\n\n"
         f"2️⃣ <b>ЭТАП 2:</b> Определение конфигурации мышления (10 вопросов)\n"
-        f"→ Найдём твою текущую программу\n"
+        f"→ Найдём твою текущую программу\n\n"
+        f"3️⃣ <b>ЭТАП 3:</b> Определение стыка конфликтных частей (6 вопросов)\n"
         f"→ Определим поведенческие паттерны и методы их коррекции\n\n"
         f"⏱ Займёт 10-15 минут\n\n"
         f"📌 Отвечай честно, как есть сейчас, а не как хотелось бы.\n\n"
@@ -136,18 +138,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
 
 async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало теста"""
+    """Начало теста С ЗАЩИТОЙ ОТ ЗАВИСАНИЙ"""
     query = update.callback_query
     await query.answer()
     
-    # Инициализация данных пользователя
+    # ПОЛНАЯ ОЧИСТКА ДАННЫХ
     context.user_data.clear()
+    
+    # Инициализация данных пользователя
     context.user_data["scores"] = {}
     context.user_data["answer_history"] = []
     context.user_data["current_question_id"] = "q1_focus"
     context.user_data["stage2_answers"] = []
     context.user_data["stage3_answers"] = []
     context.user_data["total_questions"] = 0
+    context.user_data["processing"] = False
+    context.user_data["started_at"] = asyncio.get_event_loop().time()
+    
+    logger.info(f"User {update.effective_user.id} started test")
     
     # Переход к первому вопросу
     return await ask_adaptive_question(update, context)
@@ -164,6 +172,7 @@ async def ask_adaptive_question(update: Update, context: ContextTypes.DEFAULT_TY
     question = STAGE_1_ADAPTIVE.get(current_q_id)
     
     if not question:
+        logger.info(f"User {update.effective_user.id}: Finishing stage 1")
         return await finish_stage_1(update, context)
     
     # Подсчёт текущего вопроса
@@ -195,58 +204,70 @@ async def ask_adaptive_question(update: Update, context: ContextTypes.DEFAULT_TY
     return STAGE_1
 
 async def handle_adaptive_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка адаптивного ответа ЭТАПА 1"""
+    """Обработка адаптивного ответа ЭТАПА 1 С ЗАЩИТОЙ ОТ ДУБЛИРОВАНИЯ"""
     query = update.callback_query
-    await query.answer()
     
-    parts = query.data.split("_")
-    if len(parts) < 3:
+    # ЗАЩИТА ОТ ПОВТОРНЫХ НАЖАТИЙ
+    if context.user_data.get("processing", False):
+        await query.answer("⏳ Обрабатываю предыдущий ответ...")
         return STAGE_1
     
-    question_id = "_".join(parts[1:-1])
-    option_id = parts[-1]
+    context.user_data["processing"] = True
     
-    question = STAGE_1_ADAPTIVE.get(question_id)
-    if not question:
-        return STAGE_1
-    
-    selected_option = question["options"].get(option_id)
-    if not selected_option:
-        return STAGE_1
-    
-    for axis, score in selected_option.get("scores", {}).items():
-        context.user_data["scores"][axis] = context.user_data["scores"].get(axis, 0) + score
-    
-    context.user_data["answer_history"].append({
-        "question_id": question_id,
-        "option_id": option_id,
-        "text": selected_option["text"]
-    })
-    
-    next_q_id = selected_option.get("next")
-    
-    if next_q_id == "finish_stage_1":
-        return await finish_stage_1(update, context)
-    
-    context.user_data["current_question_id"] = next_q_id
-    return await ask_adaptive_question(update, context)
+    try:
+        await query.answer()
+        
+        parts = query.data.split("_")
+        if len(parts) < 3:
+            return STAGE_1
+        
+        question_id = "_".join(parts[1:-1])
+        option_id = parts[-1]
+        
+        question = STAGE_1_ADAPTIVE.get(question_id)
+        if not question:
+            return STAGE_1
+        
+        selected_option = question["options"].get(option_id)
+        if not selected_option:
+            return STAGE_1
+        
+        for axis, score in selected_option.get("scores", {}).items():
+            context.user_data["scores"][axis] = context.user_data["scores"].get(axis, 0) + score
+        
+        context.user_data["answer_history"].append({
+            "question_id": question_id,
+            "option_id": option_id,
+            "text": selected_option["text"]
+        })
+        
+        logger.info(f"User {update.effective_user.id}: Answered {question_id} -> {option_id}")
+        
+        next_q_id = selected_option.get("next")
+        
+        if next_q_id == "finish_stage_1":
+            return await finish_stage_1(update, context)
+        
+        context.user_data["current_question_id"] = next_q_id
+        return await ask_adaptive_question(update, context)
+        
+    finally:
+        context.user_data["processing"] = False
 
 async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение ЭТАПА 1 БЕЗ ПОКАЗА МАСТИ"""
+    """Завершение ЭТАПА 1 - КОМПАКТНЫЙ ТЕКСТ"""
     query = update.callback_query
     
     scores = context.user_data.get("scores", {})
     suit = calculate_suit(scores)
     context.user_data["suit"] = suit
     
-    # НЕ ПОКАЗЫВАЕМ МАСТЬ ПОЛЬЗОВАТЕЛЮ
+    logger.info(f"User {update.effective_user.id}: Stage 1 complete, suit={suit}")
+    
     result_text = (
         f"✅ <b>ЭТАП 1 ЗАВЕРШЁН!</b>\n\n"
         f"🎯 <b>Конфигурация восприятия определена</b>\n\n"
-        f"Интересно! Ты склонен к определённому восприятию мира.\n"
-        f"Это формирует твои реакции и решения.\n\n"
         f"🔍 Переходим к <b>ЭТАПУ 2</b>: определение конфигурации мышления.\n\n"
-        f"Это покажет твои убеждения, ценности и паттерны поведения.\n\n"
         f"Готов продолжить?"
     )
     
@@ -267,6 +288,9 @@ async def start_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     context.user_data["stage2_current"] = 0
     context.user_data["stage2_level_score"] = 0
+    context.user_data["processing"] = False
+    
+    logger.info(f"User {update.effective_user.id}: Starting stage 2")
     
     return await ask_stage2_question(update, context)
 
@@ -309,43 +333,57 @@ async def ask_stage2_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     return STAGE_2
 
 async def handle_stage2_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка ответа ЭТАПА 2"""
+    """Обработка ответа ЭТАПА 2 С ЗАЩИТОЙ ОТ ДУБЛИРОВАНИЯ"""
     query = update.callback_query
-    await query.answer()
     
-    parts = query.data.split("_")
-    if len(parts) < 3:
+    # ЗАЩИТА ОТ ПОВТОРНЫХ НАЖАТИЙ
+    if context.user_data.get("processing", False):
+        await query.answer("⏳ Обрабатываю предыдущий ответ...")
         return STAGE_2
     
-    current = int(parts[1])
-    option_id = parts[2]
+    context.user_data["processing"] = True
     
-    suit = context.user_data.get("suit")
-    questions = STAGE_2_QUESTIONS.get(suit, [])
-    
-    if current >= len(questions):
-        return STAGE_2
-    
-    question = questions[current]
-    selected_option = question["options"].get(option_id)
-    
-    if not selected_option:
-        return STAGE_2
-    
-    level_score = selected_option.get("level_score", 0)
-    context.user_data["stage2_level_score"] = context.user_data.get("stage2_level_score", 0) + level_score
-    
-    context.user_data["stage2_answers"].append({
-        "question": question["text"],
-        "answer": selected_option["text"],
-        "score": level_score
-    })
-    
-    context.user_data["stage2_current"] = current + 1
-    return await ask_stage2_question(update, context)
+    try:
+        await query.answer()
+        
+        parts = query.data.split("_")
+        if len(parts) < 3:
+            return STAGE_2
+        
+        current = int(parts[1])
+        option_id = parts[2]
+        
+        suit = context.user_data.get("suit")
+        questions = STAGE_2_QUESTIONS.get(suit, [])
+        
+        if current >= len(questions):
+            return STAGE_2
+        
+        question = questions[current]
+        selected_option = question["options"].get(option_id)
+        
+        if not selected_option:
+            return STAGE_2
+        
+        level_score = selected_option.get("level_score", 0)
+        context.user_data["stage2_level_score"] = context.user_data.get("stage2_level_score", 0) + level_score
+        
+        context.user_data["stage2_answers"].append({
+            "question": question["text"],
+            "answer": selected_option["text"],
+            "score": level_score
+        })
+        
+        logger.info(f"User {update.effective_user.id}: Stage 2 Q{current} -> {option_id}")
+        
+        context.user_data["stage2_current"] = current + 1
+        return await ask_stage2_question(update, context)
+        
+    finally:
+        context.user_data["processing"] = False
 
 async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение ЭТАПА 2 БЕЗ ПОКАЗА КАРТЫ"""
+    """Завершение ЭТАПА 2 - КОМПАКТНЫЙ ТЕКСТ"""
     query = update.callback_query
     
     suit = context.user_data.get("suit")
@@ -359,13 +397,13 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["card"] = full_card
     context.user_data["card_level"] = card_level
     
-    # НЕ ПОКАЗЫВАЕМ КАРТУ ПОЛЬЗОВАТЕЛЮ
+    logger.info(f"User {update.effective_user.id}: Stage 2 complete, card={full_card}")
+    
     result_text = (
         f"✅ <b>ЭТАП 2 ЗАВЕРШЁН!</b>\n\n"
         f"🎯 <b>Конфигурация мышления определена</b>\n\n"
-        f"Отлично! Теперь я понимаю твою логику мышления в этой системе восприятия.\n\n"
-        f"🔍 Переходим к <b>ЭТАПУ 3</b>: определение проблемного уровня.\n\n"
-        f"Это последний этап! Готов?"
+        f"🔍 Переходим к <b>ЭТАПУ 3</b>: определение стыка конфликтных частей.\n\n"
+        f"Готов?"
     )
     
     keyboard = [[InlineKeyboardButton("▶️ Начать ЭТАП 3", callback_data="start_stage_3")]]
@@ -385,6 +423,9 @@ async def start_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     context.user_data["stage3_current"] = 0
     context.user_data["stage3_dilts_answers"] = []
+    context.user_data["processing"] = False
+    
+    logger.info(f"User {update.effective_user.id}: Starting stage 3")
     
     return await ask_stage3_question(update, context)
 
@@ -404,7 +445,7 @@ async def ask_stage3_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     progress = calculate_progress(current + 1, len(questions))
     
     question_text = (
-        f"<b>🎯 ЭТАП 3: ПРОБЛЕМНЫЙ УРОВЕНЬ</b>\n\n"
+        f"<b>🎯 ЭТАП 3: СТЫК КОНФЛИКТНЫХ ЧАСТЕЙ</b>\n\n"
         f"<b>{question['text']}</b>\n\n"
         f"{progress}"
     )
@@ -425,39 +466,53 @@ async def ask_stage3_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     return STAGE_3
 
 async def handle_stage3_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка ответа ЭТАПА 3"""
+    """Обработка ответа ЭТАПА 3 С ЗАЩИТОЙ ОТ ДУБЛИРОВАНИЯ"""
     query = update.callback_query
-    await query.answer()
     
-    parts = query.data.split("_")
-    if len(parts) < 3:
+    # ЗАЩИТА ОТ ПОВТОРНЫХ НАЖАТИЙ
+    if context.user_data.get("processing", False):
+        await query.answer("⏳ Обрабатываю предыдущий ответ...")
         return STAGE_3
     
-    current = int(parts[1])
-    option_id = parts[2]
+    context.user_data["processing"] = True
     
-    questions = STAGE_3_BASE_QUESTIONS
-    
-    if current >= len(questions):
-        return STAGE_3
-    
-    question = questions[current]
-    selected_option = question["options"].get(option_id)
-    
-    if not selected_option:
-        return STAGE_3
-    
-    dilts_level = selected_option.get("dilts")
-    context.user_data["stage3_dilts_answers"].append(dilts_level)
-    
-    context.user_data["stage3_answers"].append({
-        "question": question["text"],
-        "answer": selected_option["text"],
-        "dilts": dilts_level
-    })
-    
-    context.user_data["stage3_current"] = current + 1
-    return await ask_stage3_question(update, context)
+    try:
+        await query.answer()
+        
+        parts = query.data.split("_")
+        if len(parts) < 3:
+            return STAGE_3
+        
+        current = int(parts[1])
+        option_id = parts[2]
+        
+        questions = STAGE_3_BASE_QUESTIONS
+        
+        if current >= len(questions):
+            return STAGE_3
+        
+        question = questions[current]
+        selected_option = question["options"].get(option_id)
+        
+        if not selected_option:
+            return STAGE_3
+        
+        dilts_level = selected_option.get("dilts")
+        context.user_data["stage3_dilts_answers"].append(dilts_level)
+        
+        context.user_data["stage3_answers"].append({
+            "question": question["text"],
+            "answer": selected_option["text"],
+            "dilts": dilts_level
+        })
+        
+        logger.info(f"User {update.effective_user.id}: Stage 3 Q{current} -> {option_id}")
+        
+        context.user_data["stage3_current"] = current + 1
+        return await ask_stage3_question(update, context)
+        
+    finally:
+        context.user_data["processing"] = False
 
 async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Завершение ЭТАПА 3 и показ результата"""
@@ -467,6 +522,8 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dilts_level = calculate_dilts_level(dilts_answers)
     context.user_data["dilts_level"] = dilts_level
     
+    logger.info(f"User {update.effective_user.id}: Stage 3 complete, dilts={dilts_level}")
+    
     return await show_result(update, context)
 
 # ============================================
@@ -474,32 +531,46 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показ финального результата - ТОЧНО КАК В ТВОЁМ КОДЕ"""
+    """Показ финального результата С ПОЛНЫМИ ДАННЫМИ"""
     query = update.callback_query
     
     card = context.user_data.get("card", "?")
     card_data = CARDS.get(card, {})
     
-    # РЕЗУЛЬТАТ БЕЗ НАЗВАНИЯ АРХЕТИПА, МАСТИ, КАРТЫ
+    logger.info(f"User {update.effective_user.id}: Showing result for card={card}")
+    
+    # ПРОВЕРКА НАЛИЧИЯ ДАННЫХ
+    if not card_data:
+        error_text = (
+            f"⚠️ Произошла ошибка при определении архетипа.\n"
+            f"Пожалуйста, пройдите тест заново:\n"
+            f"👉 /start"
+        )
+        keyboard = [[InlineKeyboardButton("🔄 Пройти заново", callback_data="start_test")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(error_text, reply_markup=reply_markup, parse_mode="HTML")
+        return ConversationHandler.END
+    
+    # РЕЗУЛЬТАТ С ПОЛНЫМИ ДАННЫМИ
     result_text = (
         f"🎉 <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
         f"📖 <b>Описание вашей конфигурации мышления и поведения</b>\n\n"
         f"👤 <b>КТО ТЫ</b>\n"
-        f"{card_data.get('who', card_data.get('description', ''))}\n\n"
+        f"{card_data.get('who', card_data.get('description', 'Описание отсутствует'))}\n\n"
         f"💭 <b>НАРРАТИВ</b>\n"
-        f"{card_data.get('narrative', card_data.get('archetype', ''))}\n\n"
+        f"{card_data.get('narrative', card_data.get('archetype', 'Нарратив отсутствует'))}\n\n"
         f"🌑 <b>ТЕНЬ</b>\n"
-        f"{card_data.get('shadow', '')}\n\n"
+        f"{card_data.get('shadow', 'Описание тени отсутствует')}\n\n"
         f"⚠️ <b>ЛОВУШКА</b>\n"
-        f"{card_data.get('trap', '')}\n\n"
+        f"{card_data.get('trap', 'Описание ловушки отсутствует')}\n\n"
         f"✅ <b>ЧТО ДЕЛАТЬ</b>\n"
-        f"{card_data.get('what_to_do', '')}\n\n"
+        f"{card_data.get('what_to_do', 'Рекомендации отсутствуют')}\n\n"
         f"🚀 <b>КАК РАСТИ</b>\n"
-        f"{card_data.get('how_to_grow', '')}\n\n"
+        f"{card_data.get('how_to_grow', 'Рекомендации по росту отсутствуют')}\n\n"
         f"⚡ <b>ТРИГГЕР ПЕРЕХОДА</b>\n"
-        f"{card_data.get('trigger', '')}\n\n"
+        f"{card_data.get('trigger', 'Триггер не определён')}\n\n"
         f"💰 <b>ДЕНЬГИ</b>\n"
-        f"{card_data.get('money', '')}\n\n"
+        f"{card_data.get('money', 'Информация о деньгах отсутствует')}\n\n"
         f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ</b>\n"
         f"💡 Твой инструмент который корректирует конфигурацию поведения, на уровне конфигурации мышления – это метафорическая форма.\n\n"
         f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽)</b>\n"
@@ -517,24 +588,24 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎉 <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
             f"📖 <b>Описание вашей конфигурации мышления и поведения</b>\n\n"
             f"👤 <b>КТО ТЫ</b>\n"
-            f"{card_data.get('who', card_data.get('description', ''))}\n\n"
+            f"{card_data.get('who', card_data.get('description', 'Описание отсутствует'))}\n\n"
             f"💭 <b>НАРРАТИВ</b>\n"
-            f"{card_data.get('narrative', card_data.get('archetype', ''))}\n\n"
+            f"{card_data.get('narrative', card_data.get('archetype', 'Нарратив отсутствует'))}\n\n"
             f"🌑 <b>ТЕНЬ</b>\n"
-            f"{card_data.get('shadow', '')}\n\n"
+            f"{card_data.get('shadow', 'Описание тени отсутствует')}\n\n"
             f"⚠️ <b>ЛОВУШКА</b>\n"
-            f"{card_data.get('trap', '')}"
+            f"{card_data.get('trap', 'Описание ловушки отсутствует')}"
         )
         
         part2 = (
             f"✅ <b>ЧТО ДЕЛАТЬ</b>\n"
-            f"{card_data.get('what_to_do', '')}\n\n"
+            f"{card_data.get('what_to_do', 'Рекомендации отсутствуют')}\n\n"
             f"🚀 <b>КАК РАСТИ</b>\n"
-            f"{card_data.get('how_to_grow', '')}\n\n"
+            f"{card_data.get('how_to_grow', 'Рекомендации по росту отсутствуют')}\n\n"
             f"⚡ <b>ТРИГГЕР ПЕРЕХОДА</b>\n"
-            f"{card_data.get('trigger', '')}\n\n"
+            f"{card_data.get('trigger', 'Триггер не определён')}\n\n"
             f"💰 <b>ДЕНЬГИ</b>\n"
-            f"{card_data.get('money', '')}\n\n"
+            f"{card_data.get('money', 'Информация о деньгах отсутствует')}\n\n"
             f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ</b>\n"
             f"💡 Твой инструмент который корректирует конфигурацию поведения, на уровне конфигурации мышления – это метафорическая форма.\n\n"
             f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽)</b>\n"
@@ -567,6 +638,10 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(result_text, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
     
     await query.delete_message()
+    
+    # Очистка данных после завершения
+    context.user_data.clear()
+    
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -577,6 +652,17 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👉 /start"
     )
     await update.message.reply_text(cancel_text)
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def timeout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка таймаута"""
+    if update.effective_message:
+        await update.effective_message.reply_text(
+            "⏱ Время сеанса истекло.\n"
+            "Начни тест заново: /start"
+        )
+    context.user_data.clear()
     return ConversationHandler.END
 
 # ============================================
@@ -584,8 +670,20 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка ошибок"""
-    logger.error(f"Exception while handling an update: {context.error}")
+    """Глобальный обработчик ошибок"""
+    logger.error(f"Exception: {context.error}", exc_info=context.error)
+    
+    if update and hasattr(update, 'effective_message'):
+        try:
+            await update.effective_message.reply_text(
+                "⚠️ Произошла ошибка. Попробуй начать заново: /start"
+            )
+        except Exception as e:
+            logger.error(f"Error sending error message: {e}")
+    
+    # Очистка данных пользователя
+    if hasattr(context, 'user_data') and context.user_data:
+        context.user_data.clear()
 
 # ============================================
 # MAIN
@@ -595,7 +693,7 @@ def main():
     """Запуск бота"""
     application = Application.builder().token(TOKEN).build()
     
-    # ConversationHandler
+    # ConversationHandler С ТАЙМАУТОМ
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -613,11 +711,17 @@ def main():
                 CallbackQueryHandler(start_stage_3, pattern="^start_stage_3$"),
                 CallbackQueryHandler(handle_stage3_answer, pattern="^stage3_")
             ],
+            ConversationHandler.TIMEOUT: [
+                MessageHandler(filters.ALL, timeout_handler)
+            ]
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
             CallbackQueryHandler(start_test, pattern="^start_test$")
         ],
+        conversation_timeout=1800,  # 30 минут
+        allow_reentry=True,
+        per_message=False
     )
     
     application.add_handler(conv_handler)
