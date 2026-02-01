@@ -562,10 +562,7 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(error_text, reply_markup=reply_markup, parse_mode="HTML")
         return ConversationHandler.END
     
-    # Получаем ссылку на сказку
-    story_link = card_data.get('link', 'https://t.me/meysternlp')
-    
-    # ЕДИНЫЙ РЕЗУЛЬТАТ БЕЗ РАЗБИВКИ
+    # ЕДИНЫЙ РЕЗУЛЬТАТ БЕЗ РАЗБИВКИ И БЕЗ НАЗВАНИЯ АРХЕТИПА
     result_text = (
         f"🎉 <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
         f"📖 <b>Описание вашей конфигурации мышления и поведения</b>\n\n"
@@ -586,7 +583,7 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 <b>ДЕНЬГИ</b>\n"
         f"{card_data.get('money', 'Информация о деньгах отсутствует')}\n\n"
         f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ</b>\n"
-        f"💡 Твой инструмент который корректирует конфигурацию поведения, на уровне конфигурации мышления – это метафорическая форма (<a href='{story_link}'>ссылка на сказку внизу экрана</a>).\n\n"
+        f"💡 Твой инструмент который корректирует конфигурацию поведения, на уровне конфигурации мышления – это метафорическая форма. Ссылка на сказку внизу экрана.\n\n"
         f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽)</b>\n"
         f"✓ Полное описание архетипа и персональные рекомендации (15+ страниц)\n"
         f"✓ Персональная терапевтическая сказка для коррекции других конфликтующих частей\n"
@@ -595,6 +592,9 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Получить персональную консультацию:\n"
         f"👉 @meysternlp"
     )
+    
+    # Ссылка на Google Drive для скачивания сказки
+    story_link = "https://drive.google.com/uc?export=download&id=1Y0nr2C_sWlQVOF84THLXa3nflFBVSI77"
     
     keyboard = [
         [InlineKeyboardButton("📖 Читать сказку", url=story_link)],
