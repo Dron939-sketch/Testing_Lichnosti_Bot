@@ -582,7 +582,8 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf)\n\n"
         f"💬 Персональная консультация: @meysternlp"
     )
-    # Ссылка на Google Drive для просмотра сказки
+    
+# Ссылка на Google Drive для просмотра сказки
 story_link = "https://drive.google.com/file/d/1Y0nr2C_sWlQVOF84THLXa3nflFBVSI77/view"
     
     keyboard = [
