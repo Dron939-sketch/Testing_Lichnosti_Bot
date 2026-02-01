@@ -202,8 +202,9 @@ async def ask_adaptive_question(update: Update, context: ContextTypes.DEFAULT_TY
     # Прогресс-бар
     progress = calculate_progress(current_num, 6)
     
+    # ДОБАВЛЕН ЗАГОЛОВОК ЭТАПА 1
     question_text = (
-        f"<b>{question['stage']}</b>\n\n"
+        f"<b>🎯 ЭТАП 1: ОПРЕДЕЛЕНИЕ КОНФИГУРАЦИИ ВОСПРИЯТИЯ</b>\n\n"
         f"<b>{question['text']}</b>\n\n"
         f"{progress}"
     )
@@ -562,35 +563,24 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(error_text, reply_markup=reply_markup, parse_mode="HTML")
         return ConversationHandler.END
     
-    # ЕДИНЫЙ РЕЗУЛЬТАТ БЕЗ РАЗБИВКИ И БЕЗ НАЗВАНИЯ АРХЕТИПА
+    # КОМПАКТНЫЙ РЕЗУЛЬТАТ БЕЗ НАЗВАНИЙ АРХЕТИПОВ
     result_text = (
         f"🎉 <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-        f"📖 <b>Описание вашей конфигурации мышления и поведения</b>\n\n"
-        f"👤 <b>КТО ТЫ</b>\n"
-        f"{card_data.get('who', card_data.get('description', 'Описание отсутствует'))}\n\n"
-        f"💭 <b>НАРРАТИВ</b>\n"
-        f"{card_data.get('narrative', card_data.get('archetype', 'Нарратив отсутствует'))}\n\n"
-        f"🌑 <b>ТЕНЬ</b>\n"
-        f"{card_data.get('shadow', 'Описание тени отсутствует')}\n\n"
-        f"⚠️ <b>ЛОВУШКА</b>\n"
-        f"{card_data.get('trap', 'Описание ловушки отсутствует')}\n\n"
-        f"✅ <b>ЧТО ДЕЛАТЬ</b>\n"
-        f"{card_data.get('what_to_do', 'Рекомендации отсутствуют')}\n\n"
-        f"🚀 <b>КАК РАСТИ</b>\n"
-        f"{card_data.get('how_to_grow', 'Рекомендации по росту отсутствуют')}\n\n"
-        f"⚡ <b>ТРИГГЕР ПЕРЕХОДА</b>\n"
-        f"{card_data.get('trigger', 'Триггер не определён')}\n\n"
-        f"💰 <b>ДЕНЬГИ</b>\n"
-        f"{card_data.get('money', 'Информация о деньгах отсутствует')}\n\n"
-        f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ</b>\n"
-        f"💡 Твой инструмент который корректирует конфигурацию поведения, на уровне конфигурации мышления – это метафорическая форма. Ссылка на сказку внизу экрана.\n\n"
-        f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽)</b>\n"
+        f"👤 <b>КТО ТЫ:</b> {card_data.get('who', card_data.get('description', ''))}\n\n"
+        f"💭 <b>НАРРАТИВ:</b> {card_data.get('narrative', card_data.get('archetype', ''))}\n\n"
+        f"🌑 <b>ТЕНЬ:</b> {card_data.get('shadow', '')}\n\n"
+        f"⚠️ <b>ЛОВУШКА:</b> {card_data.get('trap', '')}\n\n"
+        f"✅ <b>ЧТО ДЕЛАТЬ:</b> {card_data.get('what_to_do', '')}\n\n"
+        f"🚀 <b>КАК РАСТИ:</b> {card_data.get('how_to_grow', '')}\n\n"
+        f"⚡ <b>ТРИГГЕР ПЕРЕХОДА:</b> {card_data.get('trigger', '')}\n\n"
+        f"💰 <b>ДЕНЬГИ:</b> {card_data.get('money', '')}\n\n"
+        f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ:</b>\n"
+        f"Твой инструмент который корректирует конфигурацию поведения, на уровне конфигурации мышления – это метафорическая форма (ссылка на сказку внизу экрана).\n\n"
+        f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽):</b>\n"
         f"✓ Полное описание архетипа и персональные рекомендации (15+ страниц)\n"
-        f"✓ Персональная терапевтическая сказка для коррекции других конфликтующих частей\n"
-        f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf) для самостоятельной коррекции на уровне конфигурации восприятия\n\n"
-        f"💬 <b>Хочешь разобраться глубже?</b>\n"
-        f"Получить персональную консультацию:\n"
-        f"👉 @meysternlp"
+        f"✓ Персональная терапевтическая сказка\n"
+        f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf)\n\n"
+        f"💬 Персональная консультация: @meysternlp"
     )
     
     # Ссылка на Google Drive для скачивания сказки
