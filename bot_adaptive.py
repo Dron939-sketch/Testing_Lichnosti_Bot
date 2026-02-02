@@ -8,6 +8,7 @@
 ✅ Улучшенные алгоритмы определения уровня
 ✅ Валидация профиля
 ✅ Детальное логирование
+✅ Совместимость с обновлёнными модулями
 """
 
 import logging
@@ -28,7 +29,7 @@ from telegram.ext import (
 # ============================================
 # ИМПОРТ МОДУЛЕЙ
 # ============================================
-from content_generator import generate_profile
+from content_generator import generate_profile, get_type_name, get_level_name, get_dilts_name
 from questions_data_v2 import (
     STAGE_1_QUESTIONS,
     STAGE_2_BASE_QUESTIONS,
@@ -347,6 +348,18 @@ def get_type_code(perception_type: str) -> str:
     }
     return type_map.get(perception_type, "SA")
 
+def get_dilts_code(dilts_level: str) -> str:
+    """Возвращает код уровня Дилтса"""
+    dilts_map = {
+        "ENVIRONMENT": "env",
+        "BEHAVIOR": "beh",
+        "CAPABILITIES": "cap",
+        "VALUES": "val",
+        "IDENTITY": "ide",
+        "MISSION": "mis"
+    }
+    return dilts_map.get(dilts_level, "env")
+
 def calculate_profile_key(context_data: dict) -> str:
     """Определяет ключ профиля в формате 'SA_1_env'"""
     perception_type = context_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
@@ -355,7 +368,7 @@ def calculate_profile_key(context_data: dict) -> str:
     level = context_data.get("final_level", 1)
     
     dilts_level = context_data.get("dilts_level", "ENVIRONMENT")
-    dilts_code = DILTS_LEVELS.get(dilts_level, DILTS_LEVELS["ENVIRONMENT"])["code"]
+    dilts_code = get_dilts_code(dilts_level)
     
     profile_key = f"{type_code}_{level}_{dilts_code}"
     logger.info(f"[PROFILE] Key: {profile_key}")
@@ -479,7 +492,7 @@ async def show_stage_1_details(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text(details_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_1
 
-async def back_to_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def back_to_stage1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к экрану ЭТАПА 1"""
     return await show_stage_1_intro(update, context)
 
@@ -1270,10 +1283,17 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Вычисляем ключ профиля
     profile_key = calculate_profile_key(context.user_data)
     type_code = get_type_code(perception_type)
-    dilts_code = DILTS_LEVELS.get(dilts_level, DILTS_LEVELS["ENVIRONMENT"])["code"]
+    dilts_code = get_dilts_code(dilts_level)
     
     # ГЕНЕРИРУЕМ КОНТЕНТ ЧЕРЕЗ ГЕНЕРАТОР
-    profile_data = generate_profile(type_code, final_level, dilts_code)
+    try:
+        profile_data = generate_profile(type_code, final_level, dilts_code)
+    except Exception as e:
+        logger.error(f"Error generating profile: {e}")
+        await query.edit_message_text(
+            "⚠️ Произошла ошибка при генерации профиля. Попробуй начать заново: /start"
+        )
+        return ConversationHandler.END
     
     # Получаем описания для итогового экрана
     dilts_info = DILTS_LEVELS.get(dilts_level, DILTS_LEVELS["ENVIRONMENT"])
@@ -1391,7 +1411,7 @@ def main():
             STAGE_1: [
                 CallbackQueryHandler(show_stage_1_intro, pattern="^show_stage_1_intro$"),
                 CallbackQueryHandler(show_stage_1_details, pattern="^stage1_details$"),
-                CallbackQueryHandler(back_to_stage_1_intro, pattern="^back_to_stage1_intro$"),
+                CallbackQueryHandler(back_to_stage1_intro, pattern="^back_to_stage1_intro$"),
                 CallbackQueryHandler(start_stage_1, pattern="^start_stage_1$"),
                 CallbackQueryHandler(handle_stage_1_answer, pattern="^stage1_")
             ],
@@ -1439,4 +1459,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
