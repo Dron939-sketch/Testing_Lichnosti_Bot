@@ -1949,21 +1949,27 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👉 {AUTHOR_LINK}"
         )
         
+        # ✅ КНОПКИ
+        keyboard = [
+            [InlineKeyboardButton("🎁 Поделиться и получить подарок", switch_inline_query="Зацени тест) t.me/Testing_Lichnosti_bot")],
+            [InlineKeyboardButton("💎 Получить полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
+            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
         await query.edit_message_text(part1, parse_mode="HTML")
         await query.message.reply_text(part2, parse_mode="HTML")
-        await query.message.reply_text(part3, parse_mode="HTML")
+        await query.message.reply_text(part3, parse_mode="HTML", reply_markup=reply_markup)
     else:
-        await query.edit_message_text(profile_text, parse_mode="HTML")
-    
-    # ✅ 3 КНОПКИ
-    keyboard = [
-        [InlineKeyboardButton("🎁 Поделиться и получить подарок", switch_inline_query="Зацени тест) t.me/Testing_Lichnosti_bot")],
-        [InlineKeyboardButton("💎 Получить полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
-        [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.message.reply_text("━━━━━━━━━━━━━━━━━━━━", reply_markup=reply_markup, parse_mode="HTML")
+        # ✅ КНОПКИ ПРИКРЕПЛЕНЫ К ТЕКСТУ
+        keyboard = [
+            [InlineKeyboardButton("🎁 Поделиться и получить подарок", switch_inline_query="Зацени тест) t.me/Testing_Lichnosti_bot")],
+            [InlineKeyboardButton("💎 Получить полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
+            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(profile_text, parse_mode="HTML", reply_markup=reply_markup)
     
     # Сохраняем состояние для подтверждения шаринга
     context.user_data["awaiting_share_confirm"] = True
