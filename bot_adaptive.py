@@ -1950,11 +1950,12 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         # ✅ КНОПКИ
-        keyboard = [
-            [InlineKeyboardButton("🎁 Поделиться и получить подарок", switch_inline_query="Зацени тест) t.me/Testing_Lichnosti_bot")],
-            [InlineKeyboardButton("💎 Получить полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
-            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
-        ]
+keyboard = [
+    [InlineKeyboardButton("🎁 Поделиться", switch_inline_query="Зацени тест! https://t.me/Testing_Lichnosti_bot")],
+    [InlineKeyboardButton("✅ Я поделился, дай подарок!", callback_data="share_confirmed")],
+    [InlineKeyboardButton("💎 Полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
+    [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
+]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(part1, parse_mode="HTML")
