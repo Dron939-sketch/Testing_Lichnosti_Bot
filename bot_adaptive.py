@@ -45,7 +45,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Состояния ConversationHandler
-STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULT = range(6)
+STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULT, SHARE_CONFIRM = range(7)
+
+# ============================================
+# КОНСТАНТЫ
+# ============================================
+BOT_LINK = "t.me/Testing_Lichnosti_bot"
+GIFT_PDF_LINK = "https://drive.google.com/file/d/1Y0nr2C_sWlQVOF84THLXa3nflFBVSI77/view?usp=sharing"
+AUTHOR_LINK = "@meysternlp"
 
 # ============================================
 # ДАННЫЕ ВОПРОСОВ (БЕЗ ИЗМЕНЕНИЙ)
@@ -1031,7 +1038,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     welcome_text = (
         f"Привет, {user.first_name}! 👋\n\n"
-        f"🎴 <b>Добро пожаловать в психодиагностический тест!</b>\n\n"
+        f"🎴 <b>Добро пожаловать в психодиагностический тест ВАРИАТИКА!</b>\n\n"
         f"🔍 <b>Узнай свой текущий психологический профиль и получи персональные рекомендации для развития.</b>\n\n"
         f"Этот тест поможет определить:\n"
         f"• Как ты воспринимаешь реальность 🧠\n"
@@ -1223,10 +1230,10 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"User {update.effective_user.id}: Stage 1 complete, type={perception_type}")
     
+    # ✅ ОБНОВЛЁННЫЙ ТЕКСТ (БЕЗ ТИПА)
     result_text = (
         f"✅ <b>ЭТАП 1 ЗАВЕРШЁН!</b>\n\n"
-        f"🎯 <b>Конфигурация восприятия определена</b>\n\n"
-        f"Твой тип: <b>{perception_type}</b>\n\n"
+        f"🎯 Конфигурация восприятия определена\n\n"
         f"🔍 Переходим к <b>ЭТАПУ 2</b>: определение конфигурации мышления.\n\n"
         f"Готов продолжить?"
     )
@@ -1379,9 +1386,10 @@ async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     
+    # ✅ ОБНОВЛЁННЫЙ ТЕКСТ
     intro_text = (
         f"<b>🎯 ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ</b>\n\n"
-        f"Сейчас мы определим твой уровень когнитивной зрелости.\n\n"
+        f"Сейчас мы определим твой тип мышления.\n\n"
         f"📊 <b>Вопросов:</b> 8\n"
         f"⏱ <b>Время:</b> ~4 минуты\n\n"
         f"Готов начать?"
@@ -1401,10 +1409,11 @@ async def show_stage_2_details(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     
+    # ✅ ОБНОВЛЁННЫЙ ТЕКСТ
     details_text = (
         f"<b>📖 ЧТО ТАКОЕ КОНФИГУРАЦИЯ МЫШЛЕНИЯ?</b>\n\n"
-        f"Это уровень развития твоего мышления внутри типа восприятия.\n\n"
-        f"<b>9 уровней когнитивной зрелости:</b>\n\n"
+        f"Это тип твоего мышления внутри системы восприятия.\n\n"
+        f"<b>9 типов конфигураций мышления:</b>\n\n"
         f"1️⃣ ДЕФИЦИТАРНЫЙ — базовая нужда не удовлетворена\n"
         f"2️⃣ ПОИСКОВЫЙ — активный поиск решения\n"
         f"3️⃣ КОНСТРУКТИВНЫЙ — создание стабильной базы\n"
@@ -1414,7 +1423,7 @@ async def show_stage_2_details(update: Update, context: ContextTypes.DEFAULT_TYP
         f"7️⃣ МУДРЕЦКИЙ — глубокое понимание\n"
         f"8️⃣ СИСТЕМНЫЙ — управление на системном уровне\n"
         f"9️⃣ ТРАНСЦЕНДЕНТНЫЙ — выход за пределы\n\n"
-        f"<b>Результат:</b> Твой текущий уровень развития"
+        f"<b>Результат:</b> Твой текущий способ обработки информации"
     )
     
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data="back_to_stage2_intro")]]
@@ -1528,10 +1537,10 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"User {update.effective_user.id}: Stage 2 complete, level={thinking_level}")
     
+    # ✅ ОБНОВЛЁННЫЙ ТЕКСТ
     result_text = (
         f"✅ <b>ЭТАП 2 ЗАВЕРШЁН!</b>\n\n"
-        f"🎯 <b>Конфигурация мышления определена</b>\n\n"
-        f"Твой уровень: <b>{thinking_level}</b>\n\n"
+        f"🎯 Конфигурация мышления определена\n\n"
         f"🔍 Переходим к <b>ЭТАПУ 3</b>: поведенческие паттерны.\n\n"
         f"Готов продолжить?"
     )
@@ -1551,9 +1560,10 @@ async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     
+    # ✅ ОБНОВЛЁННЫЙ ТЕКСТ
     intro_text = (
         f"<b>🎯 ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ</b>\n\n"
-        f"Сейчас мы уточним твой уровень через анализ автоматических реакций.\n\n"
+        f"Сейчас мы уточним твои паттерны через анализ автоматических реакций.\n\n"
         f"📊 <b>Вопросов:</b> 8\n"
         f"⏱ <b>Время:</b> ~3 минуты\n\n"
         f"Готов начать?"
@@ -1573,12 +1583,14 @@ async def show_stage_3_details(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     
+    # ✅ ОБНОВЛЁННЫЙ ТЕКСТ
     details_text = (
         f"<b>📖 ЧТО ТАКОЕ ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ?</b>\n\n"
-        f"Это автоматические реакции в типичных ситуациях.\n\n"
+        f"Это автоматические реакции — то, что ты делаешь не задумываясь.\n\n"
         f"<b>Зачем это нужно:</b>\n\n"
-        f"Человек может не осознавать свой уровень развития, но его поведение его выдаёт.\n\n"
-        f"Мы зададим вопросы о реальных действиях (не о мнениях), чтобы уточнить твой уровень.\n\n"
+        f"Ты можешь думать одно, а делать другое.\n\n"
+        f"Твоё реальное поведение точнее показывает глубинные установки, чем твои представления о себе.\n\n"
+        f"Мы зададим вопросы о конкретных действиях, чтобы уточнить твои паттерны.\n\n"
         f"<b>Результат:</b> Подтверждение или корректировка уровня из ЭТАПА 2"
     )
     
@@ -1690,7 +1702,7 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     result_text = (
         f"✅ <b>ЭТАП 3 ЗАВЕРШЁН!</b>\n\n"
-        f"🎯 <b>Поведенческие паттерны проанализированы</b>\n\n"
+        f"🎯 Поведенческие паттерны проанализированы\n\n"
         f"🔍 Переходим к <b>ЭТАПУ 4</b>: конфликт логических уровней.\n\n"
         f"Это последний этап! Готов?"
     )
@@ -1856,12 +1868,13 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Показ результатов"""
+    """✅ Показ результатов с анимацией"""
     query = update.callback_query
     
+    # ✅ АНИМИРОВАННЫЙ ЭКРАН
     loading_text = (
         f"⏳ <b>ОБРАБАТЫВАЮ РЕЗУЛЬТАТЫ...</b>\n\n"
-        f"Анализирую твои ответы и подбираю профиль..."
+        f"Анализирую твои ответы и определяю профиль..."
     )
     await query.edit_message_text(loading_text, parse_mode="HTML")
     
@@ -1884,37 +1897,9 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(error_text, parse_mode="HTML")
         return ConversationHandler.END
     
-    result_text = (
-        f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-        f"🎯 <b>ТВОЙ ПРОФИЛЬ:</b>\n\n"
-        f"<b>Тип восприятия:</b> {perception_type}\n"
-        f"<b>Уровень развития:</b> {final_level}\n"
-        f"<b>Точка роста:</b> {DILTS_LEVELS[dilts_level]['name']}\n\n"
-        f"📄 <b>Код профиля:</b> <code>{profile_key}</code>\n\n"
-        f"Сейчас покажу твою карту профиля 👇"
-    )
-    
-    keyboard = [[InlineKeyboardButton("📄 Показать профиль", callback_data="show_profile")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(result_text, reply_markup=reply_markup, parse_mode="HTML")
-    
-    return RESULT
-
-async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показ полного профиля"""
-    query = update.callback_query
-    await query.answer()
-    
-    profile_key = calculate_profile_key(context.user_data)
-    profile_card = get_card_description(profile_key)
-    
-    if not profile_card:
-        await query.edit_message_text("❌ Ошибка загрузки профиля", parse_mode="HTML")
-        return ConversationHandler.END
-    
-    # Формируем полное описание профиля
+    # ✅ ФОРМИРУЕМ ПОЛНОЕ ОПИСАНИЕ ПРОФИЛЯ
     profile_text = (
+        f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
         f"{profile_card['title']}\n\n"
         f"{profile_card['pain']}\n\n"
         f"<b>🌍 ТВОЙ МИР:</b>\n\n"
@@ -1923,31 +1908,58 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{profile_card['superpower']}\n\n"
         f"<b>🚀 ТОЧКА РОСТА:</b>\n\n"
         f"{profile_card['growth']}\n\n"
-        f"{profile_card['cta']}"
+        f"{profile_card['cta']}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽)</b>\n\n"
+        f"✓ Полное описание архетипа и персональные рекомендации (15+ страниц)\n"
+        f"✓ Персональная терапевтическая сказка для коррекции других конфликтующих частей\n"
+        f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf) для самостоятельной коррекции на уровне конфигурации восприятия\n\n"
+        f"💬 <b>Хочешь разобраться глубже?</b>\n"
+        f"Получить персональную консультацию:\n"
+        f"👉 {AUTHOR_LINK}"
     )
     
-    # Разбиваем на части, если текст слишком длинный
-    max_length = 4096
-    if len(profile_text) > max_length:
-        # Отправляем по частям
-        parts = [
-            f"{profile_card['title']}\n\n{profile_card['pain']}",
-            f"<b>🌍 ТВОЙ МИР:</b>\n\n{profile_card['world']}",
-            f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n{profile_card['superpower']}",
-            f"<b>🚀 ТОЧКА РОСТА:</b>\n\n{profile_card['growth']}\n\n{profile_card['cta']}"
-        ]
+    # Проверяем длину сообщения
+    if len(profile_text) > 4096:
+        # Разбиваем на части
+        part1 = (
+            f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+            f"{profile_card['title']}\n\n"
+            f"{profile_card['pain']}\n\n"
+            f"<b>🌍 ТВОЙ МИР:</b>\n\n"
+            f"{profile_card['world']}"
+        )
         
-        await query.edit_message_text(parts[0], parse_mode="HTML")
+        part2 = (
+            f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n"
+            f"{profile_card['superpower']}\n\n"
+            f"<b>🚀 ТОЧКА РОСТА:</b>\n\n"
+            f"{profile_card['growth']}\n\n"
+            f"{profile_card['cta']}"
+        )
         
-        for part in parts[1:]:
-            await query.message.reply_text(part, parse_mode="HTML")
+        part3 = (
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽)</b>\n\n"
+            f"✓ Полное описание архетипа и персональные рекомендации (15+ страниц)\n"
+            f"✓ Персональная терапевтическая сказка для коррекции других конфликтующих частей\n"
+            f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf) для самостоятельной коррекции на уровне конфигурации восприятия\n\n"
+            f"💬 <b>Хочешь разобраться глубже?</b>\n"
+            f"Получить персональную консультацию:\n"
+            f"👉 {AUTHOR_LINK}"
+        )
+        
+        await query.edit_message_text(part1, parse_mode="HTML")
+        await query.message.reply_text(part2, parse_mode="HTML")
+        await query.message.reply_text(part3, parse_mode="HTML")
     else:
         await query.edit_message_text(profile_text, parse_mode="HTML")
     
-    # Кнопки действий
+    # ✅ 3 КНОПКИ
     keyboard = [
-        [InlineKeyboardButton("🔄 Пройти тест заново", callback_data="restart_test")],
-        [InlineKeyboardButton("💾 Сохранить результат", callback_data="save_result")]
+        [InlineKeyboardButton("🎁 Поделиться и получить подарок", switch_inline_query=f"Зацени тест) {BOT_LINK}")],
+        [InlineKeyboardButton("💎 Получить полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
+        [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -1956,7 +1968,36 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
     
-    return ConversationHandler.END
+    # Сохраняем состояние для подтверждения шаринга
+    context.user_data["awaiting_share_confirm"] = True
+    
+    return SHARE_CONFIRM
+
+# ============================================
+# ОБРАБОТКА ШАРИНГА И ПОДАРКА
+# ============================================
+
+async def handle_share_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка подтверждения шаринга"""
+    query = update.callback_query
+    
+    if query.data == "share_confirmed":
+        await query.answer()
+        
+        gift_text = (
+            f"🎁 <b>СПАСИБО ЗА РЕПОСТ!</b>\n\n"
+            f"Вот твой подарок — терапевтическая сказка:\n\n"
+            f"👉 {GIFT_PDF_LINK}\n\n"
+            f"Приятного чтения! 📖"
+        )
+        
+        await query.edit_message_text(gift_text, parse_mode="HTML")
+        
+        context.user_data["awaiting_share_confirm"] = False
+        
+        return ConversationHandler.END
+    
+    return SHARE_CONFIRM
 
 async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Перезапуск теста"""
@@ -1966,24 +2007,6 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     
     return await start_test(update, context)
-
-async def save_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Сохранение результата"""
-    query = update.callback_query
-    await query.answer("💾 Результат сохранён!")
-    
-    profile_key = calculate_profile_key(context.user_data)
-    
-    save_text = (
-        f"✅ <b>РЕЗУЛЬТАТ СОХРАНЁН</b>\n\n"
-        f"📄 Твой код профиля: <code>{profile_key}</code>\n\n"
-        f"Ты можешь вернуться к нему в любой момент.\n\n"
-        f"Хочешь пройти тест заново? /start"
-    )
-    
-    await query.edit_message_text(save_text, parse_mode="HTML")
-    
-    return ConversationHandler.END
 
 # ============================================
 # ОБРАБОТКА ОТМЕНЫ
@@ -2091,9 +2114,11 @@ def main():
                 CallbackQueryHandler(handle_clarification_answer, pattern="^clarify_")
             ],
             RESULT: [
-                CallbackQueryHandler(show_profile, pattern="^show_profile$"),
-                CallbackQueryHandler(restart_test, pattern="^restart_test$"),
-                CallbackQueryHandler(save_result, pattern="^save_result$")
+                CallbackQueryHandler(restart_test, pattern="^restart_test$")
+            ],
+            SHARE_CONFIRM: [
+                CallbackQueryHandler(handle_share_confirm, pattern="^share_confirmed$"),
+                CallbackQueryHandler(restart_test, pattern="^restart_test$")
             ]
         },
         fallbacks=[CommandHandler("cancel", cancel)],
