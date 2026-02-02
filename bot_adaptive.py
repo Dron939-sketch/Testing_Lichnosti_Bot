@@ -1,7 +1,7 @@
 # bot_adaptive.py
 """
 Telegram-бот для адаптивного психологического тестирования
-Версия: 3.0 (с интеграцией готовых профилей из card_data.py)
+Версия: 3.1 (исправлена ошибка с состояниями ConversationHandler)
 """
 
 import logging
@@ -33,7 +33,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Состояния разговора (ДОЛЖНЫ БЫТЬ ЦЕЛЫМИ ЧИСЛАМИ!)
+# ========================================
+# СОСТОЯНИЯ РАЗГОВОРА (ЦЕЛЫЕ ЧИСЛА!)
+# ========================================
 STAGE_1_INTRO = 0
 STAGE_1_QUESTIONS = 1
 STAGE_2_INTRO = 2
@@ -1380,7 +1382,7 @@ def main():
     if not check_result['is_complete']:
         logger.warning(f"⚠️ Доступно только {check_result['existing']}/{check_result['total']} профилей")
     else:
-        logger.info(f"✅ Все {check_result['existing']} профилей загружены успешно!")
+        logger.info(f"✅ Все {check_result['existing']} профилей успешно загружены!")
     
     # Получаем токен из переменных окружения
     token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -1391,7 +1393,7 @@ def main():
     # Создаем приложение
     application = Application.builder().token(token).build()
     
-    # Создаем ConversationHandler
+    # ✅ ИСПРАВЛЕННЫЙ ConversationHandler (ключи - ЧИСЛА, значения - СПИСКИ)
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
