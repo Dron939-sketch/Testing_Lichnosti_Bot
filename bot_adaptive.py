@@ -1,7 +1,7 @@
 # bot_adaptive.py
 """
 Telegram-бот для адаптивного психологического тестирования
-Версия: 3.2 (исправлены все ошибки с состояниями)
+Версия: 4.0 (ИСПРАВЛЕНА ОШИБКА С КОНФЛИКТОМ ИМЕН)
 """
 
 import logging
@@ -36,14 +36,14 @@ logger = logging.getLogger(__name__)
 # ========================================
 # СОСТОЯНИЯ РАЗГОВОРА (ЦЕЛЫЕ ЧИСЛА!)
 # ========================================
-STAGE_1_INTRO = 0
-STAGE_1_QUESTIONS = 1
-STAGE_2_INTRO = 2
-STAGE_2_QUESTIONS = 3
-STAGE_3_INTRO = 4
-STAGE_3_QUESTIONS = 5
-STAGE_4_INTRO = 6
-STAGE_4_QUESTIONS = 7
+STATE_1_INTRO = 0
+STATE_1_QUESTIONS = 1
+STATE_2_INTRO = 2
+STATE_2_QUESTIONS = 3
+STATE_3_INTRO = 4
+STATE_3_QUESTIONS = 5
+STATE_4_INTRO = 6
+STATE_4_QUESTIONS = 7
 
 # Константы для типов мышления
 TYPE_CODES = {
@@ -53,7 +53,7 @@ TYPE_CODES = {
     "IP": "Структурно-аналитический"
 }
 
-# Константы для уровней Дилтса (5 уровней, без MISSION)
+# Константы для уровней Дилтса (5 уровней)
 DILTS_LEVELS = {
     "ENVIRONMENT": {"code": "env", "name": "Окружение"},
     "BEHAVIOR": {"code": "beh", "name": "Поведение"},
@@ -70,7 +70,7 @@ def get_dilts_code(level_name: str) -> str:
 # ВОПРОСЫ ДЛЯ ЭТАПА 1 (Определение типа)
 # ========================================
 
-STAGE_1_QUESTIONS = [
+Q_STAGE_1 = [
     {
         "id": 1,
         "text": """
@@ -237,7 +237,7 @@ STAGE_1_QUESTIONS = [
 # ВОПРОСЫ ДЛЯ ЭТАПА 2 (Уточнение типа)
 # ========================================
 
-STAGE_2_QUESTIONS = {
+Q_STAGE_2 = {
     "SA": [
         {
             "id": 1,
@@ -365,14 +365,14 @@ STAGE_2_QUESTIONS = {
 }
 
 # Копируем вопросы для других типов
-STAGE_2_QUESTIONS["IA"] = STAGE_2_QUESTIONS["SA"]
-STAGE_2_QUESTIONS["IP"] = STAGE_2_QUESTIONS["SP"]
+Q_STAGE_2["IA"] = Q_STAGE_2["SA"]
+Q_STAGE_2["IP"] = Q_STAGE_2["SP"]
 
 # ========================================
 # ВОПРОСЫ ДЛЯ ЭТАПА 3 (Определение уровня мышления)
 # ========================================
 
-STAGE_3_QUESTIONS = [
+Q_STAGE_3 = [
     {
         "id": 1,
         "text": """
@@ -529,7 +529,7 @@ STAGE_3_QUESTIONS = [
 # ВОПРОСЫ ДЛЯ ЭТАПА 4 (Определение уровня проблемы по Дилтсу)
 # ========================================
 
-STAGE_4_QUESTIONS = [
+Q_STAGE_4 = [
     {
         "id": 1,
         "text": """
@@ -823,7 +823,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(intro_text, reply_markup=reply_markup)
     
-    return STAGE_1_INTRO
+    return STATE_1_INTRO
 
 # ========================================
 # ЭТАП 1: ОПРЕДЕЛЕНИЕ ТИПА
@@ -843,10 +843,10 @@ async def show_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     question_index = context.user_data['current_question']
     
-    if question_index >= len(STAGE_1_QUESTIONS):
+    if question_index >= len(Q_STAGE_1):
         return await finish_stage_1(update, context)
     
-    question = STAGE_1_QUESTIONS[question_index]
+    question = Q_STAGE_1[question_index]
     
     keyboard = []
     for i, option in enumerate(question['options']):
@@ -859,7 +859,7 @@ async def show_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.edit_message_text(question['text'], reply_markup=reply_markup)
     
-    return STAGE_1_QUESTIONS  # ✅ Возвращаем состояние (число 1)
+    return STATE_1_QUESTIONS
 
 async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ответа этапа 1"""
@@ -872,7 +872,7 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
     option_index = int(option_index)
     
     # Сохраняем ответ
-    question = STAGE_1_QUESTIONS[question_index]
+    question = Q_STAGE_1[question_index]
     selected_option = question['options'][option_index]
     context.user_data['stage1_answers'][question_index] = selected_option['scores']
     
@@ -910,7 +910,7 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(result_text, reply_markup=reply_markup)
     
-    return STAGE_2_INTRO
+    return STATE_2_INTRO
 
 # ========================================
 # ЭТАП 2: УТОЧНЕНИЕ ТИПА
@@ -941,7 +941,7 @@ async def start_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(intro_text, reply_markup=reply_markup)
     
-    return STAGE_2_QUESTIONS  # ✅ Возвращаем состояние (число 3)
+    return STATE_2_QUESTIONS
 
 async def show_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать вопрос этапа 2"""
@@ -951,7 +951,7 @@ async def show_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TY
     question_index = context.user_data['current_question']
     primary_type = context.user_data['primary_type']
     
-    questions = STAGE_2_QUESTIONS[primary_type]
+    questions = Q_STAGE_2[primary_type]
     
     if question_index >= len(questions):
         return await finish_stage_2(update, context)
@@ -969,7 +969,7 @@ async def show_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.edit_message_text(question['text'], reply_markup=reply_markup)
     
-    return STAGE_2_QUESTIONS  # ✅ Возвращаем состояние (число 3)
+    return STATE_2_QUESTIONS
 
 async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ответа этапа 2"""
@@ -983,7 +983,7 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
     
     # Сохраняем ответ
     primary_type = context.user_data['primary_type']
-    question = STAGE_2_QUESTIONS[primary_type][question_index]
+    question = Q_STAGE_2[primary_type][question_index]
     selected_option = question['options'][option_index]
     context.user_data['stage2_answers'][question_index] = selected_option['scores']
     
@@ -1015,7 +1015,7 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(result_text, reply_markup=reply_markup)
     
-    return STAGE_3_INTRO
+    return STATE_3_INTRO
 
 # ========================================
 # ЭТАП 3: ОПРЕДЕЛЕНИЕ УРОВНЯ МЫШЛЕНИЯ
@@ -1046,7 +1046,7 @@ async def start_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(intro_text, reply_markup=reply_markup)
     
-    return STAGE_3_QUESTIONS  # ✅ Возвращаем состояние (число 5)
+    return STATE_3_QUESTIONS
 
 async def show_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать вопрос этапа 3"""
@@ -1055,10 +1055,10 @@ async def show_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TY
     
     question_index = context.user_data['current_question']
     
-    if question_index >= len(STAGE_3_QUESTIONS):
+    if question_index >= len(Q_STAGE_3):
         return await finish_stage_3(update, context)
     
-    question = STAGE_3_QUESTIONS[question_index]
+    question = Q_STAGE_3[question_index]
     
     keyboard = []
     for i, option in enumerate(question['options']):
@@ -1071,7 +1071,7 @@ async def show_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.edit_message_text(question['text'], reply_markup=reply_markup)
     
-    return STAGE_3_QUESTIONS  # ✅ Возвращаем состояние (число 5)
+    return STATE_3_QUESTIONS
 
 async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ответа этапа 3"""
@@ -1084,7 +1084,7 @@ async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TY
     option_index = int(option_index)
     
     # Сохраняем ответ
-    question = STAGE_3_QUESTIONS[question_index]
+    question = Q_STAGE_3[question_index]
     selected_option = question['options'][option_index]
     context.user_data['stage3_answers'][question_index] = selected_option['level']
     
@@ -1123,7 +1123,7 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(result_text, reply_markup=reply_markup)
     
-    return STAGE_4_INTRO
+    return STATE_4_INTRO
 
 # ========================================
 # ЭТАП 4: ОПРЕДЕЛЕНИЕ УРОВНЯ ПРОБЛЕМЫ (ДИЛТС)
@@ -1156,7 +1156,7 @@ async def start_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(intro_text, reply_markup=reply_markup)
     
-    return STAGE_4_QUESTIONS  # ✅ Возвращаем состояние (число 7)
+    return STATE_4_QUESTIONS
 
 async def show_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать вопрос этапа 4"""
@@ -1165,10 +1165,10 @@ async def show_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TY
     
     question_index = context.user_data['current_question']
     
-    if question_index >= len(STAGE_4_QUESTIONS):
+    if question_index >= len(Q_STAGE_4):
         return await calculate_and_show_results(update, context)
     
-    question = STAGE_4_QUESTIONS[question_index]
+    question = Q_STAGE_4[question_index]
     
     keyboard = []
     for i, option in enumerate(question['options']):
@@ -1181,7 +1181,7 @@ async def show_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.edit_message_text(question['text'], reply_markup=reply_markup)
     
-    return STAGE_4_QUESTIONS  # ✅ Возвращаем состояние (число 7)
+    return STATE_4_QUESTIONS
 
 async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ответа этапа 4"""
@@ -1194,7 +1194,7 @@ async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TY
     option_index = int(option_index)
     
     # Сохраняем ответ
-    question = STAGE_4_QUESTIONS[question_index]
+    question = Q_STAGE_4[question_index]
     selected_option = question['options'][option_index]
     context.user_data['stage4_answers'][question_index] = selected_option['dilts']
     
@@ -1403,30 +1403,30 @@ def main():
             CallbackQueryHandler(start_test, pattern="^start_test$")
         ],
         states={
-            STAGE_1_INTRO: [
+            STATE_1_INTRO: [
                 CallbackQueryHandler(start_stage_1, pattern="^start_stage_1$")
             ],
-            STAGE_1_QUESTIONS: [
+            STATE_1_QUESTIONS: [
                 CallbackQueryHandler(handle_stage_1_answer, pattern="^stage1_")
             ],
-            STAGE_2_INTRO: [
+            STATE_2_INTRO: [
                 CallbackQueryHandler(start_stage_2, pattern="^start_stage_2$")
             ],
-            STAGE_2_QUESTIONS: [
+            STATE_2_QUESTIONS: [
                 CallbackQueryHandler(show_stage_2_question, pattern="^show_stage_2_question$"),
                 CallbackQueryHandler(handle_stage_2_answer, pattern="^stage2_")
             ],
-            STAGE_3_INTRO: [
+            STATE_3_INTRO: [
                 CallbackQueryHandler(start_stage_3, pattern="^start_stage_3$")
             ],
-            STAGE_3_QUESTIONS: [
+            STATE_3_QUESTIONS: [
                 CallbackQueryHandler(show_stage_3_question, pattern="^show_stage_3_question$"),
                 CallbackQueryHandler(handle_stage_3_answer, pattern="^stage3_")
             ],
-            STAGE_4_INTRO: [
+            STATE_4_INTRO: [
                 CallbackQueryHandler(start_stage_4, pattern="^start_stage_4$")
             ],
-            STAGE_4_QUESTIONS: [
+            STATE_4_QUESTIONS: [
                 CallbackQueryHandler(show_stage_4_question, pattern="^show_stage_4_question$"),
                 CallbackQueryHandler(handle_stage_4_answer, pattern="^stage4_"),
                 CallbackQueryHandler(save_result, pattern="^save_result$"),
