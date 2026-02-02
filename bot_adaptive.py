@@ -1,7 +1,7 @@
 # bot_adaptive.py
 """
 Telegram-бот для адаптивного психологического тестирования
-Версия: 3.1 (исправлена ошибка с состояниями ConversationHandler)
+Версия: 3.2 (исправлены все ошибки с состояниями)
 """
 
 import logging
@@ -859,7 +859,7 @@ async def show_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.edit_message_text(question['text'], reply_markup=reply_markup)
     
-    return STAGE_1_QUESTIONS
+    return STAGE_1_QUESTIONS  # ✅ Возвращаем состояние (число 1)
 
 async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ответа этапа 1"""
@@ -941,7 +941,7 @@ async def start_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(intro_text, reply_markup=reply_markup)
     
-    return STAGE_2_QUESTIONS
+    return STAGE_2_QUESTIONS  # ✅ Возвращаем состояние (число 3)
 
 async def show_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать вопрос этапа 2"""
@@ -969,7 +969,7 @@ async def show_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.edit_message_text(question['text'], reply_markup=reply_markup)
     
-    return STAGE_2_QUESTIONS
+    return STAGE_2_QUESTIONS  # ✅ Возвращаем состояние (число 3)
 
 async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ответа этапа 2"""
@@ -1046,7 +1046,7 @@ async def start_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(intro_text, reply_markup=reply_markup)
     
-    return STAGE_3_QUESTIONS
+    return STAGE_3_QUESTIONS  # ✅ Возвращаем состояние (число 5)
 
 async def show_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать вопрос этапа 3"""
@@ -1071,7 +1071,7 @@ async def show_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.edit_message_text(question['text'], reply_markup=reply_markup)
     
-    return STAGE_3_QUESTIONS
+    return STAGE_3_QUESTIONS  # ✅ Возвращаем состояние (число 5)
 
 async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ответа этапа 3"""
@@ -1156,7 +1156,7 @@ async def start_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(intro_text, reply_markup=reply_markup)
     
-    return STAGE_4_QUESTIONS
+    return STAGE_4_QUESTIONS  # ✅ Возвращаем состояние (число 7)
 
 async def show_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать вопрос этапа 4"""
@@ -1181,7 +1181,7 @@ async def show_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.edit_message_text(question['text'], reply_markup=reply_markup)
     
-    return STAGE_4_QUESTIONS
+    return STAGE_4_QUESTIONS  # ✅ Возвращаем состояние (число 7)
 
 async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ответа этапа 4"""
@@ -1264,7 +1264,7 @@ async def send_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     InlineKeyboardButton("🔄 Начать заново", callback_data="start_test")
                 ]])
             )
-            return
+            return ConversationHandler.END
         
         # Извлекаем данные
         type_code = results.get('type')
@@ -1331,6 +1331,8 @@ async def send_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         logger.info(f"✅ Results sent successfully for user {user_id}")
         
+        return ConversationHandler.END
+        
     except Exception as e:
         logger.error(f"❌ Error sending results: {e}", exc_info=True)
         await query.edit_message_text(
@@ -1339,6 +1341,7 @@ async def send_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton("🔄 Начать заново", callback_data="start_test")
             ]])
         )
+        return ConversationHandler.END
 
 # ========================================
 # ВСПОМОГАТЕЛЬНЫЕ ОБРАБОТЧИКИ
@@ -1374,7 +1377,7 @@ def main():
     
     # ✅ ПРОВЕРКА НАЛИЧИЯ ВСЕХ ПРОФИЛЕЙ
     check_result = check_all_profiles_exist()
-    logger.info(f"📊 Статус базы данных профиля:")
+    logger.info(f"📊 Статус базы данных профилей:")
     logger.info(f"   Всего профилей: {check_result['total']}")
     logger.info(f"   Доступно: {check_result['existing']}")
     logger.info(f"   Отсутствует: {check_result['missing']}")
@@ -1393,7 +1396,7 @@ def main():
     # Создаем приложение
     application = Application.builder().token(token).build()
     
-    # ✅ ИСПРАВЛЕННЫЙ ConversationHandler (ключи - ЧИСЛА, значения - СПИСКИ)
+    # ✅ ИСПРАВЛЕННЫЙ ConversationHandler
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
