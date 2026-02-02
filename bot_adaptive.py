@@ -1052,7 +1052,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"4️⃣ <b>ЭТАП 4:</b> Конфликт логических уровней (8 вопросов)\n\n"
         f"⏱ Займёт 10-15 минут\n\n"
         f"📌 Отвечай честно, как есть сейчас, а не как хотелось бы.\n\n"
-        f"Готов начать? 🚀"
+        f"Готов начать? "
     )
     
     keyboard = [[InlineKeyboardButton("🚀 Начать тест", callback_data="start_test")]]
