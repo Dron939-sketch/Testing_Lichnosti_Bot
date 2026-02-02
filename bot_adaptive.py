@@ -1964,7 +1964,7 @@ keyboard = [
     else:
         # ✅ КНОПКИ ПРИКРЕПЛЕНЫ К ТЕКСТУ
         keyboard = [
-            [InlineKeyboardButton("🎁 Поделиться и получить подарок", switch_inline_query="Зацени тест) t.me/Testing_Lichnosti_bot")],
+            [InlineKeyboardButton("🎁 Поделиться и получить подарок", switch_inline_query="Зацени тест! t.me/Testing_Lichnosti_bot")],
             [InlineKeyboardButton("💎 Получить полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
             [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
         ]
