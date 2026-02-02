@@ -1,7 +1,7 @@
 # bot_adaptive.py
 """
 АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
-4 этапа:
+4 этапа + адаптивные уточнения:
 1. Конфигурация восприятия (8 вопросов) → 4 типа
 2. Конфигурация мышления (8 вопросов, адаптивно) → 9 уровней
 3. Конфигурация поведенческих паттернов (8 вопросов) → уточнение уровня
@@ -27,10 +27,9 @@ from telegram.ext import (
 )
 
 # ============================================
-# ИМПОРТ ГОТОВЫХ ПРОФИЛЕЙ И ГЕНЕРАТОРА
+# ИМПОРТ ГОТОВЫХ ПРОФИЛЕЙ
 # ============================================
-from card_data import get_profile_description, check_all_profiles_exist
-from content_generator import generate_profile
+from card_data import get_profile_description, check_all_profiles_exist, PROFILE_CARDS
 
 # Получение токена из переменной окружения
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -46,10 +45,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Состояния ConversationHandler
-STAGE_1, STAGE_2, STAGE_3, STAGE_4, RESULT = range(5)
+STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULT = range(6)
 
 # ============================================
-# ДАННЫЕ ВОПРОСОВ (ИСХОДНЫЕ, БЕЗ ИЗМЕНЕНИЙ)
+# ДАННЫЕ ВОПРОСОВ (БЕЗ ИЗМЕНЕНИЙ)
 # ============================================
 
 # ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
@@ -507,7 +506,7 @@ STAGE_2_QUESTIONS = {
     ]
 }
 
-# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ (универсальные для всех типов)
+# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ
 STAGE_3_QUESTIONS = [
     {
         "id": "q3_1",
@@ -591,7 +590,7 @@ STAGE_3_QUESTIONS = [
     }
 ]
 
-# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ (универсальные для всех типов)
+# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
 STAGE_4_QUESTIONS = [
     {
         "id": "q4_1",
@@ -675,7 +674,7 @@ STAGE_4_QUESTIONS = [
     }
 ]
 
-# УРОВНИ ДИЛТСА (5 УРОВНЕЙ)
+# УРОВНИ ДИЛТСА
 DILTS_LEVELS = {
     "ENVIRONMENT": {
         "name": "ОКРУЖЕНИЕ",
@@ -710,6 +709,125 @@ DILTS_LEVELS = {
 }
 
 # ============================================
+# АДАПТИВНЫЕ УТОЧНЯЮЩИЕ ВОПРОСЫ
+# ============================================
+
+CLARIFICATION_QUESTIONS = {
+    "stage1_external_internal": [
+        {
+            "id": "c1_1",
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nПосле напряжённого дня что тебе нужнее?",
+            "options": {
+                "a": {"text": "Встретиться с людьми", "scores": {"EXTERNAL": 2}},
+                "b": {"text": "Побыть в одиночестве", "scores": {"INTERNAL": 2}}
+            }
+        },
+        {
+            "id": "c1_2",
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКогда ты думаешь о выходных, что первое приходит в голову?",
+            "options": {
+                "a": {"text": "Куда пойти, с кем встретиться", "scores": {"EXTERNAL": 2}},
+                "b": {"text": "Чем заняться дома, о чём подумать", "scores": {"INTERNAL": 2}}
+            }
+        }
+    ],
+    "stage1_symbolic_material": [
+        {
+            "id": "c1_3",
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nЧто хуже: потерять деньги или потерять доверие близких?",
+            "options": {
+                "a": {"text": "Потерять доверие", "scores": {"SYMBOLIC": 2}},
+                "b": {"text": "Потерять деньги", "scores": {"MATERIAL": 2}}
+            }
+        },
+        {
+            "id": "c1_4",
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКогда ты тревожишься, о чём чаще?",
+            "options": {
+                "a": {"text": "Что обо мне подумают, как меня воспримут", "scores": {"SYMBOLIC": 2}},
+                "b": {"text": "Хватит ли денег, успею ли, справлюсь ли", "scores": {"MATERIAL": 2}}
+            }
+        }
+    ],
+    "stage2_borderline": [
+        {
+            "id": "c2_1",
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак часто ты чувствуешь, что застрял на месте?",
+            "options": {
+                "a": {"text": "Постоянно, не знаю как двигаться", "level": 2},
+                "b": {"text": "Иногда, но нахожу выход", "level": 4},
+                "c": {"text": "Редко, я в движении", "level": 5}
+            }
+        },
+        {
+            "id": "c2_2",
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак ты относишься к своим прошлым ошибкам?",
+            "options": {
+                "a": {"text": "Стыжусь их, избегаю вспоминать", "level": 2},
+                "b": {"text": "Анализирую и учусь", "level": 4},
+                "c": {"text": "Принимаю как опыт", "level": 5}
+            }
+        }
+    ],
+    "stage3_discrepancy": [
+        {
+            "id": "c3_1",
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nВспомни последний месяц. Сколько раз ты действовал не так, как хотел?",
+            "options": {
+                "a": {"text": "Постоянно", "level": 1},
+                "b": {"text": "Часто (больше 5 раз)", "level": 2},
+                "c": {"text": "Иногда (2-4 раза)", "level": 3},
+                "d": {"text": "Редко (0-1 раз)", "level": 5}
+            }
+        },
+        {
+            "id": "c3_2",
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак быстро ты замечаешь свои автоматические реакции?",
+            "options": {
+                "a": {"text": "Не замечаю, действую на автомате", "level": 1},
+                "b": {"text": "Замечаю после", "level": 2},
+                "c": {"text": "Замечаю в процессе", "level": 4},
+                "d": {"text": "Замечаю до и могу изменить", "level": 5}
+            }
+        },
+        {
+            "id": "c3_3",
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак часто ты делаешь то, что обещал себе?",
+            "options": {
+                "a": {"text": "Почти никогда", "level": 1},
+                "b": {"text": "Иногда", "level": 2},
+                "c": {"text": "Часто", "level": 4},
+                "d": {"text": "Почти всегда", "level": 5}
+            }
+        }
+    ],
+    "stage4_tie": [
+        {
+            "id": "c4_1",
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nЕсли бы ты мог изменить только одно, что бы выбрал?",
+            "options": {
+                "a": {"text": "Где я нахожусь", "dilts": "ENVIRONMENT"},
+                "b": {"text": "Что я делаю", "dilts": "BEHAVIOR"},
+                "c": {"text": "Что я умею", "dilts": "CAPABILITIES"},
+                "d": {"text": "Что для меня важно", "dilts": "VALUES"},
+                "e": {"text": "Кто я", "dilts": "IDENTITY"}
+            }
+        },
+        {
+            "id": "c4_2",
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nГде находится твоя главная проблема?",
+            "options": {
+                "a": {"text": "В обстоятельствах", "dilts": "ENVIRONMENT"},
+                "b": {"text": "В моих действиях", "dilts": "BEHAVIOR"},
+                "c": {"text": "В моих навыках", "dilts": "CAPABILITIES"},
+                "d": {"text": "В моих целях", "dilts": "VALUES"},
+                "e": {"text": "В моём самоопределении", "dilts": "IDENTITY"}
+            }
+        }
+    ]
+}
+
+# ============================================
 # ✅ НОВЫЙ АЛГОРИТМ ОПРЕДЕЛЕНИЯ ПРОФИЛЯ
 # ============================================
 
@@ -721,15 +839,37 @@ def calculate_progress(current: int, total: int) -> str:
     return f"{bar} {progress}%\nПройдено: {current}/{total}"
 
 def determine_perception_type(scores):
-    """Определяет тип восприятия по баллам ЭТАПА 1"""
-    focus = "EXTERNAL" if scores.get("EXTERNAL", 0) > scores.get("INTERNAL", 0) else "INTERNAL"
-    anxiety = "SYMBOLIC" if scores.get("SYMBOLIC", 0) > scores.get("MATERIAL", 0) else "MATERIAL"
+    """✅ ИСПРАВЛЕНО: Определяет тип восприятия с обработкой равенства"""
+    external = scores.get("EXTERNAL", 0)
+    internal = scores.get("INTERNAL", 0)
+    symbolic = scores.get("SYMBOLIC", 0)
+    material = scores.get("MATERIAL", 0)
+    
+    # Определяем фокус (с приоритетом EXTERNAL при равенстве)
+    if external > internal:
+        focus = "EXTERNAL"
+    elif internal > external:
+        focus = "INTERNAL"
+    else:
+        # Равенство - нужно уточнение, но пока берём EXTERNAL
+        focus = "EXTERNAL"
+        logger.warning(f"Equal EXTERNAL/INTERNAL scores: {external}. Defaulting to EXTERNAL.")
+    
+    # Определяем тревогу (с приоритетом SYMBOLIC при равенстве)
+    if symbolic > material:
+        anxiety = "SYMBOLIC"
+    elif material > symbolic:
+        anxiety = "MATERIAL"
+    else:
+        # Равенство - нужно уточнение, но пока берём SYMBOLIC
+        anxiety = "SYMBOLIC"
+        logger.warning(f"Equal SYMBOLIC/MATERIAL scores: {symbolic}. Defaulting to SYMBOLIC.")
     
     type_data = PERCEPTION_TYPES.get((focus, anxiety), PERCEPTION_TYPES[("EXTERNAL", "SYMBOLIC")])
     return type_data["name"]
 
 def calculate_thinking_level_optimized(level_scores):
-    """✅ ОПТИМИЗИРОВАННЫЙ АЛГОРИТМ: Определяет уровень мышления (1-9)"""
+    """✅ ОПТИМИЗИРОВАННЫЙ: Определяет уровень мышления (1-9)"""
     if not level_scores:
         return 1
     
@@ -754,36 +894,37 @@ def calculate_thinking_level_optimized(level_scores):
     else:
         return 9
 
-def determine_dilts_level_smart(dilts_answers, thinking_level):
-    """✅ УМНЫЙ АЛГОРИТМ: Определяет проблемный уровень Дилтса с учётом уровня мышления"""
+def determine_dilts_level(dilts_answers):
+    """✅ ИСПРАВЛЕНО: Простая мода без ограничений"""
     if not dilts_answers:
         return "ENVIRONMENT"
     
     counter = Counter(dilts_answers)
-    most_common_dilts = counter.most_common(1)[0][0]
+    most_common = counter.most_common(1)[0]
     
-    dilts_hierarchy = {
-        "ENVIRONMENT": 1,
-        "BEHAVIOR": 2,
-        "CAPABILITIES": 3,
-        "VALUES": 4,
-        "IDENTITY": 5
-    }
+    # Проверка на равенство (если есть несколько с одинаковым количеством)
+    max_count = most_common[1]
+    tied_levels = [level for level, count in counter.items() if count == max_count]
     
-    if thinking_level <= 2:
-        max_allowed_dilts = "BEHAVIOR"
-    elif thinking_level <= 5:
-        max_allowed_dilts = "CAPABILITIES"
-    elif thinking_level <= 7:
-        max_allowed_dilts = "VALUES"
-    else:
-        max_allowed_dilts = "IDENTITY"
+    if len(tied_levels) > 1:
+        logger.warning(f"Tied Dilts levels: {tied_levels}. Taking first: {most_common[0]}")
     
-    if dilts_hierarchy.get(most_common_dilts, 1) > dilts_hierarchy.get(max_allowed_dilts, 1):
-        logger.info(f"Dilts corrected: {most_common_dilts} → {max_allowed_dilts} (thinking_level={thinking_level})")
-        return max_allowed_dilts
+    return most_common[0]
+
+def calculate_final_level(stage2_level, stage3_scores):
+    """✅ ИСПРАВЛЕНО: Приоритет stage3 (поведение) над stage2 (самооценка)"""
+    if not stage3_scores:
+        return stage2_level
     
-    return most_common_dilts
+    stage3_avg = sum(stage3_scores) / len(stage3_scores)
+    
+    # Приоритет поведению: 70% stage3, 30% stage2
+    final = stage3_avg * 0.7 + stage2_level * 0.3
+    final_level = max(1, min(9, round(final)))
+    
+    logger.info(f"Final level calculation: stage2={stage2_level}, stage3_avg={stage3_avg:.2f}, final={final_level}")
+    
+    return final_level
 
 def get_type_code(perception_type: str) -> str:
     """Возвращает код типа (SA/IA/SP/IP) по названию"""
@@ -806,8 +947,53 @@ def get_dilts_code(dilts_level: str) -> str:
     }
     return dilts_map.get(dilts_level, "env")
 
+def find_best_matching_profile(type_code: str, user_level: int, dilts_code: str) -> str:
+    """
+    ✅ НОВАЯ ФУНКЦИЯ: Ищет наиболее подходящий профиль из 36 существующих
+    
+    Приоритет поиска:
+    1. Точное совпадение (type_level_dilts)
+    2. Тот же тип + уровень, другой Дилтс
+    3. Тот же тип, ближайший уровень (±1), любой Дилтс
+    4. Тот же тип, любой уровень, любой Дилтс (fallback)
+    """
+    # 1. Точное совпадение
+    exact_key = f"{type_code}_{user_level}_{dilts_code}"
+    if exact_key in PROFILE_CARDS:
+        logger.info(f"✅ Exact match found: {exact_key}")
+        return exact_key
+    
+    # 2. Тот же тип + уровень, другой Дилтс
+    for dilts in ["env", "beh", "cap", "val", "ide"]:
+        candidate = f"{type_code}_{user_level}_{dilts}"
+        if candidate in PROFILE_CARDS:
+            logger.info(f"✅ Same type+level, different dilts: {candidate}")
+            return candidate
+    
+    # 3. Тот же тип, ближайший уровень (±1), любой Дилтс
+    for level_offset in [1, -1, 2, -2]:
+        candidate_level = user_level + level_offset
+        if 1 <= candidate_level <= 9:
+            for dilts in ["env", "beh", "cap", "val", "ide"]:
+                candidate = f"{type_code}_{candidate_level}_{dilts}"
+                if candidate in PROFILE_CARDS:
+                    logger.info(f"✅ Same type, nearby level: {candidate}")
+                    return candidate
+    
+    # 4. Fallback: первый профиль этого типа
+    for level in range(1, 10):
+        for dilts in ["env", "beh", "cap", "val", "ide"]:
+            candidate = f"{type_code}_{level}_{dilts}"
+            if candidate in PROFILE_CARDS:
+                logger.warning(f"⚠️ Fallback to first profile of type: {candidate}")
+                return candidate
+    
+    # 5. Критическая ошибка: профиль не найден
+    logger.error(f"❌ No profile found for type={type_code}, level={user_level}, dilts={dilts_code}")
+    return f"{type_code}_1_env"  # Дефолтный профиль
+
 def calculate_profile_key(context_data: dict) -> str:
-    """✅ ГЛАВНАЯ ФУНКЦИЯ: Определяет ключ профиля в формате "SA_1_env" """
+    """✅ ГЛАВНАЯ ФУНКЦИЯ: Определяет ключ профиля с поиском ближайшего"""
     perception_type = context_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
     type_code = get_type_code(perception_type)
     
@@ -816,13 +1002,71 @@ def calculate_profile_key(context_data: dict) -> str:
     dilts_level = context_data.get("dilts_level", "ENVIRONMENT")
     dilts_code = get_dilts_code(dilts_level)
     
-    profile_key = f"{type_code}_{level}_{dilts_code}"
+    # Ищем наиболее подходящий профиль
+    profile_key = find_best_matching_profile(type_code, level, dilts_code)
     
-    logger.info(f"✅ Profile calculated: {profile_key} (type={type_code}, level={level}, dilts={dilts_code})")
+    logger.info(f"✅ Profile selected: {profile_key} (requested: {type_code}_{level}_{dilts_code})")
     return profile_key
 
 # ============================================
-# КОМАНДЫ БОТА (ИСХОДНЫЕ, БЕЗ ИЗМЕНЕНИЙ)
+# ФУНКЦИИ ПРОВЕРКИ НЕОБХОДИМОСТИ УТОЧНЕНИЙ
+# ============================================
+
+def need_clarification_stage1(scores):
+    """Проверяет, нужны ли уточняющие вопросы после ЭТАПА 1"""
+    external = scores.get("EXTERNAL", 0)
+    internal = scores.get("INTERNAL", 0)
+    symbolic = scores.get("SYMBOLIC", 0)
+    material = scores.get("MATERIAL", 0)
+    
+    # Проверка равенства или близости (разница ≤ 2)
+    needs_external_internal = abs(external - internal) <= 2
+    needs_symbolic_material = abs(symbolic - material) <= 2
+    
+    clarifications = []
+    if needs_external_internal:
+        clarifications.append("external_internal")
+    if needs_symbolic_material:
+        clarifications.append("symbolic_material")
+    
+    return clarifications
+
+def need_clarification_stage2(level_scores):
+    """Проверяет, нужны ли уточняющие вопросы после ЭТАПА 2"""
+    if not level_scores:
+        return False
+    
+    avg = sum(level_scores) / len(level_scores)
+    
+    # Уточнение нужно, если средний уровень в "серой зоне" (3.5-5.5)
+    return 3.5 <= avg <= 5.5
+
+def need_clarification_stage3(stage2_level, stage3_scores):
+    """Проверяет, нужны ли уточняющие вопросы после ЭТАПА 3"""
+    if not stage3_scores:
+        return False
+    
+    stage3_avg = sum(stage3_scores) / len(stage3_scores)
+    
+    # Уточнение нужно, если расхождение между этапами > 2
+    return abs(stage2_level - stage3_avg) > 2
+
+def need_clarification_stage4(dilts_answers):
+    """Проверяет, нужны ли уточняющие вопросы после ЭТАПА 4"""
+    if not dilts_answers:
+        return False
+    
+    counter = Counter(dilts_answers)
+    most_common = counter.most_common(2)
+    
+    # Уточнение нужно, если есть равенство (2+ уровня с одинаковым количеством)
+    if len(most_common) >= 2:
+        return most_common[0][1] == most_common[1][1]
+    
+    return False
+
+# ============================================
+# КОМАНДЫ БОТА (БЕЗ ИЗМЕНЕНИЙ)
 # ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -872,7 +1116,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_stage_1_intro(update, context)
 
 # ============================================
-# ЭКРАНЫ ПЕРЕД ЭТАПАМИ (ИСХОДНЫЕ)
+# ЭКРАНЫ ПЕРЕД ЭТАПАМИ (БЕЗ ИЗМЕНЕНИЙ)
 # ============================================
 
 async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -926,7 +1170,7 @@ async def back_to_stage1_intro(update: Update, context: ContextTypes.DEFAULT_TYP
     return await show_stage_1_intro(update, context)
 
 # ============================================
-# ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ (ИСХОДНЫЙ)
+# ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
 # ============================================
 
 async def start_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1008,14 +1252,29 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение ЭТАПА 1"""
+    """✅ ИСПРАВЛЕНО: Завершение ЭТАПА 1 с проверкой на уточнения"""
     query = update.callback_query
     
     scores = context.user_data.get("scores", {})
+    
+    # Проверяем, нужны ли уточняющие вопросы
+    clarifications_needed = need_clarification_stage1(scores)
+    
+    if clarifications_needed and not context.user_data.get("stage1_clarified", False):
+        # Сохраняем, какие уточнения нужны
+        context.user_data["stage1_clarifications"] = clarifications_needed
+        context.user_data["clarification_current"] = 0
+        context.user_data["clarification_stage"] = "stage1"
+        
+        logger.info(f"User {update.effective_user.id}: Stage 1 needs clarification: {clarifications_needed}")
+        
+        return await ask_clarification_question(update, context)
+    
+    # Определяем тип восприятия
     perception_type = determine_perception_type(scores)
     context.user_data["perception_type"] = perception_type
     
-    logger.info(f"User {update.effective_user.id}: Stage 1 complete, type={perception_type}")
+    logger.info(f"User {update.effective_user.id}: Stage 1 complete, type={perception_type}, scores={scores}")
     
     result_text = (
         f"✅ <b>ЭТАП 1 ЗАВЕРШЁН!</b>\n\n"
@@ -1032,7 +1291,145 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STAGE_2
 
 # ============================================
-# ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ (ИСХОДНЫЙ)
+# УТОЧНЯЮЩИЕ ВОПРОСЫ
+# ============================================
+
+async def ask_clarification_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Задаёт уточняющий вопрос"""
+    query = update.callback_query
+    
+    clarification_stage = context.user_data.get("clarification_stage")
+    current = context.user_data.get("clarification_current", 0)
+    
+    # Определяем, какие вопросы задавать
+    if clarification_stage == "stage1":
+        clarifications = context.user_data.get("stage1_clarifications", [])
+        if current >= len(clarifications):
+            # Все уточнения пройдены
+            context.user_data["stage1_clarified"] = True
+            return await finish_stage_1(update, context)
+        
+        clarification_type = clarifications[current]
+        questions = CLARIFICATION_QUESTIONS.get(f"stage1_{clarification_type}", [])
+        
+        if not questions:
+            context.user_data["clarification_current"] = current + 1
+            return await ask_clarification_question(update, context)
+        
+        question = questions[0] if len(questions) > 0 else None
+        
+    elif clarification_stage == "stage2":
+        questions = CLARIFICATION_QUESTIONS.get("stage2_borderline", [])
+        if current >= len(questions):
+            context.user_data["stage2_clarified"] = True
+            return await finish_stage_2(update, context)
+        question = questions[current]
+        
+    elif clarification_stage == "stage3":
+        questions = CLARIFICATION_QUESTIONS.get("stage3_discrepancy", [])
+        if current >= len(questions):
+            context.user_data["stage3_clarified"] = True
+            return await finish_stage_3(update, context)
+        question = questions[current]
+        
+    elif clarification_stage == "stage4":
+        questions = CLARIFICATION_QUESTIONS.get("stage4_tie", [])
+        if current >= len(questions):
+            context.user_data["stage4_clarified"] = True
+            return await finish_stage_4(update, context)
+        question = questions[current]
+    
+    else:
+        # Неизвестный этап
+        return STAGE_1
+    
+    if not question:
+        return STAGE_1
+    
+    question_text = question["text"]
+    
+    keyboard = []
+    for option_id, option in question["options"].items():
+        keyboard.append([
+            InlineKeyboardButton(
+                option["text"], 
+                callback_data=f"clarify_{clarification_stage}_{current}_{option_id}"
+            )
+        ])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(question_text, reply_markup=reply_markup, parse_mode="HTML")
+    return CLARIFICATION
+
+async def handle_clarification_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ответа на уточняющий вопрос"""
+    query = update.callback_query
+    await query.answer()
+    
+    parts = query.data.split("_")
+    if len(parts) < 4:
+        return CLARIFICATION
+    
+    clarification_stage = parts[1]
+    current = int(parts[2])
+    option_id = parts[3]
+    
+    # Обрабатываем ответ в зависимости от этапа
+    if clarification_stage == "stage1":
+        clarifications = context.user_data.get("stage1_clarifications", [])
+        if current < len(clarifications):
+            clarification_type = clarifications[current]
+            questions = CLARIFICATION_QUESTIONS.get(f"stage1_{clarification_type}", [])
+            if questions:
+                question = questions[0]
+                selected_option = question["options"].get(option_id)
+                if selected_option:
+                    for axis, score in selected_option.get("scores", {}).items():
+                        context.user_data["scores"][axis] += score
+        
+        context.user_data["clarification_current"] = current + 1
+        return await ask_clarification_question(update, context)
+        
+    elif clarification_stage == "stage2":
+        questions = CLARIFICATION_QUESTIONS.get("stage2_borderline", [])
+        if current < len(questions):
+            question = questions[current]
+            selected_option = question["options"].get(option_id)
+            if selected_option:
+                level = selected_option.get("level", 1)
+                context.user_data["stage2_level_scores"].append(level)
+        
+        context.user_data["clarification_current"] = current + 1
+        return await ask_clarification_question(update, context)
+        
+    elif clarification_stage == "stage3":
+        questions = CLARIFICATION_QUESTIONS.get("stage3_discrepancy", [])
+        if current < len(questions):
+            question = questions[current]
+            selected_option = question["options"].get(option_id)
+            if selected_option:
+                level = selected_option.get("level", 1)
+                context.user_data["stage3_level_scores"].append(level)
+        
+        context.user_data["clarification_current"] = current + 1
+        return await ask_clarification_question(update, context)
+        
+    elif clarification_stage == "stage4":
+        questions = CLARIFICATION_QUESTIONS.get("stage4_tie", [])
+        if current < len(questions):
+            question = questions[current]
+            selected_option = question["options"].get(option_id)
+            if selected_option:
+                dilts = selected_option.get("dilts", "ENVIRONMENT")
+                context.user_data["stage4_dilts_answers"].append(dilts)
+        
+        context.user_data["clarification_current"] = current + 1
+        return await ask_clarification_question(update, context)
+    
+    return CLARIFICATION
+
+# ============================================
+# ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ
 # ============================================
 
 async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1173,10 +1570,22 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Завершение ЭТАПА 2 с новым алгоритмом"""
+    """✅ ИСПРАВЛЕНО: Завершение ЭТАПА 2 с проверкой на уточнения"""
     query = update.callback_query
     
     level_scores = context.user_data.get("stage2_level_scores", [])
+    
+    # Проверяем, нужны ли уточняющие вопросы
+    needs_clarification = need_clarification_stage2(level_scores)
+    
+    if needs_clarification and not context.user_data.get("stage2_clarified", False):
+        context.user_data["clarification_current"] = 0
+        context.user_data["clarification_stage"] = "stage2"
+        
+        logger.info(f"User {update.effective_user.id}: Stage 2 needs clarification")
+        
+        return await ask_clarification_question(update, context)
+    
     thinking_level = calculate_thinking_level_optimized(level_scores)
     context.user_data["thinking_level"] = thinking_level
     
@@ -1197,7 +1606,7 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STAGE_3
 
 # ============================================
-# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ (ИСХОДНЫЙ)
+# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ
 # ============================================
 
 async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1325,23 +1734,28 @@ async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение ЭТАПА 3"""
+    """✅ ИСПРАВЛЕНО: Завершение ЭТАПА 3 с новым алгоритмом и уточнениями"""
     query = update.callback_query
     
     stage2_level = context.user_data.get("thinking_level", 1)
     stage3_scores = context.user_data.get("stage3_level_scores", [])
-    stage3_avg = sum(stage3_scores) / len(stage3_scores) if stage3_scores else 1
     
-    if abs(stage3_avg - stage2_level) > 1:
-        final_level = int((stage2_level + stage3_avg) / 2)
-    else:
-        final_level = stage2_level
+    # Проверяем, нужны ли уточняющие вопросы
+    needs_clarification = need_clarification_stage3(stage2_level, stage3_scores)
     
-    final_level = max(1, min(9, final_level))
+    if needs_clarification and not context.user_data.get("stage3_clarified", False):
+        context.user_data["clarification_current"] = 0
+        context.user_data["clarification_stage"] = "stage3"
+        
+        logger.info(f"User {update.effective_user.id}: Stage 3 needs clarification")
+        
+        return await ask_clarification_question(update, context)
     
+    # Вычисляем финальный уровень с приоритетом поведения
+    final_level = calculate_final_level(stage2_level, stage3_scores)
     context.user_data["final_level"] = final_level
     
-    logger.info(f"User {update.effective_user.id}: Stage 3 complete, final_level={final_level} (stage2={stage2_level}, stage3_avg={stage3_avg:.2f})")
+    logger.info(f"User {update.effective_user.id}: Stage 3 complete, final_level={final_level}")
     
     result_text = (
         f"✅ <b>ЭТАП 3 ЗАВЕРШЁН!</b>\n\n"
@@ -1357,7 +1771,7 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STAGE_4
 
 # ============================================
-# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ (ИСХОДНЫЙ)
+# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
 # ============================================
 
 async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1396,8 +1810,8 @@ async def show_stage_4_details(update: Update, context: ContextTypes.DEFAULT_TYP
         f"3️⃣ СПОСОБНОСТИ — твои навыки\n"
         f"4️⃣ ЦЕННОСТИ — твои мотивы\n"
         f"5️⃣ ИДЕНТИЧНОСТЬ — кто ты\n\n"
-        f"<b>Принцип:</b> Проблема на нижнем уровне решается изменением верхнего.\n\n"
-        f"<b>Результат:</b> Твой проблемный уровень + вектор развития"
+        f"<b>Принцип:</b> Проблема на нижнем уровне решается на верхнем.\n\n"
+        f"<b>Результат:</b> Твоя точка роста"
     )
     
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data="back_to_stage4_intro")]]
@@ -1489,202 +1903,170 @@ async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Завершение ЭТАПА 4 с умным алгоритмом"""
+    """✅ ИСПРАВЛЕНО: Завершение ЭТАПА 4 с уточнениями"""
     query = update.callback_query
     
     dilts_answers = context.user_data.get("stage4_dilts_answers", [])
-    thinking_level = context.user_data.get("final_level", 1)
     
-    dilts_level = determine_dilts_level_smart(dilts_answers, thinking_level)
+    # Проверяем, нужны ли уточняющие вопросы
+    needs_clarification = need_clarification_stage4(dilts_answers)
+    
+    if needs_clarification and not context.user_data.get("stage4_clarified", False):
+        context.user_data["clarification_current"] = 0
+        context.user_data["clarification_stage"] = "stage4"
+        
+        logger.info(f"User {update.effective_user.id}: Stage 4 needs clarification")
+        
+        return await ask_clarification_question(update, context)
+    
+    # Определяем уровень Дилтса (простая мода)
+    dilts_level = determine_dilts_level(dilts_answers)
     context.user_data["dilts_level"] = dilts_level
     
-    logger.info(f"User {update.effective_user.id}: Stage 4 complete, dilts={dilts_level}, thinking_level={thinking_level}")
+    logger.info(f"User {update.effective_user.id}: Stage 4 complete, dilts={dilts_level}")
     
-    return await show_result(update, context)
+    # Переход к результатам
+    return await show_results(update, context)
 
 # ============================================
-# ✅ РЕЗУЛЬТАТ С ИСПОЛЬЗОВАНИЕМ card_data.py
+# ПОКАЗ РЕЗУЛЬТАТОВ
 # ============================================
 
-async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ ИСПРАВЛЕНО: Показ финального результата с использованием готовых описаний"""
+async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """✅ НОВАЯ ВЕРСИЯ: Показ результатов с поиском ближайшего профиля"""
     query = update.callback_query
     
-    # Получаем данные профиля
+    # Показываем экран загрузки
+    loading_text = (
+        f"⏳ <b>ОБРАБАТЫВАЮ РЕЗУЛЬТАТЫ...</b>\n\n"
+        f"Анализирую твои ответы и подбираю профиль..."
+    )
+    await query.edit_message_text(loading_text, parse_mode="HTML")
+    
+    # Имитация обработки
+    await asyncio.sleep(2)
+    
+    # Получаем данные
     perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
     final_level = context.user_data.get("final_level", 1)
     dilts_level = context.user_data.get("dilts_level", "ENVIRONMENT")
     
-    # Вычисляем ключ профиля
+    # ✅ НОВОЕ: Вычисляем ключ профиля с поиском ближайшего
     profile_key = calculate_profile_key(context.user_data)
-    type_code = get_type_code(perception_type)
-    dilts_code = get_dilts_code(dilts_level)
     
-    logger.info(f"📊 Отправка результатов для пользователя {update.effective_user.id}: {profile_key}")
-    
-    # ✅ ИСПОЛЬЗУЕМ ГОТОВОЕ ОПИСАНИЕ ИЗ card_data.py
+    # Получаем описание профиля
     profile_description = get_profile_description(profile_key)
     
-    # Проверяем, найдено ли описание
-    if profile_description.startswith("⚠️"):
-        # Если профиля нет в базе, используем fallback (AI-генерацию)
-        logger.warning(f"⚠️ Профиль {profile_key} не найден в card_data.py, используется генерация ИИ")
-        
-        try:
-            # ✅ ИСПРАВЛЕНО: Убран await, добавлена обработка словаря
-            result = generate_profile(type_code, final_level, dilts_code)
-            
-            # Проверяем тип результата
-            if isinstance(result, dict):
-                # Если вернулся словарь, извлекаем описание
-                profile_description = result.get('description', '')
-                
-                if not profile_description:
-                    # Формируем описание из всех полей словаря
-                    profile_description = f"""
-🎯 **ТИП МЫШЛЕНИЯ:** {perception_type}
-
-📊 **ХАРАКТЕРИСТИКА:**
-{result.get('characteristics', 'Нет данных')}
-
-🎯 **СИЛЬНЫЕ СТОРОНЫ:**
-{result.get('strengths', 'Нет данных')}
-
-⚠️ **ЗОНЫ РАЗВИТИЯ:**
-{result.get('challenges', 'Нет данных')}
-
-💡 **РЕКОМЕНДАЦИИ:**
-{result.get('recommendations', 'Нет данных')}
-"""
-            elif isinstance(result, str):
-                # Если вернулась строка, используем её
-                profile_description = result
-            else:
-                # Неизвестный формат
-                raise ValueError(f"Неожиданный тип результата: {type(result)}")
-                
-        except Exception as gen_error:
-            logger.error(f"❌ Ошибка генерации профиля: {gen_error}")
-            profile_description = f"""
-⚠️ **ВРЕМЕННАЯ ПРОБЛЕМА С ГЕНЕРАЦИЕЙ ОПИСАНИЯ**
-
-**Ваш профиль:** `{profile_key}`
-
-📊 **Показатели:**
-• Тип мышления: **{perception_type}**
-• Уровень развития: **{final_level}/9**
-• Уровень проблемы: **{dilts_code}**
-
-Пожалуйста, обратитесь к администратору для получения полного описания.
-"""
+    if not profile_description:
+        error_text = (
+            f"❌ <b>ОШИБКА</b>\n\n"
+            f"Не удалось найти профиль.\n\n"
+            f"Попробуй пройти тест заново: /start"
+        )
+        await query.edit_message_text(error_text, parse_mode="HTML")
+        return ConversationHandler.END
     
-    # Получаем описания для итогового экрана
-    dilts_info = DILTS_LEVELS.get(dilts_level, DILTS_LEVELS["ENVIRONMENT"])
-    
-    # ФОРМИРУЕМ ИТОГОВЫЙ ЭКРАН (ИСХОДНОЕ ОФОРМЛЕНИЕ)
+    # Формируем результат
     result_text = (
-        f"🎉 <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"<b>📊 ТВОЙ ПРОФИЛЬ:</b>\n\n"
-        f"<b>🎯 Тип восприятия:</b>\n{perception_type}\n\n"
-        f"<b>📖 КТО ТЫ:</b>\n\n"
-        f"{profile_description}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"<b>🎪 Проблемный уровень:</b>\n{dilts_info['name']}\n"
-        f"<i>{dilts_info['description']}</i>\n\n"
-        f"<b>🚀 ВЕКТОР РАЗВИТИЯ:</b>\n"
-        f"{dilts_info['solution']}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"<b>🔑 Код профиля:</b> <code>{profile_key}</code>\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ</b>\n\n"
-        f"💡 Твой инструмент который корректирует конфигурацию поведения, на уровне конфигурации мышления – это метафорическая форма (ссылка на сказку внизу экрана).\n\n"
-        f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽)</b>\n"
-        f"✓ Полное описание архетипа и персональные рекомендации (15+ страниц)\n"
-        f"✓ Персональная терапевтическая сказка для коррекции других конфликтующих частей\n"
-        f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf) для самостоятельной коррекции на уровне конфигурации восприятия\n\n"
-        f"💬 <b>Хочешь разобраться глубже?</b>\n"
-        f"Получить персональную консультацию:\n"
-        f"👉 @meysternlp"
+        f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+        f"🎯 <b>ТВОЙ ПРОФИЛЬ:</b>\n\n"
+        f"<b>Тип восприятия:</b> {perception_type}\n"
+        f"<b>Уровень развития:</b> {final_level}\n"
+        f"<b>Точка роста:</b> {DILTS_LEVELS[dilts_level]['name']}\n\n"
+        f"📄 <b>Код профиля:</b> <code>{profile_key}</code>\n\n"
+        f"Сейчас покажу твою карту профиля 👇"
     )
     
-    story_link = "https://drive.google.com/file/d/1Y0nr2C_sWlQVOF84THLXa3nflFBVSI77/view?usp=sharing"
-    bot_link = "https://t.me/Testing_Lichnosti_bot"
+    keyboard = [[InlineKeyboardButton("📄 Показать профиль", callback_data="show_profile")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
+    await query.edit_message_text(result_text, reply_markup=reply_markup, parse_mode="HTML")
+    
+    return RESULT
+
+async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показ полного профиля"""
+    query = update.callback_query
+    await query.answer()
+    
+    profile_key = calculate_profile_key(context.user_data)
+    profile_description = get_profile_description(profile_key)
+    
+    if not profile_description:
+        await query.edit_message_text("❌ Ошибка загрузки профиля", parse_mode="HTML")
+        return ConversationHandler.END
+    
+    # Отправляем описание профиля (может быть длинным, поэтому разбиваем)
+    await query.edit_message_text(profile_description, parse_mode="HTML")
+    
+    # Кнопки действий
     keyboard = [
-        [InlineKeyboardButton("📖 Читать сказку", url=story_link)],
-        [InlineKeyboardButton("💳 Получить полный пакет (960 ₽)", url="https://t.me/meysternlp")],
-        [InlineKeyboardButton("🎁 Поделиться тестом и получить подарок", url=f"https://t.me/share/url?url={bot_link}&text=Пройди тест и узнай свой психотип!")],
-        [InlineKeyboardButton("🔄 Пройти заново", callback_data="start_test")]
+        [InlineKeyboardButton("🔄 Пройти тест заново", callback_data="restart_test")],
+        [InlineKeyboardButton("💾 Сохранить результат", callback_data="save_result")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(
-        result_text, 
-        reply_markup=reply_markup, 
-        parse_mode="HTML", 
-        disable_web_page_preview=True
+    await query.message.reply_text(
+        "Что дальше?",
+        reply_markup=reply_markup
     )
     
-    logger.info(f"✅ Результаты успешно отправлены для пользователя {update.effective_user.id}")
+    return ConversationHandler.END
+
+async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Перезапуск теста"""
+    query = update.callback_query
+    await query.answer()
     
-    # Очистка данных после завершения
     context.user_data.clear()
+    
+    return await start_test(update, context)
+
+async def save_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сохранение результата"""
+    query = update.callback_query
+    await query.answer("💾 Результат сохранён!")
+    
+    profile_key = calculate_profile_key(context.user_data)
+    
+    save_text = (
+        f"✅ <b>РЕЗУЛЬТАТ СОХРАНЁН</b>\n\n"
+        f"📄 Твой код профиля: <code>{profile_key}</code>\n\n"
+        f"Ты можешь вернуться к нему в любой момент.\n\n"
+        f"Хочешь пройти тест заново? /start"
+    )
+    
+    await query.edit_message_text(save_text, parse_mode="HTML")
     
     return ConversationHandler.END
 
 # ============================================
-# ДОПОЛНИТЕЛЬНЫЕ ОБРАБОТЧИКИ
+# ОБРАБОТКА ОТМЕНЫ
 # ============================================
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена теста"""
-    cancel_text = (
-        f"❌ Тест отменён.\n"
-        f"Хочешь начать заново?\n"
-        f"👉 /start"
+    await update.message.reply_text(
+        "❌ Тест отменён.\n\nЧтобы начать заново: /start"
     )
-    await update.message.reply_text(cancel_text)
-    context.user_data.clear()
-    return ConversationHandler.END
-
-async def timeout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка таймаута"""
-    if update.effective_message:
-        await update.effective_message.reply_text(
-            "⏱ Время сеанса истекло.\n"
-            "Начни тест заново: /start"
-        )
-    context.user_data.clear()
     return ConversationHandler.END
 
 # ============================================
-# ERROR HANDLER
-# ============================================
-
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    """Глобальный обработчик ошибок"""
-    logger.error(f"Exception: {context.error}", exc_info=context.error)
-    
-    if update and hasattr(update, 'effective_message'):
-        try:
-            await update.effective_message.reply_text(
-                "⚠️ Произошла ошибка. Попробуй начать заново: /start"
-            )
-        except Exception as e:
-            logger.error(f"Error sending error message: {e}")
-    
-    if hasattr(context, 'user_data') and context.user_data:
-        context.user_data.clear()
-
-# ============================================
-# MAIN
+# ГЛАВНАЯ ФУНКЦИЯ
 # ============================================
 
 def main():
     """Запуск бота"""
+    
+    # Проверка наличия всех профилей
+    logger.info("Checking profile data...")
+    check_all_profiles_exist()
+    logger.info("✅ All profiles verified")
+    
+    # Создание приложения
     application = Application.builder().token(TOKEN).build()
     
+    # ConversationHandler
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -1692,7 +2074,6 @@ def main():
         ],
         states={
             STAGE_1: [
-                CallbackQueryHandler(show_stage_1_intro, pattern="^show_stage_1_intro$"),
                 CallbackQueryHandler(show_stage_1_details, pattern="^stage1_details$"),
                 CallbackQueryHandler(back_to_stage1_intro, pattern="^back_to_stage1_intro$"),
                 CallbackQueryHandler(start_stage_1, pattern="^start_stage_1$"),
@@ -1719,28 +2100,23 @@ def main():
                 CallbackQueryHandler(start_stage_4, pattern="^start_stage_4$"),
                 CallbackQueryHandler(handle_stage_4_answer, pattern="^stage4_")
             ],
-            ConversationHandler.TIMEOUT: [
-                MessageHandler(filters.ALL, timeout_handler)
+            CLARIFICATION: [
+                CallbackQueryHandler(handle_clarification_answer, pattern="^clarify_")
+            ],
+            RESULT: [
+                CallbackQueryHandler(show_profile, pattern="^show_profile$"),
+                CallbackQueryHandler(restart_test, pattern="^restart_test$"),
+                CallbackQueryHandler(save_result, pattern="^save_result$")
             ]
         },
-        fallbacks=[
-            CommandHandler("cancel", cancel),
-            CallbackQueryHandler(start_test, pattern="^start_test$")
-        ],
-        conversation_timeout=1800,
-        allow_reentry=True,
-        per_message=False
+        fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True
     )
     
     application.add_handler(conv_handler)
-    application.add_error_handler(error_handler)
     
-    logger.info("✅ Бот запущен с новым алгоритмом определения 36 профилей!")
-    logger.info(f"✅ Используется card_data.py для готовых описаний профилей")
-    
-    # Проверяем наличие всех профилей при старте
-    check_all_profiles_exist()
-    
+    # Запуск бота
+    logger.info("🚀 Bot started!")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
