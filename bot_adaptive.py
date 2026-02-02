@@ -1957,7 +1957,7 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # ✅ 3 КНОПКИ
     keyboard = [
-        [InlineKeyboardButton("🎁 Поделиться и получить подарок", switch_inline_query=f"Зацени тест) {BOT_LINK}")],
+        [InlineKeyboardButton("🎁 Поделиться и получить подарок", switch_inline_query="Зацени тест) t.me/Testing_Lichnosti_bot")],
         [InlineKeyboardButton("💎 Получить полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
         [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
     ]
