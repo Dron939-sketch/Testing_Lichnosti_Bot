@@ -1,14 +1,13 @@
-# bot_adaptive_v2.py
+# bot_adaptive_v3.py
 """
-АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА (ВЕРСИЯ 2.0)
+АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА (ВЕРСИЯ 3.0)
 
-УЛУЧШЕНИЯ:
-✅ Адаптивность: 8-14 вопросов на ЭТАП 2 и ЭТАП 3
-✅ Целенаправленный выбор уточняющих вопросов
-✅ Улучшенные алгоритмы определения уровня
-✅ Валидация профиля
-✅ Детальное логирование
-✅ Совместимость с обновлёнными модулями
+КЛЮЧЕВЫЕ УЛУЧШЕНИЯ:
+✅ Оптимизированный алгоритм определения профиля (36 профилей)
+✅ Интеграция с card_data.py для описаний
+✅ Умная логика присвоения уровня Дилтса на основе уровня мышления
+✅ Валидация и коррекция профиля
+✅ Детальное логирование всех этапов
 """
 
 import logging
@@ -29,7 +28,7 @@ from telegram.ext import (
 # ============================================
 # ИМПОРТ МОДУЛЕЙ
 # ============================================
-from content_generator import generate_profile, get_type_name, get_level_name, get_dilts_name
+from card_data import get_profile_description
 from questions_data_v2 import (
     STAGE_1_QUESTIONS,
     STAGE_2_BASE_QUESTIONS,
@@ -38,7 +37,6 @@ from questions_data_v2 import (
     STAGE_3_CLARIFYING_QUESTIONS,
     STAGE_4_QUESTIONS,
     PERCEPTION_TYPES,
-    THINKING_LEVELS,
     DILTS_LEVELS,
     DILTS_HIERARCHY
 )
@@ -59,17 +57,23 @@ logger = logging.getLogger(__name__)
 STAGE_1, STAGE_2, STAGE_3, STAGE_4, RESULT = range(5)
 
 # ============================================
-# АЛГОРИТМЫ ОПРЕДЕЛЕНИЯ ПРОФИЛЯ
+# ОПТИМИЗИРОВАННЫЙ АЛГОРИТМ ОПРЕДЕЛЕНИЯ ПРОФИЛЯ
 # ============================================
 
-def calculate_thinking_level_advanced(level_scores):
+def calculate_thinking_level_optimized(level_scores):
     """
-    Определяет уровень мышления с учётом стабильности и динамики
+    ОПТИМИЗИРОВАННЫЙ алгоритм определения уровня мышления
     
-    Логика:
-    1. Если все ответы в диапазоне ±1 → берём среднее
-    2. Если разброс большой → берём МИНИМУМ (слабое место)
-    3. Если есть тренд роста → добавляем +1
+    Логика (приоритеты):
+    1. Если разброс ≤ 1 → среднее (стабильность)
+    2. Если разброс = 2 → взвешенное среднее (min*0.3 + avg*0.7)
+    3. Если разброс > 2:
+       - Проверяем тренд (рост/падение)
+       - Если рост → min + 1 (потенциал)
+       - Если нет тренда → min (консервативная оценка)
+    
+    Returns:
+        int: Уровень мышления (1-9)
     """
     if not level_scores:
         return 1
@@ -79,24 +83,25 @@ def calculate_thinking_level_advanced(level_scores):
     avg_level = sum(level_scores) / len(level_scores)
     spread = max_level - min_level
     
-    logger.info(f"[CALC] Level calculation: scores={level_scores}")
-    logger.info(f"[CALC]   min={min_level}, max={max_level}, avg={avg_level:.2f}, spread={spread}")
+    logger.info(f"[LEVEL_CALC] Scores: {level_scores}")
+    logger.info(f"[LEVEL_CALC] Min={min_level}, Max={max_level}, Avg={avg_level:.2f}, Spread={spread}")
     
     # 1. Стабильные ответы (разброс ≤ 1)
     if spread <= 1:
         result = round(avg_level)
-        logger.info(f"[CALC]   → Stable answers, level={result}")
-        return result
+        logger.info(f"[LEVEL_CALC] ✓ Stable (spread≤1) → Level {result}")
+        return max(1, min(result, 9))
     
     # 2. Небольшой разброс (разброс = 2)
     elif spread == 2:
-        result = round((min_level + avg_level) / 2)
-        logger.info(f"[CALC]   → Small spread, level={result}")
-        return result
+        # Взвешенное среднее: больше веса среднему, меньше минимуму
+        result = round(min_level * 0.3 + avg_level * 0.7)
+        logger.info(f"[LEVEL_CALC] ✓ Small spread (=2) → Level {result}")
+        return max(1, min(result, 9))
     
     # 3. Большой разброс (разброс > 2)
     else:
-        # Проверяем тренд
+        # Проверяем тренд (только если достаточно данных)
         if len(level_scores) >= 6:
             first_third = level_scores[:len(level_scores)//3]
             last_third = level_scores[-len(level_scores)//3:]
@@ -104,22 +109,227 @@ def calculate_thinking_level_advanced(level_scores):
             avg_first = sum(first_third) / len(first_third)
             avg_last = sum(last_third) / len(last_third)
             
-            logger.info(f"[CALC]   Trend check: first_avg={avg_first:.2f}, last_avg={avg_last:.2f}")
+            logger.info(f"[LEVEL_CALC] Trend: first={avg_first:.2f}, last={avg_last:.2f}")
             
+            # Если есть рост (последняя треть > первой на 1.5+)
             if avg_last > avg_first + 1.5:
-                # Есть рост → минимум + 1
                 result = min(min_level + 1, 9)
-                logger.info(f"[CALC]   → Growth trend detected, level={result}")
+                logger.info(f"[LEVEL_CALC] ✓ Growth trend → Level {result}")
                 return result
         
-        # Нет роста → минимум (консервативная оценка)
+        # Нет роста или мало данных → консервативная оценка (минимум)
         result = min_level
-        logger.info(f"[CALC]   → Large spread, conservative estimate, level={result}")
-        return result
+        logger.info(f"[LEVEL_CALC] ✓ Large spread, no growth → Level {result}")
+        return max(1, min(result, 9))
+
+
+def determine_dilts_level_smart(final_level, dilts_answers):
+    """
+    УМНОЕ определение уровня Дилтса с учётом уровня мышления
+    
+    Логика:
+    1. Подсчитываем частоту каждого уровня Дилтса
+    2. Применяем взвешенный подсчёт (иерархия важности)
+    3. КОРРЕКТИРУЕМ на основе уровня мышления:
+       - Уровни 1-2 → не могут иметь IDENTITY/VALUES (снижаем до BEHAVIOR/CAPABILITIES)
+       - Уровни 3-5 → могут иметь CAPABILITIES/VALUES
+       - Уровни 6-7 → могут иметь VALUES/IDENTITY
+       - Уровни 8-9 → могут иметь IDENTITY
+    
+    Returns:
+        str: Уровень Дилтса (ENVIRONMENT, BEHAVIOR, CAPABILITIES, VALUES, IDENTITY)
+    """
+    if not dilts_answers:
+        return "ENVIRONMENT"
+    
+    counter = Counter(dilts_answers)
+    logger.info(f"[DILTS_CALC] Raw counts: {dict(counter)}")
+    logger.info(f"[DILTS_CALC] Thinking level: {final_level}")
+    
+    # 1. Критическая проверка: IDENTITY (≥3 упоминания)
+    if counter.get("IDENTITY", 0) >= 3:
+        # Но только если уровень мышления позволяет
+        if final_level >= 8:
+            logger.info(f"[DILTS_CALC] ✓ Critical IDENTITY (level {final_level}≥8)")
+            return "IDENTITY"
+        else:
+            logger.info(f"[DILTS_CALC] ✗ IDENTITY blocked (level {final_level}<8) → downgrade to VALUES")
+            # Снижаем до VALUES
+            counter["VALUES"] = counter.get("VALUES", 0) + counter.get("IDENTITY", 0)
+            del counter["IDENTITY"]
+    
+    # 2. Критическая проверка: VALUES (≥3 упоминания)
+    if counter.get("VALUES", 0) >= 3:
+        # Только если уровень мышления позволяет
+        if final_level >= 6:
+            logger.info(f"[DILTS_CALC] ✓ Critical VALUES (level {final_level}≥6)")
+            return "VALUES"
+        else:
+            logger.info(f"[DILTS_CALC] ✗ VALUES blocked (level {final_level}<6) → downgrade to CAPABILITIES")
+            # Снижаем до CAPABILITIES
+            counter["CAPABILITIES"] = counter.get("CAPABILITIES", 0) + counter.get("VALUES", 0)
+            del counter["VALUES"]
+    
+    # 3. Взвешенный подсчёт
+    weighted_scores = {}
+    for level, count in counter.items():
+        weight = DILTS_HIERARCHY.get(level, 1)
+        weighted_scores[level] = count * weight
+    
+    logger.info(f"[DILTS_CALC] Weighted scores: {weighted_scores}")
+    
+    # Находим максимальный
+    result = max(weighted_scores, key=weighted_scores.get)
+    
+    # 4. ФИНАЛЬНАЯ КОРРЕКЦИЯ на основе уровня мышления
+    result = correct_dilts_by_level(result, final_level)
+    
+    logger.info(f"[DILTS_CALC] ✓ Final result: {result}")
+    return result
+
+
+def correct_dilts_by_level(dilts_level, thinking_level):
+    """
+    Корректирует уровень Дилтса на основе уровня мышления
+    
+    Правила:
+    - Уровни 1-2: максимум BEHAVIOR
+    - Уровни 3-5: максимум CAPABILITIES
+    - Уровни 6-7: максимум VALUES
+    - Уровни 8-9: любой уровень
+    """
+    # Иерархия Дилтса (от низшего к высшему)
+    hierarchy = ["ENVIRONMENT", "BEHAVIOR", "CAPABILITIES", "VALUES", "IDENTITY"]
+    
+    # Определяем максимально допустимый уровень Дилтса
+    if thinking_level <= 2:
+        max_allowed = "BEHAVIOR"
+    elif thinking_level <= 5:
+        max_allowed = "CAPABILITIES"
+    elif thinking_level <= 7:
+        max_allowed = "VALUES"
+    else:
+        max_allowed = "IDENTITY"
+    
+    # Если текущий уровень Дилтса выше допустимого → снижаем
+    if hierarchy.index(dilts_level) > hierarchy.index(max_allowed):
+        logger.info(f"[DILTS_CORRECT] {dilts_level} → {max_allowed} (level {thinking_level})")
+        return max_allowed
+    
+    return dilts_level
+
+
+def calculate_profile_code(perception_type, final_level, dilts_level):
+    """
+    ОПТИМИЗИРОВАННОЕ вычисление кода профиля
+    
+    Формат: TYPE_LEVEL_DILTS
+    Пример: SP_3_beh, IA_7_val
+    
+    Returns:
+        str: Код профиля (например, "SP_3_beh")
+    """
+    # Маппинг типов восприятия
+    type_map = {
+        "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": "SA",
+        "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ": "IA",
+        "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ": "SP",
+        "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ": "IP"
+    }
+    
+    # Маппинг уровней Дилтса
+    dilts_map = {
+        "ENVIRONMENT": "env",
+        "BEHAVIOR": "beh",
+        "CAPABILITIES": "cap",
+        "VALUES": "val",
+        "IDENTITY": "ide",
+        "MISSION": "mis"
+    }
+    
+    type_code = type_map.get(perception_type, "SA")
+    dilts_code = dilts_map.get(dilts_level, "env")
+    
+    profile_code = f"{type_code}_{final_level}_{dilts_code}"
+    
+    logger.info(f"[PROFILE_CODE] Type={perception_type} → {type_code}")
+    logger.info(f"[PROFILE_CODE] Level={final_level}")
+    logger.info(f"[PROFILE_CODE] Dilts={dilts_level} → {dilts_code}")
+    logger.info(f"[PROFILE_CODE] ✓ Final code: {profile_code}")
+    
+    return profile_code
+
+
+def validate_and_correct_profile(context_data):
+    """
+    ВАЛИДАЦИЯ и КОРРЕКЦИЯ профиля
+    
+    Проверяет логические противоречия и корректирует их:
+    1. Высокий уровень + низкий Дилтс → повышаем Дилтс
+    2. Низкий уровень + высокий Дилтс → понижаем Дилтс
+    3. Большой разброс между этапами → усредняем
+    
+    Returns:
+        dict: Скорректированные данные профиля
+    """
+    perception_type = context_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
+    final_level = context_data.get("final_level", 1)
+    dilts_level = context_data.get("dilts_level", "ENVIRONMENT")
+    
+    logger.info(f"[VALIDATION] Initial: type={perception_type}, level={final_level}, dilts={dilts_level}")
+    
+    warnings = []
+    corrected = False
+    
+    # Проверка 1: Высокий уровень (≥6) + ENVIRONMENT
+    if final_level >= 6 and dilts_level == "ENVIRONMENT":
+        warnings.append("High level + ENVIRONMENT → correcting to CAPABILITIES")
+        dilts_level = "CAPABILITIES"
+        corrected = True
+    
+    # Проверка 2: Низкий уровень (≤2) + высокий Дилтс (VALUES/IDENTITY)
+    if final_level <= 2 and dilts_level in ["VALUES", "IDENTITY"]:
+        warnings.append(f"Low level + {dilts_level} → correcting to BEHAVIOR")
+        dilts_level = "BEHAVIOR"
+        corrected = True
+    
+    # Проверка 3: Средний уровень (3-5) + IDENTITY
+    if 3 <= final_level <= 5 and dilts_level == "IDENTITY":
+        warnings.append("Mid level + IDENTITY → correcting to CAPABILITIES")
+        dilts_level = "CAPABILITIES"
+        corrected = True
+    
+    # Проверка 4: Разброс между этапами 2 и 3
+    stage2_level = context_data.get("thinking_level", final_level)
+    if abs(final_level - stage2_level) > 2:
+        warnings.append(f"Large discrepancy: Stage2={stage2_level}, Final={final_level}")
+        # Усредняем (но не корректируем, только предупреждаем)
+    
+    if warnings:
+        logger.warning(f"[VALIDATION] Warnings: {warnings}")
+        context_data["validation_warnings"] = warnings
+    
+    if corrected:
+        context_data["dilts_level"] = dilts_level
+        logger.info(f"[VALIDATION] ✓ Corrected: dilts={dilts_level}")
+    else:
+        logger.info(f"[VALIDATION] ✓ Profile OK")
+    
+    return context_data
+
+
+# ============================================
+# АДАПТИВНОСТЬ: УТОЧНЯЮЩИЕ ВОПРОСЫ
+# ============================================
 
 def need_clarification_stage2(level_scores, perception_type):
     """
     Решает, нужны ли уточняющие вопросы для ЭТАПА 2
+    
+    Критерии:
+    1. Разброс > 2 уровня
+    2. Много средних баллов (3-4)
+    3. Противоречивые ответы (первая половина ≠ вторая)
     
     Returns:
         (bool, list): (нужны ли вопросы, список индексов вопросов)
@@ -131,19 +341,19 @@ def need_clarification_stage2(level_scores, perception_type):
     max_level = max(level_scores)
     spread = max_level - min_level
     
-    logger.info(f"[STAGE2] Clarification check: spread={spread}")
+    logger.info(f"[STAGE2_CLARIFY] Spread={spread}, Scores={level_scores}")
     
     # Критерий 1: Большой разброс (> 2)
     if spread > 2:
         target_questions = select_clarifying_questions_stage2(level_scores, perception_type)
-        logger.info(f"[STAGE2]   → Large spread, need clarification: {target_questions}")
+        logger.info(f"[STAGE2_CLARIFY] ✓ Large spread → questions {target_questions}")
         return (True, target_questions)
     
     # Критерий 2: Много средних баллов (неопределённость)
     middle_scores = [s for s in level_scores if 3 <= s <= 4]
     if len(middle_scores) >= 5:
         target_questions = [0, 1, 2]  # Первые 3 вопроса
-        logger.info(f"[STAGE2]   → Many middle scores, need clarification: {target_questions}")
+        logger.info(f"[STAGE2_CLARIFY] ✓ Many middle scores → questions {target_questions}")
         return (True, target_questions)
     
     # Критерий 3: Противоречивые ответы
@@ -155,11 +365,12 @@ def need_clarification_stage2(level_scores, perception_type):
         
         if abs(avg_second - avg_first) > 2:
             target_questions = [3, 4, 5]  # Средние вопросы
-            logger.info(f"[STAGE2]   → Contradictory answers, need clarification: {target_questions}")
+            logger.info(f"[STAGE2_CLARIFY] ✓ Contradictory answers → questions {target_questions}")
             return (True, target_questions)
     
-    logger.info(f"[STAGE2]   → No clarification needed")
+    logger.info(f"[STAGE2_CLARIFY] ✗ No clarification needed")
     return (False, [])
+
 
 def select_clarifying_questions_stage2(level_scores, perception_type):
     """
@@ -172,40 +383,38 @@ def select_clarifying_questions_stage2(level_scores, perception_type):
     min_level = min(level_scores)
     max_level = max(level_scores)
     
-    # Подсчитываем частоту каждого уровня
     level_counts = Counter(level_scores)
     
-    # Определяем проблемные зоны
     low_levels = sum(1 for s in level_scores if s <= 2)
     high_levels = sum(1 for s in level_scores if s >= 5)
     
     selected = []
     
-    logger.info(f"[STAGE2] Question selection: low={low_levels}, high={high_levels}, counts={dict(level_counts)}")
+    logger.info(f"[STAGE2_SELECT] Low={low_levels}, High={high_levels}, Counts={dict(level_counts)}")
     
     # Зона 1: Низкие уровни (1-2)
     if low_levels >= 2:
-        selected.append(0)  # Вопрос для различения 1-2
+        selected.append(0)
     
     # Зона 2: Средне-низкие уровни (2-3)
     if level_counts.get(2, 0) >= 2 or level_counts.get(3, 0) >= 2:
-        selected.append(1)  # Вопрос для различения 2-3
+        selected.append(1)
     
     # Зона 3: Средние уровни (3-4)
     if level_counts.get(3, 0) >= 2 or level_counts.get(4, 0) >= 2:
-        selected.append(2)  # Вопрос для различения 3-4
+        selected.append(2)
     
     # Зона 4: Средне-высокие уровни (4-5)
     if level_counts.get(4, 0) >= 2 or level_counts.get(5, 0) >= 2:
-        selected.append(3)  # Вопрос для различения 4-5
+        selected.append(3)
     
     # Зона 5: Высокие уровни (5-6)
     if high_levels >= 2:
-        selected.append(4)  # Вопрос для различения 5-6
+        selected.append(4)
     
     # Зона 6: Очень высокие уровни (6+)
     if max_level >= 6:
-        selected.append(5)  # Вопрос для различения 6+
+        selected.append(5)
     
     # Если выбрано меньше 3 вопросов, добавляем универсальные
     if len(selected) < 3:
@@ -218,12 +427,15 @@ def select_clarifying_questions_stage2(level_scores, perception_type):
     # Ограничиваем до 4 вопросов
     selected = selected[:4]
     
-    logger.info(f"[STAGE2] Selected clarifying questions: {selected}")
+    logger.info(f"[STAGE2_SELECT] ✓ Selected questions: {selected}")
     return selected
+
 
 def need_clarification_stage3(stage2_level, stage3_scores):
     """
     Решает, нужны ли уточняющие вопросы для ЭТАПА 3
+    
+    Критерий: Расхождение > 2 уровня между ЭТАПОМ 2 и ЭТАПОМ 3
     
     Returns:
         (bool, list): (нужны ли вопросы, список индексов вопросов)
@@ -231,91 +443,20 @@ def need_clarification_stage3(stage2_level, stage3_scores):
     if len(stage3_scores) < 8:
         return (False, [])
     
-    stage3_level = calculate_thinking_level_advanced(stage3_scores)
+    stage3_level = calculate_thinking_level_optimized(stage3_scores)
     diff = abs(stage3_level - stage2_level)
     
-    logger.info(f"[STAGE3] Clarification check: stage2={stage2_level}, stage3={stage3_level}, diff={diff}")
+    logger.info(f"[STAGE3_CLARIFY] Stage2={stage2_level}, Stage3={stage3_level}, Diff={diff}")
     
     # Если расхождение > 2 уровня → нужны уточняющие вопросы
     if diff > 2:
-        # Выбираем 2-3 вопроса для уточнения
         selected = [0, 1, 2]  # Первые 3 уточняющих вопроса
-        logger.info(f"[STAGE3]   → Large discrepancy, need clarification: {selected}")
+        logger.info(f"[STAGE3_CLARIFY] ✓ Large discrepancy → questions {selected}")
         return (True, selected)
     
-    logger.info(f"[STAGE3]   → No clarification needed")
+    logger.info(f"[STAGE3_CLARIFY] ✗ No clarification needed")
     return (False, [])
 
-def calculate_dilts_level_weighted(dilts_answers):
-    """
-    Определяет уровень Дилтса с учётом иерархии важности
-    
-    Логика:
-    - IDENTITY (5 баллов) > VALUES (4) > CAPABILITIES (3) > BEHAVIOR (2) > ENVIRONMENT (1)
-    - Если есть ≥2 ответа IDENTITY → это главная проблема
-    - Иначе взвешенный подсчёт
-    """
-    if not dilts_answers:
-        return "ENVIRONMENT"
-    
-    counter = Counter(dilts_answers)
-    logger.info(f"[DILTS] Calculation: {dict(counter)}")
-    
-    # Критическая проверка: IDENTITY
-    if counter.get("IDENTITY", 0) >= 2:
-        logger.info(f"[DILTS]   → Critical level: IDENTITY")
-        return "IDENTITY"
-    
-    # Критическая проверка: VALUES
-    if counter.get("VALUES", 0) >= 3:
-        logger.info(f"[DILTS]   → Critical level: VALUES")
-        return "VALUES"
-    
-    # Взвешенный подсчёт
-    weighted_scores = {}
-    for level, count in counter.items():
-        weight = DILTS_HIERARCHY.get(level, 1)
-        weighted_scores[level] = count * weight
-    
-    result = max(weighted_scores, key=weighted_scores.get)
-    logger.info(f"[DILTS]   → Weighted result: {result} (scores: {weighted_scores})")
-    return result
-
-def validate_profile(context_data):
-    """
-    Валидация согласованности профиля
-    
-    Проверяет логические противоречия:
-    - Высокий уровень + низкий Дилтс
-    - Низкий уровень + высокий Дилтс
-    - Несоответствие типа и уровня
-    """
-    perception_type = context_data.get("perception_type", "")
-    final_level = context_data.get("final_level", 1)
-    dilts_level = context_data.get("dilts_level", "ENVIRONMENT")
-    
-    warnings = []
-    
-    # Проверка 1: Высокий уровень + ENVIRONMENT
-    if final_level >= 6 and dilts_level == "ENVIRONMENT":
-        warnings.append("High level + ENVIRONMENT (unusual)")
-    
-    # Проверка 2: Низкий уровень + IDENTITY
-    if final_level <= 2 and dilts_level == "IDENTITY":
-        warnings.append("Low level + IDENTITY (unusual)")
-    
-    # Проверка 3: Разброс между этапами
-    stage2_level = context_data.get("thinking_level", 1)
-    if abs(final_level - stage2_level) > 2:
-        warnings.append(f"Large discrepancy: Stage2={stage2_level}, Final={final_level}")
-    
-    if warnings:
-        logger.warning(f"[VALIDATION] Profile warnings: {warnings}")
-        context_data["validation_warnings"] = warnings
-        return False
-    
-    logger.info(f"[VALIDATION] Profile OK")
-    return True
 
 # ============================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -328,6 +469,7 @@ def calculate_progress(current: int, total: int) -> str:
     bar = "▓" * filled + "░" * (10 - filled)
     return f"{bar} {progress}%\nПройдено: {current}/{total}"
 
+
 def determine_perception_type(scores):
     """Определяет тип восприятия по баллам"""
     focus = "EXTERNAL" if scores.get("EXTERNAL", 0) > scores.get("INTERNAL", 0) else "INTERNAL"
@@ -335,49 +477,15 @@ def determine_perception_type(scores):
     
     type_data = PERCEPTION_TYPES.get((focus, anxiety), PERCEPTION_TYPES[("EXTERNAL", "SYMBOLIC")])
     
-    logger.info(f"[PERCEPTION] Type: focus={focus}, anxiety={anxiety}, type={type_data['name']}")
+    logger.info(f"[PERCEPTION] Focus={focus}, Anxiety={anxiety} → Type={type_data['name']}")
     return type_data["name"]
 
-def get_type_code(perception_type: str) -> str:
-    """Возвращает код типа (SA/IA/SP/IP)"""
-    type_map = {
-        "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": "SA",
-        "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ": "IA",
-        "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ": "SP",
-        "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ": "IP"
-    }
-    return type_map.get(perception_type, "SA")
-
-def get_dilts_code(dilts_level: str) -> str:
-    """Возвращает код уровня Дилтса"""
-    dilts_map = {
-        "ENVIRONMENT": "env",
-        "BEHAVIOR": "beh",
-        "CAPABILITIES": "cap",
-        "VALUES": "val",
-        "IDENTITY": "ide",
-        "MISSION": "mis"
-    }
-    return dilts_map.get(dilts_level, "env")
-
-def calculate_profile_key(context_data: dict) -> str:
-    """Определяет ключ профиля в формате 'SA_1_env'"""
-    perception_type = context_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
-    type_code = get_type_code(perception_type)
-    
-    level = context_data.get("final_level", 1)
-    
-    dilts_level = context_data.get("dilts_level", "ENVIRONMENT")
-    dilts_code = get_dilts_code(dilts_level)
-    
-    profile_key = f"{type_code}_{level}_{dilts_code}"
-    logger.info(f"[PROFILE] Key: {profile_key}")
-    return profile_key
 
 def log_user_data(user_id, stage, data):
     """Детальное логирование данных пользователя"""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     logger.info(f"[{timestamp}] User {user_id} | {stage} | {data}")
+
 
 # ============================================
 # КОМАНДЫ БОТА
@@ -412,6 +520,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
 
+
 async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало теста"""
     query = update.callback_query
@@ -442,6 +551,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     return await show_stage_1_intro(update, context)
 
+
 # ============================================
 # ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
 # ============================================
@@ -466,6 +576,7 @@ async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     await query.edit_message_text(intro_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_1
+
 
 async def show_stage_1_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Детали ЭТАПА 1"""
@@ -492,9 +603,11 @@ async def show_stage_1_details(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text(details_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_1
 
+
 async def back_to_stage1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к экрану ЭТАПА 1"""
     return await show_stage_1_intro(update, context)
+
 
 async def start_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало ЭТАПА 1"""
@@ -505,6 +618,7 @@ async def start_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_user_data(update.effective_user.id, "STAGE1_START", {})
     
     return await ask_stage_1_question(update, context)
+
 
 async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт вопрос ЭТАПА 1"""
@@ -536,6 +650,7 @@ async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(question_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_1
+
 
 async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ответа ЭТАПА 1"""
@@ -579,6 +694,7 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
     finally:
         context.user_data["processing"] = False
 
+
 async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Завершение ЭТАПА 1"""
     query = update.callback_query
@@ -607,6 +723,7 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(result_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_2
 
+
 # ============================================
 # ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ (АДАПТИВНЫЙ)
 # ============================================
@@ -633,6 +750,7 @@ async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     await query.edit_message_text(intro_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_2
+
 
 async def show_stage_2_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Детали ЭТАПА 2"""
@@ -661,9 +779,11 @@ async def show_stage_2_details(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text(details_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_2
 
+
 async def back_to_stage2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к экрану ЭТАПА 2"""
     return await show_stage_2_intro(update, context)
+
 
 async def start_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало ЭТАПА 2"""
@@ -675,6 +795,7 @@ async def start_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_user_data(update.effective_user.id, "STAGE2_START", {})
     
     return await ask_stage_2_question(update, context)
+
 
 async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт вопрос ЭТАПА 2 (с адаптивностью)"""
@@ -752,6 +873,7 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text(question_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_2
 
+
 async def show_stage_2_clarifying_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Переходный экран перед уточняющими вопросами ЭТАПА 2"""
     query = update.callback_query
@@ -771,12 +893,14 @@ async def show_stage_2_clarifying_intro(update: Update, context: ContextTypes.DE
     await query.edit_message_text(intro_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_2
 
+
 async def continue_stage_2_clarifying(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Продолжение после переходного экрана"""
     query = update.callback_query
     await query.answer()
     
     return await ask_stage_2_question(update, context)
+
 
 async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ответа ЭТАПА 2"""
@@ -830,12 +954,13 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
     finally:
         context.user_data["processing"] = False
 
+
 async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Завершение ЭТАПА 2"""
     query = update.callback_query
     
     level_scores = context.user_data.get("stage2_level_scores", [])
-    thinking_level = calculate_thinking_level_advanced(level_scores)
+    thinking_level = calculate_thinking_level_optimized(level_scores)
     context.user_data["thinking_level"] = thinking_level
     
     log_user_data(
@@ -857,6 +982,7 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(result_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_3
+
 
 # ============================================
 # ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ (АДАПТИВНЫЙ)
@@ -885,6 +1011,7 @@ async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.edit_message_text(intro_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_3
 
+
 async def show_stage_3_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Детали ЭТАПА 3"""
     query = update.callback_query
@@ -905,9 +1032,11 @@ async def show_stage_3_details(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text(details_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_3
 
+
 async def back_to_stage3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к экрану ЭТАПА 3"""
     return await show_stage_3_intro(update, context)
+
 
 async def start_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало ЭТАПА 3"""
@@ -919,6 +1048,7 @@ async def start_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_user_data(update.effective_user.id, "STAGE3_START", {})
     
     return await ask_stage_3_question(update, context)
+
 
 async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт вопрос ЭТАПА 3 (с адаптивностью)"""
@@ -996,6 +1126,7 @@ async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text(question_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_3
 
+
 async def show_stage_3_clarifying_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Переходный экран перед уточняющими вопросами ЭТАПА 3"""
     query = update.callback_query
@@ -1015,12 +1146,14 @@ async def show_stage_3_clarifying_intro(update: Update, context: ContextTypes.DE
     await query.edit_message_text(intro_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_3
 
+
 async def continue_stage_3_clarifying(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Продолжение после переходного экрана"""
     query = update.callback_query
     await query.answer()
     
     return await ask_stage_3_question(update, context)
+
 
 async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ответа ЭТАПА 3"""
@@ -1073,6 +1206,7 @@ async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TY
     finally:
         context.user_data["processing"] = False
 
+
 async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Завершение ЭТАПА 3"""
     query = update.callback_query
@@ -1080,7 +1214,7 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Корректировка уровня на основе поведенческих паттернов
     stage2_level = context.user_data.get("thinking_level", 1)
     stage3_scores = context.user_data.get("stage3_level_scores", [])
-    stage3_level = calculate_thinking_level_advanced(stage3_scores)
+    stage3_level = calculate_thinking_level_optimized(stage3_scores)
     
     # Если расхождение больше 1 уровня, корректируем
     if abs(stage3_level - stage2_level) > 1:
@@ -1111,6 +1245,7 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(result_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_4
 
+
 # ============================================
 # ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
 # ============================================
@@ -1137,6 +1272,7 @@ async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.edit_message_text(intro_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_4
 
+
 async def show_stage_4_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Детали ЭТАПА 4"""
     query = update.callback_query
@@ -1162,9 +1298,11 @@ async def show_stage_4_details(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text(details_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_4
 
+
 async def back_to_stage4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к экрану ЭТАПА 4"""
     return await show_stage_4_intro(update, context)
+
 
 async def start_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало ЭТАПА 4"""
@@ -1175,6 +1313,7 @@ async def start_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_user_data(update.effective_user.id, "STAGE4_START", {})
     
     return await ask_stage_4_question(update, context)
+
 
 async def ask_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт вопрос ЭТАПА 4"""
@@ -1206,6 +1345,7 @@ async def ask_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(question_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_4
+
 
 async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ответа ЭТАПА 4"""
@@ -1248,12 +1388,16 @@ async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TY
     finally:
         context.user_data["processing"] = False
 
+
 async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Завершение ЭТАПА 4 и показ результата"""
     query = update.callback_query
     
     dilts_answers = context.user_data.get("stage4_dilts_answers", [])
-    dilts_level = calculate_dilts_level_weighted(dilts_answers)
+    final_level = context.user_data.get("final_level", 1)
+    
+    # УМНОЕ определение уровня Дилтса с учётом уровня мышления
+    dilts_level = determine_dilts_level_smart(final_level, dilts_answers)
     context.user_data["dilts_level"] = dilts_level
     
     log_user_data(
@@ -1262,17 +1406,18 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
         {"dilts_answers": dilts_answers, "dilts_level": dilts_level}
     )
     
-    # Валидация профиля
-    validate_profile(context.user_data)
+    # Валидация и коррекция профиля
+    context.user_data = validate_and_correct_profile(context.user_data)
     
     return await show_result(update, context)
+
 
 # ============================================
 # РЕЗУЛЬТАТ
 # ============================================
 
 async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показ финального результата с использованием генератора контента"""
+    """Показ финального результата с использованием card_data.py"""
     query = update.callback_query
     
     # Получаем данные профиля
@@ -1280,28 +1425,26 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     final_level = context.user_data.get("final_level", 1)
     dilts_level = context.user_data.get("dilts_level", "ENVIRONMENT")
     
-    # Вычисляем ключ профиля
-    profile_key = calculate_profile_key(context.user_data)
-    type_code = get_type_code(perception_type)
-    dilts_code = get_dilts_code(dilts_level)
+    # Вычисляем код профиля
+    profile_code = calculate_profile_code(perception_type, final_level, dilts_level)
     
-    # ГЕНЕРИРУЕМ КОНТЕНТ ЧЕРЕЗ ГЕНЕРАТОР
+    # ПОЛУЧАЕМ ОПИСАНИЕ ИЗ CARD_DATA.PY
     try:
-        profile_data = generate_profile(type_code, final_level, dilts_code)
+        profile_description = get_profile_description(profile_code)
     except Exception as e:
-        logger.error(f"Error generating profile: {e}")
+        logger.error(f"Error getting profile description: {e}")
         await query.edit_message_text(
-            "⚠️ Произошла ошибка при генерации профиля. Попробуй начать заново: /start"
+            "⚠️ Произошла ошибка при получении описания профиля. Попробуй начать заново: /start"
         )
         return ConversationHandler.END
     
-    # Получаем описания для итогового экрана
+    # Получаем описание уровня Дилтса
     dilts_info = DILTS_LEVELS.get(dilts_level, DILTS_LEVELS["ENVIRONMENT"])
     
     log_user_data(
         update.effective_user.id, 
         "RESULT_SHOWN", 
-        {"profile_key": profile_key, "final_level": final_level, "dilts_level": dilts_level}
+        {"profile_code": profile_code, "final_level": final_level, "dilts_level": dilts_level}
     )
     
     # ФОРМИРУЕМ ИТОГОВЫЙ ЭКРАН
@@ -1309,16 +1452,14 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎉 <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"<b>📊 ТВОЙ ПРОФИЛЬ:</b>\n\n"
-        f"<b>🎯 Тип восприятия:</b>\n{perception_type}\n\n"
-        f"<b>📖 КТО ТЫ:</b>\n\n"
-        f"{profile_data['who']}\n\n"
+        f"{profile_description}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"<b>🎪 Проблемный уровень:</b>\n{dilts_info['name']}\n"
         f"<i>{dilts_info['description']}</i>\n\n"
         f"<b>🚀 ВЕКТОР РАЗВИТИЯ:</b>\n"
         f"{dilts_info['solution']}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"<b>🔑 Код профиля:</b> <code>{profile_key}</code>\n\n"
+        f"<b>🔑 Код профиля:</b> <code>{profile_code}</code>\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📚 <b>РАБОЧИЙ ИНСТРУМЕНТ КОРРЕКЦИИ</b>\n\n"
         f"💡 Твой инструмент который корректирует конфигурацию поведения, на уровне конфигурации мышления – это метафорическая форма (ссылка на сказку внизу экрана).\n\n"
@@ -1337,7 +1478,7 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📖 Читать сказку", url=story_link)],
         [InlineKeyboardButton("💳 Получить полный пакет (960 ₽)", url="https://t.me/meysternlp")],
-        [InlineKeyboardButton("🎁 Поделиться тестом и получить подарок", url=f"https://t.me/share/url?url={bot_link}&text=Пройди тест и узнай свой психотип!")],
+        [InlineKeyboardButton("🎁 Поделиться тестом", url=f"https://t.me/share/url?url={bot_link}&text=Пройди тест и узнай свой психотип!")],
         [InlineKeyboardButton("🔄 Пройти заново", callback_data="start_test")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1354,6 +1495,7 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     return ConversationHandler.END
 
+
 # ============================================
 # СЛУЖЕБНЫЕ ФУНКЦИИ
 # ============================================
@@ -1369,6 +1511,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     return ConversationHandler.END
 
+
 async def timeout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка таймаута"""
     if update.effective_message:
@@ -1378,6 +1521,7 @@ async def timeout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     context.user_data.clear()
     return ConversationHandler.END
+
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     """Глобальный обработчик ошибок"""
@@ -1393,6 +1537,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     
     if hasattr(context, 'user_data') and context.user_data:
         context.user_data.clear()
+
 
 # ============================================
 # MAIN
@@ -1454,8 +1599,9 @@ def main():
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
     
-    logger.info("✅ Бот запущен! (Адаптивная версия 2.0)")
+    logger.info("✅ Бот запущен! (Версия 3.0 - Оптимизированный алгоритм)")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
+
 
 if __name__ == "__main__":
     main()
