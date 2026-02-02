@@ -33,11 +33,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Состояния разговора
-(STAGE_1_INTRO, STAGE_1_QUESTIONS,
- STAGE_2_INTRO, STAGE_2_QUESTIONS,
- STAGE_3_INTRO, STAGE_3_QUESTIONS,
- STAGE_4_INTRO, STAGE_4_QUESTIONS) = range(8)
+# Состояния разговора (ДОЛЖНЫ БЫТЬ ЦЕЛЫМИ ЧИСЛАМИ!)
+STAGE_1_INTRO = 0
+STAGE_1_QUESTIONS = 1
+STAGE_2_INTRO = 2
+STAGE_2_QUESTIONS = 3
+STAGE_3_INTRO = 4
+STAGE_3_QUESTIONS = 5
+STAGE_4_INTRO = 6
+STAGE_4_QUESTIONS = 7
 
 # Константы для типов мышления
 TYPE_CODES = {
@@ -1355,36 +1359,9 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
-async def timeout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик таймаута"""
-    await update.message.reply_text(
-        "⏰ Время сессии истекло. Используй /start для начала заново."
-    )
-    return ConversationHandler.END
-
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик ошибок"""
     logger.error(f"Update {update} caused error {context.error}")
-
-# ========================================
-# ОБРАБОТЧИКИ ДЛЯ НАВИГАЦИИ НАЗАД
-# ========================================
-
-async def back_to_stage1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат к введению этапа 1"""
-    return await start_test(update, context)
-
-async def back_to_stage2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат к введению этапа 2"""
-    return await finish_stage_1(update, context)
-
-async def back_to_stage3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат к введению этапа 3"""
-    return await finish_stage_2(update, context)
-
-async def back_to_stage4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат к введению этапа 4"""
-    return await finish_stage_3(update, context)
 
 # ========================================
 # ГЛАВНАЯ ФУНКЦИЯ
@@ -1395,20 +1372,20 @@ def main():
     
     # ✅ ПРОВЕРКА НАЛИЧИЯ ВСЕХ ПРОФИЛЕЙ
     check_result = check_all_profiles_exist()
-    logger.info(f"📊 Profile database status:")
-    logger.info(f"   Total profiles: {check_result['total']}")
-    logger.info(f"   Existing: {check_result['existing']}")
-    logger.info(f"   Missing: {check_result['missing']}")
+    logger.info(f"📊 Статус базы данных профиля:")
+    logger.info(f"   Всего профилей: {check_result['total']}")
+    logger.info(f"   Доступно: {check_result['existing']}")
+    logger.info(f"   Отсутствует: {check_result['missing']}")
     
     if not check_result['is_complete']:
-        logger.warning(f"⚠️ Only {check_result['existing']}/{check_result['total']} profiles available")
+        logger.warning(f"⚠️ Доступно только {check_result['existing']}/{check_result['total']} профилей")
     else:
-        logger.info(f"✅ All {check_result['existing']} profiles loaded successfully!")
+        logger.info(f"✅ Все {check_result['existing']} профилей загружены успешно!")
     
     # Получаем токен из переменных окружения
     token = os.getenv('TELEGRAM_BOT_TOKEN')
     if not token:
-        logger.error("❌ TELEGRAM_BOT_TOKEN not found in environment variables!")
+        logger.error("❌ TELEGRAM_BOT_TOKEN не найден в переменных окружения!")
         return
     
     # Создаем приложение
@@ -1428,24 +1405,21 @@ def main():
                 CallbackQueryHandler(handle_stage_1_answer, pattern="^stage1_")
             ],
             STAGE_2_INTRO: [
-                CallbackQueryHandler(start_stage_2, pattern="^start_stage_2$"),
-                CallbackQueryHandler(back_to_stage1_intro, pattern="^back_to_stage1_intro$")
+                CallbackQueryHandler(start_stage_2, pattern="^start_stage_2$")
             ],
             STAGE_2_QUESTIONS: [
                 CallbackQueryHandler(show_stage_2_question, pattern="^show_stage_2_question$"),
                 CallbackQueryHandler(handle_stage_2_answer, pattern="^stage2_")
             ],
             STAGE_3_INTRO: [
-                CallbackQueryHandler(start_stage_3, pattern="^start_stage_3$"),
-                CallbackQueryHandler(back_to_stage2_intro, pattern="^back_to_stage2_intro$")
+                CallbackQueryHandler(start_stage_3, pattern="^start_stage_3$")
             ],
             STAGE_3_QUESTIONS: [
                 CallbackQueryHandler(show_stage_3_question, pattern="^show_stage_3_question$"),
                 CallbackQueryHandler(handle_stage_3_answer, pattern="^stage3_")
             ],
             STAGE_4_INTRO: [
-                CallbackQueryHandler(start_stage_4, pattern="^start_stage_4$"),
-                CallbackQueryHandler(back_to_stage3_intro, pattern="^back_to_stage3_intro$")
+                CallbackQueryHandler(start_stage_4, pattern="^start_stage_4$")
             ],
             STAGE_4_QUESTIONS: [
                 CallbackQueryHandler(show_stage_4_question, pattern="^show_stage_4_question$"),
