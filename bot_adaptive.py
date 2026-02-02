@@ -1963,10 +1963,7 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.message.reply_text(
-        "Что дальше?",
-        reply_markup=reply_markup
-    )
+    await query.message.reply_text("", reply_markup=reply_markup)
     
     # Сохраняем состояние для подтверждения шаринга
     context.user_data["awaiting_share_confirm"] = True
