@@ -7,7 +7,7 @@
 3. Конфигурация поведенческих паттернов (8 вопросов) → уточнение уровня
 4. Конфликт логических уровней (8 вопросов) → 5 уровней Дилтса
 
-ИТОГО: 36 профилей (4 типа × 9 уровней, распределённых по 5 уровням Дилтса)
+ИТОГО: 36 профилей (4 типа × 9 уровней)
 """
 
 import logging
@@ -27,9 +27,9 @@ from telegram.ext import (
 )
 
 # ============================================
-# ИМПОРТ ГОТОВЫХ ПРОФИЛЕЙ
+# ✅ ИСПРАВЛЕННЫЙ ИМПОРТ
 # ============================================
-from card_data import get_profile_description, check_all_profiles_exist, PROFILE_CARDS
+from card_data import get_card_description, profile_exists, CARD_DATA
 
 # Получение токена из переменной окружения
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -828,7 +828,7 @@ CLARIFICATION_QUESTIONS = {
 }
 
 # ============================================
-# ✅ НОВЫЙ АЛГОРИТМ ОПРЕДЕЛЕНИЯ ПРОФИЛЯ
+# ✅ АЛГОРИТМ ОПРЕДЕЛЕНИЯ ПРОФИЛЯ
 # ============================================
 
 def calculate_progress(current: int, total: int) -> str:
@@ -839,37 +839,20 @@ def calculate_progress(current: int, total: int) -> str:
     return f"{bar} {progress}%\nПройдено: {current}/{total}"
 
 def determine_perception_type(scores):
-    """✅ ИСПРАВЛЕНО: Определяет тип восприятия с обработкой равенства"""
+    """✅ Определяет тип восприятия"""
     external = scores.get("EXTERNAL", 0)
     internal = scores.get("INTERNAL", 0)
     symbolic = scores.get("SYMBOLIC", 0)
     material = scores.get("MATERIAL", 0)
     
-    # Определяем фокус (с приоритетом EXTERNAL при равенстве)
-    if external > internal:
-        focus = "EXTERNAL"
-    elif internal > external:
-        focus = "INTERNAL"
-    else:
-        # Равенство - нужно уточнение, но пока берём EXTERNAL
-        focus = "EXTERNAL"
-        logger.warning(f"Equal EXTERNAL/INTERNAL scores: {external}. Defaulting to EXTERNAL.")
-    
-    # Определяем тревогу (с приоритетом SYMBOLIC при равенстве)
-    if symbolic > material:
-        anxiety = "SYMBOLIC"
-    elif material > symbolic:
-        anxiety = "MATERIAL"
-    else:
-        # Равенство - нужно уточнение, но пока берём SYMBOLIC
-        anxiety = "SYMBOLIC"
-        logger.warning(f"Equal SYMBOLIC/MATERIAL scores: {symbolic}. Defaulting to SYMBOLIC.")
+    focus = "EXTERNAL" if external >= internal else "INTERNAL"
+    anxiety = "SYMBOLIC" if symbolic >= material else "MATERIAL"
     
     type_data = PERCEPTION_TYPES.get((focus, anxiety), PERCEPTION_TYPES[("EXTERNAL", "SYMBOLIC")])
     return type_data["name"]
 
 def calculate_thinking_level_optimized(level_scores):
-    """✅ ОПТИМИЗИРОВАННЫЙ: Определяет уровень мышления (1-9)"""
+    """✅ Определяет уровень мышления (1-9)"""
     if not level_scores:
         return 1
     
@@ -895,39 +878,28 @@ def calculate_thinking_level_optimized(level_scores):
         return 9
 
 def determine_dilts_level(dilts_answers):
-    """✅ ИСПРАВЛЕНО: Простая мода без ограничений"""
+    """✅ Определяет уровень Дилтса"""
     if not dilts_answers:
         return "ENVIRONMENT"
     
     counter = Counter(dilts_answers)
     most_common = counter.most_common(1)[0]
-    
-    # Проверка на равенство (если есть несколько с одинаковым количеством)
-    max_count = most_common[1]
-    tied_levels = [level for level, count in counter.items() if count == max_count]
-    
-    if len(tied_levels) > 1:
-        logger.warning(f"Tied Dilts levels: {tied_levels}. Taking first: {most_common[0]}")
-    
     return most_common[0]
 
 def calculate_final_level(stage2_level, stage3_scores):
-    """✅ ИСПРАВЛЕНО: Приоритет stage3 (поведение) над stage2 (самооценка)"""
+    """✅ Финальный уровень (приоритет поведению)"""
     if not stage3_scores:
         return stage2_level
     
     stage3_avg = sum(stage3_scores) / len(stage3_scores)
-    
-    # Приоритет поведению: 70% stage3, 30% stage2
     final = stage3_avg * 0.7 + stage2_level * 0.3
     final_level = max(1, min(9, round(final)))
     
-    logger.info(f"Final level calculation: stage2={stage2_level}, stage3_avg={stage3_avg:.2f}, final={final_level}")
-    
+    logger.info(f"Final level: stage2={stage2_level}, stage3_avg={stage3_avg:.2f}, final={final_level}")
     return final_level
 
 def get_type_code(perception_type: str) -> str:
-    """Возвращает код типа (SA/IA/SP/IP) по названию"""
+    """Код типа (SA/IA/SP/IP)"""
     type_map = {
         "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": "SA",
         "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ": "IA",
@@ -937,7 +909,7 @@ def get_type_code(perception_type: str) -> str:
     return type_map.get(perception_type, "SA")
 
 def get_dilts_code(dilts_level: str) -> str:
-    """Возвращает код Дилтса (env/beh/cap/val/ide)"""
+    """Код Дилтса"""
     dilts_map = {
         "ENVIRONMENT": "env",
         "BEHAVIOR": "beh",
@@ -949,51 +921,50 @@ def get_dilts_code(dilts_level: str) -> str:
 
 def find_best_matching_profile(type_code: str, user_level: int, dilts_code: str) -> str:
     """
-    ✅ НОВАЯ ФУНКЦИЯ: Ищет наиболее подходящий профиль из 36 существующих
+    ✅ Ищет наиболее подходящий профиль из 36
     
-    Приоритет поиска:
+    Приоритет:
     1. Точное совпадение (type_level_dilts)
     2. Тот же тип + уровень, другой Дилтс
-    3. Тот же тип, ближайший уровень (±1), любой Дилтс
-    4. Тот же тип, любой уровень, любой Дилтс (fallback)
+    3. Тот же тип, ближайший уровень (±1)
+    4. Fallback: первый профиль типа
     """
     # 1. Точное совпадение
     exact_key = f"{type_code}_{user_level}_{dilts_code}"
-    if exact_key in PROFILE_CARDS:
-        logger.info(f"✅ Exact match found: {exact_key}")
+    if exact_key in CARD_DATA:
+        logger.info(f"✅ Exact match: {exact_key}")
         return exact_key
     
     # 2. Тот же тип + уровень, другой Дилтс
     for dilts in ["env", "beh", "cap", "val", "ide"]:
         candidate = f"{type_code}_{user_level}_{dilts}"
-        if candidate in PROFILE_CARDS:
-            logger.info(f"✅ Same type+level, different dilts: {candidate}")
+        if candidate in CARD_DATA:
+            logger.info(f"✅ Same type+level: {candidate}")
             return candidate
     
-    # 3. Тот же тип, ближайший уровень (±1), любой Дилтс
-    for level_offset in [1, -1, 2, -2]:
-        candidate_level = user_level + level_offset
-        if 1 <= candidate_level <= 9:
+    # 3. Ближайший уровень
+    for offset in [1, -1, 2, -2]:
+        level = user_level + offset
+        if 1 <= level <= 9:
             for dilts in ["env", "beh", "cap", "val", "ide"]:
-                candidate = f"{type_code}_{candidate_level}_{dilts}"
-                if candidate in PROFILE_CARDS:
-                    logger.info(f"✅ Same type, nearby level: {candidate}")
+                candidate = f"{type_code}_{level}_{dilts}"
+                if candidate in CARD_DATA:
+                    logger.info(f"✅ Nearby level: {candidate}")
                     return candidate
     
-    # 4. Fallback: первый профиль этого типа
+    # 4. Fallback
     for level in range(1, 10):
         for dilts in ["env", "beh", "cap", "val", "ide"]:
             candidate = f"{type_code}_{level}_{dilts}"
-            if candidate in PROFILE_CARDS:
-                logger.warning(f"⚠️ Fallback to first profile of type: {candidate}")
+            if candidate in CARD_DATA:
+                logger.warning(f"⚠️ Fallback: {candidate}")
                 return candidate
     
-    # 5. Критическая ошибка: профиль не найден
-    logger.error(f"❌ No profile found for type={type_code}, level={user_level}, dilts={dilts_code}")
-    return f"{type_code}_1_env"  # Дефолтный профиль
+    logger.error(f"❌ No profile found: {type_code}_{user_level}_{dilts_code}")
+    return f"{type_code}_1_env"
 
 def calculate_profile_key(context_data: dict) -> str:
-    """✅ ГЛАВНАЯ ФУНКЦИЯ: Определяет ключ профиля с поиском ближайшего"""
+    """✅ ГЛАВНАЯ ФУНКЦИЯ: определяет ключ профиля"""
     perception_type = context_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
     type_code = get_type_code(perception_type)
     
@@ -1002,71 +973,56 @@ def calculate_profile_key(context_data: dict) -> str:
     dilts_level = context_data.get("dilts_level", "ENVIRONMENT")
     dilts_code = get_dilts_code(dilts_level)
     
-    # Ищем наиболее подходящий профиль
     profile_key = find_best_matching_profile(type_code, level, dilts_code)
     
-    logger.info(f"✅ Profile selected: {profile_key} (requested: {type_code}_{level}_{dilts_code})")
+    logger.info(f"✅ Profile: {profile_key} (requested: {type_code}_{level}_{dilts_code})")
     return profile_key
 
 # ============================================
-# ФУНКЦИИ ПРОВЕРКИ НЕОБХОДИМОСТИ УТОЧНЕНИЙ
+# ПРОВЕРКИ УТОЧНЕНИЙ
 # ============================================
 
 def need_clarification_stage1(scores):
-    """Проверяет, нужны ли уточняющие вопросы после ЭТАПА 1"""
+    """Нужны ли уточнения после ЭТАПА 1"""
     external = scores.get("EXTERNAL", 0)
     internal = scores.get("INTERNAL", 0)
     symbolic = scores.get("SYMBOLIC", 0)
     material = scores.get("MATERIAL", 0)
     
-    # Проверка равенства или близости (разница ≤ 2)
-    needs_external_internal = abs(external - internal) <= 2
-    needs_symbolic_material = abs(symbolic - material) <= 2
-    
     clarifications = []
-    if needs_external_internal:
+    if abs(external - internal) <= 2:
         clarifications.append("external_internal")
-    if needs_symbolic_material:
+    if abs(symbolic - material) <= 2:
         clarifications.append("symbolic_material")
     
     return clarifications
 
 def need_clarification_stage2(level_scores):
-    """Проверяет, нужны ли уточняющие вопросы после ЭТАПА 2"""
+    """Нужны ли уточнения после ЭТАПА 2"""
     if not level_scores:
         return False
-    
     avg = sum(level_scores) / len(level_scores)
-    
-    # Уточнение нужно, если средний уровень в "серой зоне" (3.5-5.5)
     return 3.5 <= avg <= 5.5
 
 def need_clarification_stage3(stage2_level, stage3_scores):
-    """Проверяет, нужны ли уточняющие вопросы после ЭТАПА 3"""
+    """Нужны ли уточнения после ЭТАПА 3"""
     if not stage3_scores:
         return False
-    
     stage3_avg = sum(stage3_scores) / len(stage3_scores)
-    
-    # Уточнение нужно, если расхождение между этапами > 2
     return abs(stage2_level - stage3_avg) > 2
 
 def need_clarification_stage4(dilts_answers):
-    """Проверяет, нужны ли уточняющие вопросы после ЭТАПА 4"""
+    """Нужны ли уточнения после ЭТАПА 4"""
     if not dilts_answers:
         return False
-    
     counter = Counter(dilts_answers)
     most_common = counter.most_common(2)
-    
-    # Уточнение нужно, если есть равенство (2+ уровня с одинаковым количеством)
     if len(most_common) >= 2:
         return most_common[0][1] == most_common[1][1]
-    
     return False
 
 # ============================================
-# КОМАНДЫ БОТА (БЕЗ ИЗМЕНЕНИЙ)
+# КОМАНДЫ БОТА
 # ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1098,12 +1054,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
 
 async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало теста - показ экрана ЭТАПА 1"""
+    """Начало теста"""
     query = update.callback_query
     await query.answer()
     
     context.user_data.clear()
-    
     context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
     context.user_data["stage1_current"] = 0
     context.user_data["stage2_level_scores"] = []
@@ -1116,7 +1071,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_stage_1_intro(update, context)
 
 # ============================================
-# ЭКРАНЫ ПЕРЕД ЭТАПАМИ (БЕЗ ИЗМЕНЕНИЙ)
+# ЭКРАНЫ ПЕРЕД ЭТАПАМИ
 # ============================================
 
 async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1179,20 +1134,17 @@ async def start_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     context.user_data["stage1_current"] = 0
-    
     return await ask_stage_1_question(update, context)
 
 async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт вопрос ЭТАПА 1"""
     query = update.callback_query
-    
     current = context.user_data.get("stage1_current", 0)
     
     if current >= len(STAGE_1_QUESTIONS):
         return await finish_stage_1(update, context)
     
     question = STAGE_1_QUESTIONS[current]
-    
     progress = calculate_progress(current + 1, len(STAGE_1_QUESTIONS))
     
     question_text = (
@@ -1252,29 +1204,24 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ ИСПРАВЛЕНО: Завершение ЭТАПА 1 с проверкой на уточнения"""
+    """✅ Завершение ЭТАПА 1"""
     query = update.callback_query
-    
     scores = context.user_data.get("scores", {})
     
-    # Проверяем, нужны ли уточняющие вопросы
     clarifications_needed = need_clarification_stage1(scores)
     
     if clarifications_needed and not context.user_data.get("stage1_clarified", False):
-        # Сохраняем, какие уточнения нужны
         context.user_data["stage1_clarifications"] = clarifications_needed
         context.user_data["clarification_current"] = 0
         context.user_data["clarification_stage"] = "stage1"
         
-        logger.info(f"User {update.effective_user.id}: Stage 1 needs clarification: {clarifications_needed}")
-        
+        logger.info(f"User {update.effective_user.id}: Stage 1 needs clarification")
         return await ask_clarification_question(update, context)
     
-    # Определяем тип восприятия
     perception_type = determine_perception_type(scores)
     context.user_data["perception_type"] = perception_type
     
-    logger.info(f"User {update.effective_user.id}: Stage 1 complete, type={perception_type}, scores={scores}")
+    logger.info(f"User {update.effective_user.id}: Stage 1 complete, type={perception_type}")
     
     result_text = (
         f"✅ <b>ЭТАП 1 ЗАВЕРШЁН!</b>\n\n"
@@ -1301,11 +1248,9 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
     clarification_stage = context.user_data.get("clarification_stage")
     current = context.user_data.get("clarification_current", 0)
     
-    # Определяем, какие вопросы задавать
     if clarification_stage == "stage1":
         clarifications = context.user_data.get("stage1_clarifications", [])
         if current >= len(clarifications):
-            # Все уточнения пройдены
             context.user_data["stage1_clarified"] = True
             return await finish_stage_1(update, context)
         
@@ -1316,7 +1261,7 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
             context.user_data["clarification_current"] = current + 1
             return await ask_clarification_question(update, context)
         
-        question = questions[0] if len(questions) > 0 else None
+        question = questions[0]
         
     elif clarification_stage == "stage2":
         questions = CLARIFICATION_QUESTIONS.get("stage2_borderline", [])
@@ -1338,9 +1283,7 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
             context.user_data["stage4_clarified"] = True
             return await finish_stage_4(update, context)
         question = questions[current]
-    
     else:
-        # Неизвестный этап
         return STAGE_1
     
     if not question:
@@ -1374,7 +1317,6 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
     current = int(parts[2])
     option_id = parts[3]
     
-    # Обрабатываем ответ в зависимости от этапа
     if clarification_stage == "stage1":
         clarifications = context.user_data.get("stage1_clarifications", [])
         if current < len(clarifications):
@@ -1491,7 +1433,6 @@ async def start_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     context.user_data["stage2_current"] = 0
-    
     return await ask_stage_2_question(update, context)
 
 async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1507,7 +1448,6 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
         return await finish_stage_2(update, context)
     
     question = questions[current]
-    
     progress = calculate_progress(current + 1, len(questions))
     
     question_text = (
@@ -1570,12 +1510,10 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ ИСПРАВЛЕНО: Завершение ЭТАПА 2 с проверкой на уточнения"""
+    """✅ Завершение ЭТАПА 2"""
     query = update.callback_query
-    
     level_scores = context.user_data.get("stage2_level_scores", [])
     
-    # Проверяем, нужны ли уточняющие вопросы
     needs_clarification = need_clarification_stage2(level_scores)
     
     if needs_clarification and not context.user_data.get("stage2_clarified", False):
@@ -1583,13 +1521,12 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["clarification_stage"] = "stage2"
         
         logger.info(f"User {update.effective_user.id}: Stage 2 needs clarification")
-        
         return await ask_clarification_question(update, context)
     
     thinking_level = calculate_thinking_level_optimized(level_scores)
     context.user_data["thinking_level"] = thinking_level
     
-    logger.info(f"User {update.effective_user.id}: Stage 2 complete, level={thinking_level}, scores={level_scores}")
+    logger.info(f"User {update.effective_user.id}: Stage 2 complete, level={thinking_level}")
     
     result_text = (
         f"✅ <b>ЭТАП 2 ЗАВЕРШЁН!</b>\n\n"
@@ -1661,20 +1598,17 @@ async def start_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     context.user_data["stage3_current"] = 0
-    
     return await ask_stage_3_question(update, context)
 
 async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт вопрос ЭТАПА 3"""
     query = update.callback_query
-    
     current = context.user_data.get("stage3_current", 0)
     
     if current >= len(STAGE_3_QUESTIONS):
         return await finish_stage_3(update, context)
     
     question = STAGE_3_QUESTIONS[current]
-    
     progress = calculate_progress(current + 1, len(STAGE_3_QUESTIONS))
     
     question_text = (
@@ -1734,13 +1668,12 @@ async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ ИСПРАВЛЕНО: Завершение ЭТАПА 3 с новым алгоритмом и уточнениями"""
+    """✅ Завершение ЭТАПА 3"""
     query = update.callback_query
     
     stage2_level = context.user_data.get("thinking_level", 1)
     stage3_scores = context.user_data.get("stage3_level_scores", [])
     
-    # Проверяем, нужны ли уточняющие вопросы
     needs_clarification = need_clarification_stage3(stage2_level, stage3_scores)
     
     if needs_clarification and not context.user_data.get("stage3_clarified", False):
@@ -1748,10 +1681,8 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["clarification_stage"] = "stage3"
         
         logger.info(f"User {update.effective_user.id}: Stage 3 needs clarification")
-        
         return await ask_clarification_question(update, context)
     
-    # Вычисляем финальный уровень с приоритетом поведения
     final_level = calculate_final_level(stage2_level, stage3_scores)
     context.user_data["final_level"] = final_level
     
@@ -1830,20 +1761,17 @@ async def start_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     context.user_data["stage4_current"] = 0
-    
     return await ask_stage_4_question(update, context)
 
 async def ask_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт вопрос ЭТАПА 4"""
     query = update.callback_query
-    
     current = context.user_data.get("stage4_current", 0)
     
     if current >= len(STAGE_4_QUESTIONS):
         return await finish_stage_4(update, context)
     
     question = STAGE_4_QUESTIONS[current]
-    
     progress = calculate_progress(current + 1, len(STAGE_4_QUESTIONS))
     
     question_text = (
@@ -1903,12 +1831,10 @@ async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ ИСПРАВЛЕНО: Завершение ЭТАПА 4 с уточнениями"""
+    """✅ Завершение ЭТАПА 4"""
     query = update.callback_query
-    
     dilts_answers = context.user_data.get("stage4_dilts_answers", [])
     
-    # Проверяем, нужны ли уточняющие вопросы
     needs_clarification = need_clarification_stage4(dilts_answers)
     
     if needs_clarification and not context.user_data.get("stage4_clarified", False):
@@ -1916,16 +1842,13 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["clarification_stage"] = "stage4"
         
         logger.info(f"User {update.effective_user.id}: Stage 4 needs clarification")
-        
         return await ask_clarification_question(update, context)
     
-    # Определяем уровень Дилтса (простая мода)
     dilts_level = determine_dilts_level(dilts_answers)
     context.user_data["dilts_level"] = dilts_level
     
     logger.info(f"User {update.effective_user.id}: Stage 4 complete, dilts={dilts_level}")
     
-    # Переход к результатам
     return await show_results(update, context)
 
 # ============================================
@@ -1933,31 +1856,26 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ НОВАЯ ВЕРСИЯ: Показ результатов с поиском ближайшего профиля"""
+    """✅ Показ результатов"""
     query = update.callback_query
     
-    # Показываем экран загрузки
     loading_text = (
         f"⏳ <b>ОБРАБАТЫВАЮ РЕЗУЛЬТАТЫ...</b>\n\n"
         f"Анализирую твои ответы и подбираю профиль..."
     )
     await query.edit_message_text(loading_text, parse_mode="HTML")
     
-    # Имитация обработки
     await asyncio.sleep(2)
     
-    # Получаем данные
     perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
     final_level = context.user_data.get("final_level", 1)
     dilts_level = context.user_data.get("dilts_level", "ENVIRONMENT")
     
-    # ✅ НОВОЕ: Вычисляем ключ профиля с поиском ближайшего
     profile_key = calculate_profile_key(context.user_data)
     
-    # Получаем описание профиля
-    profile_description = get_profile_description(profile_key)
+    profile_card = get_card_description(profile_key)
     
-    if not profile_description:
+    if not profile_card:
         error_text = (
             f"❌ <b>ОШИБКА</b>\n\n"
             f"Не удалось найти профиль.\n\n"
@@ -1966,7 +1884,6 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(error_text, parse_mode="HTML")
         return ConversationHandler.END
     
-    # Формируем результат
     result_text = (
         f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
         f"🎯 <b>ТВОЙ ПРОФИЛЬ:</b>\n\n"
@@ -1990,14 +1907,42 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     profile_key = calculate_profile_key(context.user_data)
-    profile_description = get_profile_description(profile_key)
+    profile_card = get_card_description(profile_key)
     
-    if not profile_description:
+    if not profile_card:
         await query.edit_message_text("❌ Ошибка загрузки профиля", parse_mode="HTML")
         return ConversationHandler.END
     
-    # Отправляем описание профиля (может быть длинным, поэтому разбиваем)
-    await query.edit_message_text(profile_description, parse_mode="HTML")
+    # Формируем полное описание профиля
+    profile_text = (
+        f"{profile_card['title']}\n\n"
+        f"{profile_card['pain']}\n\n"
+        f"<b>🌍 ТВОЙ МИР:</b>\n\n"
+        f"{profile_card['world']}\n\n"
+        f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n"
+        f"{profile_card['superpower']}\n\n"
+        f"<b>🚀 ТОЧКА РОСТА:</b>\n\n"
+        f"{profile_card['growth']}\n\n"
+        f"{profile_card['cta']}"
+    )
+    
+    # Разбиваем на части, если текст слишком длинный
+    max_length = 4096
+    if len(profile_text) > max_length:
+        # Отправляем по частям
+        parts = [
+            f"{profile_card['title']}\n\n{profile_card['pain']}",
+            f"<b>🌍 ТВОЙ МИР:</b>\n\n{profile_card['world']}",
+            f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n{profile_card['superpower']}",
+            f"<b>🚀 ТОЧКА РОСТА:</b>\n\n{profile_card['growth']}\n\n{profile_card['cta']}"
+        ]
+        
+        await query.edit_message_text(parts[0], parse_mode="HTML")
+        
+        for part in parts[1:]:
+            await query.message.reply_text(part, parse_mode="HTML")
+    else:
+        await query.edit_message_text(profile_text, parse_mode="HTML")
     
     # Кнопки действий
     keyboard = [
@@ -2052,16 +1997,58 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
+# ✅ ПРОВЕРКА ПРОФИЛЕЙ ПРИ ЗАПУСКЕ
+# ============================================
+
+def check_profiles_on_startup():
+    """Проверяет наличие всех 36 профилей"""
+    logger.info("🔍 Checking profile data...")
+    
+    expected_types = ["SA", "IA", "SP", "IP"]
+    expected_levels = list(range(1, 10))  # 1-9
+    
+    missing_profiles = []
+    found_profiles = []
+    
+    for type_code in expected_types:
+        for level in expected_levels:
+            # Проверяем хотя бы один профиль этого типа и уровня
+            found = False
+            for dilts in ["env", "beh", "cap", "val", "ide"]:
+                profile_key = f"{type_code}_{level}_{dilts}"
+                if profile_key in CARD_DATA:
+                    found = True
+                    found_profiles.append(profile_key)
+                    break
+            
+            if not found:
+                missing_profiles.append(f"{type_code}_{level}")
+    
+    logger.info(f"✅ Found {len(found_profiles)} profiles in CARD_DATA")
+    
+    if missing_profiles:
+        logger.warning(f"⚠️ Missing profiles for: {missing_profiles}")
+    else:
+        logger.info("✅ All profile types covered (at least one per type-level)")
+    
+    # Проверка общего количества
+    total_profiles = len(CARD_DATA)
+    logger.info(f"📊 Total profiles in CARD_DATA: {total_profiles}")
+    
+    if total_profiles < 36:
+        logger.warning(f"⚠️ Expected 36 profiles, found {total_profiles}")
+    else:
+        logger.info("✅ Profile count OK")
+
+# ============================================
 # ГЛАВНАЯ ФУНКЦИЯ
 # ============================================
 
 def main():
     """Запуск бота"""
     
-    # Проверка наличия всех профилей
-    logger.info("Checking profile data...")
-    check_all_profiles_exist()
-    logger.info("✅ All profiles verified")
+    # Проверка профилей
+    check_profiles_on_startup()
     
     # Создание приложения
     application = Application.builder().token(TOKEN).build()
