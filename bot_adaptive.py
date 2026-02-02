@@ -2111,8 +2111,9 @@ def main():
                 CallbackQueryHandler(handle_clarification_answer, pattern="^clarify_")
             ],
             RESULT: [
-                CallbackQueryHandler(restart_test, pattern="^restart_test$")
-            ],
+    CallbackQueryHandler(handle_share_confirm, pattern="^share_confirmed$"),
+    CallbackQueryHandler(restart_test, pattern="^restart_test$")
+],
             SHARE_CONFIRM: [
                 CallbackQueryHandler(handle_share_confirm, pattern="^share_confirmed$"),
                 CallbackQueryHandler(restart_test, pattern="^restart_test$")
