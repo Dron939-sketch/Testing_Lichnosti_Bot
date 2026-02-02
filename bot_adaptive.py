@@ -1052,7 +1052,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"4️⃣ <b>ЭТАП 4:</b> Конфликт логических уровней (8 вопросов)\n\n"
         f"⏱ Займёт 10-15 минут\n\n"
         f"📌 Отвечай честно, как есть сейчас, а не как хотелось бы.\n\n"
-        f"Готов начать? "
+        f"Готов начать? 🚀"
     )
     
     keyboard = [[InlineKeyboardButton("🚀 Начать тест", callback_data="start_test")]]
@@ -1843,106 +1843,29 @@ async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение ЭТАПА 4 и показ итогового результата"""
+    """✅ Завершение ЭТАПА 4"""
     query = update.callback_query
-    await query.answer()
+    dilts_answers = context.user_data.get("stage4_dilts_answers", [])
     
-    # Подсчёт баллов по уровням
-    level_scores = {"environment": 0, "behavior": 0, "capabilities": 0, "values": 0, "identity": 0}
+    needs_clarification = need_clarification_stage4(dilts_answers)
     
-    for i in range(len(STAGE_4_QUESTIONS)):
-        answer_key = f"stage4_{i}"
-        if answer_key in context.user_data:
-            option_id = context.user_data[answer_key]
-            question = STAGE_4_QUESTIONS[i]
-            level = question["options"][option_id]["level"]
-            level_scores[level] += 1
-    
-    # Определение доминирующего уровня
-    dominant_level = max(level_scores, key=level_scores.get)
-    
-    level_names = {
-        "environment": "Окружение",
-        "behavior": "Поведение",
-        "capabilities": "Способности",
-        "values": "Ценности",
-        "identity": "Идентичность"
-    }
-    
-    level_descriptions = {
-        "environment": "Твоя точка роста — изменение окружения. Тебе нужно менять внешние условия.",
-        "behavior": "Твоя точка роста — поведение. Тебе нужно менять свои действия.",
-        "capabilities": "Твоя точка роста — способности. Тебе нужно развивать навыки.",
-        "values": "Твоя точка роста — ценности. Тебе нужно пересмотреть мотивы.",
-        "identity": "Твоя точка роста — идентичность. Тебе нужно переосмыслить, кто ты."
-    }
-    
-    context.user_data["stage4_level"] = dominant_level
-    
-    # Получаем результаты всех этапов
-    archetype = context.user_data.get("archetype", "Не определён")
-    stage2_result = context.user_data.get("stage2_result", "Не определён")
-    stage3_level = context.user_data.get("stage3_level", "Не определён")
-    
-    # Формируем итоговый текст
-    part1 = (
-        f"🎉 <b>ПОЗДРАВЛЯЕМ! ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-        f"📊 <b>ТВОИ РЕЗУЛЬТАТЫ:</b>\n\n"
-        f"<b>ЭТАП 1: АРХЕТИП</b>\n"
-        f"🎭 {archetype}\n\n"
-        f"<b>ЭТАП 2: ЖИЗНЕННЫЙ СЦЕНАРИЙ</b>\n"
-        f"📜 {stage2_result}\n\n"
-    )
-    
-    part2 = (
-        f"<b>ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ</b>\n"
-        f"🔄 Уровень осознанности: {stage3_level}\n\n"
-        f"<b>ЭТАП 4: ТОЧКА РОСТА</b>\n"
-        f"🎯 {level_names[dominant_level]}\n"
-        f"💡 {level_descriptions[dominant_level]}\n\n"
-    )
-    
-    part3 = (
-        f"🎁 <b>ХОЧЕШЬ БОЛЬШЕ?</b>\n\n"
-        f"Получи полный разбор личности:\n"
-        f"✅ Детальный анализ всех 4 этапов\n"
-        f"✅ Персональные рекомендации\n"
-        f"✅ План развития на 3 месяца\n\n"
-        f"💎 <b>Стоимость:</b> 960 ₽\n\n"
-        f"👉 Или поделись тестом с другом и получи <b>бесплатный подарок</b>!"
-    )
-    
-    full_text = part1 + part2 + part3
-    
-    # Проверка длины сообщения
-    if len(full_text) > 4096:
-        # Разбиваем на части
+    if needs_clarification and not context.user_data.get("stage4_clarified", False):
+        context.user_data["clarification_current"] = 0
+        context.user_data["clarification_stage"] = "stage4"
         
-        # ✅ КНОПКИ
-        keyboard = [
-            [InlineKeyboardButton("🎁 Поделиться тестом", url="https://t.me/share/url?url=https://t.me/Testing_Lichnosti_bot&text=Зацени тест!")],
-            [InlineKeyboardButton("✅ Я поделился, дай подарок!", callback_data="share_confirmed")],
-            [InlineKeyboardButton("💎 Полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
-            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.edit_message_text(part1, parse_mode="HTML")
-        await query.message.reply_text(part2, parse_mode="HTML")
-        await query.message.reply_text(part3, parse_mode="HTML", reply_markup=reply_markup)
-    else:
-        # ✅ КНОПКИ
-        keyboard = [
-            [InlineKeyboardButton("🎁 Поделиться тестом", url="https://t.me/share/url?url=https://t.me/Testing_Lichnosti_bot&text=Зацени тест!")],
-            [InlineKeyboardButton("✅ Я поделился, дай подарок!", callback_data="share_confirmed")],
-            [InlineKeyboardButton("💎 Полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
-            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.edit_message_text(full_text, reply_markup=reply_markup, parse_mode="HTML")
+        logger.info(f"User {update.effective_user.id}: Stage 4 needs clarification")
+        return await ask_clarification_question(update, context)
     
-    return ConversationHandler.END
+    dilts_level = determine_dilts_level(dilts_answers)
+    context.user_data["dilts_level"] = dilts_level
+    
+    logger.info(f"User {update.effective_user.id}: Stage 4 complete, dilts={dilts_level}")
+    
+    return await show_results(update, context)
+
+# ============================================
+# ПОКАЗ РЕЗУЛЬТАТОВ
+# ============================================
 
 async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """✅ Показ результатов с анимацией"""
@@ -2028,9 +1951,8 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # ✅ КНОПКИ
         keyboard = [
-            [InlineKeyboardButton("🎁 Поделиться", switch_inline_query="Зацени тест! https://t.me/Testing_Lichnosti_bot")],
-            [InlineKeyboardButton("✅ Я поделился, дай подарок!", callback_data="share_confirmed")],
-            [InlineKeyboardButton("💎 Полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
+            [InlineKeyboardButton("🎁 Поделиться и получить подарок", switch_inline_query="Зацени тест) t.me/Testing_Lichnosti_bot")],
+            [InlineKeyboardButton("💎 Получить полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
             [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2041,7 +1963,7 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         # ✅ КНОПКИ ПРИКРЕПЛЕНЫ К ТЕКСТУ
         keyboard = [
-            [InlineKeyboardButton("🎁 Поделиться и получить подарок", switch_inline_query="Зацени тест! t.me/Testing_Lichnosti_bot")],
+            [InlineKeyboardButton("🎁 Поделиться и получить подарок", switch_inline_query="Зацени тест) t.me/Testing_Lichnosti_bot")],
             [InlineKeyboardButton("💎 Получить полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
             [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
         ]
