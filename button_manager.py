@@ -8,7 +8,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 # Константы (можно менять без перезапуска бота)
 GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"
-PAYMENT_LINK = "https://yookassa.ru/my/i/aYHBAWTTZI3w/l"
+PAYMENT_LINK = "https://yookassa.ru/my/i/aYHvs0MnrXUT/l"
 SHARE_MESSAGE = "Только что узнал о себе то, о чём ещё не знал... Тест показывает скрытые паттерны личности. КатеГОрически рекомендую пройти!"
 
 def get_results_keyboard(user_shared: bool = False):
@@ -20,14 +20,14 @@ def get_results_keyboard(user_shared: bool = False):
         # Стандартная клавиатура (первый показ)
         keyboard = [
             [InlineKeyboardButton("🎁 Поделиться результатом", switch_inline_query=SHARE_MESSAGE)],
-            [InlineKeyboardButton("💎 Получить полный пакет (960 ₽)", url=PAYMENT_LINK)],
+            [InlineKeyboardButton("💎 Получить полный пакет (690 ₽)", url=PAYMENT_LINK)],
             [InlineKeyboardButton("🎁 Получить подарок", url=GIFT_PDF_LINK)]
         ]
     else:
         # Клавиатура после шаринга
         keyboard = [
             [InlineKeyboardButton("🎁 Получить подарок", url=GIFT_PDF_LINK)],
-            [InlineKeyboardButton("💎 Полный пакет (960 ₽)", url=PAYMENT_LINK)],
+            [InlineKeyboardButton("💎 Полный пакет (690 ₽)", url=PAYMENT_LINK)],
             [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
         ]
     
@@ -37,7 +37,7 @@ def get_gift_keyboard():
     """Клавиатура для экрана с подарком после шаринга"""
     keyboard = [
         [InlineKeyboardButton("🎁 Получить подарок", url=GIFT_PDF_LINK)],
-        [InlineKeyboardButton("💎 Полный пакет (960 ₽)", url=PAYMENT_LINK)],
+        [InlineKeyboardButton("💎 Полный пакет (690 ₽)", url=PAYMENT_LINK)],
         [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
     ]
     return InlineKeyboardMarkup(keyboard)
