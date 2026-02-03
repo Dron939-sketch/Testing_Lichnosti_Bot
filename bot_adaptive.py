@@ -2069,7 +2069,7 @@ async def handle_share_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                     parse_mode="HTML"
                 )
     
-    elif query.data == "get_gift":
+        elif query.data == "get_gift":
         # Пользователь нажал "Получить подарок"
         await query.answer("Открываю ссылку на подарок...")
         
@@ -2078,18 +2078,24 @@ async def handle_share_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"🎁 <b>ТВОЙ ПОДАРОК</b>\n\n"
             f"📚 <b>Терапевтическая сказка для твоего архетипа</b>\n\n"
             f"Эта сказка поможет интегрировать твои сильные стороны и преодолеть ограничения.\n\n"
-            f"👉 <b>Ссылка на PDF:</b>\n"
-            f"{GIFT_PDF_LINK}\n\n"
             f"💡 <b>Как использовать:</b>\n"
-            f"1. Скачай или открой PDF\n"
+            f"1. Нажми кнопку ниже, чтобы открыть PDF\n"
             f"2. Прочитай перед сном\n"
             f"3. Обращай внимание на символы и метафоры\n"
             f"4. Записывай возникающие инсайты\n\n"
             f"Приятного чтения! 📖✨"
         )
         
+        # Создаем кнопку с прямой ссылкой
+        keyboard = [
+            [InlineKeyboardButton("📖 Открыть сказку", url=GIFT_PDF_LINK)],
+            [InlineKeyboardButton("⬅️ Назад к результатам", callback_data="back_to_results")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
         await query.edit_message_text(
             text=gift_text,
+            reply_markup=reply_markup,
             parse_mode="HTML"
         )
     
