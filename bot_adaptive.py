@@ -31,6 +31,7 @@ from telegram.ext import (
 # ✅ ИСПРАВЛЕННЫЙ ИМПОРТ
 # ============================================
 from card_data import get_card_description, profile_exists, CARD_DATA
+from button_manager import get_results_keyboard, get_gift_keyboard  # ✅ Импорт менеджера кнопок
 
 # Получение токена из переменной окружения
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -52,9 +53,10 @@ STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULT, SHARE_CONFIRM = range
 # КОНСТАНТЫ
 # ============================================
 BOT_LINK = "t.me/Testing_Lichnosti_bot"
-GIFT_PDF_LINK = "https://disk.yandex.ru/d/4zZ_fJwV5xH4gA"  # ✅ ОБНОВЛЕНО
+GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"  # ✅ ОБНОВЛЕНО
 AUTHOR_LINK = "@meysternlp"
 SHARE_TEXT = "Только что узнал о себе то, о чём ещё не знал... Тест показывает скрытые паттерны. КатеГОрически рекомендую:"  # ✅ ОБНОВЛЕНО
+PAYMENT_LINK = "https://yookassa.ru/my/i/aYHvs0MnrXUT/l"  # ✅ ОБНОВЛЕНО
 
 # ============================================
 # ДАННЫЕ ВОПРОСОВ (БЕЗ ИЗМЕНЕНИЙ)
@@ -1918,17 +1920,13 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👉 {AUTHOR_LINK}"
     )
     
-    # Сохраняем, что пользователь получил результаты
+    # Сохраняем, что пользователь получил результаты и ID сообщения
     context.user_data["got_results"] = True
     context.user_data["results_message_id"] = query.message.message_id
+    context.user_data["has_shared"] = False  # Флаг, что ещё не поделился
     
-    # ✅ КНОПКИ С УЧЕТОМ ШАРИНГА - ИЗМЕНЕНЫ ПО УКАЗАНИЮ
-    keyboard = [
-        [InlineKeyboardButton("🎁 Поделиться результатом", switch_inline_query=SHARE_TEXT)],  # ✅ ОБНОВЛЕНО
-        [InlineKeyboardButton("💎 Получить полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
-        [InlineKeyboardButton("🎁 Забрать подарок", url=GIFT_PDF_LINK)]  # ✅ ОБНОВЛЕНО - теперь сразу кнопка подарка вместо "Пройти ещё раз"
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    # ✅ ИСПОЛЬЗУЕМ МЕНЕДЖЕР КНОПОК - первый показ
+    reply_markup = get_results_keyboard(user_shared=False)
     
     # Проверяем длину сообщения
     if len(profile_text) > 4096:
@@ -1984,41 +1982,65 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
+# ✅ НОВЫЙ ОБРАБОТЧИК ДЛЯ ВОЗВРАТА ПОСЛЕ ШАРИНГА
+# ============================================
+
+async def handle_inline_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пользователь вернулся после шаринга - обновляем кнопки"""
+    logger.info(f"User {update.effective_user.id} returned after sharing")
+    
+    # Проверяем, есть ли сохранённое сообщение с результатами
+    message_id = context.user_data.get("results_message_id")
+    
+    if message_id and context.user_data.get("got_results"):
+        try:
+            # Обновляем клавиатуру на "получить подарок"
+            reply_markup = get_gift_keyboard()
+            
+            # Обновляем существующее сообщение
+            await context.bot.edit_message_reply_markup(
+                chat_id=update.effective_user.id,
+                message_id=message_id,
+                reply_markup=reply_markup
+            )
+            
+            # Сохраняем, что пользователь уже поделился
+            context.user_data["has_shared"] = True
+            
+            # Показываем уведомление о подарке
+            gift_text = (
+                f"🎉 <b>СПАСИБО ЗА РЕПОСТ!</b>\n\n"
+                f"Ты поделился результатом теста!\n\n"
+                f"🎁 <b>Твой подарок готов!</b>\n\n"
+                f"Нажми кнопку «🎁 Получить подарок» ниже, чтобы открыть PDF с терапевтической сказкой."
+            )
+            
+            await update.message.reply_text(gift_text, parse_mode="HTML")
+            
+        except Exception as e:
+            logger.error(f"Error updating keyboard: {e}")
+            # Если не удалось обновить, просто отправляем новое сообщение
+            gift_text = (
+                f"🎉 <b>СПАСИБО ЗА РЕПОСТ!</b>\n\n"
+                f"Ты поделился результатом теста!\n\n"
+                f"🎁 <b>Твой подарок готов!</b>\n\n"
+                f"Нажми кнопку ниже, чтобы открыть PDF с терапевтической сказкой:"
+            )
+            reply_markup = get_gift_keyboard()
+            await update.message.reply_text(gift_text, parse_mode="HTML", reply_markup=reply_markup)
+    
+    return SHARE_CONFIRM
+
+# ============================================
 # ОБРАБОТКА ШАРИНГА И ПЕРЕЗАПУСКА
 # ============================================
 
 async def handle_share_return(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Пользователь вернулся после шаринга"""
-    # Если пользователь уже получил результаты, показываем обновленные кнопки
-    if context.user_data.get("got_results"):
-        gift_text = (
-            f"🎉 <b>СПАСИБО ЗА РЕПОСТ!</b>\n\n"
-            f"Ты поделился результатом теста!\n\n"
-            f"🎁 <b>Твой подарок готов:</b>\n"
-            f"• Терапевтическая сказка для твоего типа\n"
-            f"• Дополнительные материалы\n\n"
-            f"Нажми кнопку ниже, чтобы забрать подарок 👇"
-        )
-        
-        # ✅ ОБНОВЛЕННЫЕ КНОПКИ - теперь "Забрать подарок" вместо "Пройти ещё раз"
-        keyboard = [
-            [InlineKeyboardButton("🎁 Забрать подарок", url=GIFT_PDF_LINK)],  # ✅ Прямая ссылка на Яндекс.Диск
-            [InlineKeyboardButton("💎 Полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
-            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        if update.callback_query:
-            await update.callback_query.edit_message_text(gift_text, parse_mode="HTML", reply_markup=reply_markup)
-        else:
-            await update.message.reply_text(gift_text, parse_mode="HTML", reply_markup=reply_markup)
-        
-        return SHARE_CONFIRM
-    
-    return await start(update, context)
+    """Пользователь вернулся после шаринга (через команду)"""
+    return await handle_inline_share(update, context)
 
 async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Перезапуск теста"""
+    """Перезапуск теста (обработка нажатия на кнопку в get_gift_keyboard)"""
     query = update.callback_query
     await query.answer()
     
@@ -2113,7 +2135,7 @@ def main():
                 CallbackQueryHandler(handle_clarification_answer, pattern="^clarify_")
             ],
             SHARE_CONFIRM: [
-                CallbackQueryHandler(handle_share_return, pattern="^share_return$"),
+                CallbackQueryHandler(handle_inline_share, pattern="^share_return$"),
                 CallbackQueryHandler(restart_test, pattern="^restart_test$")
             ]
         },
@@ -2123,9 +2145,11 @@ def main():
     
     application.add_handler(conv_handler)
     
-    # Дополнительный handler для возврата после шаринга
-    application.add_handler(CommandHandler("start", handle_share_return))
-    application.add_handler(CommandHandler("gift", handle_share_return))
+    # ✅ ДОБАВЛЯЕМ ОБРАБОТЧИК ДЛЯ ВОЗВРАТА ПОСЛЕ ШАРИНГА
+    application.add_handler(MessageHandler(
+        filters.TEXT & filters.Regex(r'^/start$|^/gift$'), 
+        handle_inline_share
+    ))
     
     # Запуск бота
     logger.info("🚀 Bot started!")
