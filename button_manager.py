@@ -9,35 +9,36 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 # Константы (можно менять без перезапуска бота)
 GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"
 PAYMENT_LINK = "https://yookassa.ru/my/i/aYHvs0MnrXUT/l"
-SHARE_MESSAGE = "Только что узнал о себе то, о чём ещё не знал... Тест показывает скрытые паттерны личности. КатеГОрически рекомендую пройти!"
+BOT_LINK = "t.me/Testing_Lichnosti_bot"  # Ссылка на вашего бота
+SHARE_MESSAGE = f"🔍 Узнай о себе то, о чём ещё не знал! Пройди психодиагностический тест ВАРИАТИКА и получи свой архетип личности. {BOT_LINK}"
 
 def get_results_keyboard(user_shared: bool = False):
     """
     Возвращает клавиатуру для финального экрана
-    user_shared: True, если пользователь уже поделился результатом
+    user_shared: True, если пользователь уже поделился ботом
     """
     if not user_shared:
-        # Стандартная клавиатура (первый показ)
+        # ✅ Первая клавиатура (пользователь ещё не делился ботом)
         keyboard = [
-            [InlineKeyboardButton("🎁 Поделиться результатом", switch_inline_query=SHARE_MESSAGE)],
-            [InlineKeyboardButton("💎 Получить полный пакет (960 ₽)", url=PAYMENT_LINK)],
-            [InlineKeyboardButton("🎁 Получить подарок", url=GIFT_PDF_LINK)]
+            [InlineKeyboardButton("Поделиться ссылкой и получить 🎁", url=f"https://t.me/share/url?url={BOT_LINK}&text={SHARE_MESSAGE}")],  # ✅ ИЗМЕНЕНО
+            [InlineKeyboardButton("💎 Полный пакет", url=PAYMENT_LINK)],
+            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
         ]
     else:
-        # Клавиатура после шаринга
+        # ✅ Клавиатура после шаринга
         keyboard = [
-            [InlineKeyboardButton("🎁 Получить подарок", url=GIFT_PDF_LINK)],
-            [InlineKeyboardButton("💎 Полный пакет (960 ₽)", url=PAYMENT_LINK)],
+            [InlineKeyboardButton("🎁 Получить свой подарок", url=GIFT_PDF_LINK)],  # ✅ Теперь кнопка получения подарка
+            [InlineKeyboardButton("💎 Полный пакет", url=PAYMENT_LINK)],
             [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
         ]
     
     return InlineKeyboardMarkup(keyboard)
 
-def get_gift_keyboard():
-    """Клавиатура для экрана с подарком после шаринга"""
+def get_after_share_keyboard():
+    """✅ Явная функция для получения клавиатуры после шаринга"""
     keyboard = [
-        [InlineKeyboardButton("🎁 Получить подарок", url=GIFT_PDF_LINK)],
-        [InlineKeyboardButton("💎 Полный пакет (960 ₽)", url=PAYMENT_LINK)],
+        [InlineKeyboardButton("🎁 Получить свой подарок", url=GIFT_PDF_LINK)],
+        [InlineKeyboardButton("💎 Полный пакет", url=PAYMENT_LINK)],
         [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -55,6 +56,12 @@ def update_payment_link(new_link: str):
     PAYMENT_LINK = new_link
     return True
 
+def update_bot_link(new_link: str):
+    """Обновить ссылку на бота"""
+    global BOT_LINK
+    BOT_LINK = new_link
+    return True
+
 def update_share_message(new_message: str):
     """Обновить сообщение для шаринга"""
     global SHARE_MESSAGE
@@ -66,5 +73,6 @@ def get_current_links():
     return {
         "gift": GIFT_PDF_LINK,
         "payment": PAYMENT_LINK,
+        "bot": BOT_LINK,
         "share_message": SHARE_MESSAGE
     }
