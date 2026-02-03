@@ -1,13 +1,7 @@
 # bot_adaptive.py
 """
 АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
-4 этапа + адаптивные уточнения:
-1. Конфигурация восприятия (8 вопросов) → 4 типа
-2. Конфигурация мышления (8 вопросов, адаптивно) → 9 уровней
-3. Конфигурация поведенческих паттернов (8 вопросов) → уточнение уровня
-4. Конфликт логических уровни (8 вопросов) → 5 уровней Дилтса
-
-ИТОГО: 36 профилей (4 типа × 9 уровней)
+4 этапа + адаптивные уточнения
 """
 
 import logging
@@ -46,8 +40,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Состояния ConversationHandler
-STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS, GIFT_SCREEN, PACKAGE_SCREEN = range(8)
+# ============================================
+# ✅ НОВЫЕ СОСТОЯНИЯ ConversationHandler
+# ============================================
+STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS, GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN = range(9)
 
 # ============================================
 # КОНСТАНТЫ
@@ -59,7 +55,7 @@ SHARE_TEXT = "Только что узнал о себе то, о чём ещё 
 PAYMENT_LINK = "https://yookassa.ru/my/i/aYHvs0MnrXUT/l"
 
 # ============================================
-# ДАННЫЕ ВОПРОСОВ (БЕЗ ИЗМЕНЕНИЙ)
+# ДАННЫЕ ВОПРОСОВ (ПОЛНОСТЬЮ СОХРАНЕНО)
 # ============================================
 
 # ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
@@ -839,7 +835,7 @@ CLARIFICATION_QUESTIONS = {
 }
 
 # ============================================
-# ✅ АЛГОРИТМ ОПРЕДЕЛЕНИЯ ПРОФИЛЯ
+# ✅ АЛГОРИТМ ОПРЕДЕЛЕНИЯ ПРОФИЛЯ (СОХРАНЕН)
 # ============================================
 
 def calculate_progress(current: int, total: int) -> str:
@@ -990,7 +986,7 @@ def calculate_profile_key(context_data: dict) -> str:
     return profile_key
 
 # ============================================
-# ПРОВЕРКИ УТОЧНЕНИЙ
+# ПРОВЕРКИ УТОЧНЕНИЙ (СОХРАНЕНЫ)
 # ============================================
 
 def need_clarification_stage1(scores):
@@ -1033,7 +1029,240 @@ def need_clarification_stage4(dilts_answers):
     return False
 
 # ============================================
-# КОМАНДЫ БОТА
+# ✅ НОВАЯ СТРУКТУРА: 5 ЭКРАНОВ НАВИГАЦИИ
+# ============================================
+
+async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """✅ ЭКРАН 1/2: РЕЗУЛЬТАТЫ ТЕСТА (до/после шаринга)"""
+    query = update.callback_query
+    
+    # Проверяем, поделился ли уже пользователь
+    has_shared = context.user_data.get("has_shared", False)
+    
+    # Получаем данные профиля
+    profile_card = context.user_data.get("profile_card")
+    if not profile_card:
+        # Если тест только что завершился, вычисляем профиль
+        perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
+        final_level = context.user_data.get("final_level", 1)
+        dilts_level = context.user_data.get("dilts_level", "ENVIRONMENT")
+        
+        profile_key = calculate_profile_key(context.user_data)
+        profile_card = get_card_description(profile_key)
+        
+        if not profile_card:
+            error_text = (
+                f"❌ <b>ОШИБКА</b>\n\n"
+                f"Не удалось найти профиль.\n\n"
+                f"Попробуй пройти тест заново: /start"
+            )
+            await query.edit_message_text(error_text, parse_mode="HTML")
+            return ConversationHandler.END
+        
+        context.user_data["profile_card"] = profile_card
+        context.user_data["profile_key"] = profile_key
+    
+    # ✅ ФОРМИРУЕМ ТЕКСТ РЕЗУЛЬТАТОВ
+    if not has_shared:
+        # ЭКРАН 1: До шаринга
+        profile_text = (
+            f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+            f"{profile_card['title']}\n\n"
+            f"{profile_card['pain']}\n\n"
+            f"<b>🌍 ТВОЙ МИР:</b>\n\n"
+            f"{profile_card['world']}\n\n"
+            f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n"
+            f"{profile_card['superpower']}\n\n"
+            f"<b>🚀 ТОЧКА РОСТА:</b>\n\n"
+            f"{profile_card['growth']}\n\n"
+            f"{profile_card['cta']}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"💬 Иногда самое большое, что мы можем сделать для своих близких - это дать зеркало...\n"
+            f"Поделись тестом с другом и.. 🎁 <b>ПОЛУЧИ БЕСПЛАТНЫЙ ПОДАРОК</b>"
+        )
+        
+        # Кнопки для ЭКРАНА 1
+        keyboard = [
+            [InlineKeyboardButton("🎁 Получить подарок", callback_data="get_gift")],
+            [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
+            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
+        ]
+    else:
+        # ЭКРАН 2: После шаринга
+        profile_text = (
+            f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+            f"{profile_card['title']}\n\n"
+            f"{profile_card['pain']}\n\n"
+            f"<b>🌍 ТВОЙ МИР:</b>\n\n"
+            f"{profile_card['world']}\n\n"
+            f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n"
+            f"{profile_card['superpower']}\n\n"
+            f"<b>🚀 ТОЧКА РОСТА:</b>\n\n"
+            f"{profile_card['growth']}\n\n"
+            f"{profile_card['cta']}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\n"
+            f"Спасибо за репост!"
+        )
+        
+        # Кнопки для ЭКРАНА 2
+        keyboard = [
+            [InlineKeyboardButton("🎁 Забрать подарок", callback_data="open_gift")],
+            [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
+            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
+        ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Проверяем длину сообщения
+    if len(profile_text) > 4096:
+        # Разбиваем на части
+        parts = [
+            f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n{profile_card['title']}\n\n{profile_card['pain']}",
+            f"<b>🌍 ТВОЙ МИР:</b>\n\n{profile_card['world']}",
+            f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n{profile_card['superpower']}",
+            f"<b>🚀 ТОЧКА РОСТА:</b>\n\n{profile_card['growth']}\n\n{profile_card['cta']}"
+        ]
+        
+        # Последняя часть
+        last_part = "━━━━━━━━━━━━━━━━━━━━\n\n"
+        if not has_shared:
+            last_part += "💬 Иногда самое большое, что мы можем сделать для своих близких - это дать зеркало...\nПоделись тестом с другом и.. 🎁 <b>ПОЛУЧИ БЕСПЛАТНЫЙ ПОДАРОК</b>"
+        else:
+            last_part += "🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\nСпасибо за репост!"
+        
+        # Отправляем все части
+        await query.edit_message_text(parts[0], parse_mode="HTML")
+        for part in parts[1:]:
+            await query.message.reply_text(part, parse_mode="HTML")
+        
+        # Последняя часть с кнопками
+        await query.message.reply_text(last_part, parse_mode="HTML", reply_markup=reply_markup)
+    else:
+        await query.edit_message_text(profile_text, parse_mode="HTML", reply_markup=reply_markup)
+    
+    return RESULTS
+
+async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """✅ ЭКРАН 3: ИНСТРУКЦИЯ ПО ШАРИНГУ"""
+    query = update.callback_query
+    await query.answer()
+    
+    instruction_text = (
+        f"📤 <b>ШАГ 1: ПОДЕЛИСЬ ТЕСТОМ</b>\n\n"
+        f"Нажми кнопку ниже, чтобы поделиться ссылкой в Telegram.\n\n"
+        f"После того как поделишься, вернись сюда и нажми «✅ Я поделился»"
+    )
+    
+    # Генерируем ссылку для шаринга
+    encoded_text = urllib.parse.quote(SHARE_TEXT)
+    share_url = f"https://t.me/share/url?url={BOT_LINK}&text={encoded_text}"
+    
+    keyboard = [
+        [InlineKeyboardButton("📤 Поделиться ссылкой", url=share_url)],
+        [InlineKeyboardButton("✅ Я поделился", callback_data="confirm_share")],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(instruction_text, reply_markup=reply_markup, parse_mode="HTML")
+    return GIFT_SCREEN
+
+async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """✅ Подтверждение шаринга и переход к ЭКРАНУ 2"""
+    query = update.callback_query
+    await query.answer("✅ Спасибо за репост! Ваш подарок готов!")
+    
+    # Отмечаем, что пользователь поделился
+    context.user_data["has_shared"] = True
+    
+    # Возвращаемся к экрану результатов (ЭКРАН 2)
+    return await show_results_screen(update, context)
+
+async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """✅ ЭКРАН 4: ПОЛНЫЙ ПАКЕТ"""
+    query = update.callback_query
+    await query.answer()
+    
+    package_text = (
+        f"💎 <b>ПОЛНЫЙ ПАКЕТ ВАРИАТИКА</b>\n\n"
+        f"<b>Что входит:</b>\n"
+        f"• Полный разбор вашего профиля (15+ страниц детального анализа)\n"
+        f"• Персональная терапевтическая сказка для коррекции конфликтующих частей\n"
+        f"• Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (.PDF)\n"
+        f"• Персональные рекомендации по развитию\n"
+        f"• Карта сильных и слабых сторон\n\n"
+        f"<b>Цена:</b> 690 ₽\n\n"
+        f"После оплаты свяжись со мной для получения материалов:\n"
+        f"👉 @meysternlp"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("💳 Купить", url=PAYMENT_LINK)],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")],
+        [InlineKeyboardButton("💬 Консультация", url=f"https://t.me/{AUTHOR_LINK[1:]}" if AUTHOR_LINK.startswith('@') else f"https://t.me/{AUTHOR_LINK}")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(package_text, reply_markup=reply_markup, parse_mode="HTML")
+    return PACKAGE_SCREEN
+
+async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """✅ ЭКРАН 5: ОТКРЫТИЕ ПОДАРКА"""
+    query = update.callback_query
+    await query.answer()
+    
+    gift_text = (
+        f"🎁 <b>ВАШ ПОДАРОК ГОТОВ!</b>\n\n"
+        f"📚 Терапевтическая сказка для трансформации структуры восприятия\n\n"
+        f"Эта сказка разрешает внутренние противоречия в конфигурации восприятия вашего профиля.\n\n"
+        f"💡 <b>Как использовать:</b>\n"
+        f"1. Нажми кнопку ниже, чтобы открыть PDF\n"
+        f"2. Прочитай \n"
+        f"3. Обращай внимание на символы и метафоры\n\n"
+        f"Приятного чтения! 📖✨"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("📖 Открыть сказку", url=GIFT_PDF_LINK)],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(gift_text, reply_markup=reply_markup, parse_mode="HTML")
+    return OPEN_GIFT_SCREEN
+
+# ============================================
+# ✅ ОБРАБОТЧИКИ НАВИГАЦИИ
+# ============================================
+
+async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """✅ Кнопка 'Назад' - возвращает к результатам"""
+    query = update.callback_query
+    await query.answer()
+    return await show_results_screen(update, context)
+
+async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """✅ Перезапуск теста"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Очищаем данные
+    context.user_data.clear()
+    
+    # Начинаем заново
+    context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
+    context.user_data["stage1_current"] = 0
+    context.user_data["stage2_level_scores"] = []
+    context.user_data["stage3_level_scores"] = []
+    context.user_data["stage4_dilts_answers"] = []
+    context.user_data["processing"] = False
+    context.user_data["has_shared"] = False
+    
+    return await start_test(update, context)
+
+# ============================================
+# КОМАНДЫ БОТА (СОХРАНЕНЫ)
 # ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1076,14 +1305,14 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["stage3_level_scores"] = []
     context.user_data["stage4_dilts_answers"] = []
     context.user_data["processing"] = False
-    context.user_data["has_shared"] = False  # Инициализируем флаг шаринга
+    context.user_data["has_shared"] = False
     
     logger.info(f"User {update.effective_user.id} started test")
     
     return await show_stage_1_intro(update, context)
 
 # ============================================
-# ЭКРАНЫ ПЕРЕД ЭТАПАМИ
+# ЭКРАНЫ ПЕРЕД ЭТАПАМИ (СОХРАНЕНЫ)
 # ============================================
 
 async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1137,7 +1366,7 @@ async def back_to_stage1_intro(update: Update, context: ContextTypes.DEFAULT_TYP
     return await show_stage_1_intro(update, context)
 
 # ============================================
-# ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
+# ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ (СОХРАНЕН)
 # ============================================
 
 async def start_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1249,7 +1478,7 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STAGE_2
 
 # ============================================
-# УТОЧНЯЮЩИЕ ВОПРОСЫ
+# УТОЧНЯЮЩИЕ ВОПРОСЫ (СОХРАНЕНЫ)
 # ============================================
 
 async def ask_clarification_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1382,7 +1611,7 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
     return CLARIFICATION
 
 # ============================================
-# ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+# ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ (СОХРАНЕН)
 # ============================================
 
 async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1553,7 +1782,7 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STAGE_3
 
 # ============================================
-# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ
+# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ (СОХРАНЕН)
 # ============================================
 
 async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1713,7 +1942,7 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STAGE_4
 
 # ============================================
-# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
+# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ (СОХРАНЕН)
 # ============================================
 
 async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1842,11 +2071,11 @@ async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 # ============================================
-# ✅ ЭКРАН 1: РЕЗУЛЬТАТЫ ТЕСТА (основной экран)
+# ✅ ЗАВЕРШЕНИЕ ТЕСТА С ПЕРЕХОДОМ К НОВОЙ НАВИГАЦИИ
 # ============================================
 
 async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Завершение ЭТАПА 4 - переход к результатам"""
+    """✅ Завершение ЭТАПА 4 - переход к новой навигации"""
     query = update.callback_query
     dilts_answers = context.user_data.get("stage4_dilts_answers", [])
     
@@ -1864,13 +2093,7 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"User {update.effective_user.id}: Stage 4 complete, dilts={dilts_level}")
     
-    return await show_results(update, context)
-
-async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Показ результатов с новой структурой кнопок"""
-    query = update.callback_query
-    
-    # ✅ АНИМИРОВАННЫЙ ЭКРАН
+    # ✅ АНИМИРОВАННЫЙ ЭКРАН ЗАГРУЗКИ
     loading_text = (
         f"⏳ <b>ОБРАБАТЫВАЮ РЕЗУЛЬТАТЫ...</b>\n\n"
         f"Анализирую твои ответы и определяю профиль..."
@@ -1879,9 +2102,9 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await asyncio.sleep(2)
     
+    # ✅ ВЫЧИСЛЯЕМ ПРОФИЛЬ
     perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
     final_level = context.user_data.get("final_level", 1)
-    dilts_level = context.user_data.get("dilts_level", "ENVIRONMENT")
     
     profile_key = calculate_profile_key(context.user_data)
     profile_card = get_card_description(profile_key)
@@ -1895,249 +2118,15 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(error_text, parse_mode="HTML")
         return ConversationHandler.END
     
-    # Проверяем, поделился ли уже пользователь
-    has_shared = context.user_data.get("has_shared", False)
-    
-    # ✅ ФОРМИРУЕМ ТЕКСТ РЕЗУЛЬТАТОВ
-    profile_text = (
-        f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-        f"{profile_card['title']}\n\n"
-        f"{profile_card['pain']}\n\n"
-        f"<b>🌍 ТВОЙ МИР:</b>\n\n"
-        f"{profile_card['world']}\n\n"
-        f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n"
-        f"{profile_card['superpower']}\n\n"
-        f"<b>🚀 ТОЧКА РОСТА:</b>\n\n"
-        f"{profile_card['growth']}\n\n"
-        f"{profile_card['cta']}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━"
-    )
-    
-    if not has_shared:
-        profile_text += (
-            f"\n\n🎁 <b>ПОЛУЧИ БЕСПЛАТНЫЙ ПОДАРОК</b>\n"
-            f"Поделись тестом и получи терапевтическую сказку"
-        )
-    else:
-        profile_text += (
-            f"\n\n🎉 <b>ПОДАРОК ГОТОВ!</b>\n"
-            f"Спасибо за репост!"
-        )
-    
-    # ✅ СОЗДАЕМ ПРАВИЛЬНЫЕ КНОПКИ ПО РЕКОМЕНДАЦИЯМ
-    if not has_shared:
-        # Кнопки до шаринга
-        keyboard = [
-            [InlineKeyboardButton("🎁 Получить подарок", callback_data="get_gift")],
-            [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
-            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
-        ]
-    else:
-        # Кнопки после шаринга
-        keyboard = [
-            [InlineKeyboardButton("🎁 Открыть сказку", callback_data="open_gift")],
-            [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
-            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
-        ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    # Сохраняем данные профиля для использования в других экранах
+    # Сохраняем данные профиля
     context.user_data["profile_card"] = profile_card
     context.user_data["profile_key"] = profile_key
     
-    # Проверяем длину сообщения
-    if len(profile_text) > 4096:
-        # Разбиваем на части
-        parts = [
-            f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n{profile_card['title']}\n\n{profile_card['pain']}",
-            f"<b>🌍 ТВОЙ МИР:</b>\n\n{profile_card['world']}",
-            f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n{profile_card['superpower']}",
-            f"<b>🚀 ТОЧКА РОСТА:</b>\n\n{profile_card['growth']}\n\n{profile_card['cta']}"
-        ]
-        
-        # Последняя часть с кнопками
-        last_part = "━━━━━━━━━━━━━━━━━━━━"
-        if not has_shared:
-            last_part += "\n\n🎁 <b>ПОЛУЧИ БЕСПЛАТНЫЙ ПОДАРОК</b>\nПоделись тестом и получи терапевтическую сказку"
-        else:
-            last_part += "\n\n🎉 <b>ПОДАРОК ГОТОВ!</b>\nСпасибо за репост!"
-        
-        # Отправляем все части
-        for i, part in enumerate(parts):
-            if i == 0:
-                await query.edit_message_text(part, parse_mode="HTML")
-            else:
-                await query.message.reply_text(part, parse_mode="HTML")
-        
-        # Последняя часть с кнопками
-        await query.message.reply_text(last_part, parse_mode="HTML", reply_markup=reply_markup)
-    else:
-        await query.edit_message_text(profile_text, parse_mode="HTML", reply_markup=reply_markup)
-    
-    return RESULTS
+    # Переходим к новой навигации (ЭКРАН 1)
+    return await show_results_screen(update, context)
 
 # ============================================
-# ✅ ЭКРАН 2: ПОЛУЧЕНИЕ ПОДАРОКА
-# ============================================
-
-async def get_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Экран получения подарка"""
-    query = update.callback_query
-    await query.answer()
-    
-    instruction_text = (
-        f"📤 <b>ШАГ 1: ПОДЕЛИСЬ ТЕСТОМ</b>\n\n"
-        f"Нажми кнопку ниже, чтобы поделиться ссылкой в Telegram.\n\n"
-        f"<i>После того как поделишься, вернись сюда и нажми «✅ Я поделился»</i>"
-    )
-    
-    # Генерируем ссылку для шаринга
-    encoded_text = urllib.parse.quote(SHARE_TEXT)
-    share_url = f"https://t.me/share/url?url={BOT_LINK}&text={encoded_text}"
-    
-    keyboard = [
-        [InlineKeyboardButton("📤 Поделиться ссылкой", url=share_url)],
-        [InlineKeyboardButton("✅ Я поделился", callback_data="confirm_share")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        text=instruction_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-    
-    return GIFT_SCREEN
-
-async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Подтверждение шаринга и возврат к результатам"""
-    query = update.callback_query
-    await query.answer("✅ Спасибо за репост! Ваш подарок готов!")
-    
-    # Отмечаем, что пользователь поделился
-    context.user_data["has_shared"] = True
-    
-    # Возвращаемся к экрану результатов (он обновится автоматически)
-    return await show_results(update, context)
-
-async def open_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Открытие подарка (PDF)"""
-    query = update.callback_query
-    await query.answer()
-    
-    gift_text = (
-        f"🎁 <b>ТВОЙ ПОДАРОК ГОТОВ!</b>\n\n"
-        f"📚 <b>Терапевтическая сказка для твоего архетипа</b>\n\n"
-        f"Эта сказка поможет интегрировать твои сильные стороны и преодолеть ограничения.\n\n"
-        f"💡 <b>Как использовать:</b>\n"
-        f"1. Нажми кнопку ниже, чтобы открыть PDF\n"
-        f"2. Прочитай перед сном\n"
-        f"3. Обращай внимание на символы и метафоры\n"
-        f"4. Записывай возникающие инсайты\n\n"
-        f"Приятного чтения! 📖✨"
-    )
-    
-    keyboard = [
-        [InlineKeyboardButton("📖 Открыть сказку", url=GIFT_PDF_LINK)],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        text=gift_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-    
-    return GIFT_SCREEN
-
-# ============================================
-# ✅ ЭКРАН 3: ПОЛНЫЙ ПАКЕТ
-# ============================================
-
-async def show_package(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Экран с информацией о полном пакете"""
-    query = update.callback_query
-    await query.answer()
-    
-    package_text = (
-        f"💎 <b>ПОЛНЫЙ ПАКЕТ ВАРИАТИКА</b>\n\n"
-        f"<b>Что входит:</b>\n"
-        f"• Полный разбор архетипа (15+ страниц детального анализа)\n"
-        f"• Персональная терапевтическая сказка для коррекции конфликтующих частей\n"
-        f"• Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (PDF)\n"
-        f"• Персональные рекомендации по развитию\n"
-        f"• Карта сильных и слабых сторон\n\n"
-        f"<b>Цена:</b> 690 ₽\n\n"
-        f"💬 <b>Иногда самое большое, что мы можем сделать для своих близких - это дать зеркало...</b>"
-    )
-    
-    keyboard = [
-        [InlineKeyboardButton("💳 Купить", url=PAYMENT_LINK)],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")],
-        [InlineKeyboardButton("💬 Консультация", url=f"https://t.me/{AUTHOR_LINK[1:]}" if AUTHOR_LINK.startswith('@') else f"https://t.me/{AUTHOR_LINK}")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        text=package_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-    
-    return PACKAGE_SCREEN
-
-# ============================================
-# ✅ УНИВЕРСАЛЬНЫЕ ОБРАБОТЧИКИ НАВИГАЦИИ
-# ============================================
-
-async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Кнопка 'Назад' - всегда возвращает к результатам"""
-    query = update.callback_query
-    await query.answer()
-    
-    return await show_results(update, context)
-
-async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Перезапуск теста"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Очищаем данные пользователя
-    context.user_data.clear()
-    
-    # Показываем приветственное сообщение
-    user = update.effective_user
-    welcome_text = (
-        f"Привет, {user.first_name}! 👋\n\n"
-        f"🎴 <b>Добро пожаловать в психодиагностический тест ВАРИАТИКА!</b>\n\n"
-        f"🔍 <b>Узнай о себе то, что ты ещё не знаешь.</b>\n\n"
-        f"<b>Этот тест поможет определить:</b>\n"
-        f"• Как ты воспринимаешь реальность \n"
-        f"• Каким способом обрабатываешь информацию \n"
-        f"• Какие поведенческие паттерны у тебя есть \n"
-        f"• Что не дает тебе расти 🚀\n\n"
-        f"🎯 <b>Что тебя ждёт:</b>\n\n"
-        f"1️⃣ <b>ЭТАП 1:</b> Конфигурация восприятия (8 вопросов)\n"
-        f"2️⃣ <b>ЭТАП 2:</b> Конфигурация мышления (8 вопросов)\n"
-        f"3️⃣ <b>ЭТАП 3:</b> Поведенческие паттерны (8 вопросов)\n"
-        f"4️⃣ <b>ЭТАП 4:</b> Конфликт логических уровней (8 вопросов)\n\n"
-        f"⏱ Займёт 10-15 минут\n\n"
-        f"📌 Отвечай честно, как есть сейчас, а не как хотелось бы.\n\n"
-        f"Готов начать? 🚀"
-    )
-    
-    keyboard = [[InlineKeyboardButton("🚀 Начать тест", callback_data="start_test")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
-    
-    return await start_test(update, context)
-
-# ============================================
-# ФУНКЦИЯ ОТМЕНЫ
+# ✅ ФУНКЦИЯ ОТМЕНЫ
 # ============================================
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2176,7 +2165,6 @@ def check_profiles_on_startup():
     
     if len(found_profiles) < 36:
         logger.warning(f"⚠️ Expected 36 profiles, found {len(found_profiles)}")
-        # Показываем только первые 10 недостающих профилей
         logger.warning(f"⚠️ Missing profiles (first 10): {missing_profiles[:10]}")
     else:
         logger.info("✅ Profile count OK - 36 profiles found")
@@ -2184,11 +2172,11 @@ def check_profiles_on_startup():
     return len(found_profiles) >= 36
 
 # ============================================
-# ✅ ГЛАВНАЯ ФУНКЦИЯ С ИСПРАВЛЕННОЙ НАВИГАЦИЕЙ
+# ✅ ГЛАВНАЯ ФУНКЦИЯ С НОВОЙ СТРУКТУРОЙ НАВИГАЦИИ
 # ============================================
 
 def main():
-    """Запуск бота с исправленной навигацией"""
+    """Запуск бота с новой структурой навигации"""
     
     # Проверка профилей
     check_profiles_on_startup()
@@ -2234,24 +2222,29 @@ def main():
                 CallbackQueryHandler(handle_clarification_answer, pattern="^clarify_")
             ],
             RESULTS: [
-                # ✅ ОСНОВНЫЕ КНОПКИ НА ЭКРАНЕ РЕЗУЛЬТАТОВ
-                CallbackQueryHandler(get_gift, pattern="^get_gift$"),
-                CallbackQueryHandler(open_gift, pattern="^open_gift$"),
-                CallbackQueryHandler(show_package, pattern="^show_package$"),
+                # ✅ ОСНОВНЫЕ КНОПКИ НА ЭКРАНАХ РЕЗУЛЬТАТОВ
+                CallbackQueryHandler(get_gift_screen, pattern="^get_gift$"),
+                CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
+                CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
                 CallbackQueryHandler(restart_test, pattern="^restart_test$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(show_results_screen, pattern="^show_results$")
             ],
             GIFT_SCREEN: [
-                # ✅ КНОПКИ НА ЭКРАНЕ ПОДАРКА
+                # ✅ КНОПКИ НА ЭКРАНЕ ШАРИНГА
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(get_gift, pattern="^get_gift$"),
-                CallbackQueryHandler(open_gift, pattern="^open_gift$")
+                CallbackQueryHandler(get_gift_screen, pattern="^get_gift$")
             ],
             PACKAGE_SCREEN: [
                 # ✅ КНОПКИ НА ЭКРАНЕ ПАКЕТА
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(show_package, pattern="^show_package$")
+                CallbackQueryHandler(show_package_screen, pattern="^show_package$")
+            ],
+            OPEN_GIFT_SCREEN: [
+                # ✅ КНОПКИ НА ЭКРАНЕ ОТКРЫТИЯ ПОДАРКА
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(open_gift_screen, pattern="^open_gift$")
             ]
         },
         fallbacks=[CommandHandler("cancel", cancel)],
@@ -2261,7 +2254,7 @@ def main():
     application.add_handler(conv_handler)
     
     # Запуск бота
-    logger.info("🚀 Bot started with improved navigation!")
+    logger.info("🚀 Bot started with NEW 5-screen navigation!")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
