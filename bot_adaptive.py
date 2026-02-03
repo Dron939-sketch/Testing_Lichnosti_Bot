@@ -31,7 +31,12 @@ from telegram.ext import (
 # ✅ ИСПРАВЛЕННЫЙ ИМПОРТ
 # ============================================
 from card_data import get_card_description, profile_exists, CARD_DATA
-from button_manager import get_results_keyboard, get_gift_keyboard  # ✅ Импорт менеджера кнопок
+from button_manager import (
+    get_results_keyboard, 
+    get_gift_keyboard,
+    get_share_confirmation_keyboard,
+    get_share_url
+)  # ✅ Обновленный импорт менеджера кнопок
 
 # Получение токена из переменной окружения
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -52,11 +57,7 @@ STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULT, SHARE_CONFIRM = range
 # ============================================
 # КОНСТАНТЫ
 # ============================================
-BOT_LINK = "t.me/Testing_Lichnosti_bot"
-GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"  # ✅ ОБНОВЛЕНО
-AUTHOR_LINK = "@meysternlp"
-SHARE_TEXT = "Только что узнал о себе то, о чём ещё не знал... Тест показывает скрытые паттерны. КатеГОрически рекомендую:"  # ✅ ОБНОВЛЕНО
-PAYMENT_LINK = "https://yookassa.ru/my/i/aYHvs0MnrXUT/l"  # ✅ ОБНОВЛЕНО
+AUTHOR_LINK = "@meysternlp"  # ✅ Только автор, остальные ссылки в button_manager.py
 
 # ============================================
 # ДАННЫЕ ВОПРОСОВ (БЕЗ ИЗМЕНЕНИЙ)
@@ -1862,7 +1863,7 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_results(update, context)
 
 # ============================================
-# ПОКАЗ РЕЗУЛЬТАТОВ С ОБНОВЛЕННЫМИ КНОПКАМИ
+# ✅ ПОКАЗ РЕЗУЛЬТАТОВ С ОБНОВЛЕННЫМИ КНОПКАМИ
 # ============================================
 
 async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1894,7 +1895,7 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(error_text, parse_mode="HTML")
         return ConversationHandler.END
     
-    # ✅ ФОРМИРУЕМ ПОЛНОЕ ОПИСАНИЕ ПРОФИЛЯ
+    # ✅ ФОРМИРУЕМ ПОЛНОЕ ОПИСАНИЕ ПРОФИЛЯ (БЕЗ ПРЯМОЙ ССЫЛКИ НА ПОДАРОК)
     profile_text = (
         f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
         f"{profile_card['title']}\n\n"
@@ -1908,14 +1909,18 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{profile_card['cta']}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"🎁 <b>БЕСПЛАТНЫЙ ПОДАРОК</b>\n\n"
-        f"Поделись результатом и получи терапевтическую сказку!\n\n"
-        f"👉 <b>Вот ссылка на подарок, доступ открыт:</b>\n"
-        f"{GIFT_PDF_LINK}\n\n"
-        f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽)</b>\n\n"
+        f"Поделись ботом с друзьями и получи терапевтическую сказку!\n\n"
+        f"<b>Как получить подарок:</b>\n"
+        f"1. Нажми кнопку «Поделиться ссылкой и получить 🎁»\n"
+        f"2. Откроется меню шаринга — выбери чат и отправь ссылку\n"
+        f"3. Вернись в бота и нажми «✅ Я поделился»\n"
+        f"4. Кнопка «🔄 Пройти ещё раз» превратится в «🎁 Получить свой подарок»!\n\n"
+        f"💎 <b>ПОЛНЫЙ ПАКЕТ (690 ₽)</b>\n\n"
         f"✓ Полное описание архетипа и персональные рекомендации (15+ страниц)\n"
         f"✓ Персональная терапевтическая сказка для коррекции других конфликтующих частей\n"
-        f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf) для самостоятельной коррекции на уровне конфигурации восприятия\n\n"
-        f"💬 <b>Хочешь разобраться глубже?</b>\n"
+        f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf)\n\n"
+        f"💬 <b>Иногда самое ценное, что мы можем сделать для близких - это дать зеркало.</b>\n\n"
+        f"Хочешь разобраться глубже или помочь другим?\n"
         f"Получить персональную консультацию:\n"
         f"👉 {AUTHOR_LINK}"
     )
@@ -1923,9 +1928,8 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Сохраняем, что пользователь получил результаты и ID сообщения
     context.user_data["got_results"] = True
     context.user_data["results_message_id"] = query.message.message_id
-    context.user_data["has_shared"] = False  # Флаг, что ещё не поделился
     
-    # ✅ ИСПОЛЬЗУЕМ МЕНЕДЖЕР КНОПОК - первый показ
+    # ✅ ИСПОЛЬЗУЕМ МЕНЕДЖЕР КНОПОК - первый показ (ещё не поделились)
     reply_markup = get_results_keyboard(user_shared=False)
     
     # Проверяем длину сообщения
@@ -1950,25 +1954,118 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         part3 = (
             f"━━━━━━━━━━━━━━━━━━━━\n\n"
             f"🎁 <b>БЕСПЛАТНЫЙ ПОДАРОК</b>\n\n"
-            f"Поделись результатом и получи терапевтическую сказку!\n\n"
-            f"👉 <b>Вот ссылка на подарок, доступ открыт:</b>\n"
-            f"{GIFT_PDF_LINK}\n\n"
-            f"💎 <b>ПОЛНЫЙ ПАКЕТ (960 ₽)</b>\n\n"
+            f"Поделись ботом с друзьями и получи терапевтическую сказку!\n\n"
+            f"<b>Как получить подарок:</b>\n"
+            f"1. Нажми кнопку «Поделиться ссылкой и получить 🎁»\n"
+            f"2. Откроется меню шаринга — выбери чат и отправь ссылку\n"
+            f"3. Вернись в бота и нажми «✅ Я поделился»\n"
+            f"4. Кнопка «🔄 Пройти ещё раз» превратится в «🎁 Получить свой подарок»!\n\n"
+            f"💎 <b>ПОЛНЫЙ ПАКЕТ (690 ₽)</b>\n\n"
             f"✓ Полное описание архетипа и персональные рекомендации (15+ страниц)\n"
             f"✓ Персональная терапевтическая сказка для коррекции других конфликтующих частей\n"
-            f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf)\n\n"
-            f"💬 <b>Хочешь разобраться глубже?</b>\n"
+            f"✓ Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (pdf)"
+        )
+        
+        part4 = (
+            f"💬 <b>Иногда самое ценное, что мы можем сделать для близких - это дать зеркало.</b>\n\n"
+            f"Хочешь разобраться глубже или помочь другим?\n"
             f"Получить персональную консультацию:\n"
             f"👉 {AUTHOR_LINK}"
         )
         
         await query.edit_message_text(part1, parse_mode="HTML")
         await query.message.reply_text(part2, parse_mode="HTML")
-        await query.message.reply_text(part3, parse_mode="HTML", reply_markup=reply_markup)
+        await query.message.reply_text(part3, parse_mode="HTML")
+        await query.message.reply_text(part4, parse_mode="HTML", reply_markup=reply_markup)
     else:
         await query.edit_message_text(profile_text, parse_mode="HTML", reply_markup=reply_markup)
     
     return SHARE_CONFIRM
+
+# ============================================
+# ✅ НОВЫЕ ОБРАБОТЧИКИ ДЛЯ ШАРИНГА
+# ============================================
+
+async def handle_share_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка нажатия на кнопку шаринга"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Показываем инструкцию по шарингу
+    instruction_text = (
+        f"📤 <b>ШАГ 1: ПОДЕЛИТЕСЬ БОТОМ</b>\n\n"
+        f"Нажмите на кнопку ниже, чтобы открыть меню шаринга.\n"
+        f"Выберите чат или контакт, с которым хотите поделиться ботом.\n\n"
+        f"✅ <b>ШАГ 2: ПОДТВЕРДИТЕ</b>\n\n"
+        f"После того как поделитесь ботом, вернитесь сюда и нажмите кнопку «✅ Я поделился».\n\n"
+        f"🎁 <b>ШАГ 3: ПОЛУЧИТЕ ПОДАРОК</b>\n\n"
+        f"После подтверждения кнопка «🔄 Пройти ещё раз» превратится в «🎁 Получить свой подарок»!"
+    )
+    
+    reply_markup = get_share_confirmation_keyboard()
+    
+    await query.edit_message_text(
+        text=instruction_text,
+        reply_markup=reply_markup,
+        parse_mode="HTML"
+    )
+
+async def handle_share_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пользователь подтвердил, что поделился ботом"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Получаем ID оригинального сообщения с результатами
+    original_message_id = context.user_data.get("results_message_id")
+    
+    if original_message_id:
+        try:
+            # ✅ ОБНОВЛЯЕМ ОРИГИНАЛЬНОЕ СООБЩЕНИЕ С РЕЗУЛЬТАТАМИ
+            reply_markup = get_gift_keyboard()
+            
+            await context.bot.edit_message_reply_markup(
+                chat_id=update.effective_user.id,
+                message_id=original_message_id,
+                reply_markup=reply_markup
+            )
+            
+        except Exception as e:
+            logger.error(f"Error updating original message: {e}")
+    
+    # Показываем сообщение о подарке
+    gift_text = (
+        f"🎉 <b>СПАСИБО ЗА РЕПОСТ!</b>\n\n"
+        f"Ты поделился ссылкой на бота!\n\n"
+        f"🎁 <b>Твой подарок готов!</b>\n\n"
+        f"Нажми кнопку «🎁 Получить свой подарок» в сообщении с результатами выше, чтобы открыть PDF с терапевтической сказкой.\n\n"
+        f"<i>Если не видишь кнопку, прокрути чат вверх.</i>"
+    )
+    
+    reply_markup = get_gift_keyboard()
+    
+    await query.edit_message_text(
+        text=gift_text,
+        reply_markup=reply_markup,
+        parse_mode="HTML"
+    )
+
+# ============================================
+# ОБРАБОТКА ШАРИНГА И ПЕРЕЗАПУСКА
+# ============================================
+
+async def handle_share_return(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пользователь вернулся после шаринга (через команду) - перенаправляем на инструкцию"""
+    # Просто запускаем процесс шаринга заново
+    return await handle_share_button(update, context)
+
+async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Перезапуск теста (обработка нажатия на кнопку в get_gift_keyboard)"""
+    query = update.callback_query
+    await query.answer()
+    
+    context.user_data.clear()
+    
+    return await start_test(update, context)
 
 # ============================================
 # ФУНКЦИЯ ОТМЕНЫ (ДОБАВЛЕНА)
@@ -1982,73 +2079,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# ✅ НОВЫЙ ОБРАБОТЧИК ДЛЯ ВОЗВРАТА ПОСЛЕ ШАРИНГА
-# ============================================
-
-async def handle_inline_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Пользователь вернулся после шаринга - обновляем кнопки"""
-    logger.info(f"User {update.effective_user.id} returned after sharing")
-    
-    # Проверяем, есть ли сохранённое сообщение с результатами
-    message_id = context.user_data.get("results_message_id")
-    
-    if message_id and context.user_data.get("got_results"):
-        try:
-            # Обновляем клавиатуру на "получить подарок"
-            reply_markup = get_gift_keyboard()
-            
-            # Обновляем существующее сообщение
-            await context.bot.edit_message_reply_markup(
-                chat_id=update.effective_user.id,
-                message_id=message_id,
-                reply_markup=reply_markup
-            )
-            
-            # Сохраняем, что пользователь уже поделился
-            context.user_data["has_shared"] = True
-            
-            # Показываем уведомление о подарке
-            gift_text = (
-                f"🎉 <b>СПАСИБО ЗА РЕПОСТ!</b>\n\n"
-                f"Ты поделился результатом теста!\n\n"
-                f"🎁 <b>Твой подарок готов!</b>\n\n"
-                f"Нажми кнопку «🎁 Получить подарок» ниже, чтобы открыть PDF с терапевтической сказкой."
-            )
-            
-            await update.message.reply_text(gift_text, parse_mode="HTML")
-            
-        except Exception as e:
-            logger.error(f"Error updating keyboard: {e}")
-            # Если не удалось обновить, просто отправляем новое сообщение
-            gift_text = (
-                f"🎉 <b>СПАСИБО ЗА РЕПОСТ!</b>\n\n"
-                f"Ты поделился результатом теста!\n\n"
-                f"🎁 <b>Твой подарок готов!</b>\n\n"
-                f"Нажми кнопку ниже, чтобы открыть PDF с терапевтической сказкой:"
-            )
-            reply_markup = get_gift_keyboard()
-            await update.message.reply_text(gift_text, parse_mode="HTML", reply_markup=reply_markup)
-    
-    return SHARE_CONFIRM
-
-# ============================================
-# ОБРАБОТКА ШАРИНГА И ПЕРЕЗАПУСКА
-# ============================================
-
-async def handle_share_return(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Пользователь вернулся после шаринга (через команду)"""
-    return await handle_inline_share(update, context)
-
-async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Перезапуск теста (обработка нажатия на кнопку в get_gift_keyboard)"""
-    query = update.callback_query
-    await query.answer()
-    
-    context.user_data.clear()
-    
-    return await start_test(update, context)
-
-# ============================================
 # ✅ ИСПРАВЛЕННАЯ ПРОВЕРКА ПРОФИЛЕЙ ПРИ ЗАПУСКЕ
 # ============================================
 
@@ -2058,7 +2088,7 @@ def check_profiles_on_startup():
     
     expected_types = ["SA", "IA", "SP", "IP"]
     expected_levels = list(range(1, 10))  # 1-9
-    expected_dilts = ["env", "beh", "cap", "val", "ide"]
+    expected_dilts = ["env", "beh", "cap", "val", "ide"]  # ✅ ЗАВЕРШЕННЫЙ СПИСОК
     
     missing_profiles = []
     found_profiles = []
@@ -2085,75 +2115,138 @@ def check_profiles_on_startup():
     return len(found_profiles) >= 36
 
 # ============================================
-# ГЛАВНАЯ ФУНКЦИЯ
+# ✅ ОБРАБОТЧИК ДЛЯ ШАРИНГА (ДОПОЛНЕНИЕ К button_manager)
 # ============================================
 
-def main():
-    """Запуск бота"""
+async def handle_share_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка действий шаринга"""
+    query = update.callback_query
+    await query.answer()  # ✅ Важно добавить подтверждение callback
     
-    # Проверка профилей
-    check_profiles_on_startup()
+    if query.data == "share_link":
+        # Показываем инструкцию по шарингу
+        instruction_text = (
+            f"📤 <b>ШАГ 1: ПОДЕЛИТЕСЬ БОТОМ</b>\n\n"
+            f"Нажмите на кнопку ниже, чтобы открыть меню шаринга.\n"
+            f"Выберите чат или контакт, с которым хотите поделиться ботом.\n\n"
+            f"✅ <b>ШАГ 2: ПОДТВЕРДИТЕ</b>\n\n"
+            f"После того как поделитесь ботом, вернитесь сюда и нажмите кнопку «✅ Я поделился».\n\n"
+            f"🎁 <b>ШАГ 3: ПОЛУЧИТЕ ПОДАРОК</b>\n\n"
+            f"После подтверждения кнопка «🔄 Пройти ещё раз» превратится в «🎁 Получить свой подарок»!"
+        )
+        
+        # Получаем клавиатуру для подтверждения шаринга
+        reply_markup = get_share_confirmation_keyboard()
+        
+        await query.edit_message_text(
+            text=instruction_text,
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
+        
+    elif query.data == "share_confirmed":
+        # Пользователь подтвердил, что поделился
+        await query.answer("✅ Спасибо за репост! Ваш подарок готов!")
+        
+        # Получаем ID оригинального сообщения с результатами
+        original_message_id = context.user_data.get("results_message_id")
+        
+        if original_message_id:
+            try:
+                # Обновляем оригинальное сообщение с результатами
+                reply_markup = get_gift_keyboard()
+                
+                await context.bot.edit_message_reply_markup(
+                    chat_id=update.effective_user.id,
+                    message_id=original_message_id,
+                    reply_markup=reply_markup
+                )
+                
+                # Показываем сообщение о подарке
+                gift_text = (
+                    f"🎉 <b>СПАСИБО ЗА РЕПОСТ!</b>\n\n"
+                    f"Ты поделился ссылкой на бота!\n\n"
+                    f"🎁 <b>Твой подарок готов!</b>\n\n"
+                    f"Нажми кнопку «🎁 Получить свой подарок» в сообщении с результатами выше, чтобы открыть PDF с терапевтической сказкой.\n\n"
+                    f"<i>Если не видишь кнопку, прокрути чат вверх.</i>"
+                )
+                
+                await query.edit_message_text(
+                    text=gift_text,
+                    reply_markup=reply_markup,
+                    parse_mode="HTML"
+                )
+                
+            except Exception as e:
+                logger.error(f"Error updating original message: {e}")
+                # Если не удалось обновить, отправляем новое сообщение
+                gift_text = (
+                    f"🎉 <b>СПАСИБО ЗА РЕПОСТ!</b>\n\n"
+                    f"Ты поделился ссылкой на бота!\n\n"
+                    f"🎁 <b>Твой подарок готов!</b>\n\n"
+                    f"Нажми кнопку ниже, чтобы открыть PDF с терапевтической сказкой:"
+                )
+                reply_markup = get_gift_keyboard()
+                
+                await query.edit_message_text(
+                    text=gift_text,
+                    reply_markup=reply_markup,
+                    parse_mode="HTML"
+                )
     
-    # Создание приложения
-    application = Application.builder().token(TOKEN).build()
+    elif query.data == "get_gift":
+        # Пользователь нажал "Получить подарок"
+        await query.answer("Открываю ссылку на подарок...")
+        
+        # Показываем сообщение со ссылкой
+        gift_text = (
+            f"🎁 <b>ТВОЙ ПОДАРОК</b>\n\n"
+            f"📚 <b>Терапевтическая сказка для твоего архетипа</b>\n\n"
+            f"Эта сказка поможет интегрировать твои сильные стороны и преодолеть ограничения.\n\n"
+            f"👉 <b>Ссылка на PDF:</b>\n"
+            f"{GIFT_PDF_LINK}\n\n"
+            f"💡 <b>Как использовать:</b>\n"
+            f"1. Скачай или открой PDF\n"
+            f"2. Прочитай перед сном\n"
+            f"3. Обращай внимание на символы и метафоры\n"
+            f"4. Записывай возникающие инсайты\n\n"
+            f"Приятного чтения! 📖✨"
+        )
+        
+        await query.edit_message_text(
+            text=gift_text,
+            parse_mode="HTML"
+        )
     
-    # ConversationHandler
-    conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler("start", start),
-            CallbackQueryHandler(start_test, pattern="^start_test$")
-        ],
-        states={
-            STAGE_1: [
-                CallbackQueryHandler(show_stage_1_details, pattern="^stage1_details$"),
-                CallbackQueryHandler(back_to_stage1_intro, pattern="^back_to_stage1_intro$"),
-                CallbackQueryHandler(start_stage_1, pattern="^start_stage_1$"),
-                CallbackQueryHandler(handle_stage_1_answer, pattern="^stage1_")
-            ],
-            STAGE_2: [
-                CallbackQueryHandler(show_stage_2_intro, pattern="^show_stage_2_intro$"),
-                CallbackQueryHandler(show_stage_2_details, pattern="^stage2_details$"),
-                CallbackQueryHandler(back_to_stage2_intro, pattern="^back_to_stage2_intro$"),
-                CallbackQueryHandler(start_stage_2, pattern="^start_stage_2$"),
-                CallbackQueryHandler(handle_stage_2_answer, pattern="^stage2_")
-            ],
-            STAGE_3: [
-                CallbackQueryHandler(show_stage_3_intro, pattern="^show_stage_3_intro$"),
-                CallbackQueryHandler(show_stage_3_details, pattern="^stage3_details$"),
-                CallbackQueryHandler(back_to_stage3_intro, pattern="^back_to_stage3_intro$"),
-                CallbackQueryHandler(start_stage_3, pattern="^start_stage_3$"),
-                CallbackQueryHandler(handle_stage_3_answer, pattern="^stage3_")
-            ],
-            STAGE_4: [
-                CallbackQueryHandler(show_stage_4_intro, pattern="^show_stage_4_intro$"),
-                CallbackQueryHandler(show_stage_4_details, pattern="^stage4_details$"),
-                CallbackQueryHandler(back_to_stage4_intro, pattern="^back_to_stage4_intro$"),
-                CallbackQueryHandler(start_stage_4, pattern="^start_stage_4$"),
-                CallbackQueryHandler(handle_stage_4_answer, pattern="^stage4_")
-            ],
-            CLARIFICATION: [
-                CallbackQueryHandler(handle_clarification_answer, pattern="^clarify_")
-            ],
-            SHARE_CONFIRM: [
-                CallbackQueryHandler(handle_inline_share, pattern="^share_return$"),
-                CallbackQueryHandler(restart_test, pattern="^restart_test$")
-            ]
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],  # ✅ ИСПРАВЛЕНО
-        allow_reentry=True
-    )
+    elif query.data == "buy_full":
+        # Пользователь нажал "Купить полный пакет"
+        await query.answer("Открываю страницу оплаты...")
+        
+        payment_text = (
+            f"💎 <b>ПОЛНЫЙ ПАКЕТ ВАРИАТИКА</b>\n\n"
+            f"✅ <b>Что входит:</b>\n\n"
+            f"📄 <b>Полное описание архетипа</b>\n"
+            f"• 15+ страниц детального анализа\n"
+            f"• Персональные рекомендации по развитию\n"
+            f"• Карта твоих сильных и слабых сторон\n\n"
+            f"📚 <b>Персональная терапевтическая сказка</b>\n"
+            f"• Для коррекции других конфликтующих частей\n"
+            f"• Составлена под твой конкретный профиль\n"
+            f"• Методика работы со сказкой\n\n"
+            f"🎴 <b>Книга «ВАРИАТИКА» (PDF)</b>\n"
+            f"• Библиотека человеческих паттернов\n"
+            f"• Методики самостоятельной коррекции\n"
+            f"• Упражнения для развития осознанности\n\n"
+            f"💰 <b>Стоимость:</b> 690 ₽\n\n"
+            f"👉 <b>Ссылка для оплаты:</b>\n"
+            f"{PAYMENT_LINK}\n\n"
+            f"После оплаты свяжись со мной для получения материалов:\n"
+            f"👉 {AUTHOR_LINK}"
+        )
+        
+        await query.edit_message_text(
+            text=payment_text,
+            parse_mode="HTML"
+        )
     
-    application.add_handler(conv_handler)
-    
-    # ✅ ДОБАВЛЯЕМ ОБРАБОТЧИК ДЛЯ ВОЗВРАТА ПОСЛЕ ШАРИНГА
-    application.add_handler(MessageHandler(
-        filters.TEXT & filters.Regex(r'^/start$|^/gift$'), 
-        handle_inline_share
-    ))
-    
-    # Запуск бота
-    logger.info("🚀 Bot started!")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-if __name__ == "__main__":
-    main()
+    return SHARE_CONFIRM
