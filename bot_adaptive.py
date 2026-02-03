@@ -1922,11 +1922,11 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["got_results"] = True
     context.user_data["results_message_id"] = query.message.message_id
     
-    # ✅ КНОПКИ С УЧЕТОМ ШАРИНГА
+    # ✅ КНОПКИ С УЧЕТОМ ШАРИНГА - ИЗМЕНЕНЫ ПО УКАЗАНИЮ
     keyboard = [
         [InlineKeyboardButton("🎁 Поделиться результатом", switch_inline_query=SHARE_TEXT)],  # ✅ ОБНОВЛЕНО
         [InlineKeyboardButton("💎 Получить полный пакет (960 ₽)", url=f"https://t.me/{AUTHOR_LINK.strip('@')}")],
-        [InlineKeyboardButton("🎁 Забрать подарок", url=GIFT_PDF_LINK)]  # ✅ ОБНОВЛЕНО - теперь сразу кнопка подарка
+        [InlineKeyboardButton("🎁 Забрать подарок", url=GIFT_PDF_LINK)]  # ✅ ОБНОВЛЕНО - теперь сразу кнопка подарка вместо "Пройти ещё раз"
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -1973,6 +1973,17 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return SHARE_CONFIRM
 
 # ============================================
+# ФУНКЦИЯ ОТМЕНЫ (ДОБАВЛЕНА)
+# ============================================
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отмена теста"""
+    await update.message.reply_text(
+        "❌ Тест отменён.\n\nЧтобы начать заново: /start"
+    )
+    return ConversationHandler.END
+
+# ============================================
 # ОБРАБОТКА ШАРИНГА И ПЕРЕЗАПУСКА
 # ============================================
 
@@ -2016,7 +2027,7 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await start_test(update, context)
 
 # ============================================
-# ✅ ПРОВЕРКА ПРОФИЛЕЙ ПРИ ЗАПУСКЕ
+# ✅ ИСПРАВЛЕННАЯ ПРОВЕРКА ПРОФИЛЕЙ ПРИ ЗАПУСКЕ
 # ============================================
 
 def check_profiles_on_startup():
@@ -2025,39 +2036,31 @@ def check_profiles_on_startup():
     
     expected_types = ["SA", "IA", "SP", "IP"]
     expected_levels = list(range(1, 10))  # 1-9
+    expected_dilts = ["env", "beh", "cap", "val", "ide"]
     
     missing_profiles = []
     found_profiles = []
     
     for type_code in expected_types:
         for level in expected_levels:
-            # Проверяем хотя бы один профиль этого типа и уровня
-            found = False
-            for dilts in ["env", "beh", "cap", "val", "ide"]:
+            for dilts in expected_dilts:
                 profile_key = f"{type_code}_{level}_{dilts}"
                 if profile_key in CARD_DATA:
-                    found = True
                     found_profiles.append(profile_key)
-                    break
-            
-            if not found:
-                missing_profiles.append(f"{type_code}_{level}")
+                else:
+                    missing_profiles.append(profile_key)
     
     logger.info(f"✅ Found {len(found_profiles)} profiles in CARD_DATA")
+    logger.info(f"📊 Total profiles in CARD_DATA: {len(CARD_DATA)}")
     
-    if missing_profiles:
-        logger.warning(f"⚠️ Missing profiles for: {missing_profiles}")
+    if len(found_profiles) < 36:
+        logger.warning(f"⚠️ Expected 36 profiles, found {len(found_profiles)}")
+        # Показываем только первые 10 недостающих профилей
+        logger.warning(f"⚠️ Missing profiles (first 10): {missing_profiles[:10]}")
     else:
-        logger.info("✅ All profile types covered (at least one per type-level)")
+        logger.info("✅ Profile count OK - 36 profiles found")
     
-    # Проверка общего количества
-    total_profiles = len(CARD_DATA)
-    logger.info(f"📊 Total profiles in CARD_DATA: {total_profiles}")
-    
-    if total_profiles < 36:
-        logger.warning(f"⚠️ Expected 36 profiles, found {total_profiles}")
-    else:
-        logger.info("✅ Profile count OK")
+    return len(found_profiles) >= 36
 
 # ============================================
 # ГЛАВНАЯ ФУНКЦИЯ
@@ -2114,7 +2117,7 @@ def main():
                 CallbackQueryHandler(restart_test, pattern="^restart_test$")
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[CommandHandler("cancel", cancel)],  # ✅ ИСПРАВЛЕНО
         allow_reentry=True
     )
     
