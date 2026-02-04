@@ -2341,6 +2341,25 @@ def check_profiles_on_startup():
 
 def main():
     """Запуск бота"""
+    # 🔍 ДОБАВЬТЕ ЭТОТ КОД НАЧИНАЯ ОТСЮДА:
+    print("\n" + "="*50)
+    print("🚀 ЗАПУСК БОТА")
+    print("="*50)
+    
+    # Отладочная информация о профилях
+    debug_loader()
+    
+    print("="*50 + "\n")
+    # 🔍 КОНЕЦ ДОБАВЛЕННОГО КОДА
+    
+    # Проверка профилей
+    check_profiles_on_startup()
+    
+    # Создание приложения
+    application = Application.builder().token(TOKEN).build()
+    
+    # ... остальной код ...
+    """Запуск бота"""
     
     # Проверка профилей
     check_profiles_on_startup()
