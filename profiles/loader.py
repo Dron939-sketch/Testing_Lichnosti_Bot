@@ -21,13 +21,16 @@ class ProfileLoader:
                 
                 # Ищем все переменные в модуле, которые являются VariaticaProfile
                 for attr_name in dir(module):
-                    attr = getattr(module, attr_name)
-                    if isinstance(attr, VariaticaProfile):
-                        self.profiles[attr.key] = attr
-                        print(f"✓ Загружен профиль: {attr.key}")
+                    if attr_name.startswith(profile_type.upper()):
+                        attr = getattr(module, attr_name)
+                        if isinstance(attr, VariaticaProfile):
+                            self.profiles[attr.key] = attr
+                            print(f"✅ Загружен профиль: {attr.key}")
                         
             except ImportError as e:
                 print(f"⚠ Не удалось загрузить {profile_type}: {e}")
+            except Exception as e:
+                print(f"❌ Ошибка при загрузке {profile_type}: {e}")
     
     def get_profile(self, key: str) -> VariaticaProfile:
         """Получить профиль по ключу"""
@@ -40,7 +43,7 @@ class ProfileLoader:
     def get_profiles_by_type(self, type_code: str):
         """Получить профили определенного типа"""
         return {k: v for k, v in self.profiles.items() 
-                if v.type_code == type_code}
+                if v.type_code == type_code.upper()}
     
     def get_profiles_by_level(self, level: int):
         """Получить профили определенного уровня"""
