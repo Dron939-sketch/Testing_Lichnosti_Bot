@@ -33,7 +33,7 @@ from telegram.ext import (
 )
 
 # ============================================
-# ✅ ИСПРАВЛЕННЫЙ ИМПОРТ - ФАЙЛОВАЯ СИСТЕМА
+#  ИСПРАВЛЕННЫЙ ИМПОРТ - ФАЙЛОВАЯ СИСТЕМА
 # ============================================
 from loader import loader  # Импортируем загрузчик
 from base import VariaticaProfile  # Импортируем класс профиля
@@ -120,7 +120,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============================================
-# ✅ СОСТОЯНИЯ ConversationHandler
+#  СОСТОЯНИЯ ConversationHandler
 # ============================================
 STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS, GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, DILTS_CLARIFICATION = range(10)
 
@@ -663,7 +663,7 @@ CLARIFICATION_QUESTIONS = {
 }
 
 # ============================================
-# ✅ НОВЫЕ ФУНКЦИИ ДЛЯ ИСПРАВЛЕННОЙ СИСТЕМЫ
+#  НОВЫЕ ФУНКЦИИ ДЛЯ ИСПРАВЛЕННОЙ СИСТЕМЫ
 # ============================================
 
 def calculate_progress(current: int, total: int) -> str:
@@ -687,7 +687,7 @@ def determine_perception_type(scores):
     return type_data["name"]
 
 def calculate_thinking_level_by_scores(level_scores_dict):
-    """✅ НОВАЯ: Определяет уровень мышления (1-9) по системе баллов как в карточном тесте"""
+    """ НОВАЯ: Определяет уровень мышления (1-9) по системе баллов как в карточном тесте"""
     if not level_scores_dict:
         return 1
     
@@ -720,7 +720,7 @@ def get_level_name(level_num):
     return level_names.get(level_num, f"Уровень {level_num}")
 
 def determine_dilts_level(dilts_answers):
-    """✅ Определяет уровень Дилтса"""
+    """ Определяет уровень Дилтса"""
     if not dilts_answers:
         return "ENVIRONMENT"
     
@@ -729,7 +729,7 @@ def determine_dilts_level(dilts_answers):
     return most_common[0]
 
 def calculate_final_level(stage2_level, stage3_scores):
-    """✅ Финальный уровень (приоритет поведению)"""
+    """ Финальный уровень (приоритет поведению)"""
     if not stage3_scores:
         return stage2_level
     
@@ -778,7 +778,7 @@ def get_file_suffix_by_level(level: int) -> str:
 
 def calculate_profile_final(context_data: dict) -> dict:
     """
-    ✅ ФИНАЛЬНЫЙ алгоритм расчета профиля
+     ФИНАЛЬНЫЙ алгоритм расчета профиля
     Игнорирует Дилтс при выборе файла, использует только для отображения
     """
     # 1. Определяем тип из этапа 1
@@ -813,7 +813,7 @@ def calculate_profile_final(context_data: dict) -> dict:
     # 9. Проверка согласованности
     coherence = check_profile_coherence(final_level, dilts_level)
     
-    logger.info(f"✅ FINAL PROFILE CALCULATION:")
+    logger.info(f" FINAL PROFILE CALCULATION:")
     logger.info(f"   Type: {type_code} ({perception_type})")
     logger.info(f"   Level: {final_level} ({get_level_name(final_level)})")
     logger.info(f"   File key: {file_key}")
@@ -905,7 +905,7 @@ def need_clarification_stage1(scores):
     return clarifications
 
 def need_clarification_stage2(level_scores_dict):
-    """✅ ОБНОВЛЕННАЯ: Нужны ли уточнения после ЭТАПА 2 (система баллов)"""
+    """ ОБНОВЛЕННАЯ: Нужны ли уточнения после ЭТАПА 2 (система баллов)"""
     if not level_scores_dict:
         return False
     
@@ -943,11 +943,11 @@ def need_clarification_stage4(dilts_answers):
     return False
 
 # ============================================
-# ✅ 5 ЭКРАНОВ НАВИГАЦИИ (С ИСПРАВЛЕНИЯМИ)
+#  5 ЭКРАНОВ НАВИГАЦИИ (С ИСПРАВЛЕНИЯМИ)
 # ============================================
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ ЭКРАН 1/2: РЕЗУЛЬТАТЫ ТЕСТА (до/после шаринга)"""
+    """ ЭКРАН 1/2: РЕЗУЛЬТАТЫ ТЕСТА (до/после шаринга)"""
     query = update.callback_query
     
     # Проверяем, поделился ли уже пользователь
@@ -990,12 +990,12 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Проверяем формат профиля
     is_new_format = hasattr(profile, 'archetype') and profile.archetype
     
-    # ✅ ФОРМИРУЕМ ТЕКСТ РЕЗУЛЬТАТОВ
+    #  ФОРМИРУЕМ ТЕКСТ РЕЗУЛЬТАТОВ
     if not has_shared:
         # ЭКРАН 1: До шаринга
         if is_new_format:
             profile_text = (
-                f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
                 f"<b>{profile_card['title']}</b>\n\n"
                 f"<i>{profile.archetype}</i>\n\n"
                 f"<b>💬 ЦИТАТА:</b>\n"
@@ -1014,7 +1014,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         else:
             profile_text = (
-                f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
                 f"{profile_card['title']}\n\n"
                 f"{profile_card['pain']}\n\n"
                 f"<b>🌍 ТВОЙ МИР:</b>\n\n"
@@ -1039,7 +1039,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         # ЭКРАН 2: После шаринга
         if is_new_format:
             profile_text = (
-                f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
                 f"<b>{profile_card['title']}</b>\n\n"
                 f"<i>{profile.archetype}</i>\n\n"
                 f"<b>💬 ЦИТАТА:</b>\n"
@@ -1058,7 +1058,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         else:
             profile_text = (
-                f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
                 f"{profile_card['title']}\n\n"
                 f"{profile_card['pain']}\n\n"
                 f"<b>🌍 ТВОЙ МИР:</b>\n\n"
@@ -1099,7 +1099,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Разбиваем на части
         if is_new_format:
             parts = [
-                f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n<b>{profile_card['title']}</b>\n\n<i>{profile.archetype}</i>",
+                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n<b>{profile_card['title']}</b>\n\n<i>{profile.archetype}</i>",
                 f"<b>💬 ЦИТАТА:</b>\n{profile.quote}",
                 f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n{profile.trigger}",
                 f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n{profile_card['pain']}",
@@ -1108,7 +1108,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             ]
         else:
             parts = [
-                f"✅ <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n{profile_card['title']}\n\n{profile_card['pain']}",
+                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n{profile_card['title']}\n\n{profile_card['pain']}",
                 f"<b>🌍 ТВОЙ МИР:</b>\n\n{profile_card['world']}",
                 f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n{profile_card['superpower']}",
                 f"<b>🚀 ТОЧКА РОСТА:</b>\n\n{profile_card['growth']}\n\n{profile_card['cta']}"
@@ -1168,14 +1168,14 @@ def get_card_description_from_profile(profile: VariaticaProfile, profile_data: d
         }
 
 async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ ЭКРАН 3: ИНСТРУКЦИЯ ПО ШАРИНГУ"""
+    """ ЭКРАН 3: ИНСТРУКЦИЯ ПО ШАРИНГУ"""
     query = update.callback_query
     await query.answer()
     
     instruction_text = (
         f"📤 <b>ШАГ 1: ПОДЕЛИСЬ ТЕСТОМ</b>\n\n"
         f"Нажми кнопку ниже, чтобы поделиться ссылкой в Telegram.\n\n"
-        f"После того как поделишься, вернись сюда и нажми «✅ Я поделился»"
+        f"После того как поделишься, вернись сюда и нажми « Я поделился»"
     )
     
     # Генерируем ссылку для шаринга
@@ -1184,7 +1184,7 @@ async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton("📤 Поделиться ссылкой", url=share_url)],
-        [InlineKeyboardButton("✅ Я поделился", callback_data="confirm_share")],
+        [InlineKeyboardButton(" Я поделился", callback_data="confirm_share")],
         [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1193,9 +1193,9 @@ async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GIFT_SCREEN
 
 async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Подтверждение шаринга и переход к ЭКРАНУ 2"""
+    """ Подтверждение шаринга и переход к ЭКРАНУ 2"""
     query = update.callback_query
-    await query.answer("✅ Спасибо за репост! Ваш подарок готов!")
+    await query.answer(" Спасибо за репост! Ваш подарок готов!")
     
     # Отмечаем, что пользователь поделился
     context.user_data["has_shared"] = True
@@ -1204,7 +1204,7 @@ async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_results_screen(update, context)
 
 async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ ЭКРАН 4: ПОЛНЫЙ ПАКЕТ"""
+    """ ЭКРАН 4: ПОЛНЫЙ ПАКЕТ"""
     query = update.callback_query
     await query.answer()
     
@@ -1232,7 +1232,7 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     return PACKAGE_SCREEN
 
 async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ ЭКРАН 5: ОТКРЫТИЕ ПОДАРКА"""
+    """ ЭКРАН 5: ОТКРЫТИЕ ПОДАРКА"""
     query = update.callback_query
     await query.answer()
     
@@ -1257,17 +1257,17 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return OPEN_GIFT_SCREEN
 
 # ============================================
-# ✅ ОБРАБОТЧИКИ НАВИГАЦИИ
+#  ОБРАБОТЧИКИ НАВИГАЦИИ
 # ============================================
 
 async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Кнопка 'Назад' - возвращает к результатам"""
+    """ Кнопка 'Назад' - возвращает к результатам"""
     query = update.callback_query
     await query.answer()
     return await show_results_screen(update, context)
 
 async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Перезапуск теста"""
+    """ Перезапуск теста"""
     query = update.callback_query
     await query.answer()
     
@@ -1469,7 +1469,7 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Завершение ЭТАП 1"""
+    """ Завершение ЭТАП 1"""
     query = update.callback_query
     scores = context.user_data.get("scores", {})
     
@@ -1489,7 +1489,7 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"User {update.effective_user.id}: Stage 1 complete, type={perception_type}")
     
     result_text = (
-        f"✅ <b>ЭТАП 1 ЗАВЕРШЁН!</b>\n\n"
+        f" <b>ЭТАП 1 ЗАВЕРШЁН!</b>\n\n"
         f"🎯 Конфигурация восприятия определена\n\n"
         f"🔍 Переходим к <b>ЭТАПУ 2</b>: определение конфигурации мышления.\n\n"
         f"Готов продолжить?"
@@ -1754,7 +1754,7 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     return STAGE_2
 
 async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Обработка ответа ЭТАПА 2 с системой баллов как в карточном тесте"""
+    """ Обработка ответа ЭТАПА 2 с системой баллов как в карточном тесте"""
     query = update.callback_query
     
     if context.user_data.get("processing", False):
@@ -1798,7 +1798,7 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Завершение ЭТАПА 2 (новая система)"""
+    """ Завершение ЭТАПА 2 (новая система)"""
     query = update.callback_query
     level_scores_dict = context.user_data.get("stage2_level_scores_dict", {"1": 0})
     
@@ -1820,7 +1820,7 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Level scores: {level_scores_dict}")
     
     result_text = (
-        f"✅ <b>ЭТАП 2 ЗАВЕРШЁН!</b>\n\n"
+        f" <b>ЭТАП 2 ЗАВЕРШЁН!</b>\n\n"
         f"🎯 Конфигурация мышления определена\n"
         f"📊 Уровень: <b>{get_level_name(thinking_level)} ({thinking_level}/9)</b>\n\n"
         f"🔍 Переходим к <b>ЭТАПУ 3</b>: поведенческие паттерны.\n\n"
@@ -1960,7 +1960,7 @@ async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Завершение ЭТАПА 3"""
+    """ Завершение ЭТАПА 3"""
     query = update.callback_query
     
     stage2_level = context.user_data.get("thinking_level", 1)
@@ -1982,7 +1982,7 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"User {update.effective_user.id}: Stage 3 complete, final_level={final_level}")
     
     result_text = (
-        f"✅ <b>ЭТАП 3 ЗАВЕРШЁН!</b>\n\n"
+        f" <b>ЭТАП 3 ЗАВЕРШЁН!</b>\n\n"
         f"🎯 Поведенческие паттерны проанализированы\n\n"
         f"🔍 Переходим к <b>ЭТАПУ 4</b>: конфликт логических уровней.\n\n"
         f"Это последний этап! Готов?"
@@ -2124,7 +2124,7 @@ async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 # ============================================
-# ✅ ИНТЕЛЛЕКТУАЛЬНАЯ СИСТЕМА УТОЧНЕНИЙ ПО ДИЛТСУ
+#  ИНТЕЛЛЕКТУАЛЬНАЯ СИСТЕМА УТОЧНЕНИЙ ПО ДИЛТСУ
 # ============================================
 
 async def ask_intelligent_clarification(update: Update, context: ContextTypes.DEFAULT_TYPE, profile_data: dict, coherence: dict):
@@ -2259,11 +2259,11 @@ async def proceed_to_final_results(update: Update, context: ContextTypes.DEFAULT
     return await show_results_screen(update, context)
 
 # ============================================
-# ✅ ЗАВЕРШЕНИЕ ТЕСТА С ИНТЕЛЛЕКТУАЛЬНОЙ ПРОВЕРКОЙ
+#  ЗАВЕРШЕНИЕ ТЕСТА С ИНТЕЛЛЕКТУАЛЬНОЙ ПРОВЕРКОЙ
 # ============================================
 
 async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Завершение ЭТАПА 4 с интеллектуальной проверкой"""
+    """ Завершение ЭТАПА 4 с интеллектуальной проверкой"""
     query = update.callback_query
     dilts_answers = context.user_data.get("stage4_dilts_answers", [])
     
@@ -2297,7 +2297,7 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await proceed_to_final_results(update, context)
 
 # ============================================
-# ✅ ФУНКЦИЯ ОТМЕНЫ
+#  ФУНКЦИЯ ОТМЕНЫ
 # ============================================
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2308,7 +2308,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# ✅ ПРОВЕРКА ПРОФИЛЕЙ ПРИ ЗАПУСКЕ
+#  ПРОВЕРКА ПРОФИЛЕЙ ПРИ ЗАПУСКЕ
 # ============================================
 
 def check_profiles_on_startup():
@@ -2318,7 +2318,7 @@ def check_profiles_on_startup():
     all_profiles = loader.get_all_profiles()
     actual_count = len(all_profiles)
     
-    logger.info(f"✅ Loaded {actual_count} profiles from filesystem via loader")
+    logger.info(f" Loaded {actual_count} profiles from filesystem via loader")
     
     # Проверяем формат профилей
     new_format_count = 0
@@ -2344,11 +2344,11 @@ def check_profiles_on_startup():
         logger.warning(f"⚠️ Expected 36 profiles, found {actual_count}")
         return False
     
-    logger.info("✅ Profile loading OK")
+    logger.info(" Profile loading OK")
     return True
 
 # ============================================
-# ✅ ГЛАВНАЯ ФУНКЦИЯ С ИСПРАВЛЕННОЙ СИСТЕМОЙ
+#  ГЛАВНАЯ ФУНКЦИЯ С ИСПРАВЛЕННОЙ СИСТЕМОЙ
 # ============================================
 
 def main():
