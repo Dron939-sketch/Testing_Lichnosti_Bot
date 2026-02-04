@@ -828,7 +828,7 @@ def calculate_profile_final(context_data: dict) -> dict:
         # Проверка
         "coherence": coherence,
         "stage2_level": stage2_level,
-        "stage3_avg": stage3_avg if stage3_scores else None,
+        "stage3_avg": (sum(stage3_scores) / len(stage3_scores)) if stage3_scores else None,
     }
 
 def check_profile_coherence(profile_level: int, dilts_level: str) -> dict:
