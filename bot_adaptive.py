@@ -10,7 +10,7 @@ def main():
     from loader import debug_profile_loading
     debug_profile_loading()
     
-    print("="*60 + "\n")"""
+    print("="*60 + "\n")
 АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
 4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
 """
