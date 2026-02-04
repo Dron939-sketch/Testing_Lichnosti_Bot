@@ -300,7 +300,7 @@ STAGE_2_QUESTIONS = {
             "text": "Твой друг постоянно меняет компании.\n\nКак думаешь, почему?",
             "options": {
                 "2": "Ищет своих людей",
-                "1": "Боются близости",
+                "1": "Боятся близости",
                 "5": "Ему везде интересно",
                 "4": "Не может быть собой"
             }
@@ -485,7 +485,7 @@ STAGE_2_QUESTIONS = {
         {
             "text": "Как ты принимаешь решения?",
             "options": {
-                "1": "Не могу выбрать (анализ-паралич)",
+                "1": "Не могу выбрать (анализ  паралич)",
                 "2": "Долго взвешиваю все варианты",
                 "4": "Анализирую и выбираю оптимальное",
                 "5": "Быстро, на основе критериев"
@@ -1359,7 +1359,7 @@ async def show_stage_1_details(update: Update, context: ContextTypes.DEFAULT_TYP
         f"<b>Мы измеряем две оси:</b>\n\n"
         f"<b>1. Направленность внимания:</b>\n"
         f"• ЭКСТЕРНАЛЬНАЯ — фокус на внешнем мире (люди, события)\n"
-        f"• ИНТЕРНАЛЬНАя — фокус на внутреннем мире (мысли, чувства)\n\n"
+        f"• ИНТЕРНАЛЬНАЯ — фокус на внутреннем мире (мысли, чувства)\n\n"
         f"<b>2. Доминирующая тревога:</b>\n"
         f"• СИМВОЛИЧЕСКАЯ — страх отвержения, непонимания\n"
         f"• МАТЕРИАЛЬНАЯ — страх потери контроля, ресурсов\n\n"
@@ -2336,12 +2336,94 @@ def check_profiles_on_startup():
     return True
 
 # ============================================
+#  ФУНКЦИЯ ДЕБАГГИНГА ЗАГРУЗЧИКА
+# ============================================
+
+def debug_loader():
+    """Отладочная информация о загрузчике профилей"""
+    print("🔍 Проверка загрузчика профилей...")
+    
+    try:
+        # Получаем все профили
+        all_profiles = loader.get_all_profiles()
+        print(f"📊 Загружено профилей: {len(all_profiles)}")
+        
+        if not all_profiles:
+            print("❌ ПРЕДУПРЕЖДЕНИЕ: Нет загруженных профилей!")
+            return
+        
+        # Проверяем форматы
+        new_format_count = 0
+        old_format_count = 0
+        
+        for profile_key in all_profiles[:5]:  # Проверяем только первые 5 для скорости
+            profile = loader.get_profile(profile_key)
+            if profile:
+                if hasattr(profile, 'archetype') and profile.archetype:
+                    new_format_count += 1
+                else:
+                    old_format_count += 1
+        
+        print(f"📝 Форматы: {new_format_count} новый, {old_format_count} старый")
+        
+        # Проверяем типы
+        types = ['sa', 'ia', 'sp', 'ip']
+        type_stats = {}
+        for type_code in types:
+            type_profiles = [k for k in all_profiles if k.startswith(type_code)]
+            type_stats[type_code] = len(type_profiles)
+            if type_profiles:
+                print(f"  {type_code.upper()}: {len(type_profiles)} профилей")
+        
+        # Проверяем уровни для каждого типа
+        print("\n📈 Распределение по уровням:")
+        for type_code in types:
+            type_profiles = [k for k in all_profiles if k.startswith(type_code)]
+            if type_profiles:
+                levels = []
+                for profile_key in type_profiles:
+                    try:
+                        # Извлекаем уровень из ключа: sa_1_def → уровень 1
+                        parts = profile_key.split('_')
+                        if len(parts) >= 2 and parts[1].isdigit():
+                            levels.append(int(parts[1]))
+                    except:
+                        continue
+                
+                if levels:
+                    levels_str = ", ".join(str(l) for l in sorted(set(levels)))
+                    print(f"  {type_code.upper()}: уровни {levels_str}")
+        
+        # Проверяем несколько ключевых профилей
+        test_profiles = ['sa_1_def', 'ia_3_con', 'sp_5_int', 'ip_9_ide']
+        print("\n🔑 Проверка ключевых профилей:")
+        for key in test_profiles:
+            profile = loader.get_profile(key)
+            if profile:
+                format_type = "НОВЫЙ" if hasattr(profile, 'archetype') and profile.archetype else "старый"
+                print(f"  ✅ {key}: Загружен ({format_type} формат)")
+            else:
+                print(f"  ❌ {key}: Отсутствует")
+        
+        # Сводка
+        print("\n📋 Сводка:")
+        total_expected = 36  # 4 типа × 9 уровней
+        if len(all_profiles) >= total_expected:
+            print(f"✅ Все профили загружены ({len(all_profiles)}/{total_expected})")
+        else:
+            print(f"⚠️  Не хватает профилей: {len(all_profiles)}/{total_expected}")
+            
+    except Exception as e:
+        print(f"❌ Ошибка при отладке загрузчика: {e}")
+        import traceback
+        traceback.print_exc()
+
+# ============================================
 #  ГЛАВНАЯ ФУНКЦИЯ С ИСПРАВЛЕННОЙ СИСТЕМОЙ
 # ============================================
 
 def main():
     """Запуск бота"""
-    # 🔍 ДОБАВЬТЕ ЭТОТ КОД НАЧИНАЯ ОТСЮДА:
     print("\n" + "="*50)
     print("🚀 ЗАПУСК БОТА")
     print("="*50)
@@ -2350,16 +2432,6 @@ def main():
     debug_loader()
     
     print("="*50 + "\n")
-    # 🔍 КОНЕЦ ДОБАВЛЕННОГО КОДА
-    
-    # Проверка профилей
-    check_profiles_on_startup()
-    
-    # Создание приложения
-    application = Application.builder().token(TOKEN).build()
-    
-    # ... остальной код ...
-    """Запуск бота"""
     
     # Проверка профилей
     check_profiles_on_startup()
