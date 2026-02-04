@@ -674,7 +674,7 @@ def calculate_progress(current: int, total: int) -> str:
     return f"{bar} {progress}%\nПройдено: {current}/{total}"
 
 def determine_perception_type(scores):
-    """✅ Определяет тип восприятия"""
+    """ Определяет тип восприятия"""
     external = scores.get("EXTERNAL", 0)
     internal = scores.get("INTERNAL", 0)
     symbolic = scores.get("SYMBOLIC", 0)
