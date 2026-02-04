@@ -10,6 +10,15 @@ class VariaticaProfile:
         # Инициализируем все переданные атрибуты
         for key, value in kwargs.items():
             setattr(self, key, value)
+        
+        # Устанавливаем значения по умолчанию для совместимости
+        if not hasattr(self, 'key'):
+            # Генерируем ключ на основе других полей
+            if hasattr(self, 'type_code') and hasattr(self, 'level'):
+                suffix = "def"
+                if hasattr(self, 'number'):
+                    suffix = ["def", "sit", "con", "exp", "int", "aut", "val", "tra", "ide"][self.number - 1]
+                self.key = f"{self.type_code}_{self.level}_{suffix}"
     
     def __repr__(self):
         """Строковое представление профиля"""
