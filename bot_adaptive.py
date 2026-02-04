@@ -23,9 +23,59 @@ from telegram.ext import (
 )
 
 # ============================================
-# ✅ ИСПРАВЛЕННЫЙ ИМПОРТ
+# ✅ ИСПРАВЛЕННЫЙ ИМПОРТ - ФАЙЛОВАЯ СИСТЕМА
 # ============================================
-from card_data import get_card_description, profile_exists, CARD_DATA
+from loader import loader  # Импортируем загрузчик
+from base import VariaticaProfile  # Импортируем класс профиля
+
+# ФУНКЦИИ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ СО СТАРЫМ КОДОМ
+def get_card_description(profile_code: str) -> dict:
+    """Возвращает описание карточки для профиля (СОВМЕСТИМОСТЬ)"""
+    profile = loader.get_profile(profile_code)
+    if not profile:
+        return None
+    
+    # Создаем словарь в формате card_data.py
+    return {
+        "title": profile.title,
+        "profile_name": profile.profile_name,
+        "thinking_level": profile.thinking_level,
+        "dilts_level": profile.dilts_level,
+        "pain": profile.pain,
+        "world": profile.world,
+        "superpower": profile.superpower,
+        "growth": profile.growth,
+        "cta": profile.cta
+    }
+
+def profile_exists(profile_code: str) -> bool:
+    """Проверяет существование профиля (СОВМЕСТИМОСТЬ)"""
+    return loader.get_profile(profile_code) is not None
+
+def get_profile_by_code(profile_code: str) -> VariaticaProfile:
+    """Прямой доступ к объекту профиля"""
+    return loader.get_profile(profile_code)
+
+# СОЗДАЕМ CARD_DATA ДЛЯ СОВМЕСТИМОСТИ СО СТАРЫМ КОДОМ
+CARD_DATA = {}
+for profile_key in loader.get_all_profiles():
+    profile = loader.get_profile(profile_key)
+    if profile:
+        CARD_DATA[profile_key] = {
+            "title": profile.title,
+            "profile_name": profile.profile_name,
+            "thinking_level": profile.thinking_level,
+            "dilts_level": profile.dilts_level,
+            "pain": profile.pain,
+            "world": profile.world,
+            "superpower": profile.superpower,
+            "growth": profile.growth,
+            "cta": profile.cta
+        }
+
+# ============================================
+# ВСЕ ОСТАЛЬНОЕ БЕЗ ИЗМЕНЕНИЙ
+# ============================================
 
 # Получение токена из переменной окружения
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -835,7 +885,7 @@ CLARIFICATION_QUESTIONS = {
 }
 
 # ============================================
-# ✅ АЛГОРИТМ ОПРЕДЕЛЕНИЯ ПРОФИЛЯ (СОХРАНЕН)
+# ✅ АЛГОРИТМ ОПРЕДЕЛЕНИЯ ПРОФИЛЯ (БЕЗ ИЗМЕНЕНИЙ)
 # ============================================
 
 def calculate_progress(current: int, total: int) -> str:
@@ -938,14 +988,14 @@ def find_best_matching_profile(type_code: str, user_level: int, dilts_code: str)
     """
     # 1. Точное совпадение
     exact_key = f"{type_code}_{user_level}_{dilts_code}"
-    if exact_key in CARD_DATA:
+    if profile_exists(exact_key):
         logger.info(f"✅ Exact match: {exact_key}")
         return exact_key
     
     # 2. Тот же тип + уровень, другой Дилтс
     for dilts in ["env", "beh", "cap", "val", "ide"]:
         candidate = f"{type_code}_{user_level}_{dilts}"
-        if candidate in CARD_DATA:
+        if profile_exists(candidate):
             logger.info(f"✅ Same type+level: {candidate}")
             return candidate
     
@@ -955,7 +1005,7 @@ def find_best_matching_profile(type_code: str, user_level: int, dilts_code: str)
         if 1 <= level <= 9:
             for dilts in ["env", "beh", "cap", "val", "ide"]:
                 candidate = f"{type_code}_{level}_{dilts}"
-                if candidate in CARD_DATA:
+                if profile_exists(candidate):
                     logger.info(f"✅ Nearby level: {candidate}")
                     return candidate
     
@@ -963,7 +1013,7 @@ def find_best_matching_profile(type_code: str, user_level: int, dilts_code: str)
     for level in range(1, 10):
         for dilts in ["env", "beh", "cap", "val", "ide"]:
             candidate = f"{type_code}_{level}_{dilts}"
-            if candidate in CARD_DATA:
+            if profile_exists(candidate):
                 logger.warning(f"⚠️ Fallback: {candidate}")
                 return candidate
     
@@ -1682,7 +1732,7 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
     current = context.user_data.get("stage2_current", 0)
     
-    questions = STAGE_2_QUESTIONS.get(perception_type, STAGE_2_QUESTIONS["СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ"])
+    questions = STAGE_2_QUESTIONS.get(perception_type, STAGE_2_QUESTIONS["СОЦИАЛЬНО-АФФиЛИАТИВНЫЙ"])
     
     if current >= len(questions):
         return await finish_stage_2(update, context)
@@ -2144,39 +2194,30 @@ def check_profiles_on_startup():
     """Проверяет наличие всех 36 профилей"""
     logger.info("🔍 Checking profile data...")
     
-    expected_types = ["SA", "IA", "SP", "IP"]
-    expected_levels = list(range(1, 10))  # 1-9
-    expected_dilts = ["env", "beh", "cap", "val", "ide"]
+    expected_count = 36
+    actual_count = len(CARD_DATA)
     
-    missing_profiles = []
-    found_profiles = []
+    logger.info(f"✅ Loaded {actual_count} profiles from filesystem")
     
-    for type_code in expected_types:
-        for level in expected_levels:
-            for dilts in expected_dilts:
-                profile_key = f"{type_code}_{level}_{dilts}"
-                if profile_key in CARD_DATA:
-                    found_profiles.append(profile_key)
-                else:
-                    missing_profiles.append(profile_key)
-    
-    logger.info(f"✅ Found {len(found_profiles)} profiles in CARD_DATA")
-    logger.info(f"📊 Total profiles in CARD_DATA: {len(CARD_DATA)}")
-    
-    if len(found_profiles) < 36:
-        logger.warning(f"⚠️ Expected 36 profiles, found {len(found_profiles)}")
-        logger.warning(f"⚠️ Missing profiles (first 10): {missing_profiles[:10]}")
+    if actual_count < expected_count:
+        logger.warning(f"⚠️ Expected {expected_count} profiles, found {actual_count}")
+        
+        # Проверим, какие типы загружены
+        types = ['SA', 'IA', 'SP', 'IP']
+        for type_code in types:
+            type_profiles = [k for k in CARD_DATA.keys() if k.startswith(type_code)]
+            logger.info(f"  {type_code}: {len(type_profiles)} profiles")
     else:
-        logger.info("✅ Profile count OK - 36 profiles found")
+        logger.info("✅ Profile count OK - 36 profiles loaded from filesystem")
     
-    return len(found_profiles) >= 36
+    return actual_count >= expected_count
 
 # ============================================
 # ✅ ГЛАВНАЯ ФУНКЦИЯ С НОВОЙ СТРУКТУРОЙ НАВИГАЦИИ
 # ============================================
 
 def main():
-    """Запуск бота с новой структурой навигации"""
+    """Запуск бота"""
     
     # Проверка профилей
     check_profiles_on_startup()
@@ -2184,7 +2225,7 @@ def main():
     # Создание приложения
     application = Application.builder().token(TOKEN).build()
     
-    # ConversationHandler с новой структурой
+    # ConversationHandler
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -2222,7 +2263,6 @@ def main():
                 CallbackQueryHandler(handle_clarification_answer, pattern="^clarify_")
             ],
             RESULTS: [
-                # ✅ ОСНОВНЫЕ КНОПКИ НА ЭКРАНАХ РЕЗУЛЬТАТОВ
                 CallbackQueryHandler(get_gift_screen, pattern="^get_gift$"),
                 CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
                 CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
@@ -2231,18 +2271,15 @@ def main():
                 CallbackQueryHandler(show_results_screen, pattern="^show_results$")
             ],
             GIFT_SCREEN: [
-                # ✅ КНОПКИ НА ЭКРАНЕ ШАРИНГА
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(get_gift_screen, pattern="^get_gift$")
             ],
             PACKAGE_SCREEN: [
-                # ✅ КНОПКИ НА ЭКРАНЕ ПАКЕТА
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(show_package_screen, pattern="^show_package$")
             ],
             OPEN_GIFT_SCREEN: [
-                # ✅ КНОПКИ НА ЭКРАНЕ ОТКРЫТИЯ ПОДАРКА
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(open_gift_screen, pattern="^open_gift$")
             ]
@@ -2254,7 +2291,7 @@ def main():
     application.add_handler(conv_handler)
     
     # Запуск бота
-    logger.info("🚀 Bot started with NEW 5-screen navigation!")
+    logger.info("🚀 Bot started with filesystem profiles!")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
