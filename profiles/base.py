@@ -1,24 +1,25 @@
-# profiles/base.py
-from dataclasses import dataclass
-from typing import Optional
-
-@dataclass
+# base.py
 class VariaticaProfile:
-    """Базовый класс профиля ВАРИАТИКА"""
+    def __init__(self, **kwargs):
+        self.key = kwargs.get('key')
+        self.type_code = kwargs.get('type_code')
+        self.level = kwargs.get('level')
+        self.number = kwargs.get('number')
+        self.title = kwargs.get('title')
+        self.profile_name = kwargs.get('profile_name')
+        self.thinking_level = kwargs.get('thinking_level')
+        self.dilts_level = kwargs.get('dilts_level')
+        self.pain = kwargs.get('pain')
+        self.world = kwargs.get('world')
+        self.superpower = kwargs.get('superpower')
+        self.growth = kwargs.get('growth')
+        self.cta = kwargs.get('cta')
+        
+        # Дополнительные поля (если нужны)
+        self.archetype = kwargs.get('archetype')
+        self.quote = kwargs.get('quote')
+        self.trigger = kwargs.get('trigger')
+        self.immediate_tool = kwargs.get('immediate_tool')
     
-    key: str                    # "SA_1", "SP_9"
-    type_code: str              # "SA", "IA", "SP", "IP"
-    level: int                  # 1-9
-    number: int                 # 1-36
-    
-    title: str
-    archetype: str
-    quote: str
-    trigger: str
-    pain: str
-    immediate_tool: str
-    cta: str
-    
-    world: Optional[str] = None
-    superpower: Optional[str] = None
-    growth: Optional[str] = None
+    def __repr__(self):
+        return f"<VariaticaProfile {self.key}>"
