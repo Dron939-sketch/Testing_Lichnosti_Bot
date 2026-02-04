@@ -26,6 +26,11 @@ from telegram.ext import (
 from loader import loader  # Импортируем загрузчик
 from base import VariaticaProfile  # Импортируем класс профиля
 
+# ============================================
+# НОВЫЕ КОНСТАНТЫ ДЛЯ ПРЕФИКСОВ
+# ============================================
+TYPE_PREFIXES = {"SA": "ЧВ", "IA": "УБ", "SP": "ИД", "IP": "СА"}
+
 # ФУНКЦИИ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ
 def get_card_description(profile_code: str) -> dict:
     """Возвращает описание карточки для профиля (СОВМЕСТИМОСТЬ)"""
@@ -931,7 +936,49 @@ def need_clarification_stage4(dilts_answers):
     return False
 
 # ============================================
-#  5 ЭКРАНОВ НАВИГАЦИИ (С ИСПРАВЛЕНИЯМИ)
+#  ФУНКЦИИ ДЛЯ РАБОТЫ С ПРОФИЛЕМ (ИСПРАВЛЕННЫЕ)
+# ============================================
+
+def get_profile_display_name(profile, profile_data):
+    """Формирует отображаемое имя профиля"""
+    prefix = TYPE_PREFIXES.get(profile.type_code, profile.type_code)
+    return f"ПРОФИЛЬ {profile.number}: {profile.key} / {prefix}-{profile.level} \"{profile.title}\""
+
+def get_card_description_from_profile(profile: VariaticaProfile, profile_data: dict) -> dict:
+    """Создает описание карточки из объекта профиля и данных"""
+    is_new_format = hasattr(profile, 'archetype') and profile.archetype
+    
+    if is_new_format:
+        return {
+            "display_name": get_profile_display_name(profile, profile_data),
+            "title": profile.title,
+            "archetype": profile.archetype,
+            "quote": profile.quote,
+            "trigger": profile.trigger,
+            "pain": profile.pain,
+            "immediate_tool": profile.immediate_tool,
+            "cta": profile.cta,
+            "profile_name": f"{profile_data['type_code']} Уровень {profile_data['level']}",
+            "thinking_level": profile_data['level'],
+            "dilts_level": profile_data['dilts_level'],
+            "growth": f"Точка роста на уровне {profile_data['level']}",
+        }
+    else:
+        # СТАРЫЙ ФОРМАТ
+        return {
+            "title": profile.title if hasattr(profile, 'title') else f"{profile_data['type_code']} Профиль",
+            "profile_name": profile.profile_name if hasattr(profile, 'profile_name') else f"{profile_data['type_code']} Уровень {profile_data['level']}",
+            "thinking_level": profile.thinking_level if hasattr(profile, 'thinking_level') else profile_data['level'],
+            "dilts_level": profile.dilts_level if hasattr(profile, 'dilts_level') else profile_data['dilts_level'],
+            "pain": profile.pain if hasattr(profile, 'pain') else "",
+            "world": profile.world if hasattr(profile, 'world') else "",
+            "superpower": profile.superpower if hasattr(profile, 'superpower') else "",
+            "growth": profile.growth if hasattr(profile, 'growth') else f"Точка роста на уровне {profile_data['level']}",
+            "cta": profile.cta if hasattr(profile, 'cta') else ""
+        }
+
+# ============================================
+#  5 ЭКРАНОВ НАВИГАЦИИ (ИСПРАВЛЕННЫЕ)
 # ============================================
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -953,7 +1000,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     profile = loader.get_profile(profile_data["file_key"])
     
     if not profile:
-        # Fallback: пробуем найти любой профиль этого типа и уровня
+        # Fallback
         logger.error(f"Profile not found: {profile_data['file_key']}")
         for lvl in range(1, 10):
             fallback_key = f"{profile_data['type_code'].lower()}_{lvl}_{profile_data['file_suffix']}"
@@ -963,11 +1010,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
                 break
     
     if not profile:
-        error_text = (
-            f"❌ <b>ОШИБКА</b>\n\n"
-            f"Не удалось найти профиль.\n\n"
-            f"Попробуй пройти тест заново: /start"
-        )
+        error_text = "❌ <b>ОШИБКА</b>\n\nНе удалось найти профиль.\n\nПопробуй пройти тест заново: /start"
         await query.edit_message_text(error_text, parse_mode="HTML")
         return ConversationHandler.END
     
@@ -978,32 +1021,23 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Проверяем формат профиля
     is_new_format = hasattr(profile, 'archetype') and profile.archetype
     
-    #  ФОРМИРУЕМ ТЕКСТ РЕЗУЛЬТАТОВ
+    # ФОРМИРУЕМ ТЕКСТ РЕЗУЛЬТАТОВ
     if not has_shared:
         # ЭКРАН 1: До шаринга
         if is_new_format:
             profile_text = (
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-                f"<b>{profile_card['title']}</b>\n\n"
-                f"<i>{profile.archetype}</i>\n\n"
+                f"<b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+                f"<b>{profile_card['display_name']}</b>\n\n"
+                f"<i>{profile_card['archetype']}</i>\n\n"
                 f"<b>💬 ЦИТАТА:</b>\n"
-                f"{profile.quote}\n\n"
-                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n"
-                f"{profile.trigger}\n\n"
-                f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n"
-                f"{profile_card['pain']}\n\n"
-                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n"
-                f"{profile.immediate_tool}\n\n"
-                f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n"
-                f"{profile_card['cta']}\n\n"
+                f"{profile_card['quote']}\n\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"💬 Иногда самое большое, что мы можем сделать для своих близких - это дать зеркало...\n"
-                f"Поделись тестом с другом и.. 🎁 <b>ПОЛУЧИ БЕСПЛАТНЫЙ ПОДАРОК</b>"
+                f"<b>Выбери что хочешь узнать:</b>"
             )
         else:
             profile_text = (
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-                f"{profile_card['title']}\n\n"
+                f"<b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+                f"<b>{profile_card['display_name']}</b>\n\n"
                 f"{profile_card['pain']}\n\n"
                 f"<b>🌍 ТВОЙ МИР:</b>\n\n"
                 f"{profile_card['world']}\n\n"
@@ -1018,36 +1052,40 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         
         # Кнопки для ЭКРАН 1
-        keyboard = [
-            [InlineKeyboardButton("🎁 Получить подарок", callback_data="get_gift")],
-            [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
-            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
-        ]
+        if is_new_format:
+            keyboard = [
+                [InlineKeyboardButton("🔍 Это ты, если...", callback_data="show_trigger")],
+                [InlineKeyboardButton("💔 Суть проблемы", callback_data="show_pain")],
+                [InlineKeyboardButton("🛠 Инструмент сейчас", callback_data="show_tool")],
+                [InlineKeyboardButton("🚀 Что дальше", callback_data="show_cta")],
+                [InlineKeyboardButton("🎁 Получить подарок", callback_data="get_gift")],
+                [InlineKeyboardButton("💎 О пакете", callback_data="show_package")],
+                [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
+            ]
+        else:
+            keyboard = [
+                [InlineKeyboardButton("🎁 Получить подарок", callback_data="get_gift")],
+                [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
+                [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
+            ]
     else:
         # ЭКРАН 2: После шаринга
         if is_new_format:
             profile_text = (
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-                f"<b>{profile_card['title']}</b>\n\n"
-                f"<i>{profile.archetype}</i>\n\n"
+                f"<b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+                f"<b>{profile_card['display_name']}</b>\n\n"
+                f"<i>{profile_card['archetype']}</i>\n\n"
                 f"<b>💬 ЦИТАТА:</b>\n"
-                f"{profile.quote}\n\n"
-                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n"
-                f"{profile.trigger}\n\n"
-                f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n"
-                f"{profile_card['pain']}\n\n"
-                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n"
-                f"{profile.immediate_tool}\n\n"
-                f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n"
-                f"{profile_card['cta']}\n\n"
+                f"{profile_card['quote']}\n\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"<b>Выбери что хочешь узнать:</b>\n\n"
                 f"🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\n"
                 f"Спасибо за репост!"
             )
         else:
             profile_text = (
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-                f"{profile_card['title']}\n\n"
+                f"<b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+                f"<b>{profile_card['display_name']}</b>\n\n"
                 f"{profile_card['pain']}\n\n"
                 f"<b>🌍 ТВОЙ МИР:</b>\n\n"
                 f"{profile_card['world']}\n\n"
@@ -1062,11 +1100,22 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         
         # Кнопки для ЭКРАН 2
-        keyboard = [
-            [InlineKeyboardButton("🎁 Забрать подарок", callback_data="open_gift")],
-            [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
-            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
-        ]
+        if is_new_format:
+            keyboard = [
+                [InlineKeyboardButton("🔍 Это ты, если...", callback_data="show_trigger")],
+                [InlineKeyboardButton("💔 Суть проблемы", callback_data="show_pain")],
+                [InlineKeyboardButton("🛠 Инструмент сейчас", callback_data="show_tool")],
+                [InlineKeyboardButton("🚀 Что дальше", callback_data="show_cta")],
+                [InlineKeyboardButton("🎁 Забрать подарок", callback_data="open_gift")],
+                [InlineKeyboardButton("💎 О пакете", callback_data="show_package")],
+                [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
+            ]
+        else:
+            keyboard = [
+                [InlineKeyboardButton("🎁 Забрать подарок", callback_data="open_gift")],
+                [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
+                [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
+            ]
     
     # Добавляем примечание о несогласованности если есть
     coherence = profile_data.get("coherence", {})
@@ -1081,79 +1130,96 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         profile_text += note
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    # Проверяем длину сообщения
-    if len(profile_text) > 4096:
-        # Разбиваем на части
-        if is_new_format:
-            parts = [
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n<b>{profile_card['title']}</b>\n\n<i>{profile.archetype}</i>",
-                f"<b>💬 ЦИТАТА:</b>\n{profile.quote}",
-                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n{profile.trigger}",
-                f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n{profile_card['pain']}",
-                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n{profile.immediate_tool}",
-                f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n{profile_card['cta']}"
-            ]
-        else:
-            parts = [
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n{profile_card['title']}\n\n{profile_card['pain']}",
-                f"<b>🌍 ТВОЙ МИР:</b>\n\n{profile_card['world']}",
-                f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n{profile_card['superpower']}",
-                f"<b>🚀 ТОЧКА РОСТА:</b>\n\n{profile_card['growth']}\n\n{profile_card['cta']}"
-            ]
-        
-        # Последняя часть
-        last_part = "━━━━━━━━━━━━━━━━━━━━\n\n"
-        if not has_shared:
-            last_part += "💬 Иногда самое большое, что мы можем сделать для своих близких - это дать зеркало...\nПоделись тестом с другом и.. 🎁 <b>ПОЛУЧИ БЕСПЛАТНЫЙ ПОДАРОК</b>"
-        else:
-            last_part += "🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\nСпасибо за репост!"
-        
-        # Добавляем примечание если есть
-        if not coherence.get("is_coherent", True):
-            last_part += f"\n\n🔍 <b>Примечание:</b>\nЕсть небольшое расхождение в результатах. Это может указывать на переходный период."
-        
-        # Отправляем все части
-        await query.edit_message_text(parts[0], parse_mode="HTML")
-        for part in parts[1:]:
-            await query.message.reply_text(part, parse_mode="HTML")
-        
-        # Последняя часть с кнопками
-        await query.message.reply_text(last_part, parse_mode="HTML", reply_markup=reply_markup)
-    else:
-        await query.edit_message_text(profile_text, parse_mode="HTML", reply_markup=reply_markup)
-    
+    await query.edit_message_text(profile_text, parse_mode="HTML", reply_markup=reply_markup)
     return RESULTS
 
-def get_card_description_from_profile(profile: VariaticaProfile, profile_data: dict) -> dict:
-    """Создает описание карточки из объекта профиля и данных"""
-    is_new_format = hasattr(profile, 'archetype') and profile.archetype
+# ============================================
+#  ОБРАБОТЧИКИ ДЛЯ АККОРДЕОНА (НОВЫЕ)
+# ============================================
+
+async def show_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает блок 'Это ты, если...'"""
+    query = update.callback_query
+    await query.answer()
     
-    if is_new_format:
-        return {
-            "title": f"🎯 {profile.title}",
-            "profile_name": f"{profile_data['type_code']} Уровень {profile_data['level']}",
-            "thinking_level": profile_data['level'],
-            "dilts_level": profile_data['dilts_level'],
-            "pain": f"{profile.archetype}\n\n💡 {profile.trigger}\n\n🎯 {profile.pain}",
-            "world": profile.quote,
-            "superpower": profile.immediate_tool,
-            "growth": f"Точка роста на уровне {profile_data['level']}",
-            "cta": profile.cta
-        }
-    else:
-        # Для старых профилей
-        return {
-            "title": profile.title if hasattr(profile, 'title') else f"{profile_data['type_code']} Профиль",
-            "profile_name": profile.profile_name if hasattr(profile, 'profile_name') else f"{profile_data['type_code']} Уровень {profile_data['level']}",
-            "thinking_level": profile.thinking_level if hasattr(profile, 'thinking_level') else profile_data['level'],
-            "dilts_level": profile.dilts_level if hasattr(profile, 'dilts_level') else profile_data['dilts_level'],
-            "pain": profile.pain if hasattr(profile, 'pain') else "",
-            "world": profile.world if hasattr(profile, 'world') else "",
-            "superpower": profile.superpower if hasattr(profile, 'superpower') else "",
-            "growth": profile.growth if hasattr(profile, 'growth') else f"Точка роста на уровне {profile_data['level']}",
-            "cta": profile.cta if hasattr(profile, 'cta') else ""
-        }
+    profile_card = context.user_data.get("profile_card", {})
+    if not profile_card:
+        return await show_results_screen(update, context)
+    
+    text = (
+        f"<b>{profile_card['display_name']}</b>\n\n"
+        f"🔍 <b>ЭТО ТЫ, ЕСЛИ...</b>\n\n"
+        f"{profile_card['trigger']}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"<i>Чтобы вернуться, нажми:</i> /back_to_results"
+    )
+    
+    await query.edit_message_text(text, parse_mode="HTML")
+    return RESULTS
+
+async def show_pain(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает блок 'Суть проблемы'"""
+    query = update.callback_query
+    await query.answer()
+    
+    profile_card = context.user_data.get("profile_card", {})
+    if not profile_card:
+        return await show_results_screen(update, context)
+    
+    text = (
+        f"<b>{profile_card['display_name']}</b>\n\n"
+        f"💔 <b>СУТЬ ПРОБЛЕМЫ</b>\n\n"
+        f"{profile_card['pain']}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"<i>Чтобы вернуться, нажми:</i> /back_to_results"
+    )
+    
+    await query.edit_message_text(text, parse_mode="HTML")
+    return RESULTS
+
+async def show_tool(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает блок 'Инструмент сейчас'"""
+    query = update.callback_query
+    await query.answer()
+    
+    profile_card = context.user_data.get("profile_card", {})
+    if not profile_card:
+        return await show_results_screen(update, context)
+    
+    text = (
+        f"<b>{profile_card['display_name']}</b>\n\n"
+        f"🛠 <b>ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»</b>\n\n"
+        f"{profile_card['immediate_tool']}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"<i>Чтобы вернуться, нажми:</i> /back_to_results"
+    )
+    
+    await query.edit_message_text(text, parse_mode="HTML")
+    return RESULTS
+
+async def show_cta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает блок 'Что дальше'"""
+    query = update.callback_query
+    await query.answer()
+    
+    profile_card = context.user_data.get("profile_card", {})
+    if not profile_card:
+        return await show_results_screen(update, context)
+    
+    text = (
+        f"<b>{profile_card['display_name']}</b>\n\n"
+        f"🚀 <b>ЧТО ДАЛЬШЕ?</b>\n\n"
+        f"{profile_card['cta']}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"<i>Чтобы вернуться, нажми:</i> /back_to_results"
+    )
+    
+    await query.edit_message_text(text, parse_mode="HTML")
+    return RESULTS
+
+# ============================================
+#  ОСТАЛЬНЫЕ ЭКРАНЫ НАВИГАЦИИ (БЕЗ ИЗМЕНЕНИЙ)
+# ============================================
 
 async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ ЭКРАН 3: ИНСТРУКЦИЯ ПО ШАРИНГУ"""
@@ -1172,7 +1238,7 @@ async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton("📤 Поделиться ссылкой", url=share_url)],
-        [InlineKeyboardButton(" Я поделился", callback_data="confirm_share")],
+        [InlineKeyboardButton("✅ Я поделился", callback_data="confirm_share")],
         [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2485,7 +2551,13 @@ def main():
                 CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
                 CallbackQueryHandler(restart_test, pattern="^restart_test$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(show_results_screen, pattern="^show_results$")
+                CallbackQueryHandler(show_results_screen, pattern="^show_results$"),
+                
+                # НОВЫЕ ОБРАБОТЧИКИ ДЛЯ АККОРДЕОНА
+                CallbackQueryHandler(show_trigger, pattern="^show_trigger$"),
+                CallbackQueryHandler(show_pain, pattern="^show_pain$"),
+                CallbackQueryHandler(show_tool, pattern="^show_tool$"),
+                CallbackQueryHandler(show_cta, pattern="^show_cta$"),
             ],
             GIFT_SCREEN: [
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
