@@ -1,18 +1,18 @@
 """
 ШАБЛОН ДЛЯ СОЗДАНИЯ ФАЙЛА ПРОФИЛЯ
-Сохранять как: profiles/[тип]/[тип_уровень].py
-Пример: profiles/ia/ia_1_env.py
+Сохранять как: profiles/[тип]/[тип]_[уровень]_[суффикс].py
+Пример: profiles/ia/ia_1_def.py
 """
 
 from ..base import VariaticaProfile
 
-# Название переменной: [ТИП]_[УРОВЕНЬ] (ВЕРХНИЙ РЕГИСТР)
-IA_1_ENV = VariaticaProfile(
+# Название переменной: [ТИП]_[УРОВЕНЬ]_[СУФФИКС] (ВЕРХНИЙ РЕГИСТР)
+IA_1_def = VariaticaProfile(
     # === ИДЕНТИФИКАЦИЯ ===
-    key="IA_1_env",                    # Формат: "SA_1", "IA_5", "SP_9", "IP_3"
-    type_code="IA",                # "SA", "IA", "SP", "IP"
-    level=1,                       # 1-9
-    number=10,                     # Порядковый номер: 1-36
+    key="IA_1_def",                  # Формат: "SA_1_def", "IA_1_def", "SP_1_def", "IP_1_def"
+    type_code="IA",                  # "SA", "IA", "SP", "IP"
+    level=1,                         # 1-9
+    number=10,                       # Порядковый номер: 10 (согласно card_data.py)
     
     # === ОСНОВНАЯ ИНФОРМАЦИЯ ===
     title='УБ-6 "Избегай познания"',
