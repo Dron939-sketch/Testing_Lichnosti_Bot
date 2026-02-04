@@ -1,18 +1,18 @@
 """
 ШАБЛОН ДЛЯ СОЗДАНИЯ ФАЙЛА ПРОФИЛЯ
-Сохранять как: profiles/[тип]/[тип_уровень].py
-Пример: profiles/sp/sp_4.py
+Сохранять как: profiles/[тип]/[тип]_[уровень]_[суффикс].py
+Пример: profiles/sp/sp_4_exp.py
 """
 
 from ..base import VariaticaProfile
 
-# Название переменная: [ТИП]_[УРОВЕНЬ] (ВЕРХНИЙ РЕГИСТР)
-SP_4 = VariaticaProfile(
+# Название переменная: [ТИП]_[УРОВЕНЬ]_[СУФФИКС] (ВЕРХНИЙ РЕГИСТР)
+SP_4_exp = VariaticaProfile(
     # === ИДЕНТИФИКАЦИЯ ===
-    key="SP_4",                    # Формат: "SA_1", "IA_5", "SP_9", "IP_3"
-    type_code="SP",                # "SA", "IA", "SP", "IP"
-    level=4,                       # 1-9
-    number=4,                      # Порядковый номер: 1-36
+    key="SP_4_exp",                  # Формат: "SA_4_exp", "IA_4_exp", "SP_4_exp", "IP_4_exp"
+    type_code="SP",                  # "SA", "IA", "SP", "IP"
+    level=4,                         # 1-9
+    number=4,                        # Порядковый номер: 1-36 (согласно card_data.py)
     
     # === ОСНОВНАЯ ИНФОРМАЦИЯ ===
     title='СБ-9 "Защищайся"',
