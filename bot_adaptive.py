@@ -1,4 +1,12 @@
-"""
+from dotenv import load_dotenv
+import os
+
+# Загружаем переменные из .env файла
+load_dotenv()
+
+# Теперь можно использовать
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")"""
 АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
 4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
 ВЕРСИЯ 2.0: Добавлена интеграция с ЮKassa для автоматической отправки файлов
