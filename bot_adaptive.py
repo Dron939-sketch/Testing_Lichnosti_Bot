@@ -1,7 +1,7 @@
 """
 АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
 4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
-ВЕРСИЯ 1.8: Исправлена логика fallback + компактный репост
+ВЕРСИЯ 1.9: Исправлен fallback для всех типов профилей
 """
 
 import logging
@@ -744,6 +744,7 @@ def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
     """
     ИСПРАВЛЕННАЯ ВЕРСИЯ: Находит реально существующий файл профиля.
     Приоритет: точное совпадение → разные суффиксы → без суффикса → любой файл уровня → ближайший уровень
+    Поддерживает все типы: SA, SP, IA, IP (с обработкой ip/ip-адрес и ip - адрес)
     """
     type_code = profile_data.get('type_code', 'sa').lower()
     level = profile_data.get('level', 1)
@@ -751,95 +752,125 @@ def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
     
     logger.info(f"🎯 FALLBACK ПОИСК: type={type_code}, level={level}, dilts={dilts_code}")
     
-    # Нормализация типа для поиска (обработка ip/ip-адрес)
-    normalized_type = type_code
-    if normalized_type == "ip-адрес":
-        normalized_type = "ip"
+    # ============================================
+    # НОРМАЛИЗАЦИЯ ТИПОВ ДЛЯ ПОИСКА
+    # ============================================
     
-    # 1. Точное совпадение (с нормализованным типом)
-    target_key = f"{normalized_type}_{level}_{dilts_code}"
-    profile = loader.get_profile(target_key)
-    if profile:
-        logger.info(f"✅ Exact match: {target_key}")
-        return profile
+    # Определяем возможные варианты именования для данного типа
+    # Особенно важно для IP типа (может быть ip, ip-адрес, ip - адрес)
+    search_types = [type_code]
     
-    logger.info(f"🔍 {target_key} не найден")
+    if type_code == "ip" or type_code == "ip-адрес":
+        # Для IP типа пробуем все возможные варианты
+        search_types = ["ip", "ip-адрес", "ip - адрес"]
+    elif type_code == "ip - адрес":
+        search_types = ["ip - адрес", "ip-адрес", "ip"]
     
-    # 2. Поиск с разными суффиксами на том же уровне
-    logger.info(f"🔍 Ищу {normalized_type}_{level}_* с разными суффиксами")
+    logger.info(f"🔍 Варианты поиска для типа {type_code}: {search_types}")
     
-    # Все возможные суффиксы из файловой системы (в порядке приоритета)
-    possible_suffixes = ['exp', 'def', 'con', 'int', 'aut', 'val', 'tra', 'ide', 'sit']
+    # ============================================
+    # 1. ТОЧНОЕ СОВПАДЕНИЕ (все варианты)
+    # ============================================
     
-    for suffix in possible_suffixes:
-        test_key = f"{normalized_type}_{level}_{suffix}"
-        profile = loader.get_profile(test_key)
+    for search_type in search_types:
+        target_key = f"{search_type}_{level}_{dilts_code}"
+        profile = loader.get_profile(target_key)
         if profile:
-            logger.info(f"✅ Найден с суффиксом {suffix}: {test_key}")
+            logger.info(f"✅ Exact match: {target_key}")
             return profile
     
-    # 3. Поиск без суффикса
-    test_key = f"{normalized_type}_{level}"
-    profile = loader.get_profile(test_key)
-    if profile:
-        logger.info(f"✅ Найден без суффикса: {test_key}")
-        return profile
+    logger.info(f"🔍 Точное совпадение не найдено для {type_code}_{level}_{dilts_code}")
     
-    # 4. Ищем любой профиль на том же уровне
-    logger.info(f"🔍 Ищу любой профиль {normalized_type}_{level}_*")
+    # ============================================
+    # 2. ПОИСК С РАЗНЫМИ СУФФИКСАМИ НА ТОМ ЖЕ УРОВНЕ
+    # ============================================
+    
+    # Все возможные суффиксы (в порядке из файловой системы)
+    possible_suffixes = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
+    
+    for search_type in search_types:
+        logger.info(f"🔍 Ищу {search_type}_{level}_* с разными суффиксами")
+        
+        for suffix in possible_suffixes:
+            test_key = f"{search_type}_{level}_{suffix}"
+            profile = loader.get_profile(test_key)
+            if profile:
+                logger.info(f"✅ Найден с суффиксом {suffix}: {test_key}")
+                return profile
+    
+    # ============================================
+    # 3. ПОИСК БЕЗ СУФФИКСА
+    # ============================================
+    
+    for search_type in search_types:
+        test_key = f"{search_type}_{level}"
+        profile = loader.get_profile(test_key)
+        if profile:
+            logger.info(f"✅ Найден без суффикса: {test_key}")
+            return profile
+    
+    # ============================================
+    # 4. ЛЮБОЙ ПРОФИЛЬ НА ТОМ ЖЕ УРОВНЕ
+    # ============================================
+    
+    logger.info(f"🔍 Ищу любой профиль *_{level}_* для типа {type_code}")
     all_profiles = loader.get_all_profiles()
     
-    # Отладочная информация: показываем все доступные профили
-    logger.info(f"📚 Все доступные профили типа {normalized_type}:")
-    type_profiles = []
-    for p in all_profiles:
-        key_lower = p.lower()
-        # Проверяем совпадение типа (учитываем ip/ip-адрес)
-        if (key_lower.startswith(f"{normalized_type}_") or 
-            (normalized_type == "ip" and key_lower.startswith("ip-адрес_"))):
-            type_profiles.append(p)
+    # Собираем все профили этого типа (всех вариантов)
+    all_type_profiles = []
+    for key in all_profiles:
+        key_lower = key.lower()
+        # Проверяем все варианты типа
+        for search_type in search_types:
+            if key_lower.startswith(f"{search_type}_"):
+                all_type_profiles.append((key, key_lower))
+                break
     
-    if type_profiles:
-        for p in sorted(type_profiles):
-            logger.info(f"   - {p}")
-    else:
-        logger.warning(f"⚠️ Нет профилей типа {normalized_type}!")
+    # Отладочная информация
+    logger.info(f"📚 Все доступные профили типа {type_code} (варианты: {search_types}):")
+    for key, key_lower in sorted(all_type_profiles):
+        logger.info(f"   - {key}")
     
     # Ищем профили на том же уровне
     same_level_profiles = []
-    for key in all_profiles:
-        key_lower = key.lower()
-        # Проверяем совпадение типа и уровня
-        if (key_lower.startswith(f"{normalized_type}_{level}_") or 
-            (normalized_type == "ip" and key_lower.startswith(f"ip-адрес_{level}_"))):
-            same_level_profiles.append(key)
+    for key, key_lower in all_type_profiles:
+        # Извлекаем уровень из ключа
+        try:
+            parts = key_lower.split('_')
+            if len(parts) >= 2 and parts[1].isdigit():
+                key_level = int(parts[1])
+                if key_level == level:
+                    same_level_profiles.append(key)
+        except (ValueError, IndexError):
+            continue
     
-    logger.info(f"📊 Профили уровня {level} типа {normalized_type}: {same_level_profiles}")
+    logger.info(f"📊 Профили уровня {level} типа {type_code}: {same_level_profiles}")
     
     if same_level_profiles:
+        # Берем первый попавшийся профиль того же уровня
         fallback_key = same_level_profiles[0]
         logger.info(f"✅ Найден профиль уровня {level}: {fallback_key}")
         return loader.get_profile(fallback_key)
     
-    # 5. Только если НИЧЕГО не нашли на том же уровне → ближайший уровень
-    logger.info(f"⚠️ Нет профилей уровня {level}, ищу ближайший уровень для типа {normalized_type}")
+    # ============================================
+    # 5. БЛИЖАЙШИЙ УРОВЕНЬ (только если ничего не найдено)
+    # ============================================
+    
+    logger.info(f"⚠️ Нет профилей уровня {level}, ищу ближайший уровень для типа {type_code}")
     
     # Собираем все уровни этого типа
     available_levels = []
-    for key in all_profiles:
-        key_lower = key.lower()
-        if key_lower.startswith(f"{normalized_type}_") or (normalized_type == "ip" and key_lower.startswith("ip-адрес_")):
-            try:
-                # Извлекаем уровень из ключа (формат: type_level_suffix)
-                parts = key_lower.split('_')
-                if len(parts) >= 2 and parts[1].isdigit():
-                    key_level = int(parts[1])
-                    available_levels.append((key, key_level))
-            except (ValueError, IndexError):
-                continue
+    for key, key_lower in all_type_profiles:
+        try:
+            parts = key_lower.split('_')
+            if len(parts) >= 2 and parts[1].isdigit():
+                key_level = int(parts[1])
+                available_levels.append((key, key_level))
+        except (ValueError, IndexError):
+            continue
     
     if not available_levels:
-        logger.error(f"❌ НЕТ ПРОФИЛЕЙ для типа {normalized_type}!")
+        logger.error(f"❌ НЕТ ПРОФИЛЕЙ для типа {type_code}!")
         # Аварийный fallback
         emergency_key = "sa_1_def"
         logger.warning(f"🚨 Использую аварийный профиль: {emergency_key}")
@@ -856,13 +887,20 @@ def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
             min_diff = diff
             best_key = key
             best_level = key_level
+        elif diff == min_diff and key_level > best_level:
+            # При одинаковой разнице берем более высокий уровень
+            best_key = key
+            best_level = key_level
     
     if best_key:
         logger.info(f"📈 Найден ближайший уровень {best_level} (разница {min_diff}): {best_key}")
         return loader.get_profile(best_key)
     
-    # Аварийный fallback
-    logger.error(f"🔥 КРИТИЧЕСКАЯ ОШИБКА: Ничего не найдено для типа {normalized_type}, level={level}")
+    # ============================================
+    # 6. АВАРИЙНЫЙ FALLBACK
+    # ============================================
+    
+    logger.error(f"🔥 КРИТИЧЕСКАЯ ОШИБКА: Ничего не найдено для типа {type_code}, level={level}")
     emergency_key = "sa_1_def"
     logger.warning(f"🚨 Использую аварийный профиль: {emergency_key}")
     return loader.get_profile(emergency_key)
@@ -1034,7 +1072,7 @@ def need_clarification_stage4(dilts_answers):
 # ============================================
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - версия 1.8 (компактный репост)"""
+    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - версия 1.9 (исправлен fallback)"""
     query = update.callback_query
     
     has_shared = context.user_data.get("has_shared", False)
@@ -1286,7 +1324,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     welcome_text = (
         f"Привет, {user.first_name}! 👋\n\n"
-        f"🎴 <b>Добро пожаловать в психодиагностический тест ВАРИАТИКА ver 1.8!</b>\n\n"
+        f"🎴 <b>Добро пожаловать в психодиагностический тест ВАРИАТИКА ver 1.9!</b>\n\n"
         f"🔍 <b>Узнай о себе то, что ты ещё не знаешь.</b>\n\n"
         f"<b>Этот тест поможет определить:</b>\n"
         f"• Как ты воспринимаешь реальность \n"
@@ -2246,12 +2284,12 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*50)
-    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 1.8")
+    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 1.9")
     print("="*50)
     print("ИСПРАВЛЕНИЯ:")
-    print("1. Исправлена логика fallback для IA профилей")
-    print("2. Компактный репост на финальном экране")
-    print("3. Убраны лишние разделители")
+    print("1. Исправлен fallback для всех типов профилей")
+    print("2. Обработка ip/ip-адрес/ip - адрес")
+    print("3. Поиск с разными суффиксами на том же уровне")
     print("="*50 + "\n")
     
     # Проверка загрузки профилей
@@ -2261,24 +2299,30 @@ def main():
     all_profiles = loader.get_all_profiles()
     print(f"📊 Всего профилей загружено: {len(all_profiles)}")
     
-    # Проверяем IA профили
-    ia_profiles = [p for p in all_profiles if p.upper().startswith('IA_')]
-    print(f"🔍 IA профилей: {len(ia_profiles)}")
+    # Проверяем профили по типам
+    for profile_type in ['sa', 'sp', 'ia', 'ip']:
+        type_profiles = [p for p in all_profiles if p.lower().startswith(f"{profile_type}_")]
+        print(f"🔍 {profile_type.upper()} профилей: {len(type_profiles)}")
     
-    if ia_profiles:
-        print("📋 Список IA профилей:")
-        for profile in sorted(ia_profiles):
-            print(f"  - {profile}")
-    else:
-        print("❌ НЕТ IA ПРОФИЛЕЙ! Проверьте папку 'профили/иа/'")
+    # Тестируем поиск fallback
+    test_cases = [
+        ("sp", 4, "cap", "sp_4_exp.py"),
+        ("ia", 4, "cap", "ia_4_exp.py"),
+        ("sa", 4, "cap", "sa_4_exp.py"),
+        ("ip", 4, "cap", "ip_4_exp.py"),
+        ("sa", 1, "def", "sa_1_def.py"),
+        ("ip", 1, "def", "ip_1_def.py"),
+    ]
     
-    # Тестируем поиск
-    test_keys = ["ia_4_cap", "ia_4_exp", "IA_4_exp", "ia_4"]
-    print("\n🧪 Тестируем поиск:")
-    for key in test_keys:
-        profile = loader.get_profile(key)
-        status = "✅ НАЙДЕН" if profile else "❌ НЕ НАЙДЕН"
-        print(f"  {key:15} → {status}")
+    print("\n🧪 Тестируем fallback поиск:")
+    for type_code, level, dilts, expected in test_cases:
+        test_data = {"type_code": type_code, "level": level, "dilts_code": dilts}
+        try:
+            profile = get_profile_fallback(test_data)
+            status = "✅" if profile else "❌"
+            print(f"  {type_code}_{level}_{dilts:3} → {status} {expected}")
+        except Exception as e:
+            print(f"  {type_code}_{level}_{dilts:3} → ❌ ОШИБКА: {e}")
     
     print("="*30)
     print("✅ Проверка завершена. Запускаю бота...")
@@ -2352,8 +2396,8 @@ def main():
     
     application.add_handler(conv_handler)
     
-    logger.info("🚀 Bot started: ВАРИАТИКА ver 1.8!")
-    logger.info("📊 Changes: Fixed fallback logic + compact sharing")
+    logger.info("🚀 Bot started: ВАРИАТИКА ver 1.9!")
+    logger.info("📊 Changes: Fixed fallback logic for all profile types")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
