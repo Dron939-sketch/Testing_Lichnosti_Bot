@@ -11,3 +11,5 @@ services:
         value: 1262862
       - key: YOOKASSA_SECRET_KEY
         sync: false
+      - key: ENVIRONMENT
+        value: production
