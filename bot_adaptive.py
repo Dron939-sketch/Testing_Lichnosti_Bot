@@ -757,11 +757,28 @@ def get_dilts_code(dilts_level: str) -> str:
     return dilts_map.get(dilts_level, "env")
 
 def get_file_suffix_by_level(level: int) -> str:
-    """Получает суффикс файла по уровню"""
+    """Получает суффикс файла по уровню - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+    # ИСПРАВЛЕНО: только те суффиксы, которые есть в файлах
     level_to_suffix = {
-        1: "def", 2: "sit", 3: "con", 4: "exp",
-        5: "int", 6: "aut", 7: "val", 8: "tra", 9: "ide"
+        1: "def", 
+        # 2: "sit",  # ← Файлов с этим суффиксом нет
+        # 3: "con",  # ← Файлов с этим суффиксом нет
+        4: "exp", 
+        5: "int", 
+        6: "aut", 
+        7: "val", 
+        8: "tra", 
+        9: "ide"
     }
+    
+    # Если уровень отсутствует, используем ближайший доступный
+    if level not in level_to_suffix:
+        # Находим ближайший доступный уровень
+        available_levels = list(level_to_suffix.keys())
+        nearest = min(available_levels, key=lambda x: abs(x - level))
+        logger.warning(f"⚠️ Level {level} not found, using nearest: {nearest}")
+        return level_to_suffix[nearest]
+    
     return level_to_suffix.get(level, "def")
 
 def calculate_profile_final(context_data: dict) -> dict:
@@ -784,7 +801,7 @@ def calculate_profile_final(context_data: dict) -> dict:
     # 4. Ограничиваем диапазон 1-9
     final_level = max(1, min(9, final_level))
     
-    # 5. Суффикс файла по уровню
+    # 5. Суффикс файла по уровню (ИСПРАВЛЕННАЯ ВЕРСИЯ)
     file_suffix = get_file_suffix_by_level(final_level)
     
     # 6. Ключ файла (нижний регистр)
@@ -931,11 +948,51 @@ def need_clarification_stage4(dilts_answers):
     return False
 
 # ============================================
-#  5 ЭКРАНОВ НАВИГАЦИИ (С ИСПРАВЛЕНИЯМИ)
+#  ИСПРАВЛЕННЫЕ ФУНКЦИИ ДЛЯ ФИНАЛЬНОГО ЭКРАНА
 # ============================================
 
+def get_card_description_from_profile(profile: VariaticaProfile, profile_data: dict) -> dict:
+    """ИСПРАВЛЕННАЯ ВЕРСИЯ - разделяет данные для нового формата"""
+    is_new_format = hasattr(profile, 'archetype') and profile.archetype
+    
+    if is_new_format:
+        # Вычисляем номер профиля
+        profile_number = profile_data.get("level", 1)
+        
+        return {
+            # Основные поля профиля (РАЗДЕЛЕНЫ)
+            "title": f"🎯 {profile.title}",
+            "archetype": profile.archetype,
+            "quote": profile.quote,
+            "trigger": profile.trigger,
+            "pain": profile.pain,
+            "immediate_tool": profile.immediate_tool,
+            "cta": profile.cta,
+            
+            # Метаданные
+            "type_code": profile_data['type_code'],
+            "level": profile_data['level'],
+            "dilts_code": profile_data['dilts_code'],
+            
+            # Форматированные строки
+            "profile_header": f"ПРОФИЛЬ {profile_number}: {profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']} / {profile.title}"
+        }
+    else:
+        # Для старого формата оставить как есть
+        return {
+            "title": profile.title if hasattr(profile, 'title') else f"{profile_data['type_code']} Профиль",
+            "profile_name": profile.profile_name if hasattr(profile, 'profile_name') else f"{profile_data['type_code']} Уровень {profile_data['level']}",
+            "thinking_level": profile.thinking_level if hasattr(profile, 'thinking_level') else profile_data['level'],
+            "dilts_level": profile.dilts_level if hasattr(profile, 'dilts_level') else profile_data['dilts_level'],
+            "pain": profile.pain if hasattr(profile, 'pain') else "",
+            "world": profile.world if hasattr(profile, 'world') else "",
+            "superpower": profile.superpower if hasattr(profile, 'superpower') else "",
+            "growth": profile.growth if hasattr(profile, 'growth') else f"Точка роста на уровне {profile_data['level']}",
+            "cta": profile.cta if hasattr(profile, 'cta') else ""
+        }
+
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ ЭКРАН 1/2: РЕЗУЛЬТАТЫ ТЕСТА (до/после шаринга)"""
+    """ЭКРАН 1/2: РЕЗУЛЬТАТЫ ТЕСТА с исправленным форматированием"""
     query = update.callback_query
     
     # Проверяем, поделился ли уже пользователь
@@ -955,12 +1012,38 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not profile:
         # Fallback: пробуем найти любой профиль этого типа и уровня
         logger.error(f"Profile not found: {profile_data['file_key']}")
-        for lvl in range(1, 10):
-            fallback_key = f"{profile_data['type_code'].lower()}_{lvl}_{profile_data['file_suffix']}"
-            profile = loader.get_profile(fallback_key)
-            if profile:
-                logger.info(f"Using fallback: {fallback_key}")
-                break
+        
+        # Умный fallback: ищем любой профиль этого типа с ближайшим уровнем
+        all_profiles = loader.get_all_profiles()
+        type_code = profile_data['type_code'].lower()
+        
+        # Ищем все профили этого типа
+        type_profiles = [k for k in all_profiles if k.startswith(type_code)]
+        
+        if type_profiles:
+            # Извлекаем уровни и находим ближайший
+            available_levels = []
+            for key in type_profiles:
+                try:
+                    # Извлекаем уровень из ключа: sa_1_def → 1
+                    parts = key.split('_')
+                    if len(parts) >= 2 and parts[1].isdigit():
+                        available_levels.append(int(parts[1]))
+                except:
+                    continue
+            
+            if available_levels:
+                # Находим ближайший уровень к целевому
+                target_level = profile_data['level']
+                nearest_level = min(available_levels, key=lambda x: abs(x - target_level))
+                
+                # Ищем профиль с ближайшим уровнем
+                for key in type_profiles:
+                    if f"_{nearest_level}_" in key:
+                        profile = loader.get_profile(key)
+                        if profile:
+                            logger.info(f"Using fallback: {key} (target: {profile_data['file_key']})")
+                            break
     
     if not profile:
         error_text = (
@@ -971,36 +1054,44 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text(error_text, parse_mode="HTML")
         return ConversationHandler.END
     
-    # Создаем описание карточки
+    # Создаем описание карточки (ИСПРАВЛЕННАЯ ВЕРСИЯ)
     profile_card = get_card_description_from_profile(profile, profile_data)
     context.user_data["profile_card"] = profile_card
     
     # Проверяем формат профиля
     is_new_format = hasattr(profile, 'archetype') and profile.archetype
     
-    #  ФОРМИРУЕМ ТЕКСТ РЕЗУЛЬТАТОВ
+    # === ФОРМИРУЕМ ТЕКСТ РЕЗУЛЬТАТОВ БЕЗ ДУБЛИРОВАНИЯ ===
+    
     if not has_shared:
         # ЭКРАН 1: До шаринга
         if is_new_format:
-            profile_text = (
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-                f"<b>{profile_card['title']}</b>\n\n"
-                f"<i>{profile.archetype}</i>\n\n"
-                f"<b>💬 ЦИТАТА:</b>\n"
-                f"{profile.quote}\n\n"
-                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n"
-                f"{profile.trigger}\n\n"
-                f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n"
-                f"{profile_card['pain']}\n\n"
-                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n"
-                f"{profile.immediate_tool}\n\n"
-                f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n"
-                f"{profile_card['cta']}\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"💬 Иногда самое большое, что мы можем сделать для своих близких - это дать зеркало...\n"
-                f"Поделись тестом с другом и.. 🎁 <b>ПОЛУЧИ БЕСПЛАТНЫЙ ПОДАРОК</b>"
+            # Аккуратная композиция секций
+            sections = [
+                f"<b>{profile_card['profile_header']}</b>",
+                f"<i>{profile_card['archetype']}</i>",
+                f"<b>💬 ЦИТАТА:</b>\n{profile_card['quote']}",
+                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n{profile_card['trigger']}",
+                f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n{profile_card['pain']}",
+                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n{profile_card['immediate_tool']}",
+                f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n{profile_card['cta']}"
+            ]
+            
+            profile_text = "\n\n".join(sections)
+            
+            # Текст для шаринга (ДО шаринга)
+            sharing_text = (
+                f"\n\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"📄 <b>Получи полный профиль + рекомендации</b>\n\n"
+                f"💬 Иногда самое большое, что мы можем сделать для близких — это дать зеркало...\n"
+                f"Поделись тестом и получи ..\n"
+                f"🎁 <b>БЕСПЛАТНЫЙ ПОДАРОК</b>"
             )
+            
+            profile_text += sharing_text
+            
         else:
+            # Старый формат
             profile_text = (
                 f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
                 f"{profile_card['title']}\n\n"
@@ -1013,8 +1104,10 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"{profile_card['growth']}\n\n"
                 f"{profile_card['cta']}\n\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"💬 Иногда самое большое, что мы можем сделать для своих близких - это дать зеркало...\n"
-                f"Поделись тестом с другом и.. 🎁 <b>ПОЛУЧИ БЕСПЛАТНЫЙ ПОДАРОК</b>"
+                f"📄 <b>Получи полный профиль + рекомендации</b>\n\n"
+                f"💬 Иногда самое большое, что мы можем сделать для близких — это дать зеркало...\n"
+                f"Поделись тестом и получи ..\n"
+                f"🎁 <b>БЕСПЛАТНЫЙ ПОДАРОК</b>"
             )
         
         # Кнопки для ЭКРАН 1
@@ -1026,25 +1119,30 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         # ЭКРАН 2: После шаринга
         if is_new_format:
-            profile_text = (
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-                f"<b>{profile_card['title']}</b>\n\n"
-                f"<i>{profile.archetype}</i>\n\n"
-                f"<b>💬 ЦИТАТА:</b>\n"
-                f"{profile.quote}\n\n"
-                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n"
-                f"{profile.trigger}\n\n"
-                f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n"
-                f"{profile_card['pain']}\n\n"
-                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n"
-                f"{profile.immediate_tool}\n\n"
-                f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n"
-                f"{profile_card['cta']}\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            # Аккуратная композиция секций
+            sections = [
+                f"<b>{profile_card['profile_header']}</b>",
+                f"<i>{profile_card['archetype']}</i>",
+                f"<b>💬 ЦИТАТА:</b>\n{profile_card['quote']}",
+                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n{profile_card['trigger']}",
+                f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n{profile_card['pain']}",
+                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n{profile_card['immediate_tool']}",
+                f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n{profile_card['cta']}"
+            ]
+            
+            profile_text = "\n\n".join(sections)
+            
+            # Текст после шаринга
+            sharing_text = (
+                f"\n\n━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\n"
                 f"Спасибо за репост!"
             )
+            
+            profile_text += sharing_text
+            
         else:
+            # Старый формат
             profile_text = (
                 f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
                 f"{profile_card['title']}\n\n"
@@ -1084,76 +1182,66 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     # Проверяем длину сообщения
     if len(profile_text) > 4096:
-        # Разбиваем на части
+        # Разбиваем на части для нового формата
         if is_new_format:
             parts = [
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n<b>{profile_card['title']}</b>\n\n<i>{profile.archetype}</i>",
-                f"<b>💬 ЦИТАТА:</b>\n{profile.quote}",
-                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n{profile.trigger}",
+                f"<b>{profile_card['profile_header']}</b>\n\n<i>{profile_card['archetype']}</i>",
+                f"<b>💬 ЦИТАТА:</b>\n{profile_card['quote']}",
+                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n{profile_card['trigger']}",
                 f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n{profile_card['pain']}",
-                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n{profile.immediate_tool}",
+                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n{profile_card['immediate_tool']}",
                 f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n{profile_card['cta']}"
             ]
+            
+            # Отправляем все части
+            await query.edit_message_text(parts[0], parse_mode="HTML")
+            for part in parts[1:]:
+                await query.message.reply_text(part, parse_mode="HTML")
+            
+            # Последняя часть с текстом шаринга и кнопками
+            last_part = "━━━━━━━━━━━━━━━━━━━━\n\n"
+            if not has_shared:
+                last_part += "📄 <b>Получи полный профиль + рекомендации</b>\n\n💬 Иногда самое большое, что мы можем сделать для близких — это дать зеркало...\nПоделись тестом и получи ..\n🎁 <b>БЕСПЛАТНЫЙ ПОДАРОК</b>"
+            else:
+                last_part += "🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\nСпасибо за репост!"
+            
+            # Добавляем примечание если есть
+            if not coherence.get("is_coherent", True):
+                last_part += f"\n\n🔍 <b>Примечание:</b>\nЕсть небольшое расхождение в результатах. Это может указывать на переходный период."
+            
+            # Последняя часть с кнопками
+            await query.message.reply_text(last_part, parse_mode="HTML", reply_markup=reply_markup)
         else:
+            # Для старого формата
             parts = [
                 f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n{profile_card['title']}\n\n{profile_card['pain']}",
                 f"<b>🌍 ТВОЙ МИР:</b>\n\n{profile_card['world']}",
                 f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n{profile_card['superpower']}",
                 f"<b>🚀 ТОЧКА РОСТА:</b>\n\n{profile_card['growth']}\n\n{profile_card['cta']}"
             ]
-        
-        # Последняя часть
-        last_part = "━━━━━━━━━━━━━━━━━━━━\n\n"
-        if not has_shared:
-            last_part += "💬 Иногда самое большое, что мы можем сделать для своих близких - это дать зеркало...\nПоделись тестом с другом и.. 🎁 <b>ПОЛУЧИ БЕСПЛАТНЫЙ ПОДАРОК</b>"
-        else:
-            last_part += "🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\nСпасибо за репост!"
-        
-        # Добавляем примечание если есть
-        if not coherence.get("is_coherent", True):
-            last_part += f"\n\n🔍 <b>Примечание:</b>\nЕсть небольшое расхождение в результатах. Это может указывать на переходный период."
-        
-        # Отправляем все части
-        await query.edit_message_text(parts[0], parse_mode="HTML")
-        for part in parts[1:]:
-            await query.message.reply_text(part, parse_mode="HTML")
-        
-        # Последняя часть с кнопками
-        await query.message.reply_text(last_part, parse_mode="HTML", reply_markup=reply_markup)
+            
+            # Отправляем все части
+            await query.edit_message_text(parts[0], parse_mode="HTML")
+            for part in parts[1:]:
+                await query.message.reply_text(part, parse_mode="HTML")
+            
+            # Последняя часть
+            last_part = "━━━━━━━━━━━━━━━━━━━━\n\n"
+            if not has_shared:
+                last_part += "📄 <b>Получи полный профиль + рекомендации</b>\n\n💬 Иногда самое большое, что мы можем сделать для близких — это дать зеркало...\nПоделись тестом и получи ..\n🎁 <b>БЕСПЛАТНЫЙ ПОДАРОК</b>"
+            else:
+                last_part += "🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\nСпасибо за репост!"
+            
+            # Добавляем примечание если есть
+            if not coherence.get("is_coherent", True):
+                last_part += f"\n\n🔍 <b>Примечание:</b>\nЕсть небольшое расхождение в результатах. Это может указывать на переходный период."
+            
+            # Последняя часть с кнопками
+            await query.message.reply_text(last_part, parse_mode="HTML", reply_markup=reply_markup)
     else:
         await query.edit_message_text(profile_text, parse_mode="HTML", reply_markup=reply_markup)
     
     return RESULTS
-
-def get_card_description_from_profile(profile: VariaticaProfile, profile_data: dict) -> dict:
-    """Создает описание карточки из объекта профиля и данных"""
-    is_new_format = hasattr(profile, 'archetype') and profile.archetype
-    
-    if is_new_format:
-        return {
-            "title": f"🎯 {profile.title}",
-            "profile_name": f"{profile_data['type_code']} Уровень {profile_data['level']}",
-            "thinking_level": profile_data['level'],
-            "dilts_level": profile_data['dilts_level'],
-            "pain": f"{profile.archetype}\n\n💡 {profile.trigger}\n\n🎯 {profile.pain}",
-            "world": profile.quote,
-            "superpower": profile.immediate_tool,
-            "growth": f"Точка роста на уровне {profile_data['level']}",
-            "cta": profile.cta
-        }
-    else:
-        # Для старых профилей
-        return {
-            "title": profile.title if hasattr(profile, 'title') else f"{profile_data['type_code']} Профиль",
-            "profile_name": profile.profile_name if hasattr(profile, 'profile_name') else f"{profile_data['type_code']} Уровень {profile_data['level']}",
-            "thinking_level": profile.thinking_level if hasattr(profile, 'thinking_level') else profile_data['level'],
-            "dilts_level": profile.dilts_level if hasattr(profile, 'dilts_level') else profile_data['dilts_level'],
-            "pain": profile.pain if hasattr(profile, 'pain') else "",
-            "world": profile.world if hasattr(profile, 'world') else "",
-            "superpower": profile.superpower if hasattr(profile, 'superpower') else "",
-            "growth": profile.growth if hasattr(profile, 'growth') else f"Точка роста на уровне {profile_data['level']}",
-            "cta": profile.cta if hasattr(profile, 'cta') else ""
-        }
 
 async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ ЭКРАН 3: ИНСТРУКЦИЯ ПО ШАРИНГУ"""
