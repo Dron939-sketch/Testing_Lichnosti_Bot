@@ -1,4 +1,29 @@
-"""
+python
+### ДОБАВЛЕНО ###
+import os
+from pathlib import Path
+
+# Проверяем разные места, где может быть .env файл
+env_paths = [
+    '.env',  # Локальная разработка
+    '.env.production',  # Продакшен
+    '/etc/secrets/.env',  # Render Secret Files
+    '/var/secrets/.env',  # Альтернативный путь
+]
+
+# Загружаем первый найденный .env файл
+env_loaded = False
+for env_path in env_paths:
+    if os.path.exists(env_path):
+        from dotenv import load_dotenv
+        load_dotenv(env_path)
+        print(f"✅ Загружен .env файл: {env_path}")
+        env_loaded = True
+        break
+
+if not env_loaded:
+    print("⚠️  .env файл не найден, используем системные переменные")
+### КОНЕЦ ДОБАВЛЕНИЯ ###"""
 АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
 4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
 ВЕРСИЯ 2.0: Добавлена интеграция с ЮKassa для автоматической отправки файлов
