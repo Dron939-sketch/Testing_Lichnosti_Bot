@@ -694,278 +694,160 @@ def calculate_final_level(stage2_level, stage3_scores):
     return final_level
 
 # ============================================
-# ИСПРАВЛЕННАЯ СИСТЕМА СУФФИКСОВ ПРОФИЛЕЙ
+# ФУНКЦИЯ ОЧИСТКИ ДУБЛИРУЮЩИХСЯ ЗАГОЛОВКОВ
 # ============================================
 
-def get_file_suffix_by_level_fixed(level: int) -> str:
-    """ИСПРАВЛЕННЫЙ маппинг уровня на существующие суффиксы"""
-    # ТОЛЬКО существующие суффиксы:
-    level_to_suffix = {
-        1: "def",  # Уровень 1 -> def (есть)
-        2: "def",  # Уровень 2 -> def (fallback, sit нет)
-        3: "def",  # Уровень 3 -> def (fallback, con нет)
-        4: "exp",  # Уровень 4 -> exp (есть)
-        5: "int",  # Уровень 5 -> int (есть)
-        6: "aut",  # Уровень 6 -> aut (есть)
-        7: "val",  # Уровень 7 -> val (есть)
-        8: "tra",  # Уровень 8 -> tra (есть)
-        9: "ide"   # Уровень 9 -> ide (есть)
-    }
-    return level_to_suffix.get(level, "def")
-
-# ============================================
-# ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОИСКА ПРОФИЛЕЙ
-# ============================================
-
-def profile_exists_fixed(profile_code: str) -> bool:
-    """Проверяет существование профиля с учетом fallback"""
-    # Пробуем найти как есть
-    profile = loader.get_profile(profile_code)
-    if profile:
-        return True
+def clean_duplicate_headers(text: str, field_type: str) -> str:
+    """
+    Убирает заголовки, которые уже есть в тексте профиля.
     
-    # Если не нашли, пробуем в нижнем регистре
-    profile = loader.get_profile(profile_code.lower())
-    if profile:
-        return True
-    
-    # Пробуем в верхнем регистре
-    profile = loader.get_profile(profile_code.upper())
-    if profile:
-        return True
-    
-    return False
-
-def get_profile_with_fallback(file_key: str) -> VariaticaProfile:
-    """Получает профиль с интеллектуальным fallback"""
-    # Пробуем найти как есть
-    profile = loader.get_profile(file_key)
-    if profile:
-        return profile
-    
-    # Пробуем нижний регистр
-    profile = loader.get_profile(file_key.lower())
-    if profile:
-        return profile
-    
-    # Пробуем верхний регистр
-    profile = loader.get_profile(file_key.upper())
-    if profile:
-        return profile
-    
-    # Извлекаем тип и уровень для fallback
-    parts = file_key.lower().split('_')
-    if len(parts) >= 3:
-        type_code = parts[0]
-        try:
-            target_level = int(parts[1])
-        except:
-            target_level = 1
-        
-        # Ищем ближайший существующий профиль
-        all_profiles = loader.get_all_profiles()
-        best_match = None
-        best_diff = float('inf')
-        
-        for key in all_profiles:
-            if key.startswith(type_code + '_'):
-                try:
-                    key_parts = key.split('_')
-                    if len(key_parts) >= 2 and key_parts[1].isdigit():
-                        key_level = int(key_parts[1])
-                        diff = abs(key_level - target_level)
-                        if diff < best_diff:
-                            best_diff = diff
-                            best_match = key
-                except:
-                    continue
-        
-        if best_match:
-            logger.info(f"Using fallback: {best_match} (target: {file_key})")
-            return loader.get_profile(best_match)
-    
-    # Аварийный fallback
-    logger.warning(f"No profile found for {file_key}, using sa_1_def")
-    return loader.get_profile("sa_1_def")
-
-# ============================================
-# ИСПРАВЛЕННАЯ ФУНКЦИЯ ОЧИСТКИ ЗАГОЛОВКОВ
-# ============================================
-
-def clean_profile_text_smart(text: str, field_type: str) -> str:
-    """Умное удаление встроенных заголовков из текста профиля"""
+    field_type: 'trigger', 'pain', 'immediate_tool', 'cta'
+    Возвращает: текст без заголовка в первой строке
+    """
     if not text:
         return ""
-    
-    # Словарь заголовков для удаления
-    headers_to_remove = {
-        'trigger': [
-            'ЭТО ТЫ, ЕСЛИ...',
-            'ЭТО ТЫ, ЕСЛИ:'
-        ],
-        'pain': [
-            'СУТЬ ПРОБЛЕМЫ:',
-            'СУТЬ ПРОБЛЕМЫ: ПОЧЕМУ ЭТО ЛОМАЕТ ТВОЮ ЖИЗНЬ?',
-            'ПОЧЕМУ ЭТО ЛОМАЕТ ТВОЮ ЖИЗНЬ?'
-        ],
-        'immediate_tool': [
-            'ПЕРВЫЙ ШАГ / ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:',
-            'ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:',
-            'ПЕРВЫЙ ШАГ:',
-            'ИНСТРУМЕНТ:'
-        ],
-        'cta': [
-            'ЧТО ДАЛЬШЕ?',
-            'ДАЛЬШЕ:',
-            'СЛЕДУЮЩИЙ ШАГ:'
-        ]
-    }
-    
-    if field_type not in headers_to_remove:
-        return text
     
     lines = text.strip().split('\n')
     if not lines:
         return text
     
-    # Проверяем первую строку на наличие заголовков
-    first_line = lines[0].strip()
+    # Какие заголовки удалять для каждого типа
+    headers = {
+        'trigger': ['ЭТО ТЫ, ЕСЛИ...', 'ЭТО ТЫ, ЕСЛИ:'],
+        'pain': ['СУТЬ ПРОБЛЕМЫ:', 'СУТЬ ПРОБЛЕМЫ: ПОЧЕМУ ЭТО ЛОМАЕТ ТВОЮ ЖИЗНЬ?'],
+        'immediate_tool': ['ПЕРВЫЙ ШАГ / ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:', 'ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:'],
+        'cta': ['ЧТО ДАЛЬШЕ?', 'ДАЛЬШЕ:']
+    }
     
-    for header in headers_to_remove[field_type]:
-        if header in first_line:
-            # Удаляем заголовок
-            cleaned = first_line.replace(header, '').strip()
-            if cleaned:
-                lines[0] = cleaned
-            else:
-                # Если после удаления строка пустая, убираем её
-                lines = lines[1:]
-            break
+    if field_type in headers and lines:
+        first_line = lines[0].strip()
+        for header in headers[field_type]:
+            if header in first_line:
+                # Удаляем эту строку
+                lines.pop(0)
+                # Убираем возможную пустую строку после заголовка
+                if lines and not lines[0].strip():
+                    lines.pop(0)
+                break
     
     return '\n'.join(lines).strip()
 
 # ============================================
-# ФУНКЦИИ КРАСИВОГО ОФОРМЛЕНИЯ ТЕКСТА
+# ФУНКЦИЯ ПОИСКА ПРОФИЛЯ С FALLBACK
 # ============================================
 
-def format_section_beautifully(text: str, section_emoji: str = "•") -> str:
-    """Красиво форматирует текст секции"""
-    if not text:
-        return ""
+def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
+    """
+    Находит реально существующий файл профиля.
     
-    lines = text.split('\n')
-    formatted_lines = []
+    Пример: Ищем ia_3_def → находим ia_3_con
+    Возвращает: существующий профиль
+    """
+    type_code = profile_data.get('type_code', 'sa').lower()
+    level = profile_data.get('level', 1)
+    dilts_code = profile_data.get('dilts_code', 'def').lower()
     
-    for line in lines:
-        line = line.strip()
-        if not line:
+    # Попробуем искомый профиль
+    target_key = f"{type_code}_{level}_{dilts_code}"
+    profile = loader.get_profile(target_key)
+    
+    if profile:
+        logger.info(f"Profile found: {target_key}")
+        return profile
+    
+    # Если не нашли, ищем альтернативные варианты
+    logger.info(f"Profile {target_key} not found, searching alternatives...")
+    
+    # 1. Ищем с другим суффиксом Дилтса
+    all_profiles = loader.get_all_profiles()
+    possible_suffixes = ['def', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
+    
+    for suffix in possible_suffixes:
+        if suffix == dilts_code:
             continue
-        
-        # Маркированные списки с эмодзи
-        if line.startswith('•'):
-            formatted_lines.append(f"{section_emoji} {line[1:].strip()}")
-        # Нумерованные списки
-        elif re.match(r'^\d+[\.\)]', line):
-            formatted_lines.append(f"   {line}")
-        # Подзаголовки (жирный текст)
-        elif line.endswith(':'):
-            formatted_lines.append(f"\n<b>{line}</b>")
-        # Обычный текст
-        else:
-            formatted_lines.append(f"   {line}")
+        alt_key = f"{type_code}_{level}_{suffix}"
+        if alt_key in all_profiles:
+            logger.info(f"Found alternative: {alt_key}")
+            profile = loader.get_profile(alt_key)
+            if profile:
+                return profile
     
-    # Добавляем отступы между пунктами
-    result = '\n'.join(formatted_lines)
-    # Убираем лишние пустые строки
-    result = re.sub(r'\n{3,}', '\n\n', result)
+    # 2. Ищем ближайший уровень
+    best_match = None
+    best_diff = float('inf')
     
-    return result
-
-def split_long_message(text: str, max_length: int = 4000) -> list:
-    """Разбивает длинное сообщение на части"""
-    if len(text) <= max_length:
-        return [text]
+    for key in all_profiles:
+        if key.startswith(f"{type_code}_"):
+            try:
+                parts = key.split('_')
+                if len(parts) >= 2 and parts[1].isdigit():
+                    key_level = int(parts[1])
+                    diff = abs(key_level - level)
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_match = key
+            except:
+                continue
     
-    parts = []
-    current_part = ""
+    if best_match:
+        logger.info(f"Using level fallback: {best_match}")
+        return loader.get_profile(best_match)
     
-    # Разбиваем по разделам
-    sections = re.split(r'(?=\n<b>[━]+</b>\n)', text)
-    
-    for section in sections:
-        if len(current_part) + len(section) <= max_length:
-            current_part += section
-        else:
-            if current_part:
-                parts.append(current_part)
-            current_part = section
-    
-    if current_part:
-        parts.append(current_part)
-    
-    return parts
-
-def create_beautiful_profile_message(profile_card: dict) -> list:
-    """Создает красиво оформленное сообщение профиля (возвращает части)"""
-    parts = []
-    
-    # Часть 1: Заголовок профиля
-    header = (
-        f"<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
-        f"<b>🎯 ПРОФИЛЬ {profile_card.get('level', '?')}</b>\n"
-        f"<code>{profile_card.get('type_code', '?')}_{profile_card.get('level', '?')}_{profile_card.get('dilts_code', '?')}</code>\n\n"
-        f"<b>{profile_card.get('title', '')}</b>\n\n"
-        f"<i>{profile_card.get('archetype', '')}</i>\n\n"
-        f"<b>💬 ЦИТАТА:</b>\n{profile_card.get('quote', '')}"
-    )
-    parts.append(header)
-    
-    # Часть 2: Это ты, если... (с эмодзи)
-    if profile_card.get('trigger'):
-        trigger_section = (
-            f"\n<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
-            f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n"
-            f"{format_section_beautifully(profile_card['trigger'], '🔸')}"
-        )
-        parts.append(trigger_section)
-    
-    # Часть 3: Суть проблемы
-    if profile_card.get('pain'):
-        pain_section = (
-            f"\n<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
-            f"<b>💔 СУТЬ ПРОБЛЕМЫ</b>\n\n"
-            f"{format_section_beautifully(profile_card['pain'], '⚡️')}"
-        )
-        parts.append(pain_section)
-    
-    # Часть 4: Инструмент
-    if profile_card.get('immediate_tool'):
-        tool_section = (
-            f"\n<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
-            f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»</b>\n\n"
-            f"{format_section_beautifully(profile_card['immediate_tool'], '🛠')}"
-        )
-        parts.append(tool_section)
-    
-    # Часть 5: Что дальше
-    if profile_card.get('cta'):
-        cta_section = (
-            f"\n<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
-            f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n"
-            f"{format_section_beautifully(profile_card['cta'], '📌')}"
-        )
-        parts.append(cta_section)
-    
-    return parts
+    # 3. Аварийный fallback
+    logger.warning(f"No profile found for {target_key}, using sa_1_def")
+    return loader.get_profile("sa_1_def")
 
 # ============================================
-# ИСПРАВЛЕННАЯ ФУНКЦИЯ РАСЧЕТА ПРОФИЛЯ
+# ФУНКЦИЯ ПОЛУЧЕНИЯ ОПИСАНИЯ ПРОФИЛЯ
+# ============================================
+
+def get_card_description_from_profile(profile: VariaticaProfile, profile_data: dict) -> dict:
+    """Получает описание профиля с очисткой заголовков"""
+    is_new_format = hasattr(profile, 'archetype') and profile.archetype
+    
+    if is_new_format:
+        # Очищаем каждое поле от дублирующихся заголовков
+        clean_trigger = clean_duplicate_headers(profile.trigger, 'trigger')
+        clean_pain = clean_duplicate_headers(profile.pain, 'pain')
+        clean_tool = clean_duplicate_headers(profile.immediate_tool, 'immediate_tool')
+        clean_cta = clean_duplicate_headers(profile.cta, 'cta')
+        
+        return {
+            # Основные поля профиля (очищенные от заголовков)
+            "title": profile.title,
+            "archetype": profile.archetype,
+            "quote": profile.quote,
+            "trigger": clean_trigger,
+            "pain": clean_pain,
+            "immediate_tool": clean_tool,
+            "cta": clean_cta,
+            
+            # Метаданные
+            "type_code": profile_data['type_code'],
+            "level": profile_data['level'],
+            "dilts_code": profile_data['dilts_code'],
+        }
+    else:
+        # Для старого формата
+        return {
+            "title": profile.title if hasattr(profile, 'title') else f"{profile_data['type_code']} Профиль",
+            "profile_name": profile.profile_name if hasattr(profile, 'profile_name') else f"{profile_data['type_code']} Уровень {profile_data['level']}",
+            "thinking_level": profile.thinking_level if hasattr(profile, 'thinking_level') else profile_data['level'],
+            "dilts_level": profile.dilts_level if hasattr(profile, 'dilts_level') else profile_data['dilts_level'],
+            "pain": profile.pain if hasattr(profile, 'pain') else "",
+            "world": profile.world if hasattr(profile, 'world') else "",
+            "superpower": profile.superpower if hasattr(profile, 'superpower') else "",
+            "growth": profile.growth if hasattr(profile, 'growth') else f"Точка роста на уровне {profile_data['level']}",
+            "cta": profile.cta if hasattr(profile, 'cta') else ""
+        }
+
+# ============================================
+# ФУНКЦИЯ РАСЧЕТА ПРОФИЛЯ
 # ============================================
 
 def calculate_profile_final(context_data: dict) -> dict:
     """
     ФИНАЛЬНЫЙ алгоритм расчета профиля
-    Игнорирует Дилтс при выборе файла, использует только для отображения
     """
     # 1. Определяем тип из этапа 1
     perception_type = context_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
@@ -982,74 +864,29 @@ def calculate_profile_final(context_data: dict) -> dict:
     # 4. Ограничиваем диапазон 1-9
     final_level = max(1, min(9, final_level))
     
-    # 5. Суффикс файла по уровню (ИСПРАВЛЕННАЯ ВЕРСИЯ)
-    file_suffix = get_file_suffix_by_level_fixed(final_level)
-    
-    # 6. Ключ файла (нижний регистр)
-    file_key = f"{type_code.lower()}_{final_level}_{file_suffix}"
-    
-    # 7. Проверяем существование профиля
-    if not profile_exists_fixed(file_key):
-        logger.warning(f"Profile {file_key} not found, using fallback...")
-        
-        # Ищем ближайший существующий профиль
-        all_profiles = loader.get_all_profiles()
-        best_match = None
-        best_diff = float('inf')
-        
-        for key in all_profiles:
-            if key.startswith(type_code.lower()):
-                try:
-                    parts = key.split('_')
-                    if len(parts) >= 2 and parts[1].isdigit():
-                        key_level = int(parts[1])
-                        diff = abs(key_level - final_level)
-                        if diff < best_diff:
-                            best_diff = diff
-                            best_match = key
-                except:
-                    continue
-        
-        if best_match:
-            file_key = best_match
-            logger.info(f"Using fallback profile: {file_key}")
-        else:
-            # Аварийный fallback
-            file_key = "sa_1_def"
-            logger.error(f"No profile found, using default: {file_key}")
-    
-    # 8. Уровень Дилтса (только для отображения)
+    # 5. Уровень Дилтса
     dilts_answers = context_data.get("stage4_dilts_answers", [])
     dilts_level = determine_dilts_level(dilts_answers)
     dilts_code = get_dilts_code(dilts_level)
     
-    # 9. Отображаемое имя (с кодом Дилтса)
-    display_name = f"{type_code}_{final_level}_{dilts_code}"
-    
-    # 10. Проверка согласованности
+    # 6. Проверка согласованности
     coherence = check_profile_coherence(final_level, dilts_level)
     
     logger.info(f" FINAL PROFILE CALCULATION:")
     logger.info(f"   Type: {type_code} ({perception_type})")
     logger.info(f"   Level: {final_level} ({get_level_name(final_level)})")
-    logger.info(f"   File key: {file_key}")
-    logger.info(f"   Display name: {display_name}")
     logger.info(f"   Dilts: {dilts_level} ({dilts_code})")
     logger.info(f"   Coherence: {coherence['is_coherent']}")
     
     return {
-        # Для загрузки файла
-        "file_key": file_key,
+        # Метаданные профиля
         "type_code": type_code,
         "level": final_level,
-        "file_suffix": file_suffix,
-        
-        # Для отображения
-        "display_name": display_name,
         "dilts_level": dilts_level,
         "dilts_code": dilts_code,
         
-        # Информация
+        # Для отображения
+        "display_name": f"{type_code}_{final_level}_{dilts_code}",
         "level_name": get_level_name(final_level),
         "type_name": perception_type,
         
@@ -1146,58 +983,11 @@ def need_clarification_stage4(dilts_answers):
     return False
 
 # ============================================
-# ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОЛУЧЕНИЯ ОПИСАНИЯ ПРОФИЛЯ
-# ============================================
-
-def get_card_description_from_profile(profile: VariaticaProfile, profile_data: dict) -> dict:
-    """ИСПРАВЛЕННАЯ ВЕРСИЯ - очищает тексты от заголовков и красиво форматирует"""
-    is_new_format = hasattr(profile, 'archetype') and profile.archetype
-    
-    if is_new_format:
-        # Очищаем каждое поле от встроенных заголовков
-        clean_trigger = clean_profile_text_smart(profile.trigger, 'trigger')
-        clean_pain = clean_profile_text_smart(profile.pain, 'pain')
-        clean_tool = clean_profile_text_smart(profile.immediate_tool, 'immediate_tool')
-        clean_cta = clean_profile_text_smart(profile.cta, 'cta')
-        
-        return {
-            # Основные поля профиля (очищенные от заголовков)
-            "title": profile.title,
-            "archetype": profile.archetype,
-            "quote": profile.quote,
-            "trigger": clean_trigger,
-            "pain": clean_pain,
-            "immediate_tool": clean_tool,
-            "cta": clean_cta,
-            
-            # Метаданные
-            "type_code": profile_data['type_code'],
-            "level": profile_data['level'],
-            "dilts_code": profile_data['dilts_code'],
-            
-            # Форматированные строки
-            "profile_header": f"ПРОФИЛЬ {profile_data['level']}: {profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']} / {profile.title}"
-        }
-    else:
-        # Для старого формата
-        return {
-            "title": profile.title if hasattr(profile, 'title') else f"{profile_data['type_code']} Профиль",
-            "profile_name": profile.profile_name if hasattr(profile, 'profile_name') else f"{profile_data['type_code']} Уровень {profile_data['level']}",
-            "thinking_level": profile.thinking_level if hasattr(profile, 'thinking_level') else profile_data['level'],
-            "dilts_level": profile.dilts_level if hasattr(profile, 'dilts_level') else profile_data['dilts_level'],
-            "pain": profile.pain if hasattr(profile, 'pain') else "",
-            "world": profile.world if hasattr(profile, 'world') else "",
-            "superpower": profile.superpower if hasattr(profile, 'superpower') else "",
-            "growth": profile.growth if hasattr(profile, 'growth') else f"Точка роста на уровне {profile_data['level']}",
-            "cta": profile.cta if hasattr(profile, 'cta') else ""
-        }
-
-# ============================================
 # ИСПРАВЛЕННЫЙ ЭКРАН РЕЗУЛЬТАТОВ
 # ============================================
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - исправленная версия"""
+    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - исправленная версия с 3 сообщениями"""
     query = update.callback_query
     
     # Проверяем, поделился ли уже пользователь
@@ -1212,7 +1002,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.user_data["profile_data"] = profile_data
     
     # Загружаем профиль с fallback
-    profile = get_profile_with_fallback(profile_data["file_key"])
+    profile = get_profile_fallback(profile_data)
     
     if not profile:
         error_text = (
@@ -1227,39 +1017,132 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     profile_card = get_card_description_from_profile(profile, profile_data)
     context.user_data["profile_card"] = profile_card
     
-    # Создаем красивые части сообщения
-    message_parts = create_beautiful_profile_message(profile_card)
+    # ====================================================
+    # СООБЩЕНИЕ 1: Заголовок + Архетип + Цитата
+    # ====================================================
     
-    # Добавляем раздел с примечанием о несогласованности если есть
+    message_1 = ""
+    
+    # Заголовок профиля в одну строку
+    profile_header = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
+    
+    # Используем title или профильное имя
+    profile_title = profile_card.get('title', f"ПРОФИЛЬ {profile_data['level']}")
+    
+    # Добавляем эмодзи в начало, если его нет
+    if not profile_title.startswith(('🎯', '🔍', '💔', '🛠', '🚀')):
+        profile_title = f"🎯 {profile_title}"
+    
+    message_1 += f"<b>{profile_title}</b>\n"
+    message_1 += f"<code>{profile_header}</code>\n\n"
+    
+    # Архетип (если есть)
+    archetype = profile_card.get('archetype', '')
+    if archetype:
+        message_1 += f"<i>{archetype}</i>\n\n"
+    
+    # Цитата
+    quote = profile_card.get('quote', '')
+    if quote:
+        message_1 += f"<b>💬 ЦИТАТА:</b>\n{quote}"
+    
+    # Отправляем сообщение 1
+    if message_1.strip():
+        await query.edit_message_text(message_1.strip(), parse_mode="HTML")
+        await asyncio.sleep(0.5)
+    
+    # ====================================================
+    # СООБЩЕНИЕ 2: "Это ты, если..."
+    # ====================================================
+    
+    message_2 = ""
+    
+    # Это ты, если...
+    trigger = profile_card.get('trigger', '')
+    if trigger:
+        # Убедимся, что нет дублирующего заголовка
+        if trigger.startswith('🔍 ЭТО ТЫ, ЕСЛИ...'):
+            trigger = trigger.replace('🔍 ЭТО ТЫ, ЕСЛИ...\n\n', '').replace('🔍 ЭТО ТЫ, ЕСЛИ...', '')
+        
+        message_2 += f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n"
+        message_2 += f"{trigger}"
+    
+    # Отправляем сообщение 2
+    if message_2.strip():
+        await query.message.reply_text(message_2.strip(), parse_mode="HTML")
+        await asyncio.sleep(0.5)
+    
+    # ====================================================
+    # СООБЩЕНИЕ 3: "Суть проблемы" + "Инструмент прямо сейчас" + "Что дальше?"
+    # ====================================================
+    
+    message_3 = ""
+    
+    # Суть проблемы
+    pain = profile_card.get('pain', '')
+    if pain:
+        # Убедимся, что нет дублирующего заголовка
+        pain_lines = pain.strip().split('\n')
+        if pain_lines and any(h in pain_lines[0] for h in ['СУТЬ ПРОБЛЕМЫ:', 'СУТЬ ПРОБЛЕМЫ']):
+            pain = '\n'.join(pain_lines[1:]) if len(pain_lines) > 1 else ""
+        
+        if pain.strip():
+            message_3 += f"<b>💔 СУТЬ ПРОБЛЕМЫ</b>\n\n"
+            message_3 += f"{pain.strip()}\n\n"
+    
+    # Инструмент прямо сейчас
+    tool = profile_card.get('immediate_tool', '')
+    if tool:
+        # Убедимся, что нет дублирующего заголовка
+        tool_lines = tool.strip().split('\n')
+        if tool_lines and any(h in tool_lines[0] for h in ['ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:', 'ПЕРВЫЙ ШАГ / ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:']):
+            tool = '\n'.join(tool_lines[1:]) if len(tool_lines) > 1 else ""
+        
+        if tool.strip():
+            if message_3:  # Добавляем разделитель, если уже есть текст
+                message_3 += "\n"
+            message_3 += f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»</b>\n\n"
+            message_3 += f"{tool.strip()}\n\n"
+    
+    # Что дальше?
+    cta = profile_card.get('cta', '')
+    if cta:
+        # Убедимся, что нет дублирующего заголовка
+        cta_lines = cta.strip().split('\n')
+        if cta_lines and cta_lines[0].strip() == 'ЧТО ДАЛЬШЕ?':
+            cta = '\n'.join(cta_lines[1:]) if len(cta_lines) > 1 else ""
+        
+        if cta.strip():
+            message_3 += f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n"
+            message_3 += f"{cta.strip()}\n\n"
+    
+    # Примечание о несогласованности (если есть)
     coherence = profile_data.get("coherence", {})
     if not coherence.get("is_coherent", True):
-        note_part = (
-            f"\n<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+        discrepancy_note = (
             f"🔍 <b>ПРИМЕЧАНИЕ:</b>\n"
             f"Есть небольшое расхождение в результатах.\n"
             f"Уровень развития: {profile_data['level_name']}, "
             f"но фокус проблем: {DILTS_LEVELS[profile_data['dilts_level']]['name']}.\n"
-            f"Это может указывать на переходный период."
+            f"Это может указывать на переходный период.\n\n"
         )
-        message_parts.append(note_part)
+        message_3 += discrepancy_note
     
-    # Добавляем раздел с инструкцией
+    # Инструкция по подарку
     if not has_shared:
-        instruction_part = (
-            f"\n<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+        instruction = (
             f"📄 <b>ПОЛУЧИ ПОЛНЫЙ ПРОФИЛЬ + РЕКОМЕНДАЦИИ</b>\n\n"
             f"💬 Иногда самое большое, что мы можем сделать для близких — это дать зеркало...\n"
             f"Поделись тестом и получи\n"
             f"🎁 <b>БЕСПЛАТНЫЙ ПОДАРОК</b>"
         )
     else:
-        instruction_part = (
-            f"\n<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+        instruction = (
             f"🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\n"
             f"Спасибо за репост!"
         )
     
-    message_parts.append(instruction_part)
+    message_3 += f"\n{instruction}"
     
     # Определяем кнопки
     if not has_shared:
@@ -1277,102 +1160,10 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Отправляем сообщение
-    if len(message_parts) == 1:
-        # Если всё влезает в одно сообщение
-        full_text = message_parts[0]
-        if len(full_text) > 4096:
-            # Разбиваем на части
-            split_parts = split_long_message(full_text)
-            for i, part in enumerate(split_parts):
-                if i == 0:
-                    await query.edit_message_text(part, parse_mode="HTML")
-                else:
-                    await query.message.reply_text(part, parse_mode="HTML")
-            
-            # Последняя часть с кнопками
-            await query.message.reply_text(
-                "━━━━━━━━━━━━━━━━━━━━\n\n<i>Навигация:</i>",
-                reply_markup=reply_markup,
-                parse_mode="HTML"
-            )
-        else:
-            await query.edit_message_text(full_text, parse_mode="HTML", reply_markup=reply_markup)
-    else:
-        # Отправляем первую часть
-        await query.edit_message_text(
-            message_parts[0] + f"\n\n<i>Часть 1 из {len(message_parts)}</i>",
-            parse_mode="HTML"
-        )
-        
-        # Отправляем остальные части
-        for i, part in enumerate(message_parts[1:-1], 2):
-            await query.message.reply_text(
-                part + f"\n\n<i>Часть {i} из {len(message_parts)}</i>",
-                parse_mode="HTML"
-            )
-            await asyncio.sleep(0.3)
-        
-        # Последняя часть с кнопками
-        await query.message.reply_text(
-            message_parts[-1],
-            reply_markup=reply_markup,
-            parse_mode="HTML"
-        )
+    # Отправляем сообщение 3 с кнопками
+    await query.message.reply_text(message_3.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
     return RESULTS
-
-# ============================================
-# ФУНКЦИИ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ
-# ============================================
-
-def get_card_description(profile_code: str) -> dict:
-    """Возвращает описание карточки для профиля (СОВМЕСТИМОСТЬ)"""
-    profile = get_profile_with_fallback(profile_code)
-    if not profile:
-        return None
-    
-    # Проверяем, новый ли это формат
-    if hasattr(profile, 'archetype') and profile.archetype:
-        # НОВЫЙ ФОРМАТ: конвертируем в старый формат
-        return {
-            "title": f"🎯 {profile.title}",
-            "profile_name": f"{profile.type_code} Уровень {profile.level}",
-            "thinking_level": profile.level,
-            "dilts_level": "ENVIRONMENT",
-            "pain": f"{profile.archetype}\n\n💡 {profile.trigger}\n\n🎯 {profile.pain}",
-            "world": profile.quote,
-            "superpower": profile.immediate_tool,
-            "growth": f"Точка роста на уровне {profile.level}",
-            "cta": profile.cta
-        }
-    else:
-        # СТАРЫЙ ФОРМАТ
-        return {
-            "title": profile.title,
-            "profile_name": profile.profile_name,
-            "thinking_level": profile.thinking_level,
-            "dilts_level": profile.dilts_level,
-            "pain": profile.pain,
-            "world": profile.world,
-            "superpower": profile.superpower,
-            "growth": profile.growth,
-            "cta": profile.cta
-        }
-
-def profile_exists(profile_code: str) -> bool:
-    """Проверяет существование профиля"""
-    return profile_exists_fixed(profile_code)
-
-def get_profile_by_code(profile_code: str) -> VariaticaProfile:
-    """Прямой доступ к объекту профиля"""
-    return get_profile_with_fallback(profile_code)
-
-def is_new_format_profile(profile: VariaticaProfile) -> bool:
-    """Проверяет, является ли профиль новым форматом"""
-    return (hasattr(profile, 'archetype') and profile.archetype and
-            hasattr(profile, 'trigger') and profile.trigger and
-            hasattr(profile, 'immediate_tool') and profile.immediate_tool)
 
 # ============================================
 # ОСТАЛЬНЫЕ ЭКРАНЫ (без изменений)
