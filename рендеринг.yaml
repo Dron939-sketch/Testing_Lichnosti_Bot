@@ -1,10 +1,13 @@
 services:
   - type: web
-    name: tarot-adaptive-bot
+    name: variatica-bot
     env: python
-    runtime: python-3.11.7
     buildCommand: pip install -r requirements.txt
-    startCommand: python bot_adaptive.py
+    startCommand: python run.py
     envVars:
       - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: YOOKASSA_SHOP_ID
+        value: 1262862
+      - key: YOOKASSA_SECRET_KEY
         sync: false
