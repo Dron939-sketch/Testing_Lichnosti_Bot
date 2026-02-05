@@ -36,6 +36,7 @@ from telegram.ext import (
     filters,
     ContextTypes,
     ConversationHandler,
+    ApplicationBuilder,  # 
 )
 
 # Импорт загрузчика и профилей
