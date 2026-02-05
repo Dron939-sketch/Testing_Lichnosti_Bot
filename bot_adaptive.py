@@ -36,8 +36,8 @@ from telegram.ext import (
     filters,
     ContextTypes,
     ConversationHandler,
-    ApplicationBuilder,  # 
 )
+from telegram.ext import ApplicationBuilder
 
 # Импорт загрузчика и профилей
 from loader import loader
