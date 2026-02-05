@@ -1,6 +1,7 @@
 """
 АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
 4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
+ИСПРАВЛЕННАЯ ВЕРСИЯ: fix_profile_errors + clean_headers + beautiful_formatting
 """
 
 import logging
@@ -8,6 +9,7 @@ import os
 import asyncio
 import urllib.parse
 import math
+import re
 from collections import Counter
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -25,74 +27,6 @@ from telegram.ext import (
 # ============================================
 from loader import loader  # Импортируем загрузчик
 from base import VariaticaProfile  # Импортируем класс профиля
-
-# ФУНКЦИИ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ
-def get_card_description(profile_code: str) -> dict:
-    """Возвращает описание карточки для профиля (СОВМЕСТИМОСТЬ)"""
-    profile = loader.get_profile(profile_code)
-    if not profile:
-        # Попробуем найти альтернативу (игнорируем Дилтс в имени файла)
-        parts = profile_code.split('_')
-        if len(parts) >= 3:
-            type_code, level, dilts_code = parts
-            type_code = type_code.lower()
-            
-            # Маппинг уровня на суффикс файла
-            level_to_suffix = {
-                '1': 'def', '2': 'sit', '3': 'con', '4': 'exp',
-                '5': 'int', '6': 'aut', '7': 'val', '8': 'tra', '9': 'ide'
-            }
-            
-            if level in level_to_suffix:
-                file_suffix = level_to_suffix[level]
-                fallback_key = f"{type_code}_{level}_{file_suffix}"
-                profile = loader.get_profile(fallback_key)
-                logging.info(f"⚠️ Profile {profile_code} not found, using fallback {fallback_key}")
-    
-    if not profile:
-        return None
-    
-    # Проверяем, новый ли это формат (наличие поля archetype)
-    if hasattr(profile, 'archetype') and profile.archetype:
-        # НОВЫЙ ФОРМАТ: конвертируем в старый формат
-        return {
-            "title": f"🎯 {profile.title}",
-            "profile_name": f"{profile.type_code} Уровень {profile.level}",
-            "thinking_level": profile.level,
-            "dilts_level": "ENVIRONMENT",  # По умолчанию
-            "pain": f"{profile.archetype}\n\n💡 {profile.trigger}\n\n🎯 {profile.pain}",
-            "world": profile.quote,  # Используем цитату как мир
-            "superpower": profile.immediate_tool,
-            "growth": f"Точка роста на уровне {profile.level}",  # Заглушка
-            "cta": profile.cta
-        }
-    else:
-        # СТАРЫЙ ФОРМАТ: оставляем как есть
-        return {
-            "title": profile.title,
-            "profile_name": profile.profile_name,
-            "thinking_level": profile.thinking_level,
-            "dilts_level": profile.dilts_level,
-            "pain": profile.pain,
-            "world": profile.world,
-            "superpower": profile.superpower,
-            "growth": profile.growth,
-            "cta": profile.cta
-        }
-
-def profile_exists(profile_code: str) -> bool:
-    """Проверяет существование профиля (только через loader)"""
-    return loader.get_profile(profile_code) is not None
-
-def get_profile_by_code(profile_code: str) -> VariaticaProfile:
-    """Прямой доступ к объекту профиля"""
-    return loader.get_profile(profile_code)
-
-def is_new_format_profile(profile: VariaticaProfile) -> bool:
-    """Проверяет, является ли профиль новым форматом"""
-    return (hasattr(profile, 'archetype') and profile.archetype and
-            hasattr(profile, 'trigger') and profile.trigger and
-            hasattr(profile, 'immediate_tool') and profile.immediate_tool)
 
 # Получение токена из переменной окружения
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -224,7 +158,7 @@ PERCEPTION_TYPES = {
     ("EXTERNAL", "MATERIAL"): {
         "name": "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ",
         "code": "SP",
-        "description": "Фокус на внешних достижениях и результатах"
+        "description": "Фокус на внешних достижениях и результатат"
     },
     ("INTERNAL", "MATERIAL"): {
         "name": "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ",
@@ -234,11 +168,8 @@ PERCEPTION_TYPES = {
 }
 
 # ============================================
-# ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ (ПЕРЕРАБОТАННЫЙ ФОРМАТ)
+# ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ
 # ============================================
-
-# НОВЫЙ ФОРМАТ ВОПРОСОВ ЭТАП 2 - как в карточном тесте
-# Каждый вариант ответа соответствует уровню (1-9)
 
 STAGE_2_QUESTIONS = {
     "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": [
@@ -539,7 +470,7 @@ STAGE_2_QUESTIONS = {
     ]
 }
 
-# ТАБЛИЦА НАЧИСЛЕНИЯ БАЛЛОВ ДЛЯ ЭТАПА 2 (КАК В КАРТОЧНОМ ТЕСТЕ)
+# ТАБЛИЦА НАЧИСЛЕНИЯ БАЛЛОВ ДЛЯ ЭТАПА 2
 STAGE_2_SCORING = {
     "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": {
         0: {"1": 2, "2": 2, "3": 2, "5": 2},
@@ -584,7 +515,7 @@ STAGE_2_SCORING = {
 }
 
 # ============================================
-# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ (БЕЗ ИЗМЕНЕНИЙ)
+# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ
 # ============================================
 
 STAGE_3_QUESTIONS = [
@@ -599,7 +530,7 @@ STAGE_3_QUESTIONS = [
 ]
 
 # ============================================
-# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ (БЕЗ ИЗМЕНЕНИЙ)
+# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
 # ============================================
 
 STAGE_4_QUESTIONS = [
@@ -623,7 +554,7 @@ DILTS_LEVELS = {
 }
 
 # ============================================
-# АДАПТИВНЫЕ УТОЧНЯЮЩИЕ ВОПРОСЫ (ОСТАЮТСЯ!)
+# АДАПТИВНЫЕ УТОЧНЯЮЩИЕ ВОПРОСЫ
 # ============================================
 
 CLARIFICATION_QUESTIONS = {
@@ -651,7 +582,7 @@ CLARIFICATION_QUESTIONS = {
 }
 
 # ============================================
-#  НОВЫЕ ФУНКЦИИ ДЛЯ ИСПРАВЛЕННОЙ СИСТЕМЫ
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ИСПРАВЛЕННЫЕ)
 # ============================================
 
 def calculate_progress(current: int, total: int) -> str:
@@ -662,7 +593,7 @@ def calculate_progress(current: int, total: int) -> str:
     return f"{bar} {progress}%\nПройдено: {current}/{total}"
 
 def determine_perception_type(scores):
-    """ Определяет тип восприятия"""
+    """Определяет тип восприятия"""
     external = scores.get("EXTERNAL", 0)
     internal = scores.get("INTERNAL", 0)
     symbolic = scores.get("SYMBOLIC", 0)
@@ -674,23 +605,15 @@ def determine_perception_type(scores):
     type_data = PERCEPTION_TYPES.get((focus, anxiety), PERCEPTION_TYPES[("EXTERNAL", "SYMBOLIC")])
     return type_data["name"]
 
-def calculate_thinking_level_by_scores(level_scores_dict):
-    """ НОВАЯ: Определяет уровень мышления (1-9) по системе баллов как в карточном тесте"""
-    if not level_scores_dict:
-        return 1
-    
-    # Преобразуем ключи в числа для правильного сравнения
-    # Сначала находим максимальный балл
-    max_score = max(level_scores_dict.values())
-    
-    # Находим ВСЕ уровни с максимальным баллом
-    max_levels = [int(level) for level, score in level_scores_dict.items() if score == max_score]
-    
-    if not max_levels:
-        return 1
-    
-    # Выбираем самый высокий уровень среди тех, у кого максимальный балл
-    return max(max_levels)
+def get_type_code(perception_type: str) -> str:
+    """Код типа (SA/IA/SP/IP)"""
+    type_map = {
+        "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": "SA",
+        "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ": "IA",
+        "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ": "SP",
+        "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ": "IP"
+    }
+    return type_map.get(perception_type, "SA")
 
 def get_level_name(level_num):
     """Получаем название уровня по номеру"""
@@ -707,44 +630,6 @@ def get_level_name(level_num):
     }
     return level_names.get(level_num, f"Уровень {level_num}")
 
-def determine_dilts_level(dilts_answers):
-    """ Определяет уровень Дилтса"""
-    if not dilts_answers:
-        return "ENVIRONMENT"
-    
-    counter = Counter(dilts_answers)
-    most_common = counter.most_common(1)[0]
-    return most_common[0]
-
-def calculate_final_level(stage2_level, stage3_scores):
-    """ Финальный уровень (приоритет поведению)"""
-    if not stage3_scores:
-        return stage2_level
-    
-    stage3_avg = sum(stage3_scores) / len(stage3_scores)
-    
-    # Детальное логирование с правильным форматом чисел
-    logger.info(f"Stage3 calculation: {stage3_scores} → sum={sum(stage3_scores)}, count={len(stage3_scores)}, avg={stage3_avg:.2f}")
-    
-    # 70% веса поведению (этап 3), 30% мышлению (этап 2)
-    weighted = stage3_avg * 0.7 + stage2_level * 0.3
-    
-    # Правильное математическое округление
-    final_level = int(round(weighted))
-    
-    logger.info(f"Final level: stage2={stage2_level}, stage3_avg={stage3_avg:.2f}, weighted={weighted:.2f}, final={final_level}")
-    return final_level
-
-def get_type_code(perception_type: str) -> str:
-    """Код типа (SA/IA/SP/IP)"""
-    type_map = {
-        "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": "SA",
-        "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ": "IA",
-        "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ": "SP",
-        "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ": "IP"
-    }
-    return type_map.get(perception_type, "SA")
-
 def get_dilts_code(dilts_level: str) -> str:
     """Код Дилтса"""
     dilts_map = {
@@ -756,34 +641,330 @@ def get_dilts_code(dilts_level: str) -> str:
     }
     return dilts_map.get(dilts_level, "env")
 
-def get_file_suffix_by_level(level: int) -> str:
-    """Получает суффикс файла по уровню - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
-    # ИСПРАВЛЕНО: только те суффиксы, которые есть в файлах
+def determine_dilts_level(dilts_answers):
+    """Определяет уровень Дилтса"""
+    if not dilts_answers:
+        return "ENVIRONMENT"
+    
+    counter = Counter(dilts_answers)
+    most_common = counter.most_common(1)[0]
+    return most_common[0]
+
+# ============================================
+# ИСПРАВЛЕННАЯ СИСТЕМА РАСЧЕТА УРОВНЯ
+# ============================================
+
+def calculate_thinking_level_by_scores(level_scores_dict):
+    """Определяет уровень мышления (1-9) по системе баллов"""
+    if not level_scores_dict:
+        return 1
+    
+    # Преобразуем ключи в числа для правильного сравнения
+    numeric_scores = {int(k): v for k, v in level_scores_dict.items() if k.isdigit()}
+    
+    if not numeric_scores:
+        return 1
+    
+    # Находим максимальный балл
+    max_score = max(numeric_scores.values())
+    
+    # Находим ВСЕ уровни с максимальным баллом
+    max_levels = [level for level, score in numeric_scores.items() if score == max_score]
+    
+    if not max_levels:
+        return 1
+    
+    # Выбираем самый высокий уровень среди тех, у кого максимальный балл
+    return max(max_levels)
+
+def calculate_final_level(stage2_level, stage3_scores):
+    """Финальный уровень (приоритет поведению)"""
+    if not stage3_scores:
+        return stage2_level
+    
+    stage3_avg = sum(stage3_scores) / len(stage3_scores)
+    
+    # 70% веса поведению (этап 3), 30% мышлению (этап 2)
+    weighted = stage3_avg * 0.7 + stage2_level * 0.3
+    
+    # Правильное математическое округление
+    final_level = int(round(weighted))
+    
+    logger.info(f"Final level: stage2={stage2_level}, stage3_avg={stage3_avg:.2f}, weighted={weighted:.2f}, final={final_level}")
+    return final_level
+
+# ============================================
+# ИСПРАВЛЕННАЯ СИСТЕМА СУФФИКСОВ ПРОФИЛЕЙ
+# ============================================
+
+def get_file_suffix_by_level_fixed(level: int) -> str:
+    """ИСПРАВЛЕННЫЙ маппинг уровня на существующие суффиксы"""
+    # ТОЛЬКО существующие суффиксы:
     level_to_suffix = {
-        1: "def", 
-        # 2: "sit",  # ← Файлов с этим суффиксом нет
-        # 3: "con",  # ← Файлов с этим суффиксом нет
-        4: "exp", 
-        5: "int", 
-        6: "aut", 
-        7: "val", 
-        8: "tra", 
-        9: "ide"
+        1: "def",  # Уровень 1 -> def (есть)
+        2: "def",  # Уровень 2 -> def (fallback, sit нет)
+        3: "def",  # Уровень 3 -> def (fallback, con нет)
+        4: "exp",  # Уровень 4 -> exp (есть)
+        5: "int",  # Уровень 5 -> int (есть)
+        6: "aut",  # Уровень 6 -> aut (есть)
+        7: "val",  # Уровень 7 -> val (есть)
+        8: "tra",  # Уровень 8 -> tra (есть)
+        9: "ide"   # Уровень 9 -> ide (есть)
+    }
+    return level_to_suffix.get(level, "def")
+
+# ============================================
+# ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОИСКА ПРОФИЛЕЙ
+# ============================================
+
+def profile_exists_fixed(profile_code: str) -> bool:
+    """Проверяет существование профиля с учетом fallback"""
+    # Пробуем найти как есть
+    profile = loader.get_profile(profile_code)
+    if profile:
+        return True
+    
+    # Если не нашли, пробуем в нижнем регистре
+    profile = loader.get_profile(profile_code.lower())
+    if profile:
+        return True
+    
+    # Пробуем в верхнем регистре
+    profile = loader.get_profile(profile_code.upper())
+    if profile:
+        return True
+    
+    return False
+
+def get_profile_with_fallback(file_key: str) -> VariaticaProfile:
+    """Получает профиль с интеллектуальным fallback"""
+    # Пробуем найти как есть
+    profile = loader.get_profile(file_key)
+    if profile:
+        return profile
+    
+    # Пробуем нижний регистр
+    profile = loader.get_profile(file_key.lower())
+    if profile:
+        return profile
+    
+    # Пробуем верхний регистр
+    profile = loader.get_profile(file_key.upper())
+    if profile:
+        return profile
+    
+    # Извлекаем тип и уровень для fallback
+    parts = file_key.lower().split('_')
+    if len(parts) >= 3:
+        type_code = parts[0]
+        try:
+            target_level = int(parts[1])
+        except:
+            target_level = 1
+        
+        # Ищем ближайший существующий профиль
+        all_profiles = loader.get_all_profiles()
+        best_match = None
+        best_diff = float('inf')
+        
+        for key in all_profiles:
+            if key.startswith(type_code + '_'):
+                try:
+                    key_parts = key.split('_')
+                    if len(key_parts) >= 2 and key_parts[1].isdigit():
+                        key_level = int(key_parts[1])
+                        diff = abs(key_level - target_level)
+                        if diff < best_diff:
+                            best_diff = diff
+                            best_match = key
+                except:
+                    continue
+        
+        if best_match:
+            logger.info(f"Using fallback: {best_match} (target: {file_key})")
+            return loader.get_profile(best_match)
+    
+    # Аварийный fallback
+    logger.warning(f"No profile found for {file_key}, using sa_1_def")
+    return loader.get_profile("sa_1_def")
+
+# ============================================
+# ИСПРАВЛЕННАЯ ФУНКЦИЯ ОЧИСТКИ ЗАГОЛОВКОВ
+# ============================================
+
+def clean_profile_text_smart(text: str, field_type: str) -> str:
+    """Умное удаление встроенных заголовков из текста профиля"""
+    if not text:
+        return ""
+    
+    # Словарь заголовков для удаления
+    headers_to_remove = {
+        'trigger': [
+            'ЭТО ТЫ, ЕСЛИ...',
+            'ЭТО ТЫ, ЕСЛИ:'
+        ],
+        'pain': [
+            'СУТЬ ПРОБЛЕМЫ:',
+            'СУТЬ ПРОБЛЕМЫ: ПОЧЕМУ ЭТО ЛОМАЕТ ТВОЮ ЖИЗНЬ?',
+            'ПОЧЕМУ ЭТО ЛОМАЕТ ТВОЮ ЖИЗНЬ?'
+        ],
+        'immediate_tool': [
+            'ПЕРВЫЙ ШАГ / ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:',
+            'ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:',
+            'ПЕРВЫЙ ШАГ:',
+            'ИНСТРУМЕНТ:'
+        ],
+        'cta': [
+            'ЧТО ДАЛЬШЕ?',
+            'ДАЛЬШЕ:',
+            'СЛЕДУЮЩИЙ ШАГ:'
+        ]
     }
     
-    # Если уровень отсутствует, используем ближайший доступный
-    if level not in level_to_suffix:
-        # Находим ближайший доступный уровень
-        available_levels = list(level_to_suffix.keys())
-        nearest = min(available_levels, key=lambda x: abs(x - level))
-        logger.warning(f"⚠️ Level {level} not found, using nearest: {nearest}")
-        return level_to_suffix[nearest]
+    if field_type not in headers_to_remove:
+        return text
     
-    return level_to_suffix.get(level, "def")
+    lines = text.strip().split('\n')
+    if not lines:
+        return text
+    
+    # Проверяем первую строку на наличие заголовков
+    first_line = lines[0].strip()
+    
+    for header in headers_to_remove[field_type]:
+        if header in first_line:
+            # Удаляем заголовок
+            cleaned = first_line.replace(header, '').strip()
+            if cleaned:
+                lines[0] = cleaned
+            else:
+                # Если после удаления строка пустая, убираем её
+                lines = lines[1:]
+            break
+    
+    return '\n'.join(lines).strip()
+
+# ============================================
+# ФУНКЦИИ КРАСИВОГО ОФОРМЛЕНИЯ ТЕКСТА
+# ============================================
+
+def format_section_beautifully(text: str, section_emoji: str = "•") -> str:
+    """Красиво форматирует текст секции"""
+    if not text:
+        return ""
+    
+    lines = text.split('\n')
+    formatted_lines = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Маркированные списки с эмодзи
+        if line.startswith('•'):
+            formatted_lines.append(f"{section_emoji} {line[1:].strip()}")
+        # Нумерованные списки
+        elif re.match(r'^\d+[\.\)]', line):
+            formatted_lines.append(f"   {line}")
+        # Подзаголовки (жирный текст)
+        elif line.endswith(':'):
+            formatted_lines.append(f"\n<b>{line}</b>")
+        # Обычный текст
+        else:
+            formatted_lines.append(f"   {line}")
+    
+    # Добавляем отступы между пунктами
+    result = '\n'.join(formatted_lines)
+    # Убираем лишние пустые строки
+    result = re.sub(r'\n{3,}', '\n\n', result)
+    
+    return result
+
+def split_long_message(text: str, max_length: int = 4000) -> list:
+    """Разбивает длинное сообщение на части"""
+    if len(text) <= max_length:
+        return [text]
+    
+    parts = []
+    current_part = ""
+    
+    # Разбиваем по разделам
+    sections = re.split(r'(?=\n<b>[━]+</b>\n)', text)
+    
+    for section in sections:
+        if len(current_part) + len(section) <= max_length:
+            current_part += section
+        else:
+            if current_part:
+                parts.append(current_part)
+            current_part = section
+    
+    if current_part:
+        parts.append(current_part)
+    
+    return parts
+
+def create_beautiful_profile_message(profile_card: dict) -> list:
+    """Создает красиво оформленное сообщение профиля (возвращает части)"""
+    parts = []
+    
+    # Часть 1: Заголовок профиля
+    header = (
+        f"<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+        f"<b>🎯 ПРОФИЛЬ {profile_card.get('level', '?')}</b>\n"
+        f"<code>{profile_card.get('type_code', '?')}_{profile_card.get('level', '?')}_{profile_card.get('dilts_code', '?')}</code>\n\n"
+        f"<b>{profile_card.get('title', '')}</b>\n\n"
+        f"<i>{profile_card.get('archetype', '')}</i>\n\n"
+        f"<b>💬 ЦИТАТА:</b>\n{profile_card.get('quote', '')}"
+    )
+    parts.append(header)
+    
+    # Часть 2: Это ты, если... (с эмодзи)
+    if profile_card.get('trigger'):
+        trigger_section = (
+            f"\n<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+            f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n"
+            f"{format_section_beautifully(profile_card['trigger'], '🔸')}"
+        )
+        parts.append(trigger_section)
+    
+    # Часть 3: Суть проблемы
+    if profile_card.get('pain'):
+        pain_section = (
+            f"\n<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+            f"<b>💔 СУТЬ ПРОБЛЕМЫ</b>\n\n"
+            f"{format_section_beautifully(profile_card['pain'], '⚡️')}"
+        )
+        parts.append(pain_section)
+    
+    # Часть 4: Инструмент
+    if profile_card.get('immediate_tool'):
+        tool_section = (
+            f"\n<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+            f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»</b>\n\n"
+            f"{format_section_beautifully(profile_card['immediate_tool'], '🛠')}"
+        )
+        parts.append(tool_section)
+    
+    # Часть 5: Что дальше
+    if profile_card.get('cta'):
+        cta_section = (
+            f"\n<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+            f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n"
+            f"{format_section_beautifully(profile_card['cta'], '📌')}"
+        )
+        parts.append(cta_section)
+    
+    return parts
+
+# ============================================
+# ИСПРАВЛЕННАЯ ФУНКЦИЯ РАСЧЕТА ПРОФИЛЯ
+# ============================================
 
 def calculate_profile_final(context_data: dict) -> dict:
     """
-     ФИНАЛЬНЫЙ алгоритм расчета профиля
+    ФИНАЛЬНЫЙ алгоритм расчета профиля
     Игнорирует Дилтс при выборе файла, использует только для отображения
     """
     # 1. Определяем тип из этапа 1
@@ -794,7 +975,7 @@ def calculate_profile_final(context_data: dict) -> dict:
     level_scores_dict = context_data.get("stage2_level_scores_dict", {})
     stage2_level = calculate_thinking_level_by_scores(level_scores_dict)
     
-    # 3. Корректируем по этапу 3 (ваша существующая логика)
+    # 3. Корректируем по этапу 3
     stage3_scores = context_data.get("stage3_level_scores", [])
     final_level = calculate_final_level(stage2_level, stage3_scores)
     
@@ -802,20 +983,50 @@ def calculate_profile_final(context_data: dict) -> dict:
     final_level = max(1, min(9, final_level))
     
     # 5. Суффикс файла по уровню (ИСПРАВЛЕННАЯ ВЕРСИЯ)
-    file_suffix = get_file_suffix_by_level(final_level)
+    file_suffix = get_file_suffix_by_level_fixed(final_level)
     
     # 6. Ключ файла (нижний регистр)
     file_key = f"{type_code.lower()}_{final_level}_{file_suffix}"
     
-    # 7. Уровень Дилтса (только для отображения)
+    # 7. Проверяем существование профиля
+    if not profile_exists_fixed(file_key):
+        logger.warning(f"Profile {file_key} not found, using fallback...")
+        
+        # Ищем ближайший существующий профиль
+        all_profiles = loader.get_all_profiles()
+        best_match = None
+        best_diff = float('inf')
+        
+        for key in all_profiles:
+            if key.startswith(type_code.lower()):
+                try:
+                    parts = key.split('_')
+                    if len(parts) >= 2 and parts[1].isdigit():
+                        key_level = int(parts[1])
+                        diff = abs(key_level - final_level)
+                        if diff < best_diff:
+                            best_diff = diff
+                            best_match = key
+                except:
+                    continue
+        
+        if best_match:
+            file_key = best_match
+            logger.info(f"Using fallback profile: {file_key}")
+        else:
+            # Аварийный fallback
+            file_key = "sa_1_def"
+            logger.error(f"No profile found, using default: {file_key}")
+    
+    # 8. Уровень Дилтса (только для отображения)
     dilts_answers = context_data.get("stage4_dilts_answers", [])
     dilts_level = determine_dilts_level(dilts_answers)
     dilts_code = get_dilts_code(dilts_level)
     
-    # 8. Отображаемое имя (с кодом Дилтса)
+    # 9. Отображаемое имя (с кодом Дилтса)
     display_name = f"{type_code}_{final_level}_{dilts_code}"
     
-    # 9. Проверка согласованности
+    # 10. Проверка согласованности
     coherence = check_profile_coherence(final_level, dilts_level)
     
     logger.info(f" FINAL PROFILE CALCULATION:")
@@ -824,7 +1035,7 @@ def calculate_profile_final(context_data: dict) -> dict:
     logger.info(f"   File key: {file_key}")
     logger.info(f"   Display name: {display_name}")
     logger.info(f"   Dilts: {dilts_level} ({dilts_code})")
-    logger.info(f"   Coherence: {coherence['is_coherent']} (discrepancy: {coherence.get('discrepancy_level', 0)})")
+    logger.info(f"   Coherence: {coherence['is_coherent']}")
     
     return {
         # Для загрузки файла
@@ -851,19 +1062,18 @@ def calculate_profile_final(context_data: dict) -> dict:
 def check_profile_coherence(profile_level: int, dilts_level: str) -> dict:
     """
     Проверяет согласованность уровня профиля и уровня Дилтса
-    Возвращает результат проверки
     """
     # Маппинг: какие уровни Дилтса ожидаются для каждого уровня профиля
     expected_dilts_by_level = {
-        1: ["ENVIRONMENT", "BEHAVIOR"],      # Низкие уровни - окружение/поведение
-        2: ["BEHAVIOR", "CAPABILITIES"],     # Поисковый - поведение/способности
-        3: ["CAPABILITIES", "VALUES"],       # Конструктивный - способности/ценности
-        4: ["VALUES", "IDENTITY"],           # Кризисный - ценности/идентичность
-        5: ["VALUES", "IDENTITY"],           # Интегративный - ценности/идентичность
-        6: ["IDENTITY", "VALUES"],           # Альтруистический - идентичность/ценности
-        7: ["IDENTITY"],                     # Мудрецкий - идентичность
-        8: ["IDENTITY"],                     # Системный - идентичность  
-        9: ["IDENTITY"]                      # Трансцендентный - идентичность
+        1: ["ENVIRONMENT", "BEHAVIOR"],
+        2: ["BEHAVIOR", "CAPABILITIES"],
+        3: ["CAPABILITIES", "VALUES"],
+        4: ["VALUES", "IDENTITY"],
+        5: ["VALUES", "IDENTITY"],
+        6: ["IDENTITY", "VALUES"],
+        7: ["IDENTITY"],
+        8: ["IDENTITY"],
+        9: ["IDENTITY"]
     }
     
     expected_dilts = expected_dilts_by_level.get(profile_level, ["VALUES"])
@@ -873,25 +1083,13 @@ def check_profile_coherence(profile_level: int, dilts_level: str) -> dict:
         "is_coherent": is_coherent,
         "profile_level": profile_level,
         "dilts_level": dilts_level,
-        "expected_dilts": expected_dilts,
-        "discrepancy_level": 0
+        "expected_dilts": expected_dilts
     }
-    
-    # Определяем уровень расхождения если есть
-    if not is_coherent:
-        # Уровни Дилтса по сложности
-        dilts_hierarchy = ["ENVIRONMENT", "BEHAVIOR", "CAPABILITIES", "VALUES", "IDENTITY"]
-        
-        dilts_index = dilts_hierarchy.index(dilts_level) if dilts_level in dilts_hierarchy else 0
-        expected_index = max([dilts_hierarchy.index(d) for d in expected_dilts if d in dilts_hierarchy])
-        
-        discrepancy = abs(dilts_index - expected_index)
-        result["discrepancy_level"] = discrepancy
     
     return result
 
 # ============================================
-# ПРОВЕРКИ УТОЧНЕНИЙ (ОБНОВЛЕННЫЕ ДЛЯ НОВОЙ СИСТЕМЫ)
+# ПРОВЕРКИ УТОЧНЕНИЙ
 # ============================================
 
 def need_clarification_stage1(scores):
@@ -910,7 +1108,7 @@ def need_clarification_stage1(scores):
     return clarifications
 
 def need_clarification_stage2(level_scores_dict):
-    """ ОБНОВЛЕННАЯ: Нужны ли уточнения после ЭТАПА 2 (система баллов)"""
+    """Нужны ли уточнения после ЭТАПА 2"""
     if not level_scores_dict:
         return False
     
@@ -948,26 +1146,29 @@ def need_clarification_stage4(dilts_answers):
     return False
 
 # ============================================
-#  ИСПРАВЛЕННЫЕ ФУНКЦИИ ДЛЯ ФИНАЛЬНОГО ЭКРАНА
+# ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОЛУЧЕНИЯ ОПИСАНИЯ ПРОФИЛЯ
 # ============================================
 
 def get_card_description_from_profile(profile: VariaticaProfile, profile_data: dict) -> dict:
-    """ИСПРАВЛЕННАЯ ВЕРСИЯ - разделяет данные для нового формата"""
+    """ИСПРАВЛЕННАЯ ВЕРСИЯ - очищает тексты от заголовков и красиво форматирует"""
     is_new_format = hasattr(profile, 'archetype') and profile.archetype
     
     if is_new_format:
-        # Вычисляем номер профиля
-        profile_number = profile_data.get("level", 1)
+        # Очищаем каждое поле от встроенных заголовков
+        clean_trigger = clean_profile_text_smart(profile.trigger, 'trigger')
+        clean_pain = clean_profile_text_smart(profile.pain, 'pain')
+        clean_tool = clean_profile_text_smart(profile.immediate_tool, 'immediate_tool')
+        clean_cta = clean_profile_text_smart(profile.cta, 'cta')
         
         return {
-            # Основные поля профиля (РАЗДЕЛЕНЫ)
-            "title": f"🎯 {profile.title}",
+            # Основные поля профиля (очищенные от заголовков)
+            "title": profile.title,
             "archetype": profile.archetype,
             "quote": profile.quote,
-            "trigger": profile.trigger,
-            "pain": profile.pain,
-            "immediate_tool": profile.immediate_tool,
-            "cta": profile.cta,
+            "trigger": clean_trigger,
+            "pain": clean_pain,
+            "immediate_tool": clean_tool,
+            "cta": clean_cta,
             
             # Метаданные
             "type_code": profile_data['type_code'],
@@ -975,10 +1176,10 @@ def get_card_description_from_profile(profile: VariaticaProfile, profile_data: d
             "dilts_code": profile_data['dilts_code'],
             
             # Форматированные строки
-            "profile_header": f"ПРОФИЛЬ {profile_number}: {profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']} / {profile.title}"
+            "profile_header": f"ПРОФИЛЬ {profile_data['level']}: {profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']} / {profile.title}"
         }
     else:
-        # Для старого формата оставить как есть
+        # Для старого формата
         return {
             "title": profile.title if hasattr(profile, 'title') else f"{profile_data['type_code']} Профиль",
             "profile_name": profile.profile_name if hasattr(profile, 'profile_name') else f"{profile_data['type_code']} Уровень {profile_data['level']}",
@@ -991,8 +1192,12 @@ def get_card_description_from_profile(profile: VariaticaProfile, profile_data: d
             "cta": profile.cta if hasattr(profile, 'cta') else ""
         }
 
+# ============================================
+# ИСПРАВЛЕННЫЙ ЭКРАН РЕЗУЛЬТАТОВ
+# ============================================
+
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН 1/2: РЕЗУЛЬТАТЫ ТЕСТА с исправленным форматированием"""
+    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - исправленная версия"""
     query = update.callback_query
     
     # Проверяем, поделился ли уже пользователь
@@ -1006,44 +1211,8 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         profile_data = calculate_profile_final(context.user_data)
         context.user_data["profile_data"] = profile_data
     
-    # Загружаем профиль по file_key
-    profile = loader.get_profile(profile_data["file_key"])
-    
-    if not profile:
-        # Fallback: пробуем найти любой профиль этого типа и уровня
-        logger.error(f"Profile not found: {profile_data['file_key']}")
-        
-        # Умный fallback: ищем любой профиль этого типа с ближайшим уровнем
-        all_profiles = loader.get_all_profiles()
-        type_code = profile_data['type_code'].lower()
-        
-        # Ищем все профили этого типа
-        type_profiles = [k for k in all_profiles if k.startswith(type_code)]
-        
-        if type_profiles:
-            # Извлекаем уровни и находим ближайший
-            available_levels = []
-            for key in type_profiles:
-                try:
-                    # Извлекаем уровень из ключа: sa_1_def → 1
-                    parts = key.split('_')
-                    if len(parts) >= 2 and parts[1].isdigit():
-                        available_levels.append(int(parts[1]))
-                except:
-                    continue
-            
-            if available_levels:
-                # Находим ближайший уровень к целевому
-                target_level = profile_data['level']
-                nearest_level = min(available_levels, key=lambda x: abs(x - target_level))
-                
-                # Ищем профиль с ближайшим уровнем
-                for key in type_profiles:
-                    if f"_{nearest_level}_" in key:
-                        profile = loader.get_profile(key)
-                        if profile:
-                            logger.info(f"Using fallback: {key} (target: {profile_data['file_key']})")
-                            break
+    # Загружаем профиль с fallback
+    profile = get_profile_with_fallback(profile_data["file_key"])
     
     if not profile:
         error_text = (
@@ -1054,213 +1223,178 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text(error_text, parse_mode="HTML")
         return ConversationHandler.END
     
-    # Создаем описание карточки (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+    # Создаем описание карточки (очищенное от заголовков)
     profile_card = get_card_description_from_profile(profile, profile_data)
     context.user_data["profile_card"] = profile_card
     
-    # Проверяем формат профиля
-    is_new_format = hasattr(profile, 'archetype') and profile.archetype
+    # Создаем красивые части сообщения
+    message_parts = create_beautiful_profile_message(profile_card)
     
-    # === ФОРМИРУЕМ ТЕКСТ РЕЗУЛЬТАТОВ БЕЗ ДУБЛИРОВАНИЯ ===
+    # Добавляем раздел с примечанием о несогласованности если есть
+    coherence = profile_data.get("coherence", {})
+    if not coherence.get("is_coherent", True):
+        note_part = (
+            f"\n<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+            f"🔍 <b>ПРИМЕЧАНИЕ:</b>\n"
+            f"Есть небольшое расхождение в результатах.\n"
+            f"Уровень развития: {profile_data['level_name']}, "
+            f"но фокус проблем: {DILTS_LEVELS[profile_data['dilts_level']]['name']}.\n"
+            f"Это может указывать на переходный период."
+        )
+        message_parts.append(note_part)
     
+    # Добавляем раздел с инструкцией
     if not has_shared:
-        # ЭКРАН 1: До шаринга
-        if is_new_format:
-            # Аккуратная композиция секций
-            sections = [
-                f"<b>{profile_card['profile_header']}</b>",
-                f"<i>{profile_card['archetype']}</i>",
-                f"<b>💬 ЦИТАТА:</b>\n{profile_card['quote']}",
-                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n{profile_card['trigger']}",
-                f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n{profile_card['pain']}",
-                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n{profile_card['immediate_tool']}",
-                f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n{profile_card['cta']}"
-            ]
-            
-            profile_text = "\n\n".join(sections)
-            
-            # Текст для шаринга (ДО шаринга)
-            sharing_text = (
-                f"\n\n━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"📄 <b>Получи полный профиль + рекомендации</b>\n\n"
-                f"💬 Иногда самое большое, что мы можем сделать для близких — это дать зеркало...\n"
-                f"Поделись тестом и получи ..\n"
-                f"🎁 <b>БЕСПЛАТНЫЙ ПОДАРОК</b>"
-            )
-            
-            profile_text += sharing_text
-            
-        else:
-            # Старый формат
-            profile_text = (
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-                f"{profile_card['title']}\n\n"
-                f"{profile_card['pain']}\n\n"
-                f"<b>🌍 ТВОЙ МИР:</b>\n\n"
-                f"{profile_card['world']}\n\n"
-                f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n"
-                f"{profile_card['superpower']}\n\n"
-                f"<b>🚀 ТОЧКА РОСТА:</b>\n\n"
-                f"{profile_card['growth']}\n\n"
-                f"{profile_card['cta']}\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"📄 <b>Получи полный профиль + рекомендации</b>\n\n"
-                f"💬 Иногда самое большое, что мы можем сделать для близких — это дать зеркало...\n"
-                f"Поделись тестом и получи ..\n"
-                f"🎁 <b>БЕСПЛАТНЫЙ ПОДАРОК</b>"
-            )
-        
-        # Кнопки для ЭКРАН 1
+        instruction_part = (
+            f"\n<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+            f"📄 <b>ПОЛУЧИ ПОЛНЫЙ ПРОФИЛЬ + РЕКОМЕНДАЦИИ</b>\n\n"
+            f"💬 Иногда самое большое, что мы можем сделать для близких — это дать зеркало...\n"
+            f"Поделись тестом и получи\n"
+            f"🎁 <b>БЕСПЛАТНЫЙ ПОДАРОК</b>"
+        )
+    else:
+        instruction_part = (
+            f"\n<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+            f"🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\n"
+            f"Спасибо за репост!"
+        )
+    
+    message_parts.append(instruction_part)
+    
+    # Определяем кнопки
+    if not has_shared:
         keyboard = [
             [InlineKeyboardButton("🎁 Получить подарок", callback_data="get_gift")],
             [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
             [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
         ]
     else:
-        # ЭКРАН 2: После шаринга
-        if is_new_format:
-            # Аккуратная композиция секций
-            sections = [
-                f"<b>{profile_card['profile_header']}</b>",
-                f"<i>{profile_card['archetype']}</i>",
-                f"<b>💬 ЦИТАТА:</b>\n{profile_card['quote']}",
-                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n{profile_card['trigger']}",
-                f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n{profile_card['pain']}",
-                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n{profile_card['immediate_tool']}",
-                f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n{profile_card['cta']}"
-            ]
-            
-            profile_text = "\n\n".join(sections)
-            
-            # Текст после шаринга
-            sharing_text = (
-                f"\n\n━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\n"
-                f"Спасибо за репост!"
-            )
-            
-            profile_text += sharing_text
-            
-        else:
-            # Старый формат
-            profile_text = (
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-                f"{profile_card['title']}\n\n"
-                f"{profile_card['pain']}\n\n"
-                f"<b>🌍 ТВОЙ МИР:</b>\n\n"
-                f"{profile_card['world']}\n\n"
-                f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n"
-                f"{profile_card['superpower']}\n\n"
-                f"<b>🚀 ТОЧКА РОСТА:</b>\n\n"
-                f"{profile_card['growth']}\n\n"
-                f"{profile_card['cta']}\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\n"
-                f"Спасибо за репост!"
-            )
-        
-        # Кнопки для ЭКРАН 2
         keyboard = [
             [InlineKeyboardButton("🎁 Забрать подарок", callback_data="open_gift")],
             [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
             [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
         ]
     
-    # Добавляем примечание о несогласованности если есть
-    coherence = profile_data.get("coherence", {})
-    if not coherence.get("is_coherent", True) and coherence.get("discrepancy_level", 0) > 0:
-        note = (
-            f"\n\n🔍 <b>Примечание:</b>\n"
-            f"Есть небольшое расхождение в результатах. "
-            f"Уровень развития: {profile_data['level_name']}, "
-            f"но фокус проблем: {DILTS_LEVELS[profile_data['dilts_level']]['name']}.\n"
-            f"Это может указывать на переходный период."
-        )
-        profile_text += note
-    
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Проверяем длину сообщения
-    if len(profile_text) > 4096:
-        # Разбиваем на части для нового формата
-        if is_new_format:
-            parts = [
-                f"<b>{profile_card['profile_header']}</b>\n\n<i>{profile_card['archetype']}</i>",
-                f"<b>💬 ЦИТАТА:</b>\n{profile_card['quote']}",
-                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n{profile_card['trigger']}",
-                f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n{profile_card['pain']}",
-                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n{profile_card['immediate_tool']}",
-                f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n{profile_card['cta']}"
-            ]
-            
-            # Отправляем все части
-            await query.edit_message_text(parts[0], parse_mode="HTML")
-            for part in parts[1:]:
-                await query.message.reply_text(part, parse_mode="HTML")
-            
-            # Последняя часть с текстом шаринга и кнопками
-            last_part = "━━━━━━━━━━━━━━━━━━━━\n\n"
-            if not has_shared:
-                last_part += "📄 <b>Получи полный профиль + рекомендации</b>\n\n💬 Иногда самое большое, что мы можем сделать для близких — это дать зеркало...\nПоделись тестом и получи ..\n🎁 <b>БЕСПЛАТНЫЙ ПОДАРОК</b>"
-            else:
-                last_part += "🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\nСпасибо за репост!"
-            
-            # Добавляем примечание если есть
-            if not coherence.get("is_coherent", True):
-                last_part += f"\n\n🔍 <b>Примечание:</b>\nЕсть небольшое расхождение в результатах. Это может указывать на переходный период."
+    # Отправляем сообщение
+    if len(message_parts) == 1:
+        # Если всё влезает в одно сообщение
+        full_text = message_parts[0]
+        if len(full_text) > 4096:
+            # Разбиваем на части
+            split_parts = split_long_message(full_text)
+            for i, part in enumerate(split_parts):
+                if i == 0:
+                    await query.edit_message_text(part, parse_mode="HTML")
+                else:
+                    await query.message.reply_text(part, parse_mode="HTML")
             
             # Последняя часть с кнопками
-            await query.message.reply_text(last_part, parse_mode="HTML", reply_markup=reply_markup)
+            await query.message.reply_text(
+                "━━━━━━━━━━━━━━━━━━━━\n\n<i>Навигация:</i>",
+                reply_markup=reply_markup,
+                parse_mode="HTML"
+            )
         else:
-            # Для старого формата
-            parts = [
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n{profile_card['title']}\n\n{profile_card['pain']}",
-                f"<b>🌍 ТВОЙ МИР:</b>\n\n{profile_card['world']}",
-                f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n{profile_card['superpower']}",
-                f"<b>🚀 ТОЧКА РОСТА:</b>\n\n{profile_card['growth']}\n\n{profile_card['cta']}"
-            ]
-            
-            # Отправляем все части
-            await query.edit_message_text(parts[0], parse_mode="HTML")
-            for part in parts[1:]:
-                await query.message.reply_text(part, parse_mode="HTML")
-            
-            # Последняя часть
-            last_part = "━━━━━━━━━━━━━━━━━━━━\n\n"
-            if not has_shared:
-                last_part += "📄 <b>Получи полный профиль + рекомендации</b>\n\n💬 Иногда самое большое, что мы можем сделать для близких — это дать зеркало...\nПоделись тестом и получи ..\n🎁 <b>БЕСПЛАТНЫЙ ПОДАРОК</b>"
-            else:
-                last_part += "🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\nСпасибо за репост!"
-            
-            # Добавляем примечание если есть
-            if not coherence.get("is_coherent", True):
-                last_part += f"\n\n🔍 <b>Примечание:</b>\nЕсть небольшое расхождение в результатах. Это может указывать на переходный период."
-            
-            # Последняя часть с кнопками
-            await query.message.reply_text(last_part, parse_mode="HTML", reply_markup=reply_markup)
+            await query.edit_message_text(full_text, parse_mode="HTML", reply_markup=reply_markup)
     else:
-        await query.edit_message_text(profile_text, parse_mode="HTML", reply_markup=reply_markup)
+        # Отправляем первую часть
+        await query.edit_message_text(
+            message_parts[0] + f"\n\n<i>Часть 1 из {len(message_parts)}</i>",
+            parse_mode="HTML"
+        )
+        
+        # Отправляем остальные части
+        for i, part in enumerate(message_parts[1:-1], 2):
+            await query.message.reply_text(
+                part + f"\n\n<i>Часть {i} из {len(message_parts)}</i>",
+                parse_mode="HTML"
+            )
+            await asyncio.sleep(0.3)
+        
+        # Последняя часть с кнопками
+        await query.message.reply_text(
+            message_parts[-1],
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
     
     return RESULTS
 
+# ============================================
+# ФУНКЦИИ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ
+# ============================================
+
+def get_card_description(profile_code: str) -> dict:
+    """Возвращает описание карточки для профиля (СОВМЕСТИМОСТЬ)"""
+    profile = get_profile_with_fallback(profile_code)
+    if not profile:
+        return None
+    
+    # Проверяем, новый ли это формат
+    if hasattr(profile, 'archetype') and profile.archetype:
+        # НОВЫЙ ФОРМАТ: конвертируем в старый формат
+        return {
+            "title": f"🎯 {profile.title}",
+            "profile_name": f"{profile.type_code} Уровень {profile.level}",
+            "thinking_level": profile.level,
+            "dilts_level": "ENVIRONMENT",
+            "pain": f"{profile.archetype}\n\n💡 {profile.trigger}\n\n🎯 {profile.pain}",
+            "world": profile.quote,
+            "superpower": profile.immediate_tool,
+            "growth": f"Точка роста на уровне {profile.level}",
+            "cta": profile.cta
+        }
+    else:
+        # СТАРЫЙ ФОРМАТ
+        return {
+            "title": profile.title,
+            "profile_name": profile.profile_name,
+            "thinking_level": profile.thinking_level,
+            "dilts_level": profile.dilts_level,
+            "pain": profile.pain,
+            "world": profile.world,
+            "superpower": profile.superpower,
+            "growth": profile.growth,
+            "cta": profile.cta
+        }
+
+def profile_exists(profile_code: str) -> bool:
+    """Проверяет существование профиля"""
+    return profile_exists_fixed(profile_code)
+
+def get_profile_by_code(profile_code: str) -> VariaticaProfile:
+    """Прямой доступ к объекту профиля"""
+    return get_profile_with_fallback(profile_code)
+
+def is_new_format_profile(profile: VariaticaProfile) -> bool:
+    """Проверяет, является ли профиль новым форматом"""
+    return (hasattr(profile, 'archetype') and profile.archetype and
+            hasattr(profile, 'trigger') and profile.trigger and
+            hasattr(profile, 'immediate_tool') and profile.immediate_tool)
+
+# ============================================
+# ОСТАЛЬНЫЕ ЭКРАНЫ (без изменений)
+# ============================================
+
 async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ ЭКРАН 3: ИНСТРУКЦИЯ ПО ШАРИНГУ"""
+    """ЭКРАН: ИНСТРУКЦИЯ ПО ШАРИНГУ"""
     query = update.callback_query
     await query.answer()
     
     instruction_text = (
         f"📤 <b>ШАГ 1: ПОДЕЛИСЬ ТЕСТОМ</b>\n\n"
         f"Нажми кнопку ниже, чтобы поделиться ссылкой в Telegram.\n\n"
-        f"После того как поделишься, вернись сюда и нажми « Я поделился»"
+        f"После того как поделишься, вернись сюда и нажми «✅ Я поделился»"
     )
     
-    # Генерируем ссылку для шаринга
     encoded_text = urllib.parse.quote(SHARE_TEXT)
     share_url = f"https://t.me/share/url?url={BOT_LINK}&text={encoded_text}"
     
     keyboard = [
         [InlineKeyboardButton("📤 Поделиться ссылкой", url=share_url)],
-        [InlineKeyboardButton(" Я поделился", callback_data="confirm_share")],
+        [InlineKeyboardButton("✅ Я поделился", callback_data="confirm_share")],
         [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1269,18 +1403,16 @@ async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GIFT_SCREEN
 
 async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ Подтверждение шаринга и переход к ЭКРАНУ 2"""
+    """Подтверждение шаринга"""
     query = update.callback_query
-    await query.answer(" Спасибо за репост! Ваш подарок готов!")
+    await query.answer("✅ Спасибо за репост! Ваш подарок готов!")
     
-    # Отмечаем, что пользователь поделился
     context.user_data["has_shared"] = True
     
-    # Возвращаемся к экрану результатов (ЭКРАН 2)
     return await show_results_screen(update, context)
 
 async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ ЭКРАН 4: ПОЛНЫЙ ПАКЕТ"""
+    """ЭКРАН: ПОЛНЫЙ ПАКЕТ"""
     query = update.callback_query
     await query.answer()
     
@@ -1308,7 +1440,7 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     return PACKAGE_SCREEN
 
 async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ ЭКРАН 5: ОТКРЫТИЕ ПОДАРКА"""
+    """ЭКРАН: ОТКРЫТИЕ ПОДАРКА"""
     query = update.callback_query
     await query.answer()
     
@@ -1318,7 +1450,7 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Эта сказка разрешает внутренние противоречия в конфигурации восприятия вашего профиля.\n\n"
         f"💡 <b>Как использовать:</b>\n"
         f"1. Нажми кнопку ниже, чтобы открыть PDF\n"
-        f"2. Прочитай \n"
+        f"2. Прочитай\n"
         f"3. Обращай внимание на символы и метафоры\n\n"
         f"Приятного чтения! 📖✨"
     )
@@ -1332,25 +1464,19 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(gift_text, reply_markup=reply_markup, parse_mode="HTML")
     return OPEN_GIFT_SCREEN
 
-# ============================================
-#  ОБРАБОТЧИКИ НАВИГАЦИИ
-# ============================================
-
 async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ Кнопка 'Назад' - возвращает к результатам"""
+    """Кнопка 'Назад' - возвращает к результатам"""
     query = update.callback_query
     await query.answer()
     return await show_results_screen(update, context)
 
 async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ Перезапуск теста"""
+    """Перезапуск теста"""
     query = update.callback_query
     await query.answer()
     
-    # Очищаем данные
     context.user_data.clear()
     
-    # Начинаем заново
     context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
     context.user_data["stage1_current"] = 0
     context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
@@ -1362,7 +1488,7 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await start_test(update, context)
 
 # ============================================
-# КОМАНДЫ БОТА
+# ОСТАЛЬНЫЕ ОБРАБОТЧИКИ (без изменений)
 # ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1410,10 +1536,6 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"User {update.effective_user.id} started test")
     
     return await show_stage_1_intro(update, context)
-
-# ============================================
-# ЭКРАНЫ ПЕРЕД ЭТАПАМИ
-# ============================================
 
 async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 1"""
@@ -1464,10 +1586,6 @@ async def show_stage_1_details(update: Update, context: ContextTypes.DEFAULT_TYP
 async def back_to_stage1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к экрану ЭТАПА 1"""
     return await show_stage_1_intro(update, context)
-
-# ============================================
-# ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ (БЕЗ ИЗМЕНЕНИЙ)
-# ============================================
 
 async def start_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало ЭТАПА 1"""
@@ -1545,7 +1663,7 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ Завершение ЭТАП 1"""
+    """Завершение ЭТАП 1"""
     query = update.callback_query
     scores = context.user_data.get("scores", {})
     
@@ -1565,7 +1683,7 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"User {update.effective_user.id}: Stage 1 complete, type={perception_type}")
     
     result_text = (
-        f" <b>ЭТАП 1 ЗАВЕРШЁН!</b>\n\n"
+        f"✅ <b>ЭТАП 1 ЗАВЕРШЁН!</b>\n\n"
         f"🎯 Конфигурация восприятия определена\n\n"
         f"🔍 Переходим к <b>ЭТАПУ 2</b>: определение конфигурации мышления.\n\n"
         f"Готов продолжить?"
@@ -1576,10 +1694,6 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(result_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_2
-
-# ============================================
-# УТОЧНЯЮЩИЕ ВОПРОСЫ
-# ============================================
 
 async def ask_clarification_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт уточняющий вопрос"""
@@ -1633,7 +1747,6 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
     
     keyboard = []
     if clarification_stage in ["stage1", "stage4"]:
-        # Старый формат для stage1 и stage4
         for option_id, option in question["options"].items():
             keyboard.append([
                 InlineKeyboardButton(
@@ -1642,7 +1755,6 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
                 )
             ])
     else:
-        # Новый формат для stage2 и stage3 (уровни как ключи)
         for level, answer_text in question["options"].items():
             keyboard.append([
                 InlineKeyboardButton(
@@ -1687,13 +1799,11 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
         questions = CLARIFICATION_QUESTIONS.get("stage2_borderline", [])
         if current < len(questions):
             question = questions[current]
-            selected_level = option_id  # Это уровень (1, 3, 4 и т.д.)
+            selected_level = option_id
             
-            # Начисляем баллы за уточняющий вопрос (фиксированные веса)
             if "stage2_level_scores_dict" not in context.user_data:
                 context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
             
-            # Уточняющие вопросы дают по 3 балла выбранному уровню
             if selected_level in context.user_data["stage2_level_scores_dict"]:
                 context.user_data["stage2_level_scores_dict"][selected_level] += 3
         
@@ -1704,9 +1814,8 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
         questions = CLARIFICATION_QUESTIONS.get("stage3_discrepancy", [])
         if current < len(questions):
             question = questions[current]
-            selected_level = option_id  # Это уровень (1, 2, 3, 4, 5)
+            selected_level = option_id
             
-            # Начисляем баллы для ЭТАПА 3
             if "stage3_level_scores" not in context.user_data:
                 context.user_data["stage3_level_scores"] = []
             
@@ -1728,10 +1837,6 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
         return await ask_clarification_question(update, context)
     
     return CLARIFICATION
-
-# ============================================
-# ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ
-# ============================================
 
 async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 2"""
@@ -1795,7 +1900,7 @@ async def start_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await ask_stage_2_question(update, context)
 
 async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Задаёт вопрос ЭТАПА 2 (новая система)"""
+    """Задаёт вопрос ЭТАПА 2"""
     query = update.callback_query
     
     perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
@@ -1815,7 +1920,6 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
         f"{progress}"
     )
     
-    # Создаем кнопки с уровнями как вариантами ответов
     keyboard = []
     for level_num, answer_text in question["options"].items():
         keyboard.append([
@@ -1830,7 +1934,7 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     return STAGE_2
 
 async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ Обработка ответа ЭТАПА 2 с системой баллов как в карточном тесте"""
+    """Обработка ответа ЭТАПА 2"""
     query = update.callback_query
     
     if context.user_data.get("processing", False):
@@ -1847,21 +1951,18 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
             return STAGE_2
         
         current = int(parts[1])
-        selected_level = parts[2]  # Теперь это уровень (1, 2, 3, 4, 5 и т.д.)
+        selected_level = parts[2]
         
         perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
         
-        # Начисляем баллы по таблице
         scoring_table = STAGE_2_SCORING.get(perception_type, {})
         if current in scoring_table and selected_level in scoring_table[current]:
-            # Инициализируем scores если ещё нет
             if "stage2_level_scores_dict" not in context.user_data:
                 context.user_data["stage2_level_scores_dict"] = {
                     "1": 0, "2": 0, "3": 0, "4": 0, "5": 0,
                     "6": 0, "7": 0, "8": 0, "9": 0
                 }
             
-            # Начисляем баллы выбранному уровню
             points = scoring_table[current][selected_level]
             context.user_data["stage2_level_scores_dict"][selected_level] += points
             
@@ -1874,7 +1975,7 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ Завершение ЭТАПА 2 (новая система)"""
+    """Завершение ЭТАПА 2"""
     query = update.callback_query
     level_scores_dict = context.user_data.get("stage2_level_scores_dict", {"1": 0})
     
@@ -1885,18 +1986,15 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["clarification_stage"] = "stage2"
         
         logger.info(f"User {update.effective_user.id}: Stage 2 needs clarification")
-        logger.info(f"Level scores: {level_scores_dict}")
         return await ask_clarification_question(update, context)
     
     thinking_level = calculate_thinking_level_by_scores(level_scores_dict)
     context.user_data["thinking_level"] = thinking_level
     
-    logger.info(f"User {update.effective_user.id}: Stage 2 complete")
-    logger.info(f"Stage2 level: {thinking_level} ({get_level_name(thinking_level)})")
-    logger.info(f"Level scores: {level_scores_dict}")
+    logger.info(f"User {update.effective_user.id}: Stage 2 complete, level={thinking_level}")
     
     result_text = (
-        f" <b>ЭТАП 2 ЗАВЕРШЁН!</b>\n\n"
+        f"✅ <b>ЭТАП 2 ЗАВЕРШЁН!</b>\n\n"
         f"🎯 Конфигурация мышления определена\n"
         f"📊 Уровень: <b>{get_level_name(thinking_level)} ({thinking_level}/9)</b>\n\n"
         f"🔍 Переходим к <b>ЭТАПУ 3</b>: поведенческие паттерны.\n\n"
@@ -1908,10 +2006,6 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(result_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_3
-
-# ============================================
-# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ (БЕЗ ИЗМЕНЕНИЙ)
-# ============================================
 
 async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 3"""
@@ -2036,7 +2130,7 @@ async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ Завершение ЭТАПА 3"""
+    """Завершение ЭТАПА 3"""
     query = update.callback_query
     
     stage2_level = context.user_data.get("thinking_level", 1)
@@ -2051,14 +2145,13 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"User {update.effective_user.id}: Stage 3 needs clarification")
         return await ask_clarification_question(update, context)
     
-    # Рассчитываем финальный уровень с детальным логированием
     final_level = calculate_final_level(stage2_level, stage3_scores)
     context.user_data["final_level"] = final_level
     
     logger.info(f"User {update.effective_user.id}: Stage 3 complete, final_level={final_level}")
     
     result_text = (
-        f" <b>ЭТАП 3 ЗАВЕРШЁН!</b>\n\n"
+        f"✅ <b>ЭТАП 3 ЗАВЕРШЁН!</b>\n\n"
         f"🎯 Поведенческие паттерны проанализированы\n\n"
         f"🔍 Переходим к <b>ЭТАПУ 4</b>: конфликт логических уровней.\n\n"
         f"Это последний этап! Готов?"
@@ -2069,10 +2162,6 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(result_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_4
-
-# ============================================
-# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ (БЕЗ ИЗМЕНЕНИЙ)
-# ============================================
 
 async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 4"""
@@ -2199,21 +2288,14 @@ async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TY
     finally:
         context.user_data["processing"] = False
 
-# ============================================
-#  ИНТЕЛЛЕКТУАЛЬНАЯ СИСТЕМА УТОЧНЕНИЙ ПО ДИЛТСУ
-# ============================================
-
 async def ask_intelligent_clarification(update: Update, context: ContextTypes.DEFAULT_TYPE, profile_data: dict, coherence: dict):
     """Задаёт интеллектуальный уточняющий вопрос на основе Дилтса"""
     query = update.callback_query
     
     profile_level = profile_data["level"]
     current_dilts = profile_data["dilts_level"]
-    expected_dilts = coherence["expected_dilts"]
     
-    # Формулируем вопрос в зависимости от расхождения
     if profile_level <= 3 and current_dilts == "IDENTITY":
-        # Низкий уровень, но высший Дилтс - подозрительно
         question = (
             f"🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\n"
             f"Ты указал, что твоя главная проблема - в самоопределении (кто ты).\n\n"
@@ -2227,7 +2309,6 @@ async def ask_intelligent_clarification(update: Update, context: ContextTypes.DE
         }
         
     elif profile_level >= 7 and current_dilts == "ENVIRONMENT":
-        # Высокий уровень, но низший Дилтс - странно
         question = (
             f"🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\n"
             f"По твоим ответам у тебя продвинутый уровень развития.\n\n"
@@ -2241,7 +2322,6 @@ async def ask_intelligent_clarification(update: Update, context: ContextTypes.DE
         }
     
     else:
-        # Общий вопрос
         question = (
             f"🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\n"
             f"Чтобы уточнить результат, ответь:\n\n"
@@ -2255,24 +2335,18 @@ async def ask_intelligent_clarification(update: Update, context: ContextTypes.DE
             "e": "В самоопределении (кто я)"
         }
     
-    # Сохраняем данные для обработки
     context.user_data["dilts_clarification_data"] = {
         "profile_data": profile_data,
         "coherence": coherence
     }
     
-    # Показываем вопрос
     keyboard = []
     for opt_id, opt_text in options.items():
         keyboard.append([InlineKeyboardButton(opt_text, callback_data=f"dilts_clarify_{opt_id}")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(
-        question, 
-        reply_markup=reply_markup, 
-        parse_mode="HTML"
-    )
+    await query.edit_message_text(question, reply_markup=reply_markup, parse_mode="HTML")
     
     return DILTS_CLARIFICATION
 
@@ -2283,7 +2357,6 @@ async def handle_dilts_clarification(update: Update, context: ContextTypes.DEFAU
     
     option_id = query.data.split("_")[-1]
     
-    # Маппинг ответа на уровень Дилтса
     answer_to_dilts = {
         "a": "ENVIRONMENT",
         "b": "BEHAVIOR", 
@@ -2294,35 +2367,28 @@ async def handle_dilts_clarification(update: Update, context: ContextTypes.DEFAU
     
     refined_dilts = answer_to_dilts.get(option_id, "VALUES")
     
-    # Получаем сохранённые данные
     clarification_data = context.user_data.get("dilts_clarification_data", {})
     profile_data = clarification_data.get("profile_data", {})
     
-    # Обновляем Дилтс в данных пользователя
     context.user_data["stage4_dilts_answers"].append(refined_dilts)
     context.user_data["refined_dilts"] = refined_dilts
     
     logger.info(f"User clarified dilts: {option_id} → {refined_dilts}")
     
-    # Обновляем данные профиля
     profile_data["dilts_level"] = refined_dilts
     profile_data["dilts_code"] = get_dilts_code(refined_dilts)
     profile_data["display_name"] = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
     
-    # Перепроверяем согласованность
     profile_data["coherence"] = check_profile_coherence(profile_data["level"], refined_dilts)
     
-    # Сохраняем обновлённые данные
     context.user_data["profile_data"] = profile_data
     
-    # Идём к результатам
     return await proceed_to_final_results(update, context)
 
 async def proceed_to_final_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Переход к финальным результатам"""
     query = update.callback_query
     
-    # АНИМИРОВАННЫЙ ЭКРАН ЗАГРУЗКИ
     loading_text = (
         f"⏳ <b>ОБРАБАТЫВАЮ РЕЗУЛЬТАТЫ...</b>\n\n"
         f"Анализирую твои ответы и определяю профиль..."
@@ -2331,15 +2397,10 @@ async def proceed_to_final_results(update: Update, context: ContextTypes.DEFAULT
     
     await asyncio.sleep(2)
     
-    # Переходим к результатам
     return await show_results_screen(update, context)
 
-# ============================================
-#  ЗАВЕРШЕНИЕ ТЕСТА С ИНТЕЛЛЕКТУАЛЬНОЙ ПРОВЕРКОЙ
-# ============================================
-
 async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ Завершение ЭТАПА 4 с интеллектуальной проверкой"""
+    """Завершение ЭТАПА 4 с интеллектуальной проверкой"""
     query = update.callback_query
     dilts_answers = context.user_data.get("stage4_dilts_answers", [])
     
@@ -2352,29 +2413,20 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"User {update.effective_user.id}: Stage 4 needs clarification (tie)")
         return await ask_clarification_question(update, context)
     
-    # 1. Вычисляем профиль (без учёта Дилтса в имени файла)
     profile_data = calculate_profile_final(context.user_data)
     
-    # 2. Проверяем согласованность с Дилтсом
     coherence = profile_data["coherence"]
     
-    # 3. Сохраняем данные
     context.user_data["profile_data"] = profile_data
     
-    # 4. Интеллектуальное решение: нужны уточнения?
     if not coherence["is_coherent"] and coherence.get("discrepancy_level", 0) >= 2:
-        logger.info(f"Major discrepancy ({coherence['discrepancy_level']}) → asking clarification")
+        logger.info(f"Major discrepancy ({coherence.get('discrepancy_level', 0)}) → asking clarification")
         return await ask_intelligent_clarification(update, context, profile_data, coherence)
     else:
-        # Если небольшое расхождение или всё согласовано, идём к результатам
         if not coherence["is_coherent"]:
             logger.info(f"Minor discrepancy ({coherence.get('discrepancy_level', 0)}) → showing with note")
         
         return await proceed_to_final_results(update, context)
-
-# ============================================
-#  ФУНКЦИЯ ОТМЕНЫ
-# ============================================
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена теста"""
@@ -2382,10 +2434,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "❌ Тест отменён.\n\nЧтобы начать заново: /start"
     )
     return ConversationHandler.END
-
-# ============================================
-#  ПРОВЕРКА ПРОФИЛЕЙ ПРИ ЗАПУСКЕ
-# ============================================
 
 def check_profiles_on_startup():
     """Проверяет наличие профилей через loader"""
@@ -2396,7 +2444,6 @@ def check_profiles_on_startup():
     
     logger.info(f" Loaded {actual_count} profiles from filesystem via loader")
     
-    # Проверяем формат профилей
     new_format_count = 0
     old_format_count = 0
     
@@ -2410,7 +2457,6 @@ def check_profiles_on_startup():
     
     logger.info(f"📊 Format breakdown: {new_format_count} new format, {old_format_count} old format")
     
-    # Проверим, какие типы загружены
     types = ['sa', 'ia', 'sp', 'ip']
     for type_code in types:
         type_profiles = [k for k in all_profiles if k.startswith(type_code)]
@@ -2423,16 +2469,11 @@ def check_profiles_on_startup():
     logger.info(" Profile loading OK")
     return True
 
-# ============================================
-#  ФУНКЦИЯ ДЕБАГГИНГА ЗАГРУЗЧИКА
-# ============================================
-
 def debug_loader():
     """Отладочная информация о загрузчике профилей"""
     print("🔍 Проверка загрузчика профилей...")
     
     try:
-        # Получаем все профили
         all_profiles = loader.get_all_profiles()
         print(f"📊 Загружено профилей: {len(all_profiles)}")
         
@@ -2440,11 +2481,10 @@ def debug_loader():
             print("❌ ПРЕДУПРЕЖДЕНИЕ: Нет загруженных профилей!")
             return
         
-        # Проверяем форматы
         new_format_count = 0
         old_format_count = 0
         
-        for profile_key in all_profiles[:5]:  # Проверяем только первые 5 для скорости
+        for profile_key in all_profiles[:5]:
             profile = loader.get_profile(profile_key)
             if profile:
                 if hasattr(profile, 'archetype') and profile.archetype:
@@ -2454,16 +2494,12 @@ def debug_loader():
         
         print(f"📝 Форматы: {new_format_count} новый, {old_format_count} старый")
         
-        # Проверяем типы
         types = ['sa', 'ia', 'sp', 'ip']
-        type_stats = {}
         for type_code in types:
             type_profiles = [k for k in all_profiles if k.startswith(type_code)]
-            type_stats[type_code] = len(type_profiles)
             if type_profiles:
                 print(f"  {type_code.upper()}: {len(type_profiles)} профилей")
         
-        # Проверяем уровни для каждого типа
         print("\n📈 Распределение по уровням:")
         for type_code in types:
             type_profiles = [k for k in all_profiles if k.startswith(type_code)]
@@ -2471,7 +2507,6 @@ def debug_loader():
                 levels = []
                 for profile_key in type_profiles:
                     try:
-                        # Извлекаем уровень из ключа: sa_1_def → уровень 1
                         parts = profile_key.split('_')
                         if len(parts) >= 2 and parts[1].isdigit():
                             levels.append(int(parts[1]))
@@ -2482,7 +2517,6 @@ def debug_loader():
                     levels_str = ", ".join(str(l) for l in sorted(set(levels)))
                     print(f"  {type_code.upper()}: уровни {levels_str}")
         
-        # Проверяем несколько ключевых профилей
         test_profiles = ['sa_1_def', 'ia_3_con', 'sp_5_int', 'ip_9_ide']
         print("\n🔑 Проверка ключевых профилей:")
         for key in test_profiles:
@@ -2493,9 +2527,8 @@ def debug_loader():
             else:
                 print(f"  ❌ {key}: Отсутствует")
         
-        # Сводка
         print("\n📋 Сводка:")
-        total_expected = 36  # 4 типа × 9 уровней
+        total_expected = 36
         if len(all_profiles) >= total_expected:
             print(f"✅ Все профили загружены ({len(all_profiles)}/{total_expected})")
         else:
@@ -2503,31 +2536,25 @@ def debug_loader():
             
     except Exception as e:
         print(f"❌ Ошибка при отладке загрузчика: {e}")
-        import traceback
-        traceback.print_exc()
 
 # ============================================
-#  ГЛАВНАЯ ФУНКЦИЯ С ИСПРАВЛЕННОЙ СИСТЕМОЙ
+# ГЛАВНАЯ ФУНКЦИЯ
 # ============================================
 
 def main():
     """Запуск бота"""
     print("\n" + "="*50)
-    print("🚀 ЗАПУСК БОТА")
+    print("🚀 ЗАПУСК БОТА (ИСПРАВЛЕННАЯ ВЕРСИЯ)")
     print("="*50)
     
-    # Отладочная информация о профилях
     debug_loader()
     
     print("="*50 + "\n")
     
-    # Проверка профилей
     check_profiles_on_startup()
     
-    # Создание приложения
     application = Application.builder().token(TOKEN).build()
     
-    # ConversationHandler
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -2595,10 +2622,8 @@ def main():
     
     application.add_handler(conv_handler)
     
-    # Запуск бота
-    logger.info("🚀 Bot started with CORRECTED PROFILE SYSTEM!")
-    logger.info("📊 System: 36 profiles (4 types × 9 levels)")
-    logger.info("🎯 Algorithm: Type + Level → File, Dilts → Display only")
+    logger.info("🚀 Bot started with FIXED PROFILE SYSTEM!")
+    logger.info("📊 System: Fixed suffix mapping + Header cleaning + Beautiful formatting")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
