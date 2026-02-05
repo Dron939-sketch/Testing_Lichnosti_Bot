@@ -820,7 +820,6 @@ def calculate_profile_final(context_data: dict) -> dict:
         "display_name": display_name,
         "dilts_level": dilts_level,
         "dilts_code": dilts_code,
-        "number": final_level,  # Номер профиля для шапки
         
         # Информация
         "level_name": get_level_name(final_level),
@@ -932,8 +931,199 @@ def need_clarification_stage4(dilts_answers):
     return False
 
 # ============================================
-#   ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ НОВОГО ФОРМАТА
+#  5 ЭКРАНОВ НАВИГАЦИИ (С ИСПРАВЛЕНИЯМИ)
 # ============================================
+
+async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ ЭКРАН 1/2: РЕЗУЛЬТАТЫ ТЕСТА (до/после шаринга)"""
+    query = update.callback_query
+    
+    # Проверяем, поделился ли уже пользователь
+    has_shared = context.user_data.get("has_shared", False)
+    
+    # Получаем данные профиля
+    profile_data = context.user_data.get("profile_data")
+    
+    if not profile_data:
+        # Если тест только что завершился, вычисляем профиль
+        profile_data = calculate_profile_final(context.user_data)
+        context.user_data["profile_data"] = profile_data
+    
+    # Загружаем профиль по file_key
+    profile = loader.get_profile(profile_data["file_key"])
+    
+    if not profile:
+        # Fallback: пробуем найти любой профиль этого типа и уровня
+        logger.error(f"Profile not found: {profile_data['file_key']}")
+        for lvl in range(1, 10):
+            fallback_key = f"{profile_data['type_code'].lower()}_{lvl}_{profile_data['file_suffix']}"
+            profile = loader.get_profile(fallback_key)
+            if profile:
+                logger.info(f"Using fallback: {fallback_key}")
+                break
+    
+    if not profile:
+        error_text = (
+            f"❌ <b>ОШИБКА</b>\n\n"
+            f"Не удалось найти профиль.\n\n"
+            f"Попробуй пройти тест заново: /start"
+        )
+        await query.edit_message_text(error_text, parse_mode="HTML")
+        return ConversationHandler.END
+    
+    # Создаем описание карточки
+    profile_card = get_card_description_from_profile(profile, profile_data)
+    context.user_data["profile_card"] = profile_card
+    
+    # Проверяем формат профиля
+    is_new_format = hasattr(profile, 'archetype') and profile.archetype
+    
+    #  ФОРМИРУЕМ ТЕКСТ РЕЗУЛЬТАТОВ
+    if not has_shared:
+        # ЭКРАН 1: До шаринга
+        if is_new_format:
+            profile_text = (
+                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+                f"<b>{profile_card['title']}</b>\n\n"
+                f"<i>{profile.archetype}</i>\n\n"
+                f"<b>💬 ЦИТАТА:</b>\n"
+                f"{profile.quote}\n\n"
+                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n"
+                f"{profile.trigger}\n\n"
+                f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n"
+                f"{profile_card['pain']}\n\n"
+                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n"
+                f"{profile.immediate_tool}\n\n"
+                f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n"
+                f"{profile_card['cta']}\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"💬 Иногда самое большое, что мы можем сделать для своих близких - это дать зеркало...\n"
+                f"Поделись тестом с другом и.. 🎁 <b>ПОЛУЧИ БЕСПЛАТНЫЙ ПОДАРОК</b>"
+            )
+        else:
+            profile_text = (
+                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+                f"{profile_card['title']}\n\n"
+                f"{profile_card['pain']}\n\n"
+                f"<b>🌍 ТВОЙ МИР:</b>\n\n"
+                f"{profile_card['world']}\n\n"
+                f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n"
+                f"{profile_card['superpower']}\n\n"
+                f"<b>🚀 ТОЧКА РОСТА:</b>\n\n"
+                f"{profile_card['growth']}\n\n"
+                f"{profile_card['cta']}\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"💬 Иногда самое большое, что мы можем сделать для своих близких - это дать зеркало...\n"
+                f"Поделись тестом с другом и.. 🎁 <b>ПОЛУЧИ БЕСПЛАТНЫЙ ПОДАРОК</b>"
+            )
+        
+        # Кнопки для ЭКРАН 1
+        keyboard = [
+            [InlineKeyboardButton("🎁 Получить подарок", callback_data="get_gift")],
+            [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
+            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
+        ]
+    else:
+        # ЭКРАН 2: После шаринга
+        if is_new_format:
+            profile_text = (
+                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+                f"<b>{profile_card['title']}</b>\n\n"
+                f"<i>{profile.archetype}</i>\n\n"
+                f"<b>💬 ЦИТАТА:</b>\n"
+                f"{profile.quote}\n\n"
+                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n"
+                f"{profile.trigger}\n\n"
+                f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n"
+                f"{profile_card['pain']}\n\n"
+                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n"
+                f"{profile.immediate_tool}\n\n"
+                f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n"
+                f"{profile_card['cta']}\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\n"
+                f"Спасибо за репост!"
+            )
+        else:
+            profile_text = (
+                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
+                f"{profile_card['title']}\n\n"
+                f"{profile_card['pain']}\n\n"
+                f"<b>🌍 ТВОЙ МИР:</b>\n\n"
+                f"{profile_card['world']}\n\n"
+                f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n"
+                f"{profile_card['superpower']}\n\n"
+                f"<b>🚀 ТОЧКА РОСТА:</b>\n\n"
+                f"{profile_card['growth']}\n\n"
+                f"{profile_card['cta']}\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\n"
+                f"Спасибо за репост!"
+            )
+        
+        # Кнопки для ЭКРАН 2
+        keyboard = [
+            [InlineKeyboardButton("🎁 Забрать подарок", callback_data="open_gift")],
+            [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
+            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
+        ]
+    
+    # Добавляем примечание о несогласованности если есть
+    coherence = profile_data.get("coherence", {})
+    if not coherence.get("is_coherent", True) and coherence.get("discrepancy_level", 0) > 0:
+        note = (
+            f"\n\n🔍 <b>Примечание:</b>\n"
+            f"Есть небольшое расхождение в результатах. "
+            f"Уровень развития: {profile_data['level_name']}, "
+            f"но фокус проблем: {DILTS_LEVELS[profile_data['dilts_level']]['name']}.\n"
+            f"Это может указывать на переходный период."
+        )
+        profile_text += note
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Проверяем длину сообщения
+    if len(profile_text) > 4096:
+        # Разбиваем на части
+        if is_new_format:
+            parts = [
+                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n<b>{profile_card['title']}</b>\n\n<i>{profile.archetype}</i>",
+                f"<b>💬 ЦИТАТА:</b>\n{profile.quote}",
+                f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n{profile.trigger}",
+                f"<b>💔 СУТЬ ПРОБЛЕМЫ:</b>\n\n{profile_card['pain']}",
+                f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:</b>\n\n{profile.immediate_tool}",
+                f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n{profile_card['cta']}"
+            ]
+        else:
+            parts = [
+                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n{profile_card['title']}\n\n{profile_card['pain']}",
+                f"<b>🌍 ТВОЙ МИР:</b>\n\n{profile_card['world']}",
+                f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n{profile_card['superpower']}",
+                f"<b>🚀 ТОЧКА РОСТА:</b>\n\n{profile_card['growth']}\n\n{profile_card['cta']}"
+            ]
+        
+        # Последняя часть
+        last_part = "━━━━━━━━━━━━━━━━━━━━\n\n"
+        if not has_shared:
+            last_part += "💬 Иногда самое большое, что мы можем сделать для своих близких - это дать зеркало...\nПоделись тестом с другом и.. 🎁 <b>ПОЛУЧИ БЕСПЛАТНЫЙ ПОДАРОК</b>"
+        else:
+            last_part += "🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\nСпасибо за репост!"
+        
+        # Добавляем примечание если есть
+        if not coherence.get("is_coherent", True):
+            last_part += f"\n\n🔍 <b>Примечание:</b>\nЕсть небольшое расхождение в результатах. Это может указывать на переходный период."
+        
+        # Отправляем все части
+        await query.edit_message_text(parts[0], parse_mode="HTML")
+        for part in parts[1:]:
+            await query.message.reply_text(part, parse_mode="HTML")
+        
+        # Последняя часть с кнопками
+        await query.message.reply_text(last_part, parse_mode="HTML", reply_markup=reply_markup)
+    else:
+        await query.edit_message_text(profile_text, parse_mode="HTML", reply_markup=reply_markup)
+    
+    return RESULTS
 
 def get_card_description_from_profile(profile: VariaticaProfile, profile_data: dict) -> dict:
     """Создает описание карточки из объекта профиля и данных"""
@@ -964,375 +1154,6 @@ def get_card_description_from_profile(profile: VariaticaProfile, profile_data: d
             "growth": profile.growth if hasattr(profile, 'growth') else f"Точка роста на уровне {profile_data['level']}",
             "cta": profile.cta if hasattr(profile, 'cta') else ""
         }
-
-def split_text(text: str, max_length: int) -> list:
-    """Разбивает текст на части по максимальной длине"""
-    chunks = []
-    current_chunk = ""
-    
-    # Разбиваем по абзацам
-    paragraphs = text.split('\n\n')
-    
-    for paragraph in paragraphs:
-        if len(current_chunk) + len(paragraph) + 2 <= max_length:
-            current_chunk += paragraph + "\n\n"
-        else:
-            if current_chunk:
-                chunks.append(current_chunk.strip())
-            
-            # Если один абзац длиннее max_length, разбиваем его дальше
-            if len(paragraph) > max_length:
-                # Разбиваем на предложения
-                sentences = paragraph.split('. ')
-                current_chunk = ""
-                for sentence in sentences:
-                    if len(current_chunk) + len(sentence) + 2 <= max_length:
-                        current_chunk += sentence + ". "
-                    else:
-                        if current_chunk:
-                            chunks.append(current_chunk.strip())
-                        current_chunk = sentence + ". "
-            else:
-                current_chunk = paragraph + "\n\n"
-    
-    if current_chunk:
-        chunks.append(current_chunk.strip())
-    
-    return chunks
-
-# ============================================
-#  НОВАЯ ФУНКЦИЯ ПОКАЗА РЕЗУЛЬТАТОВ (АККОРДЕОН)
-# ============================================
-
-async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН РЕЗУЛЬТАТОВ: Интерактивный аккордеон с фиксированным футером"""
-    query = update.callback_query
-    
-    # Обрабатываем навигацию по блокам
-    if query and query.data.startswith("next_block:"):
-        next_block = query.data.split(":")[1]
-        context.user_data["current_block"] = next_block
-        return await display_current_block(update, context, query)
-    
-    # Обрабатываем переход от теста к результатам
-    if query:
-        await query.answer()
-    
-    # Получаем данные профиля
-    profile_data = context.user_data.get("profile_data")
-    
-    if not profile_data:
-        # Если тест только что завершился, вычисляем профиль
-        profile_data = calculate_profile_final(context.user_data)
-        context.user_data["profile_data"] = profile_data
-    
-    # Загружаем профиль по file_key
-    profile = loader.get_profile(profile_data["file_key"])
-    
-    if not profile:
-        # Fallback
-        logger.error(f"Profile not found: {profile_data['file_key']}")
-        for lvl in range(1, 10):
-            fallback_key = f"{profile_data['type_code'].lower()}_{lvl}_{profile_data['file_suffix']}"
-            profile = loader.get_profile(fallback_key)
-            if profile:
-                logger.info(f"Using fallback: {fallback_key}")
-                break
-    
-    if not profile:
-        error_text = (
-            f"❌ <b>ОШИБКА</b>\n\n"
-            f"Не удалось найти профиль.\n\n"
-            f"Попробуй пройти тест заново: /start"
-        )
-        await query.edit_message_text(error_text, parse_mode="HTML")
-        return ConversationHandler.END
-    
-    # Проверяем формат профиля
-    is_new_format = is_new_format_profile(profile)
-    
-    # СОЗДАЕМ СТРУКТУРУ БЛОКОВ АККОРДЕОНА
-    if is_new_format:
-        # НОВЫЙ ФОРМАТ: аккордеон
-        profile_blocks = {
-            "quote": {
-                "title": "💬 ЦИТАТА",
-                "content": profile.quote,
-                "next": "trigger"
-            },
-            "trigger": {
-                "title": "🔍 ЭТО ТЫ, ЕСЛИ...",
-                "content": profile.trigger,
-                "next": "pain"
-            },
-            "pain": {
-                "title": "💔 СУТЬ ПРОБЛЕМЫ",
-                "content": profile.pain,
-                "next": "immediate_tool"
-            },
-            "immediate_tool": {
-                "title": "🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»",
-                "content": profile.immediate_tool,
-                "next": "cta"
-            },
-            "cta": {
-                "title": "🚀 ЧТО ДАЛЬШЕ?",
-                "content": profile.cta,
-                "next": None
-            }
-        }
-        
-        # Шапка профиля
-        profile_header = f"ПРОФИЛЬ {profile_data['number']}: {profile_data['display_name']}\n<b>{profile.title}</b>"
-        
-        # Фиксированный футер
-        fixed_footer = (
-            "\n━━━━━━━━━━━━━━━━━━━━\n\n"
-            "📄 Получи полный профиль + рекомендации\n\n"
-            "💬 Иногда самое большое, что мы можем сделать для близких — это дать зеркало...\n"
-            "Поделись тестом и получи\n🎁 БЕСПЛАТНЫЙ ПОДАРОК\n\n"
-            "<i>Терапевтическая сказка для трансформации структуры восприятия</i>"
-        )
-        
-    else:
-        # СТАРЫЙ ФОРМАТ: оставляем текущую логику (для обратной совместимости)
-        profile_card = get_card_description_from_profile(profile, profile_data)
-        context.user_data["profile_card"] = profile_card
-        
-        has_shared = context.user_data.get("has_shared", False)
-        
-        # Формируем текст как в старой версии
-        if not has_shared:
-            profile_text = (
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-                f"{profile_card['title']}\n\n"
-                f"{profile_card['pain']}\n\n"
-                f"<b>🌍 ТВОЙ МИР:</b>\n\n"
-                f"{profile_card['world']}\n\n"
-                f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n"
-                f"{profile_card['superpower']}\n\n"
-                f"<b>🚀 ТОЧКА РОСТА:</b>\n\n"
-                f"{profile_card['growth']}\n\n"
-                f"{profile_card['cta']}\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"💬 Иногда самое большое, что мы можем сделать для своих близких - это дать зеркало...\n"
-                f"Поделись тестом с другом и.. 🎁 <b>ПОЛУЧИ БЕСПЛАТНЫЙ ПОДАРОК</b>"
-            )
-        else:
-            profile_text = (
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n"
-                f"{profile_card['title']}\n\n"
-                f"{profile_card['pain']}\n\n"
-                f"<b>🌍 ТВОЙ МИР:</b>\n\n"
-                f"{profile_card['world']}\n\n"
-                f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n"
-                f"{profile_card['superpower']}\n\n"
-                f"<b>🚀 ТОЧКА РОСТА:</b>\n\n"
-                f"{profile_card['growth']}\n\n"
-                f"{profile_card['cta']}\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\n"
-                f"Спасибо за репост!"
-            )
-        
-        # Старые кнопки
-        if not has_shared:
-            keyboard = [
-                [InlineKeyboardButton("🎁 Получить подарок", callback_data="get_gift")],
-                [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
-                [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
-            ]
-        else:
-            keyboard = [
-                [InlineKeyboardButton("🎁 Забрать подарок", callback_data="open_gift")],
-                [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
-                [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
-            ]
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Проверяем длину сообщения
-        if len(profile_text) > 4096:
-            # Разбиваем на части
-            parts = [
-                f" <b>ТЕСТ ЗАВЕРШЁН!</b>\n\n{profile_card['title']}\n\n{profile_card['pain']}",
-                f"<b>🌍 ТВОЙ МИР:</b>\n\n{profile_card['world']}",
-                f"<b>⚡️ ТВОЯ СУПЕРСИЛА:</b>\n\n{profile_card['superpower']}",
-                f"<b>🚀 ТОЧКА РОСТА:</b>\n\n{profile_card['growth']}\n\n{profile_card['cta']}"
-            ]
-            
-            last_part = "━━━━━━━━━━━━━━━━━━━━\n\n"
-            if not has_shared:
-                last_part += "💬 Иногда самое большое, что мы можем сделать для своих близких - это дать зеркало...\nПоделись тестом с другом и.. 🎁 <b>ПОЛУЧИ БЕСПЛАТНЫЙ ПОДАРОК</b>"
-            else:
-                last_part += "🎉 <b>ВАШ ПОДАРОК ГОТОВ!</b>\nСпасибо за репост!"
-            
-            await query.edit_message_text(parts[0], parse_mode="HTML")
-            for part in parts[1:]:
-                await query.message.reply_text(part, parse_mode="HTML")
-            
-            await query.message.reply_text(last_part, parse_mode="HTML", reply_markup=reply_markup)
-        else:
-            await query.edit_message_text(profile_text, parse_mode="HTML", reply_markup=reply_markup)
-        
-        return RESULTS
-    
-    # СОХРАНЯЕМ ДАННЫЕ ДЛЯ АККОРДЕОНА
-    context.user_data["profile_blocks"] = profile_blocks
-    context.user_data["profile_header"] = profile_header
-    context.user_data["fixed_footer"] = fixed_footer
-    context.user_data["current_block"] = "quote"  # Начинаем с цитаты
-    
-    # ОТОБРАЖАЕМ ТЕКУЩИЙ БЛОК
-    return await display_current_block(update, context, query)
-
-async def display_current_block(update: Update, context: ContextTypes.DEFAULT_TYPE, query=None):
-    """Отображает текущий блок аккордеона"""
-    if not query and update.callback_query:
-        query = update.callback_query
-        await query.answer()
-    
-    # Получаем данные из контекста
-    profile_blocks = context.user_data.get("profile_blocks", {})
-    profile_header = context.user_data.get("profile_header", "")
-    fixed_footer = context.user_data.get("fixed_footer", "")
-    current_block = context.user_data.get("current_block", "quote")
-    
-    if not profile_blocks or current_block not in profile_blocks:
-        return await show_results_screen(update, context)
-    
-    # Получаем текущий блок
-    block = profile_blocks[current_block]
-    
-    # ФОРМИРУЕМ СООБЩЕНИЕ
-    message_text = (
-        f"{profile_header}\n\n"
-        f"<b>{block['title']}</b>\n\n"
-        f"{block['content']}\n"
-        f"━━━━━━━━━━━━━━━━━━━━{fixed_footer}"
-    )
-    
-    # ПРОВЕРЯЕМ ДЛИНУ СООБЩЕНИЯ
-    if len(message_text) > 4096:
-        # Разбиваем на части
-        header_part = f"{profile_header}\n\n"
-        content_part = f"<b>{block['title']}</b>\n\n{block['content']}"
-        footer_part = f"\n━━━━━━━━━━━━━━━━━━━━{fixed_footer}"
-        
-        # Разбиваем контент если нужно
-        max_content_length = 4096 - len(header_part) - 500  # Оставляем место
-        if len(content_part) > max_content_length:
-            chunks = split_text(content_part, max_content_length)
-            await query.edit_message_text(header_part + chunks[0], parse_mode="HTML")
-            for chunk in chunks[1:]:
-                await query.message.reply_text(chunk, parse_mode="HTML")
-            await query.message.reply_text(footer_part, parse_mode="HTML")
-        else:
-            await query.edit_message_text(header_part + content_part, parse_mode="HTML")
-            await query.message.reply_text(footer_part, parse_mode="HTML")
-    else:
-        await query.edit_message_text(message_text, parse_mode="HTML")
-    
-    # СОЗДАЕМ КЛАВИАТУРУ
-    keyboard = []
-    
-    # 1. НАВИГАЦИОННЫЕ КНОПКИ (между блоками)
-    if block['next']:
-        next_block = profile_blocks[block['next']]
-        keyboard.append([
-            InlineKeyboardButton(
-                f"▶️ Далее: {next_block['title']}", 
-                callback_data=f"next_block:{block['next']}"
-            )
-        ])
-    
-    # 2. ФИКСИРОВАННЫЕ КНОПКИ ДЕЙСТВИЙ (всегда внизу)
-    action_buttons = []
-    
-    # Проверяем, поделился ли уже пользователь
-    has_shared = context.user_data.get("has_shared", False)
-    
-    if current_block == "cta":  # На последнем блоке
-        if not has_shared:
-            action_buttons.append(InlineKeyboardButton("🎁 Получить подарок", callback_data="get_gift"))
-        else:
-            action_buttons.append(InlineKeyboardButton("🎁 Забрать подарок", callback_data="open_gift"))
-    
-    action_buttons.extend([
-        InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test"),
-        InlineKeyboardButton("📤 Поделиться тестом", callback_data="share_test"),
-        InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")
-    ])
-    
-    # Распределяем кнопки по 2 в ряд
-    for i in range(0, len(action_buttons), 2):
-        keyboard.append(action_buttons[i:i+2])
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    # Если сообщение было разбито, добавляем клавиатуру к последней части
-    if len(message_text) > 4096:
-        # Получаем последнее сообщение (футер) и редактируем его
-        try:
-            last_message = query.message if hasattr(query, 'message') else update.message
-            await last_message.edit_reply_markup(reply_markup=reply_markup)
-        except:
-            # Если не получилось отредактировать, отправляем новое
-            await query.message.reply_text(
-                "Навигация:", 
-                reply_markup=reply_markup
-            )
-    else:
-        # Редактируем существующее сообщение
-        await query.edit_message_reply_markup(reply_markup=reply_markup)
-    
-    return RESULTS
-
-# ============================================
-#  ОБРАБОТЧИКИ ДЛЯ НОВОГО ФОРМАТА
-# ============================================
-
-async def share_test_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик кнопки Поделиться тестом"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Генерируем ссылку для шаринга
-    encoded_text = urllib.parse.quote(SHARE_TEXT)
-    share_url = f"https://t.me/share/url?url={BOT_LINK}&text={encoded_text}"
-    
-    share_message = (
-        "📤 <b>ПОДЕЛИТЬСЯ ТЕСТОМ</b>\n\n"
-        "1. Нажми кнопку ниже\n"
-        "2. Выбери чат или канал\n"
-        "3. Отправь сообщение\n\n"
-        "После того как поделишься, нажми «Я поделился»"
-    )
-    
-    keyboard = [
-        [InlineKeyboardButton("📤 Поделиться ссылкой", url=share_url)],
-        [InlineKeyboardButton("✅ Я поделился", callback_data="confirm_share_from_results")],
-        [InlineKeyboardButton("⬅️ Назад к результатам", callback_data="show_results")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(share_message, reply_markup=reply_markup, parse_mode="HTML")
-    return RESULTS
-
-async def confirm_share_from_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Подтверждение шаринга из экрана результатов"""
-    query = update.callback_query
-    await query.answer("✅ Спасибо за репост! Теперь ты можешь получить подарок.")
-    
-    # Отмечаем, что пользователь поделился
-    context.user_data["has_shared"] = True
-    
-    # Возвращаемся к результатам (обновляем текущий блок)
-    return await display_current_block(update, context, query)
-
-# ============================================
-# СТАРЫЕ ЭКРАНЫ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ
-# ============================================
 
 async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ ЭКРАН 3: ИНСТРУКЦИЯ ПО ШАРИНГУ"""
@@ -1367,7 +1188,7 @@ async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Отмечаем, что пользователь поделился
     context.user_data["has_shared"] = True
     
-    # Возвращаемся к экрану результатов
+    # Возвращаемся к экрану результатов (ЭКРАН 2)
     return await show_results_screen(update, context)
 
 async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2659,15 +2480,12 @@ def main():
                 CallbackQueryHandler(handle_dilts_clarification, pattern="^dilts_clarify_")
             ],
             RESULTS: [
-                CallbackQueryHandler(show_results_screen, pattern="^show_results$"),
-                CallbackQueryHandler(display_current_block, pattern="^next_block:"),
-                CallbackQueryHandler(share_test_handler, pattern="^share_test$"),
-                CallbackQueryHandler(confirm_share_from_results, pattern="^confirm_share_from_results$"),
                 CallbackQueryHandler(get_gift_screen, pattern="^get_gift$"),
                 CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
                 CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
                 CallbackQueryHandler(restart_test, pattern="^restart_test$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(show_results_screen, pattern="^show_results$")
             ],
             GIFT_SCREEN: [
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
