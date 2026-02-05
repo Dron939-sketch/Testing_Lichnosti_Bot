@@ -1,7 +1,7 @@
 """
 АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
 4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
-ИСПРАВЛЕННАЯ ВЕРСИЯ: fix_profile_errors + clean_headers + beautiful_formatting
+ВЕРСИЯ 1.6: Исправления форматирования + 2 сообщения + fallback-примечания
 """
 
 import logging
@@ -733,6 +733,54 @@ def clean_duplicate_headers(text: str, field_type: str) -> str:
     return '\n'.join(lines).strip()
 
 # ============================================
+# НОВАЯ ФУНКЦИЯ: ФОРМАТИРОВАНИЕ ЗАГОЛОВКА ПРОФИЛЯ
+# ============================================
+
+def format_profile_title(profile_title: str, profile_header: str) -> str:
+    """
+    Форматирует заголовок профиля.
+    Преобразует многострочный заголовок в формат: 🎯 IA_4_cap / ЧВ-6 "Вызывай жалость"
+    """
+    if not profile_title:
+        return f"🎯 {profile_header}"
+    
+    # Убираем лишние пробелы
+    profile_title = profile_title.strip()
+    
+    # Если заголовок уже содержит код профиля в начале второй строки
+    lines = profile_title.split('\n')
+    
+    if len(lines) == 1:
+        # Одна строка
+        title = lines[0].strip()
+        # Убираем эмодзи если есть
+        for emoji in ['🎯', '🔍', '💔', '🛠', '🚀']:
+            if title.startswith(emoji):
+                title = title[len(emoji):].strip()
+                break
+        return f"🎯 {profile_header} / {title}"
+    
+    elif len(lines) >= 2:
+        # Несколько строк
+        line1 = lines[0].strip()
+        line2 = lines[1].strip()
+        
+        # Убираем эмодзи из первой строки
+        for emoji in ['🎯', '🔍', '💔', '🛠', '🚀']:
+            if line1.startswith(emoji):
+                line1 = line1[len(emoji):].strip()
+                break
+        
+        # Если вторая строка - это код профиля, игнорируем её
+        if line2 == profile_header or line2.replace('_', ' ').lower() == profile_header.replace('_', ' ').lower():
+            return f"🎯 {profile_header} / {line1}"
+        else:
+            # Иначе используем первую строку как основное название
+            return f"🎯 {profile_header} / {line1}"
+    
+    return f"🎯 {profile_header}"
+
+# ============================================
 # ФУНКЦИЯ ПОИСКА ПРОФИЛЯ С FALLBACK
 # ============================================
 
@@ -983,11 +1031,11 @@ def need_clarification_stage4(dilts_answers):
     return False
 
 # ============================================
-# ИСПРАВЛЕННЫЙ ЭКРАН РЕЗУЛЬТАТОВ
+# ИСПРАВЛЕННЫЙ ЭКРАН РЕЗУЛЬТАТОВ (2 сообщения)
 # ============================================
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - исправленная версия с 3 сообщениями"""
+    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - версия 1.6 (2 сообщения)"""
     query = update.callback_query
     
     # Проверяем, поделился ли уже пользователь
@@ -1017,24 +1065,31 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     profile_card = get_card_description_from_profile(profile, profile_data)
     context.user_data["profile_card"] = profile_card
     
+    # Запоминаем ключ фактически загруженного профиля
+    target_key = profile_data['display_name']
+    if hasattr(profile, 'profile_key'):
+        actual_key = profile.profile_key
+    else:
+        actual_key = target_key
+    
+    # Флаг использования fallback
+    used_fallback = actual_key.lower() != target_key.lower()
+    logger.info(f"Profile loading: target={target_key}, actual={actual_key}, fallback={used_fallback}")
+    
     # ====================================================
-    # СООБЩЕНИЕ 1: Заголовок + Архетип + Цитата
+    # СООБЩЕНИЕ 1: Заголовок профиля + Архетип + Цитата + "Это ты если..."
     # ====================================================
     
     message_1 = ""
     
-    # Заголовок профиля в одну строку
+    # Заголовок профиля в правильном формате
     profile_header = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
     
-    # Используем title или профильное имя
-    profile_title = profile_card.get('title', f"ПРОФИЛЬ {profile_data['level']}")
+    # Используем форматированный заголовок
+    raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
+    formatted_title = format_profile_title(raw_title, profile_header)
     
-    # Добавляем эмодзи в начало, если его нет
-    if not profile_title.startswith(('🎯', '🔍', '💔', '🛠', '🚀')):
-        profile_title = f"🎯 {profile_title}"
-    
-    message_1 += f"<b>{profile_title}</b>\n"
-    message_1 += f"<code>{profile_header}</code>\n\n"
+    message_1 += f"<b>{formatted_title}</b>\n\n"
     
     # Архетип (если есть)
     archetype = profile_card.get('archetype', '')
@@ -1044,39 +1099,28 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Цитата
     quote = profile_card.get('quote', '')
     if quote:
-        message_1 += f"<b>💬 ЦИТАТА:</b>\n{quote}"
+        message_1 += f"<b>💬 ЦИТАТА:</b>\n{quote}\n\n"
     
-    # Отправляем сообщение 1
-    if message_1.strip():
-        await query.edit_message_text(message_1.strip(), parse_mode="HTML")
-        await asyncio.sleep(0.5)
-    
-    # ====================================================
-    # СООБЩЕНИЕ 2: "Это ты, если..."
-    # ====================================================
-    
-    message_2 = ""
-    
-    # Это ты, если...
+    # "Это ты, если..."
     trigger = profile_card.get('trigger', '')
     if trigger:
         # Убедимся, что нет дублирующего заголовка
         if trigger.startswith('🔍 ЭТО ТЫ, ЕСЛИ...'):
             trigger = trigger.replace('🔍 ЭТО ТЫ, ЕСЛИ...\n\n', '').replace('🔍 ЭТО ТЫ, ЕСЛИ...', '')
         
-        message_2 += f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n"
-        message_2 += f"{trigger}"
+        message_1 += f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n"
+        message_1 += f"{trigger}"
     
-    # Отправляем сообщение 2
-    if message_2.strip():
-        await query.message.reply_text(message_2.strip(), parse_mode="HTML")
-        await asyncio.sleep(0.5)
+    # Отправляем сообщение 1
+    if message_1.strip():
+        await query.edit_message_text(message_1.strip(), parse_mode="HTML")
+        await asyncio.sleep(0.3)
     
     # ====================================================
-    # СООБЩЕНИЕ 3: "Суть проблемы" + "Инструмент прямо сейчас" + "Что дальше?"
+    # СООБЩЕНИЕ 2: Остальной текст + примечание + кнопки
     # ====================================================
     
-    message_3 = ""
+    message_2 = ""
     
     # Суть проблемы
     pain = profile_card.get('pain', '')
@@ -1087,8 +1131,8 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             pain = '\n'.join(pain_lines[1:]) if len(pain_lines) > 1 else ""
         
         if pain.strip():
-            message_3 += f"<b>💔 СУТЬ ПРОБЛЕМЫ</b>\n\n"
-            message_3 += f"{pain.strip()}\n\n"
+            message_2 += f"<b>💔 СУТЬ ПРОБЛЕМЫ</b>\n\n"
+            message_2 += f"{pain.strip()}\n\n"
     
     # Инструмент прямо сейчас
     tool = profile_card.get('immediate_tool', '')
@@ -1099,10 +1143,10 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             tool = '\n'.join(tool_lines[1:]) if len(tool_lines) > 1 else ""
         
         if tool.strip():
-            if message_3:  # Добавляем разделитель, если уже есть текст
-                message_3 += "\n"
-            message_3 += f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»</b>\n\n"
-            message_3 += f"{tool.strip()}\n\n"
+            if message_2:  # Добавляем разделитель, если уже есть текст
+                message_2 += "\n"
+            message_2 += f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»</b>\n\n"
+            message_2 += f"{tool.strip()}\n\n"
     
     # Что дальше?
     cta = profile_card.get('cta', '')
@@ -1113,20 +1157,42 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             cta = '\n'.join(cta_lines[1:]) if len(cta_lines) > 1 else ""
         
         if cta.strip():
-            message_3 += f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n"
-            message_3 += f"{cta.strip()}\n\n"
+            message_2 += f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n"
+            message_2 += f"{cta.strip()}\n\n"
     
-    # Примечание о несогласованности (если есть)
-    coherence = profile_data.get("coherence", {})
-    if not coherence.get("is_coherent", True):
-        discrepancy_note = (
-            f"🔍 <b>ПРИМЕЧАНИЕ:</b>\n"
-            f"Есть небольшое расхождение в результатах.\n"
-            f"Уровень развития: {profile_data['level_name']}, "
-            f"но фокус проблем: {DILTS_LEVELS[profile_data['dilts_level']]['name']}.\n"
-            f"Это может указывать на переходный период.\n\n"
+    # Примечание о fallback (только если использовался fallback)
+    if used_fallback:
+        # Получаем ожидаемый и фактический суффиксы
+        target_suffix = target_key.split('_')[-1]
+        actual_suffix = actual_key.split('_')[-1]
+        
+        # Словарь для красивых описаний конфликтов
+        suffix_descriptions = {
+            'def': 'дефицитарных установок',
+            'con': 'конфликтующих убеждений', 
+            'exp': 'экспериментального поведения',
+            'int': 'интеграционных процессов',
+            'aut': 'автоматических реакций',
+            'val': 'ценностных ориентиров',
+            'tra': 'трансформационных состояний',
+            'ide': 'идентификационных паттернов',
+            'env': 'окружения',
+            'beh': 'поведения',
+            'cap': 'способностей',
+            'val': 'ценностей',
+            'ide': 'идентичности'
+        }
+        
+        expected_desc = suffix_descriptions.get(target_suffix, target_suffix)
+        actual_desc = suffix_descriptions.get(actual_suffix, actual_suffix)
+        
+        conflict_note = (
+            f"⚡ <b>ПРИМЕЧАНИЕ: КОНФЛИКТУЮЩИЕ ЧАСТИ</b>\n\n"
+            f"Обнаружено напряжение между {expected_desc} и {actual_desc}.\n"
+            f"<i>Это может создавать внутреннее противоречие: вы реагируете на уровне {actual_desc}, "
+            f"в то время как корень ситуации находится на уровне {expected_desc}.</i>\n\n"
         )
-        message_3 += discrepancy_note
+        message_2 += conflict_note
     
     # Инструкция по подарку
     if not has_shared:
@@ -1142,7 +1208,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"Спасибо за репост!"
         )
     
-    message_3 += f"\n{instruction}"
+    message_2 += f"\n{instruction}"
     
     # Определяем кнопки
     if not has_shared:
@@ -1160,8 +1226,8 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Отправляем сообщение 3 с кнопками
-    await query.message.reply_text(message_3.strip(), reply_markup=reply_markup, parse_mode="HTML")
+    # Отправляем сообщение 2 с кнопками
+    await query.message.reply_text(message_2.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
     return RESULTS
 
@@ -1279,16 +1345,16 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await start_test(update, context)
 
 # ============================================
-# ОСТАЛЬНЫЕ ОБРАБОТЧИКИ (без изменений)
+# ОБНОВЛЕННЫЕ ФУНКЦИИ С ИСПРАВЛЕНИЯМИ
 # ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /start"""
+    """Команда /start - ОБНОВЛЕНО: версия 1.6"""
     user = update.effective_user
     
     welcome_text = (
         f"Привет, {user.first_name}! 👋\n\n"
-        f"🎴 <b>Добро пожаловать в психодиагностический тест ВАРИАТИКА!</b>\n\n"
+        f"🎴 <b>Добро пожаловать в психодиагностический тест ВАРИАТИКА ver 1.6!</b>\n\n"
         f"🔍 <b>Узнай о себе то, что ты ещё не знаешь.</b>\n\n"
         f"<b>Этот тест поможет определить:</b>\n"
         f"• Как ты воспринимаешь реальность \n"
@@ -1766,7 +1832,7 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение ЭТАПА 2"""
+    """Завершение ЭТАПА 2 - ОБНОВЛЕНО: убрано отображение уровня"""
     query = update.callback_query
     level_scores_dict = context.user_data.get("stage2_level_scores_dict", {"1": 0})
     
@@ -1786,8 +1852,7 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     result_text = (
         f"✅ <b>ЭТАП 2 ЗАВЕРШЁН!</b>\n\n"
-        f"🎯 Конфигурация мышления определена\n"
-        f"📊 Уровень: <b>{get_level_name(thinking_level)} ({thinking_level}/9)</b>\n\n"
+        f"🎯 Конфигурация мышления определена\n\n"
         f"🔍 Переходим к <b>ЭТАПУ 3</b>: поведенческие паттерны.\n\n"
         f"Готов продолжить?"
     )
@@ -2335,8 +2400,15 @@ def debug_loader():
 def main():
     """Запуск бота"""
     print("\n" + "="*50)
-    print("🚀 ЗАПУСК БОТА (ИСПРАВЛЕННАЯ ВЕРСИЯ)")
+    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 1.6")
     print("="*50)
+    print("ИСПРАВЛЕНИЯ:")
+    print("• Заголовок профиля в правильном формате")
+    print("• 2 сообщения вместо 3")
+    print("• Примечание о конфликтующих частях при fallback")
+    print("• Убрано отображение уровня на этапе 2")
+    print("• Обновленное приветствие с версией 1.6")
+    print("="*50 + "\n")
     
     debug_loader()
     
@@ -2413,8 +2485,8 @@ def main():
     
     application.add_handler(conv_handler)
     
-    logger.info("🚀 Bot started with FIXED PROFILE SYSTEM!")
-    logger.info("📊 System: Fixed suffix mapping + Header cleaning + Beautiful formatting")
+    logger.info("🚀 Bot started: ВАРИАТИКА ver 1.6!")
+    logger.info("📊 Changes: Fixed title format + 2 messages + fallback notes + version 1.6")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
