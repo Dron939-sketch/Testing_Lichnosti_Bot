@@ -4,8 +4,11 @@
 ВЕРСИЯ 2.0: Добавлена интеграция с ЮKassa для автоматической отправки файлов
 """
 
-import logging
+### ИЗМЕНЕНО ###
+# Добавлены импорты для безопасной загрузки конфигурации
 import os
+import sys
+import logging
 import asyncio
 import urllib.parse
 import math
@@ -15,6 +18,8 @@ import base64
 import requests
 from datetime import datetime
 from collections import Counter
+from typing import Dict, Any, Optional, Tuple
+from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -30,22 +35,171 @@ from telegram.ext import (
 from loader import loader
 from base import VariaticaProfile
 
-# ============================================
-# КОНСТАНТЫ И КОНФИГУРАЦИЯ
-# ============================================
+### ДОБАВЛЕНО ###
+def setup_environment() -> Tuple[Dict[str, str], logging.Logger]:
+    """
+    Безопасная загрузка переменных окружения.
+    Приоритет: переменные системы → .env файл (только для разработки)
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Проверяем, находимся ли мы в продакшен окружении
+    is_production = os.getenv('ENVIRONMENT') == 'production' or os.getenv('RENDER') is not None
+    
+    # Загружаем .env только в разработке
+    if not is_production:
+        env_loaded = load_dotenv()
+        if env_loaded:
+            logger.warning("⚠️  Загружен .env файл (режим разработки)")
+        else:
+            logger.info("ℹ️  .env файл не найден, используем системные переменные")
+    else:
+        logger.info("🚀 Продакшен окружение, используем системные переменные")
+    
+    # Собираем все переменные
+    config = {
+        'TELEGRAM_BOT_TOKEN': os.getenv('TELEGRAM_BOT_TOKEN'),
+        'YOOKASSA_SHOP_ID': os.getenv('YOOKASSA_SHOP_ID', '1262862'),
+        'YOOKASSA_SECRET_KEY': os.getenv('YOOKASSA_SECRET_KEY'),
+    }
+    
+    # Проверяем продакшен ключ в .env (опасно!)
+    if not is_production and config['YOOKASSA_SECRET_KEY'] and config['YOOKASSA_SECRET_KEY'].startswith('live_'):
+        logger.error("❌ КРИТИЧЕСКАЯ ОШИБКА: Продакшен ключ ЮKassa в .env файле!")
+        logger.error("   Это небезопасно. Используйте .env только для тестовых ключей.")
+        logger.error("   Продакшен ключи должны быть только в переменных окружения системы.")
+    
+    return config, logger
 
-# Получение токена
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("❌ ОШИБКА: Переменная TELEGRAM_BOT_TOKEN не установлена!")
+### ДОБАВЛЕНО ###
+def validate_config(config: Dict[str, str], logger: logging.Logger) -> bool:
+    """
+    Валидация конфигурации:
+    - Проверка обязательных переменных
+    - Проверка формата ключей ЮKassa (test_... или live_...)
+    - Логирование режима (тестовый/продакшен)
+    """
+    errors = []
+    warnings = []
+    
+    # Проверка обязательных переменных
+    required_vars = ['TELEGRAM_BOT_TOKEN', 'YOOKASSA_SECRET_KEY']
+    missing_vars = [var for var in required_vars if not config.get(var)]
+    
+    if missing_vars:
+        errors.append(f"Отсутствуют обязательные переменные: {', '.join(missing_vars)}")
+    
+    # Проверка формата Telegram токена
+    telegram_token = config.get('TELEGRAM_BOT_TOKEN')
+    if telegram_token and len(telegram_token) < 30:
+        errors.append(f"Некорректный Telegram токен (слишком короткий)")
+    
+    # Проверка формата ключа ЮKassa
+    yookassa_key = config.get('YOOKASSA_SECRET_KEY')
+    if yookassa_key:
+        if not (yookassa_key.startswith('test_') or yookassa_key.startswith('live_')):
+            errors.append(f"Некорректный формат ключа ЮKassa. Должен начинаться с 'test_' или 'live_'")
+        else:
+            mode = "ТЕСТОВЫЙ" if yookassa_key.startswith('test_') else "ПРОДАКШЕН"
+            logger.info(f"Режим ЮKassa: {mode}")
+    
+    # Проверка Shop ID
+    shop_id = config.get('YOOKASSA_SHOP_ID')
+    if shop_id and not shop_id.isdigit():
+        errors.append(f"Shop ID должен быть числом, получено: {shop_id}")
+    
+    # Логируем ошибки и предупреждения
+    if warnings:
+        for warning in warnings:
+            logger.warning(f"⚠️ {warning}")
+    
+    if errors:
+        for error in errors:
+            logger.error(f"❌ {error}")
+        
+        # Выводим инструкцию
+        print("\n" + "="*60)
+        print("❌ НЕВОЗМОЖНО ЗАПУСТИТЬ БОТА ИЗ-ЗА ОШИБОК КОНФИГУРАЦИИ")
+        print("="*60)
+        print("\n📋 ИНСТРУКЦИЯ ПО НАСТРОЙКЕ:")
+        print("1. Для локальной разработки:")
+        print("   - Скопируйте .env.example в .env")
+        print("   - Отредактируйте .env: добавьте TELEGRAM_BOT_TOKEN")
+        print("   - Установите YOOKASSA_SECRET_KEY=test_ваш_тестовый_ключ")
+        print("\n2. Для продакшена на Render:")
+        print("   - Environment → Add Environment Variable")
+        print("   - Добавьте: TELEGRAM_BOT_TOKEN, YOOKASSA_SECRET_KEY")
+        print("   - YOOKASSA_SHOP_ID можно оставить 1262862")
+        print("   - Перезапустите сервис")
+        print("="*60 + "\n")
+        
+        return False
+    
+    return True
 
-# Данные ЮKassa ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ (ИЗМЕНЕНО согласно ТЗ)
-YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID", "1262862")
-YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
+### ДОБАВЛЕНО ###
+def print_config_info(config: Dict[str, str], logger: logging.Logger):
+    """
+    Вывод информации о конфигурации БЕЗ СЕКРЕТОВ:
+    - Маскировка токенов (первые 10 + последние 5 символов)
+    - Маскировка ключей ЮKassa (test_***** или live_*****)
+    - Информация о режиме работы
+    """
+    print("\n" + "="*50)
+    print("⚙️  КОНФИГУРАЦИЯ БОТА")
+    print("="*50)
+    
+    # Маскируем Telegram токен
+    telegram_token = config.get('TELEGRAM_BOT_TOKEN', 'NOT SET')
+    if telegram_token and telegram_token != 'NOT SET':
+        if len(telegram_token) > 15:
+            masked_token = f"{telegram_token[:10]}...{telegram_token[-5:]}"
+        else:
+            masked_token = "********"
+    else:
+        masked_token = "NOT SET"
+    print(f"🤖 Telegram Bot Token: {masked_token}")
+    
+    # Маскируем ключ ЮKassa
+    yookassa_key = config.get('YOOKASSA_SECRET_KEY')
+    if yookassa_key:
+        if yookassa_key.startswith('test_'):
+            masked_key = "test_*****" + yookassa_key[-4:]
+            mode = "ТЕСТОВЫЙ"
+        elif yookassa_key.startswith('live_'):
+            masked_key = "live_*****" + yookassa_key[-4:]
+            mode = "ПРОДАКШЕН"
+        else:
+            masked_key = "INVALID_FORMAT"
+            mode = "НЕИЗВЕСТНО"
+    else:
+        masked_key = "NOT SET"
+        mode = "НЕ НАСТРОЕНО"
+    
+    print(f"💳 YooKassa Shop ID: {config.get('YOOKASSA_SHOP_ID', 'NOT SET')}")
+    print(f"🔑 YooKassa Secret Key: {masked_key}")
+    print(f"📊 Режим: {mode}")
+    
+    # Дополнительная информация
+    is_production = os.getenv('ENVIRONMENT') == 'production' or os.getenv('RENDER') is not None
+    print(f"🏭 Окружение: {'ПРОДАКШЕН' if is_production else 'РАЗРАБОТКА'}")
+    print("="*50 + "\n")
 
-# Валидация секретного ключа (ДОБАВЛЕНО согласно ТЗ)
-if not YOOKASSA_SECRET_KEY:
-    raise ValueError("❌ ОШИБКА: Переменная YOOKASSA_SECRET_KEY не установлена!")
+### ИЗМЕНЕНО ###
+# Загрузка и валидация конфигурации
+CONFIG, config_logger = setup_environment()
+
+if not validate_config(CONFIG, config_logger):
+    config_logger.error("❌ Невозможно запустить бота из-за ошибок конфигурации")
+    sys.exit(1)
+
+print_config_info(CONFIG, config_logger)
+
+### ИЗМЕНЕНО ###
+# Присвоение глобальным переменным из безопасной конфигурации
+TOKEN = CONFIG['TELEGRAM_BOT_TOKEN']
+YOOKASSA_SHOP_ID = CONFIG['YOOKASSA_SHOP_ID']
+YOOKASSA_SECRET_KEY = CONFIG['YOOKASSA_SECRET_KEY']
 
 # Остальные константы
 BOT_LINK = "t.me/Testing_Lichnosti_bot"
@@ -188,10 +342,10 @@ PAID_FILES = [
 ]
 
 # ============================================
-# ФУНКЦИИ ДЛЯ РАБОТЫ С ЮKASSA (ДОБАВЛЕНО согласно ТЗ)
+# ФУНКЦИИ ДЛЯ РАБОТЫ С ЮKASSA (ОБНОВЛЕНЫ согласно ТЗ)
 # ============================================
 
-def create_payment_link(user_id: int):
+def create_payment_link(user_id: int) -> Dict[str, Any]:
     """Создает платежную ссылку с метаданными"""
     
     payment_data = {
@@ -225,25 +379,33 @@ def create_payment_link(user_id: int):
             "https://api.yookassa.ru/v3/payments",
             json=payment_data,
             headers=headers,
-            auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
+            auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
+            timeout=30
         )
         
         if response.status_code == 200:
             result = response.json()
+            logger.info(f"✅ Платеж создан: {result['id']} для пользователя {user_id}")
             return {
                 "success": True,
                 "payment_url": result["confirmation"]["confirmation_url"],
                 "payment_id": result["id"]
             }
         else:
-            logger.error(f"YooKassa API error: {response.status_code} - {response.text}")
-            return {"success": False, "error": response.text}
+            logger.error(f"❌ YooKassa API error: {response.status_code} - {response.text[:200]}")
+            return {"success": False, "error": f"API error {response.status_code}"}
             
+    except requests.exceptions.Timeout:
+        logger.error("❌ Таймаут при создании платежа")
+        return {"success": False, "error": "Таймаут соединения"}
+    except requests.exceptions.ConnectionError:
+        logger.error("❌ Ошибка соединения с ЮKassa")
+        return {"success": False, "error": "Ошибка соединения"}
     except Exception as e:
-        logger.error(f"Error creating payment: {e}")
+        logger.error(f"❌ Error creating payment: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
-def check_payment_status(payment_id: str):
+def check_payment_status(payment_id: str) -> Dict[str, Any]:
     """Проверяет статус платежа"""
     
     auth = base64.b64encode(f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}".encode()).decode()
@@ -256,27 +418,38 @@ def check_payment_status(payment_id: str):
         response = requests.get(
             f"https://api.yookassa.ru/v3/payments/{payment_id}",
             headers=headers,
-            auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
+            auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
+            timeout=30
         )
         
         if response.status_code == 200:
             result = response.json()
+            logger.info(f"✅ Статус платежа {payment_id}: {result['status']}")
             return {
                 "success": True,
                 "status": result["status"],
                 "paid": result["status"] == "succeeded",
                 "metadata": result.get("metadata", {})
             }
+        elif response.status_code == 404:
+            logger.error(f"❌ Платеж не найден: {payment_id}")
+            return {"success": False, "error": "Платеж не найден"}
         else:
-            logger.error(f"YooKassa API error: {response.status_code} - {response.text}")
-            return {"success": False, "error": response.text}
+            logger.error(f"❌ YooKassa API error: {response.status_code} - {response.text[:200]}")
+            return {"success": False, "error": f"API error {response.status_code}"}
             
+    except requests.exceptions.Timeout:
+        logger.error(f"❌ Таймаут при проверке платежа {payment_id}")
+        return {"success": False, "error": "Таймаут соединения"}
+    except requests.exceptions.ConnectionError:
+        logger.error(f"❌ Ошибка соединения при проверке платежа {payment_id}")
+        return {"success": False, "error": "Ошибка соединения"}
     except Exception as e:
-        logger.error(f"Error checking payment status: {e}")
+        logger.error(f"❌ Error checking payment status: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
 # ============================================
-# МОДИФИЦИРОВАННАЯ ФУНКЦИЯ ПОКАЗА ПАКЕТА (ИЗМЕНЕНО согласно ТЗ)
+# МОДИФИЦИРОВАННАЯ ФУНКЦИЯ ПОКАЗА ПАКЕТА
 # ============================================
 
 async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -355,13 +528,13 @@ async def check_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # УСПЕШНАЯ ОПЛАТА!
             user_id = status_result["metadata"].get("user_id")
             
+            # ДОБАВЛЕНО: Валидация user_id для безопасности
             if user_id and int(user_id) == query.from_user.id:
                 # Отправляем файлы
                 await send_files_after_payment(update, context, int(user_id))
                 return ConversationHandler.END
             else:
-                # ДОБАВЛЕНО: Валидация user_id для безопасности
-                logger.error(f"User ID mismatch: metadata={user_id}, query={query.from_user.id}")
+                logger.error(f"❌ User ID mismatch: metadata={user_id}, query={query.from_user.id}")
                 await query.edit_message_text(
                     "❌ <b>ОШИБКА БЕЗОПАСНОСТИ</b>\n\n"
                     "ID пользователя не совпадает. Напишите @meysternlp для помощи.",
@@ -409,7 +582,7 @@ async def check_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
     except Exception as e:
         # ДОБАВЛЕНО: Логирование ошибок
-        logger.error(f"Payment check error for {payment_id}: {e}")
+        logger.error(f"❌ Payment check error for {payment_id}: {e}", exc_info=True)
         await query.edit_message_text(
             f"⚠️ <b>ОШИБКА ПРОВЕРКИ</b>\n\n"
             f"ID: <code>{payment_id}</code>\n"
@@ -459,7 +632,7 @@ async def send_files_after_payment(update: Update, context: ContextTypes.DEFAULT
             await asyncio.sleep(0.5)
             
         except Exception as e:
-            logger.error(f"Error sending file {file_name}: {e}")
+            logger.error(f"❌ Error sending file {file_name}: {e}")
             # Отправляем ссылку как сообщение, если файл не отправляется
             await context.bot.send_message(
                 chat_id=user_id,
@@ -480,7 +653,7 @@ async def send_files_after_payment(update: Update, context: ContextTypes.DEFAULT
         del context.user_data["last_payment_id"]
 
 # ============================================
-# ОСТАЛЬНЫЙ КОД (БЕЗ ИЗМЕНЕНИЙ)
+# ОСТАЛЬНЫЙ КОД (БЕЗ ИЗМЕНЕНИЙ - сохранена вся оригинальная логика)
 # ============================================
 
 # ВОПРОСЫ ЭТАПА 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ
@@ -2469,17 +2642,13 @@ def main():
     print("\n" + "="*50)
     print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.0")
     print("="*50)
-    print("ОСНОВНЫЕ ИЗМЕНЕНИЯ:")
-    print("1. Интеграция с ЮKassa API")
-    print("2. Автоматическая отправка файлов после оплаты")
-    print("3. Проверка статуса платежей через API")
-    print("4. Улучшенный интерфейс оплаты")
-    print("="*50 + "\n")
     
-    # ПРОВЕРКА КОНФИГУРАЦИИ ЮKASSA (ДОБАВЛЕНО согласно ТЗ)
-    print("🔐 ПРОВЕРКА КОНФИГУРАЦИИ ЮKASSA")
-    print(f"   Shop ID: {YOOKASSA_SHOP_ID}")
-    print(f"   Secret Key: {'*' * 10}{YOOKASSA_SECRET_KEY[-4:] if YOOKASSA_SECRET_KEY else 'NOT SET'}")
+    # ДИАГНОСТИКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
+    print("🔐 ДИАГНОСТИКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ:")
+    print("="*30)
+    
+    # Конфигурация уже загружена и проверена в начале файла
+    print("✅ Конфигурация загружена и проверена")
     print("="*30)
     
     # Проверка загрузки профилей
@@ -2593,7 +2762,7 @@ def main():
     application.add_handler(conv_handler)
     
     logger.info("🚀 Bot started: ВАРИАТИКА ver 2.0!")
-    logger.info("📊 Changes: Added YooKassa integration for automatic file delivery")
+    logger.info(f"📊 Configuration: YooKassa mode = {'TEST' if YOOKASSA_SECRET_KEY.startswith('test_') else 'PRODUCTION'}")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
