@@ -1,7 +1,7 @@
 """
 АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
 4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
-ВЕРСИЯ 1.7: Исправления fallback-логики + SHARE_TEXT + разбивка сообщений
+ВЕРСИЯ 1.8: Исправлена логика fallback + компактный репост
 """
 
 import logging
@@ -22,15 +22,12 @@ from telegram.ext import (
     ConversationHandler,
 )
 
-# ============================================
-# ИСПРАВЛЕННЫЙ ИМПОРТ - ФАЙЛОВАЯ СИСТЕМА
-# ============================================
-from loader import loader  # Импортируем загрузчик
-from base import VariaticaProfile  # Импортируем класс профиля
+# Импорт загрузчика и профилей
+from loader import loader
+from base import VariaticaProfile
 
-# Получение токена из переменной окружения
+# Получение токена
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-
 if not TOKEN:
     raise ValueError("❌ ОШИБКА: Переменная TELEGRAM_BOT_TOKEN не установлена!")
 
@@ -41,14 +38,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ============================================
-#  СОСТОЯНИЯ ConversationHandler
-# ============================================
+# Состояния ConversationHandler
 STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS, GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, DILTS_CLARIFICATION = range(10)
 
-# ============================================
-# КОНСТАНТЫ - ИСПРАВЛЕНА SHARE_TEXT
-# ============================================
+# Константы
 BOT_LINK = "t.me/Testing_Lichnosti_bot"
 GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"
 AUTHOR_LINK = "@meysternlp"
@@ -56,10 +49,9 @@ SHARE_TEXT = "Только что узнал о себе то, о чём ещё 
 PAYMENT_LINK = "https://yookassa.ru/my/i/aYHvs0MnrXUT/l"
 
 # ============================================
-# ДАННЫЕ ВОПРОСОВ (ЭТАП 1 - БЕЗ ИЗМЕНЕНИЙ)
+# ВОПРОСЫ ЭТАПА 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
 # ============================================
 
-# ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
 STAGE_1_QUESTIONS = [
     {
         "id": "q1_1",
@@ -143,7 +135,7 @@ STAGE_1_QUESTIONS = [
     }
 ]
 
-# ТИПЫ ВОСПРИЯТИЯ
+# Типы восприятия
 PERCEPTION_TYPES = {
     ("EXTERNAL", "SYMBOLIC"): {
         "name": "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ",
@@ -158,7 +150,7 @@ PERCEPTION_TYPES = {
     ("EXTERNAL", "MATERIAL"): {
         "name": "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ",
         "code": "SP",
-        "description": "Фокус на внешних достижениях и результатат"
+        "description": "Фокус на внешних достижениях и результатах"
     },
     ("INTERNAL", "MATERIAL"): {
         "name": "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ",
@@ -168,7 +160,7 @@ PERCEPTION_TYPES = {
 }
 
 # ============================================
-# ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+# ВОПРОСЫ ЭТАПА 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ
 # ============================================
 
 STAGE_2_QUESTIONS = {
@@ -231,7 +223,7 @@ STAGE_2_QUESTIONS = {
             "text": "Твой друг постоянно меняет компании.\n\nКак думаешь, почему?",
             "options": {
                 "2": "Ищет своих людей",
-                "1": "Боятся близости",
+                "1": "Боится близости",
                 "5": "Ему везде интересно",
                 "4": "Не может быть собой"
             }
@@ -416,7 +408,7 @@ STAGE_2_QUESTIONS = {
         {
             "text": "Как ты принимаешь решения?",
             "options": {
-                "1": "Не могу выбрать (анализ  паралич)",
+                "1": "Не могу выбрать (анализ паралич)",
                 "2": "Долго взвешиваю все варианты",
                 "4": "Анализирую и выбираю оптимальное",
                 "5": "Быстро, на основе критериев"
@@ -470,7 +462,7 @@ STAGE_2_QUESTIONS = {
     ]
 }
 
-# ТАБЛИЦА НАЧИСЛЕНИЯ БАЛЛОВ ДЛЯ ЭТАПА 2
+# Таблица баллов для этапа 2
 STAGE_2_SCORING = {
     "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": {
         0: {"1": 2, "2": 2, "3": 2, "5": 2},
@@ -515,7 +507,7 @@ STAGE_2_SCORING = {
 }
 
 # ============================================
-# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ
+# ВОПРОСЫ ЭТАПА 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ
 # ============================================
 
 STAGE_3_QUESTIONS = [
@@ -530,7 +522,7 @@ STAGE_3_QUESTIONS = [
 ]
 
 # ============================================
-# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
+# ВОПРОСЫ ЭТАПА 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
 # ============================================
 
 STAGE_4_QUESTIONS = [
@@ -538,13 +530,13 @@ STAGE_4_QUESTIONS = [
     {"id": "q4_2", "text": "Что именно «не так»?\n\nВыбери то, что ближе всего:", "options": {"a": {"text": "Не то окружение (место, люди, условия)", "dilts": "ENVIRONMENT"}, "b": {"text": "Делаю не то, что хочу", "dilts": "BEHAVIOR"}, "c": {"text": "Не умею делать то, что хочу", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимаю, чего хочу", "dilts": "VALUES"}}},
     {"id": "q4_3", "text": "Человек чувствует себя несчастным.\n\nВ чём, скорее всего, причина?", "options": {"a": {"text": "Не те люди вокруг", "dilts": "ENVIRONMENT"}, "b": {"text": "Делает не то, что хочет", "dilts": "BEHAVIOR"}, "c": {"text": "Не умеет делать то, что хочет", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимает, чего хочет", "dilts": "VALUES"}}},
     {"id": "q4_4", "text": "Если бы ты мог изменить что-то одно, что бы это было?", "options": {"a": {"text": "Своё окружение", "dilts": "ENVIRONMENT"}, "b": {"text": "Своё поведение", "dilts": "BEHAVIOR"}, "c": {"text": "Свои способности", "dilts": "CAPABILITIES"}, "d": {"text": "Своё понимание целей", "dilts": "VALUES"}}},
-    {"id": "q4_5", "text": "Что для тебя сложнее всего?", "options": {"a": {"text": "Изменить внешные условия", "dilts": "ENVIRONMENT"}, "b": {"text": "Начать действовать", "dilts": "BEHAVIOR"}, "c": {"text": "Научиться новому", "dilts": "CAPABILITIES"}, "d": {"text": "Понять, чего я хочу", "dilts": "VALUES"}}},
+    {"id": "q4_5", "text": "Что для тебя сложнее всего?", "options": {"a": {"text": "Изменить внешние условия", "dilts": "ENVIRONMENT"}, "b": {"text": "Начать действовать", "dilts": "BEHAVIOR"}, "c": {"text": "Научиться новому", "dilts": "CAPABILITIES"}, "d": {"text": "Понять, чего я хочу", "dilts": "VALUES"}}},
     {"id": "q4_6", "text": "Когда ты застреваешь в проблеме, что обычно не хватает?", "options": {"a": {"text": "Ресурсов (время, деньги, связи)", "dilts": "ENVIRONMENT"}, "b": {"text": "Действий (не начинаю)", "dilts": "BEHAVIOR"}, "c": {"text": "Навыков (не умею)", "dilts": "CAPABILITIES"}, "d": {"text": "Понимания (не знаю зачем)", "dilts": "VALUES"}}},
     {"id": "q4_7", "text": "Что мешает тебе быть счастливым?", "options": {"a": {"text": "Обстоятельства", "dilts": "ENVIRONMENT"}, "b": {"text": "Мои действия", "dilts": "BEHAVIOR"}, "c": {"text": "Мои ограничения", "dilts": "CAPABILITIES"}, "d": {"text": "Я не знаю, что такое счастье", "dilts": "VALUES"}}},
     {"id": "q4_8", "text": "Если бы у тебя была волшебная палочка, что бы ты изменил?", "options": {"a": {"text": "Своё окружение", "dilts": "ENVIRONMENT"}, "b": {"text": "Своё поведение", "dilts": "BEHAVIOR"}, "c": {"text": "Свои способности", "dilts": "CAPABILITIES"}, "d": {"text": "Себя (кто я)", "dilts": "IDENTITY"}}}
 ]
 
-# УРОВНИ ДИЛТСА
+# Уровни Дилтса
 DILTS_LEVELS = {
     "ENVIRONMENT": {"name": "ОКРУЖЕНИЕ", "code": "env", "description": "Проблема во внешних условиях", "solution": "Измени окружение или отношение к нему"},
     "BEHAVIOR": {"name": "ПОВЕДЕНИЕ", "code": "beh", "description": "Проблема в действиях", "solution": "Начни действовать по-другому"},
@@ -577,7 +569,7 @@ CLARIFICATION_QUESTIONS = {
     ],
     "stage4_tie": [
         {"id": "c4_1", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nЕсли бы ты мог изменить только одно, что бы выбрал?", "options": {"a": {"text": "Где я нахожусь", "dilts": "ENVIRONMENT"}, "b": {"text": "Что я делаю", "dilts": "BEHAVIOR"}, "c": {"text": "Что я умею", "dilts": "CAPABILITIES"}, "d": {"text": "Что для меня важно", "dilts": "VALUES"}, "e": {"text": "Кто я", "dilts": "IDENTITY"}}},
-        {"id": "c4_2", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nГде находится твоя главная проблема?", "options": {"a": {"text": "В обстоятельствах", "dilts": "ENVIRONMENT"}, "b": {"text": "В моих действиях", "dilts": "BEHAVIOR"}, "c": {"text": "В моих навыков", "dilts": "CAPABILITIES"}, "d": {"text": "В моих целях", "dilts": "VALUES"}, "e": {"text": "В моём самоопределении", "dilts": "IDENTITY"}}}
+        {"id": "c4_2", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nГде находится твоя главная проблема?", "options": {"a": {"text": "В обстоятельствах", "dilts": "ENVIRONMENT"}, "b": {"text": "В моих действиях", "dilts": "BEHAVIOR"}, "c": {"text": "В моих навыках", "dilts": "CAPABILITIES"}, "d": {"text": "В моих целях", "dilts": "VALUES"}, "e": {"text": "В моём самоопределении", "dilts": "IDENTITY"}}}
     ]
 }
 
@@ -745,24 +737,20 @@ def format_profile_title(profile_title: str, profile_header: str) -> str:
     return f"🎯 {profile_header}"
 
 # ============================================
-# ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОИСКА ПРОФИЛЯ С FALLBACK (ИСПРАВЛЕНИЕ 2)
+# ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОИСКА ПРОФИЛЯ С FALLBACK
 # ============================================
 
 def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
     """
     Находит реально существующий файл профиля.
-    
-    Логика fallback:
-    1. Точное совпадение (тип_уровень_дилтс)
-    2. Любой профиль с совпадением типа и уровня (тип_уровень_*)
-    3. Ближайший уровень того же типа
-    4. Аварийный fallback: sa_1_def
     """
     type_code = profile_data.get('type_code', 'sa').lower()
     level = profile_data.get('level', 1)
     dilts_code = profile_data.get('dilts_code', 'def').lower()
     
-    # 1. Точное совпадение
+    logger.info(f"🎯 FALLBACK ПОИСК: type={type_code}, level={level}, dilts={dilts_code}")
+    
+    # 1. Точное совпадение (ia_4_cap)
     target_key = f"{type_code}_{level}_{dilts_code}"
     profile = loader.get_profile(target_key)
     
@@ -770,15 +758,47 @@ def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
         logger.info(f"✅ Exact match: {target_key}")
         return profile
     
-    # 2. Ищем любой профиль с совпадением типа и уровня (игнорируем суффикс)
-    logger.info(f"🔍 {target_key} not found, searching for {type_code}_{level}_*")
+    logger.info(f"🔍 {target_key} не найден")
+    
+    # 2. ОСОБАЯ ЛОГИКА ДЛЯ IA ТИПА
+    if type_code == "ia":
+        logger.info(f"🔍 Специальный поиск для IA типа...")
+        
+        # Пробуем разные суффиксы, которые могут быть в файлах
+        possible_suffixes = ['exp', 'def', 'con', 'int', 'aut', 'val', 'tra', 'ide']
+        
+        for suffix in possible_suffixes:
+            test_key = f"{type_code}_{level}_{suffix}"
+            profile = loader.get_profile(test_key)
+            if profile:
+                logger.info(f"✅ Found IA profile: {test_key}")
+                return profile
+        
+        # Пробуем без суффикса
+        test_key = f"{type_code}_{level}"
+        profile = loader.get_profile(test_key)
+        if profile:
+            logger.info(f"✅ Found IA profile without suffix: {test_key}")
+            return profile
+        
+        # Пробуем верхний регистр
+        test_key = f"{type_code.upper()}_{level}"
+        profile = loader.get_profile(test_key)
+        if profile:
+            logger.info(f"✅ Found IA profile uppercase: {test_key}")
+            return profile
+    
+    # 3. Ищем любой профиль с совпадением типа и уровня
+    logger.info(f"🔍 Ищем любой профиль {type_code}_{level}_*")
     all_profiles = loader.get_all_profiles()
     
     # Сначала ищем точное совпадение уровня
     same_level_profiles = []
     for key in all_profiles:
-        if key.startswith(f"{type_code}_{level}_"):
+        if key.lower().startswith(f"{type_code}_{level}_"):
             same_level_profiles.append(key)
+    
+    logger.info(f"📊 Профили уровня {level} типа {type_code}: {same_level_profiles}")
     
     if same_level_profiles:
         # Берем первый попавшийся профиль того же типа и уровня
@@ -786,13 +806,13 @@ def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
         logger.info(f"✅ Found same-level fallback: {fallback_key}")
         return loader.get_profile(fallback_key)
     
-    # 3. Ищем ближайший уровень того же типа
-    logger.info(f"⚠️ No profiles for level {level}, searching nearest level for type {type_code}...")
+    # 4. Ищем ближайший уровень того же типа
+    logger.info(f"⚠️ Нет профилей уровня {level}, ищем ближайший уровень для типа {type_code}")
     
     # Собираем все профили этого типа
     type_profiles = []
     for key in all_profiles:
-        if key.startswith(f"{type_code}_"):
+        if key.lower().startswith(f"{type_code}_"):
             try:
                 parts = key.split('_')
                 if len(parts) >= 2 and parts[1].isdigit():
@@ -802,31 +822,25 @@ def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
                 continue
     
     if not type_profiles:
-        logger.warning(f"❌ No profiles for type {type_code}, using sa_1_def")
+        logger.warning(f"❌ Нет профилей для типа {type_code}, использую sa_1_def")
         return loader.get_profile("sa_1_def")
     
-    # Поиск ближайшего уровня с постепенным увеличением разницы
-    max_diff = 10
+    # Поиск ближайшего уровня
+    min_diff = float('inf')
+    best_key = None
     
-    for diff in range(1, max_diff + 1):
-        # Сначала проверяем уровень ниже
-        lower_level = level - diff
-        if lower_level >= 1:
-            for key, key_level in type_profiles:
-                if key_level == lower_level:
-                    logger.info(f"📉 Found lower level (-{diff}): {key}")
-                    return loader.get_profile(key)
-        
-        # Потом проверяем уровень выше
-        upper_level = level + diff
-        if upper_level <= 9:
-            for key, key_level in type_profiles:
-                if key_level == upper_level:
-                    logger.info(f"📈 Found upper level (+{diff}): {key}")
-                    return loader.get_profile(key)
+    for key, key_level in type_profiles:
+        diff = abs(key_level - level)
+        if diff < min_diff:
+            min_diff = diff
+            best_key = key
     
-    # 4. Аварийный fallback
-    logger.warning(f"🔥 No suitable profile, using sa_1_def")
+    if best_key:
+        logger.info(f"📈 Найден ближайший уровень (разница {min_diff}): {best_key}")
+        return loader.get_profile(best_key)
+    
+    # 5. Аварийный fallback
+    logger.warning(f"🔥 Ничего не найдено, использую sa_1_def")
     return loader.get_profile("sa_1_def")
 
 # ============================================
@@ -992,11 +1006,11 @@ def need_clarification_stage4(dilts_answers):
     return False
 
 # ============================================
-# ИСПРАВЛЕННЫЙ ЭКРАН РЕЗУЛЬТАТОВ (ИСПРАВЛЕНИЕ 3)
+# ИСПРАВЛЕННЫЙ ЭКРАН РЕЗУЛЬТАТОВ (КОМПАКТНЫЙ)
 # ============================================
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - версия 1.7 (2 сообщения)"""
+    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - версия 1.8 (компактный репост)"""
     query = update.callback_query
     
     has_shared = context.user_data.get("has_shared", False)
@@ -1016,34 +1030,29 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     profile_card = get_card_description_from_profile(profile, profile_data)
     context.user_data["profile_card"] = profile_card
     
-    target_key = profile_data['display_name']
-    if hasattr(profile, 'profile_key'):
-        actual_key = profile.profile_key
-    else:
-        actual_key = target_key
-    
-    used_fallback = actual_key.lower() != target_key.lower()
-    
-    profile_header = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
-    raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
-    formatted_title = format_profile_title(raw_title, profile_header)
-    
     # ====================================================
     # СООБЩЕНИЕ 1: Заголовок + Архетип + Цитата + "Это ты если..." + Суть проблемы
     # ====================================================
     
     message_1 = ""
     
+    # Заголовок
+    profile_header = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
+    raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
+    formatted_title = format_profile_title(raw_title, profile_header)
     message_1 += f"<b>{formatted_title}</b>\n\n"
     
+    # Архетип
     archetype = profile_card.get('archetype', '')
     if archetype:
         message_1 += f"<i>{archetype}</i>\n\n"
     
+    # Цитата
     quote = profile_card.get('quote', '')
     if quote:
         message_1 += f"<b>💬 ЦИТАТА:</b>\n{quote}\n\n"
     
+    # "Это ты если..."
     trigger = profile_card.get('trigger', '')
     if trigger:
         if trigger.startswith('🔍 ЭТО ТЫ, ЕСЛИ...'):
@@ -1052,6 +1061,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         message_1 += f"<b>🔍 ЭТО ТЫ, ЕСЛИ...</b>\n\n"
         message_1 += f"{trigger}\n\n"
     
+    # Суть проблемы
     pain = profile_card.get('pain', '')
     if pain:
         pain_lines = pain.strip().split('\n')
@@ -1067,11 +1077,12 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         await asyncio.sleep(0.5)
     
     # ====================================================
-    # СООБЩЕНИЕ 2: Инструмент + Что дальше + Примечание + Блоки + Кнопки
+    # СООБЩЕНИЕ 2: Инструмент + Что дальше + Кнопки (компактный репост)
     # ====================================================
     
     message_2 = ""
     
+    # Инструмент
     tool = profile_card.get('immediate_tool', '')
     if tool:
         tool_lines = tool.strip().split('\n')
@@ -1082,6 +1093,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             message_2 += f"<b>🛠 ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»</b>\n\n"
             message_2 += f"{tool.strip()}\n\n"
     
+    # Что дальше
     cta = profile_card.get('cta', '')
     if cta:
         cta_lines = cta.strip().split('\n')
@@ -1092,75 +1104,32 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             message_2 += f"<b>🚀 ЧТО ДАЛЬШЕ?</b>\n\n"
             message_2 += f"{cta.strip()}\n\n"
     
-    if used_fallback:
-        target_suffix = target_key.split('_')[-1]
-        actual_suffix = actual_key.split('_')[-1]
-        
-        suffix_descriptions = {
-            'def': 'дефицитарных установок',
-            'con': 'конфликтующих убеждений', 
-            'exp': 'экспериментального поведения',
-            'int': 'интеграционных процессов',
-            'aut': 'автоматических реакций',
-            'val': 'ценностных ориентиров',
-            'tra': 'трансформационных состояний',
-            'ide': 'идентификационных паттернов',
-            'env': 'окружения',
-            'beh': 'поведения',
-            'cap': 'способностей',
-            'val': 'ценностей',
-            'ide': 'идентичности'
-        }
-        
-        expected_desc = suffix_descriptions.get(target_suffix, target_suffix)
-        actual_desc = suffix_descriptions.get(actual_suffix, actual_suffix)
-        
-        conflict_note = (
-            f"⚡ <b>ПРИМЕЧАНИЕ: КОНФЛИКТУЮЩИЕ ЧАСТИ</b>\n\n"
-            f"Обнаружено напряжение между {expected_desc} и {actual_desc}.\n"
-            f"<i>Это может создавать внутреннее противоречие: вы реагируете на уровне {actual_desc}, "
-            f"в то время как корень ситуации находится на уровне {expected_desc}.</i>\n\n"
-        )
-        message_2 += conflict_note
-    
     # Разделительная линия
-    message_2 += "\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    message_2 += "━━━━━━━━━━━━━━━━━━━━\n\n"
     
-    # Блок 1: Подарок за репост
+    # Компактный блок репоста
     if not has_shared:
         message_2 += (
-            f"🎁 <b>ПОДАРОК ЗА РЕПОСТ</b>\n\n"
+            f"<b>🎁 ПОДАРОК ЗА РЕПОСТ</b>\n"
             f"Поделись тестом с друзьями и получи бонусный материал.\n\n"
-            f"👇 <b>Получить подарок</b>"
         )
     else:
         message_2 += (
-            f"🎉 <b>ГОТОВО!</b>\n\n"
+            f"<b>🎉 ГОТОВО!</b>\n"
             f"Спасибо за репост! Твой подарок ждёт тебя.\n\n"
-            f"👇 <b>Забрать подарок</b>"
         )
-    
-    # Разделитель между блоками
-    message_2 += "\n\n━━━━━━━━━━━━━━━━━━━━\n\n"
-    
-    # Блок 2: Полный пакет (минимальное упоминание)
-    message_2 += (
-        f"💎 <b>ПОЛНЫЙ ПАКЕТ</b>\n\n"
-        f"Детальный анализ и персональные рекомендации.\n\n"
-        f"👇 <b>Узнать больше</b>"
-    )
     
     # Определяем кнопки
     if not has_shared:
         keyboard = [
-            [InlineKeyboardButton("🎁 Получить подарок", callback_data="get_gift")],
-            [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
+            [InlineKeyboardButton("📤 Поделиться и получить подарок", callback_data="get_gift")],
+            [InlineKeyboardButton("💎 Полный пакет рекомендаций", callback_data="show_package")],
             [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
         ]
     else:
         keyboard = [
             [InlineKeyboardButton("🎁 Забрать подарок", callback_data="open_gift")],
-            [InlineKeyboardButton("💎 Подробнее о пакете", callback_data="show_package")],
+            [InlineKeyboardButton("💎 Полный пакет рекомендаций", callback_data="show_package")],
             [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
         ]
     
@@ -1180,7 +1149,7 @@ async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     instruction_text = (
-        f"📤 <b>ШАГ 1: ПОДЕЛИСЬ ССЫЛКОЙ</b>\n\n"
+        f"<b>📤 ШАГ 1: ПОДЕЛИСЬ ССЫЛКОЙ</b>\n\n"
         f"Нажми кнопку ниже, чтобы отправить сообщение с ссылкой на тест.\n\n"
         f"После того как отправишь, вернись сюда и нажми «✅ Я поделился»"
     )
@@ -1213,7 +1182,7 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     
     package_text = (
-        f"💎 <b>ПОЛНЫЙ ПАКЕТ ВАРИАТИКА</b>\n\n"
+        f"<b>💎 ПОЛНЫЙ ПАКЕТ ВАРИАТИКА</b>\n\n"
         f"<b>Что входит:</b>\n"
         f"• Полный разбор вашего профиля (15+ страниц детального анализа)\n"
         f"• Персональная терапевтическая сказка для коррекции конфликтующих частей\n"
@@ -1241,7 +1210,7 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     gift_text = (
-        f"🎁 <b>ВАШ ПОДАРОК ГОТОВ!</b>\n\n"
+        f"<b>🎁 ВАШ ПОДАРОК ГОТОВ!</b>\n\n"
         f"📚 Терапевтическая сказка для трансформации структуры восприятия\n\n"
         f"Эта сказка разрешает внутренние противоречия в конфигурации восприятия вашего профиля.\n\n"
         f"💡 <b>Как использовать:</b>\n"
@@ -1293,7 +1262,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     welcome_text = (
         f"Привет, {user.first_name}! 👋\n\n"
-        f"🎴 <b>Добро пожаловать в психодиагностический тест ВАРИАТИКА ver 1.7!</b>\n\n"
+        f"🎴 <b>Добро пожаловать в психодиагностический тест ВАРИАТИКА ver 1.8!</b>\n\n"
         f"🔍 <b>Узнай о себе то, что ты ещё не знаешь.</b>\n\n"
         f"<b>Этот тест поможет определить:</b>\n"
         f"• Как ты воспринимаешь реальность \n"
@@ -2253,13 +2222,42 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*50)
-    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 1.7")
+    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 1.8")
     print("="*50)
     print("ИСПРАВЛЕНИЯ:")
-    print("1. SHARE_TEXT исправлена (.. вместо :)")
-    print("2. Fallback-логика поиска профиля")
-    print("3. Разбивка на 2 сообщения в результатах")
+    print("1. Исправлена логика fallback для IA профилей")
+    print("2. Компактный репост на финальном экране")
+    print("3. Убраны лишние разделители")
     print("="*50 + "\n")
+    
+    # Проверка загрузки профилей
+    print("🔍 ПРОВЕРКА ЗАГРУЗКИ ПРОФИЛЕЙ")
+    print("="*30)
+    
+    all_profiles = loader.get_all_profiles()
+    print(f"📊 Всего профилей загружено: {len(all_profiles)}")
+    
+    # Проверяем IA профили
+    ia_profiles = [p for p in all_profiles if p.upper().startswith('IA_')]
+    print(f"🔍 IA профилей: {len(ia_profiles)}")
+    
+    if ia_profiles:
+        print("📋 Список IA профилей:")
+        for profile in sorted(ia_profiles):
+            print(f"  - {profile}")
+    else:
+        print("❌ НЕТ IA ПРОФИЛЕЙ! Проверьте папку 'профили/иа/'")
+    
+    # Тестируем поиск
+    test_keys = ["ia_4_cap", "ia_4_exp", "IA_4_exp", "ia_4"]
+    print("\n🧪 Тестируем поиск:")
+    for key in test_keys:
+        profile = loader.get_profile(key)
+        status = "✅ НАЙДЕН" if profile else "❌ НЕ НАЙДЕН"
+        print(f"  {key:15} → {status}")
+    
+    print("="*30)
+    print("✅ Проверка завершена. Запускаю бота...")
     
     application = Application.builder().token(TOKEN).build()
     
@@ -2330,8 +2328,8 @@ def main():
     
     application.add_handler(conv_handler)
     
-    logger.info("🚀 Bot started: ВАРИАТИКА ver 1.7!")
-    logger.info("📊 Changes: Fixed SHARE_TEXT + fallback logic + 2 messages")
+    logger.info("🚀 Bot started: ВАРИАТИКА ver 1.8!")
+    logger.info("📊 Changes: Fixed fallback logic + compact sharing")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
