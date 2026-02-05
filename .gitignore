@@ -1,0 +1,35 @@
+# Файлы окружения
+.env
+.env.local
+*.env
+secrets/
+keys/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Логи
+*.log
+logs/
+
+# Операционные системы
+.DS_Store
+Thumbs.db
+
+# Резервные копии
+*.bak
+*.backup
