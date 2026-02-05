@@ -84,7 +84,7 @@ def validate_config(config: Dict[str, str], logger: logging.Logger) -> bool:
     warnings = []
     
     # Проверка обязательных переменных
-    required_vars = ['TELEGRAM_BOT_TOKEN', 'YOOKASSA_SECRET_KEY']
+    required_vars = ['TELEGRAM_BOT_TOKEN']
     missing_vars = [var for var in required_vars if not config.get(var)]
     
     if missing_vars:
