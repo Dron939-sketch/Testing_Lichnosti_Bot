@@ -1,12 +1,4 @@
-from dotenv import load_dotenv
-import os
-
-# Загружаем переменные из .env файла
-load_dotenv()
-
-# Теперь можно использовать
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")"""
+"""
 АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
 4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
 ВЕРСИЯ 2.0: Добавлена интеграция с ЮKassa для автоматической отправки файлов
@@ -47,9 +39,13 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TOKEN:
     raise ValueError("❌ ОШИБКА: Переменная TELEGRAM_BOT_TOKEN не установлена!")
 
-# Данные ЮKassa
-YOOKASSA_SHOP_ID = "1262862"
-YOOKASSA_SECRET_KEY = "live_5dmnrUoxFCR-6xcdgxd2zPWi8_DSfWoFRgHNxlgxSgs"
+# Данные ЮKassa ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ (ИЗМЕНЕНО согласно ТЗ)
+YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID", "1262862")
+YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
+
+# Валидация секретного ключа (ДОБАВЛЕНО согласно ТЗ)
+if not YOOKASSA_SECRET_KEY:
+    raise ValueError("❌ ОШИБКА: Переменная YOOKASSA_SECRET_KEY не установлена!")
 
 # Остальные константы
 BOT_LINK = "t.me/Testing_Lichnosti_bot"
@@ -180,7 +176,7 @@ PERCEPTION_TYPES = {
 }
 
 # ============================================
-# ФАЙЛЫ ДЛЯ ОТПРАВКИ ПОСЛЕ ОПЛАТЫ
+# ФАЙЛЫ ДЛЯ ОТПРАВКИ ПОСЛЕ ОПЛАТЫ (ДОБАВЛЕНО согласно ТЗ)
 # ============================================
 
 PAID_FILES = [
@@ -192,7 +188,7 @@ PAID_FILES = [
 ]
 
 # ============================================
-# ФУНКЦИИ ДЛЯ РАБОТЫ С ЮKASSA
+# ФУНКЦИИ ДЛЯ РАБОТЫ С ЮKASSA (ДОБАВЛЕНО согласно ТЗ)
 # ============================================
 
 def create_payment_link(user_id: int):
@@ -272,13 +268,15 @@ def check_payment_status(payment_id: str):
                 "metadata": result.get("metadata", {})
             }
         else:
+            logger.error(f"YooKassa API error: {response.status_code} - {response.text}")
             return {"success": False, "error": response.text}
             
     except Exception as e:
+        logger.error(f"Error checking payment status: {e}")
         return {"success": False, "error": str(e)}
 
 # ============================================
-# МОДИФИЦИРОВАННАЯ ФУНКЦИЯ ПОКАЗА ПАКЕТА
+# МОДИФИЦИРОВАННАЯ ФУНКЦИЯ ПОКАЗА ПАКЕТА (ИЗМЕНЕНО согласно ТЗ)
 # ============================================
 
 async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -318,7 +316,10 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         
     else:
-        keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]]
+        keyboard = [
+            [InlineKeyboardButton("🔄 Попробовать снова", callback_data="show_package")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
+        ]
         message_text = (
             f"❌ <b>Ошибка создания платежа</b>\n\n"
             f"Попробуйте позже или напишите @meysternlp\n\n"
@@ -329,6 +330,10 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode="HTML")
     return PACKAGE_SCREEN
 
+# ============================================
+# НОВАЯ ФУНКЦИЯ ПРОВЕРКИ ОПЛАТЫ (ДОБАВЛЕНО согласно ТЗ)
+# ============================================
+
 async def check_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Проверка оплаты"""
     query = update.callback_query
@@ -336,30 +341,40 @@ async def check_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     payment_id = query.data.replace("check_", "")
     
-    # Проверяем статус платежа через API
-    status_result = check_payment_status(payment_id)
+    # Сохраняем payment_id в контексте пользователя для повторных проверок
+    context.user_data["last_payment_id"] = payment_id
     
-    if status_result["success"]:
+    try:
+        # Проверяем статус платежа через API
+        status_result = check_payment_status(payment_id)
+        
+        if not status_result["success"]:
+            raise Exception(f"Ошибка API: {status_result.get('error', 'Неизвестно')}")
+        
         if status_result["paid"]:
             # УСПЕШНАЯ ОПЛАТА!
             user_id = status_result["metadata"].get("user_id")
             
-            if user_id:
+            if user_id and int(user_id) == query.from_user.id:
                 # Отправляем файлы
                 await send_files_after_payment(update, context, int(user_id))
                 return ConversationHandler.END
             else:
+                # ДОБАВЛЕНО: Валидация user_id для безопасности
+                logger.error(f"User ID mismatch: metadata={user_id}, query={query.from_user.id}")
                 await query.edit_message_text(
-                    "❌ <b>ОШИБКА</b>\n\n"
-                    "Не удалось определить пользователя. Напишите @meysternlp для помощи.",
+                    "❌ <b>ОШИБКА БЕЗОПАСНОСТИ</b>\n\n"
+                    "ID пользователя не совпадает. Напишите @meysternlp для помощи.",
                     parse_mode="HTML"
                 )
+                return PAYMENT_CHECK
                 
         elif status_result["status"] == "pending":
             # Ожидание оплаты
             keyboard = [
                 [InlineKeyboardButton("🔄 Проверить еще раз", callback_data=f"check_{payment_id}")],
-                [InlineKeyboardButton("📨 Помощь", url="https://t.me/meysternlp")]
+                [InlineKeyboardButton("📨 Помощь", url="https://t.me/meysternlp")],
+                [InlineKeyboardButton("💳 Оплатить снова", callback_data="show_package")]
             ]
             
             await query.edit_message_text(
@@ -377,64 +392,92 @@ async def check_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         else:
             # Неуспешный статус
+            keyboard = [
+                [InlineKeyboardButton("🔄 Создать новый платеж", callback_data="show_package")],
+                [InlineKeyboardButton("📨 Помощь", url="https://t.me/meysternlp")]
+            ]
+            
             await query.edit_message_text(
                 f"❌ <b>ПЛАТЕЖ НЕ ОПЛАЧЕН</b>\n\n"
                 f"ID: <code>{payment_id}</code>\n"
                 f"Статус: {status_result['status']}\n\n"
                 f"Создать новый платеж?",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔄 Создать новый", callback_data="show_package")],
-                    [InlineKeyboardButton("📨 Помощь", url="https://t.me/meysternlp")]
-                ]),
+                reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="HTML"
             )
             return PAYMENT_CHECK
                 
-    else:
+    except Exception as e:
+        # ДОБАВЛЕНО: Логирование ошибок
+        logger.error(f"Payment check error for {payment_id}: {e}")
         await query.edit_message_text(
             f"⚠️ <b>ОШИБКА ПРОВЕРКИ</b>\n\n"
             f"ID: <code>{payment_id}</code>\n"
-            f"Ошибка: {status_result.get('error', 'Неизвестно')[:100]}\n\n"
+            f"Ошибка: {str(e)[:100]}\n\n"
             f"Напишите @meysternlp для помощи",
             parse_mode="HTML"
         )
         return PAYMENT_CHECK
+
+# ============================================
+# НОВАЯ ФУНКЦИЯ ОТПРАВКИ ФАЙЛОВ ПОСЛЕ ОПЛАТЫ (ДОБАВЛЕНО согласно ТЗ)
+# ============================================
 
 async def send_files_after_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int):
     """Отправляет файлы после успешной оплаты"""
     query = update.callback_query
     
     # Сообщение об успехе
-    await query.edit_message_text(
+    success_message = await query.edit_message_text(
         "🎉 <b>ОПЛАТА ПРОШЛА УСПЕШНО!</b>\n\n"
-        "Отправляю ваши файлы...",
+        "Подготовка файлов...",
         parse_mode="HTML"
     )
     
-    # Отправляем файлы
-    for file_name, file_url in PAID_FILES:
+    sent_files = 0
+    total_files = len(PAID_FILES)
+    
+    # Отправляем файлы с прогрессом
+    for i, (file_name, file_url) in enumerate(PAID_FILES, 1):
         try:
+            # Обновляем прогресс
+            if i > 1:
+                await success_message.edit_text(
+                    f"🎉 <b>ОПЛАТА ПРОШЛА УСПЕШНО!</b>\n\n"
+                    f"Отправляю файлы...\n"
+                    f"📦 {i-1}/{total_files} отправлено",
+                    parse_mode="HTML"
+                )
+            
+            # Отправляем файл
             await context.bot.send_document(
                 chat_id=user_id,
                 document=file_url,
                 caption=file_name
             )
+            sent_files += 1
             await asyncio.sleep(0.5)
+            
         except Exception as e:
             logger.error(f"Error sending file {file_name}: {e}")
+            # Отправляем ссылку как сообщение, если файл не отправляется
             await context.bot.send_message(
                 chat_id=user_id,
                 text=f"❌ Не удалось отправить {file_name}\nСсылка: {file_url}"
             )
     
     # Финальное сообщение
-    await context.bot.send_message(
-        chat_id=user_id,
-        text="✅ <b>ВСЕ ФАЙЛЫ ОТПРАВЛЕНЫ!</b>\n\n"
-             "Если нужна консультация:\n"
-             "👉 @meysternlp",
+    await success_message.edit_text(
+        f"✅ <b>ВСЕ ФАЙЛЫ ОТПРАВЛЕНЫ!</b>\n\n"
+        f"Отправлено: {sent_files}/{total_files} файлов\n\n"
+        f"Если нужна консультация:\n"
+        f"👉 @meysternlp",
         parse_mode="HTML"
     )
+    
+    # ДОБАВЛЕНО: Очищаем данные о платеже
+    if "last_payment_id" in context.user_data:
+        del context.user_data["last_payment_id"]
 
 # ============================================
 # ОСТАЛЬНЫЙ КОД (БЕЗ ИЗМЕНЕНИЙ)
@@ -631,7 +674,7 @@ STAGE_2_QUESTIONS = {
             "text": "Что для тебя успех?",
             "options": {
                 "1": "Не знаю, не достигал",
-                "2": "Деньги, статус, признание",
+                "2": "Деньги, статус, признаение",
                 "4": "Реализация своих целей",
                 "5": "Влияние и вклад в мир"
             }
@@ -720,7 +763,7 @@ STAGE_2_QUESTIONS = {
             }
         },
         {
-            "text": "Человек перегружен информацией.\n\nЧто делать?",
+            "text": "Человник перегружен информацией.\n\nЧто делать?",
             "options": {
                 "1": "Избегать информации",
                 "2": "Пытаться всё изучить",
@@ -790,7 +833,7 @@ STAGE_3_QUESTIONS = [
     {"id": "q3_2", "text": "Последний конфликт.\n\nЧто ты сделал?", "options": {"a": {"text": "Избежал", "level": 1}, "b": {"text": "Уступил", "level": 1}, "c": {"text": "Отстоял позицию", "level": 3}, "d": {"text": "Нашёл компромисс", "level": 5}}},
     {"id": "q3_3", "text": "Как ты принимаешь важные решения?", "options": {"a": {"text": "Долго мучаюсь", "level": 1}, "b": {"text": "Взвешиваю варианты", "level": 3}, "c": {"text": "Быстро, по интуиции", "level": 5}, "d": {"text": "Жду, когда решение придёт само", "level": 4}}},
     {"id": "q3_4", "text": "Как часто ты делаешь то, что не хочешь, но «надо»?", "options": {"a": {"text": "Постоянно (вся жизнь — «надо»)", "level": 1}, "b": {"text": "Часто", "level": 2}, "c": {"text": "Иногда", "level": 3}, "d": {"text": "Редко (делаю то, что хочу)", "level": 5}}},
-    {"id": "q3_5", "text": "Вспомни последнюю сильная эмоция.\n\nЧто ты с ней сделал?", "options": {"a": {"text": "Подавил", "level": 1}, "b": {"text": "Проанализировал", "level": 3}, "c": {"text": "Выразил (слова/действия/творчество)", "level": 5}, "d": {"text": "Наблюдал за ней", "level": 4}}},
+    {"id": "q3_5", "text": "Вспомни последнюю сильную эмоцию.\n\nЧто ты с ней сделал?", "options": {"a": {"text": "Подавил", "level": 1}, "b": {"text": "Проанализировал", "level": 3}, "c": {"text": "Выразил (слова/действия/творчество)", "level": 5}, "d": {"text": "Наблюдал за ней", "level": 4}}},
     {"id": "q3_6", "text": "Как ты относишься к своим слабостям?", "options": {"a": {"text": "Стыжусь их", "level": 1}, "b": {"text": "Пытаюсь исправить", "level": 2}, "c": {"text": "Принимаю их", "level": 4}, "d": {"text": "Вижу в них силу", "level": 6}}},
     {"id": "q3_7", "text": "Как часто ты чувствуешь, что живёшь не своей жизнью?", "options": {"a": {"text": "Постоянно", "level": 1}, "b": {"text": "Часто", "level": 2}, "c": {"text": "Иногда", "level": 3}, "d": {"text": "Редко или никогда", "level": 5}}},
     {"id": "q3_8", "text": "Что ты делаешь, когда не знаешь, что делать?", "options": {"a": {"text": "Паникую", "level": 1}, "b": {"text": "Ищу информацию", "level": 2}, "c": {"text": "Действую методом проб", "level": 3}, "d": {"text": "Жду ясности", "level": 4}}}
@@ -2418,7 +2461,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# ГЛАВНАЯ ФУНКЦИЯ
+# ГЛАВНАЯ ФУНКЦИЯ С ПРОВЕРКОЙ КОНФИГУРАЦИИ (ИЗМЕНЕНО согласно ТЗ)
 # ============================================
 
 def main():
@@ -2432,6 +2475,12 @@ def main():
     print("3. Проверка статуса платежей через API")
     print("4. Улучшенный интерфейс оплаты")
     print("="*50 + "\n")
+    
+    # ПРОВЕРКА КОНФИГУРАЦИИ ЮKASSA (ДОБАВЛЕНО согласно ТЗ)
+    print("🔐 ПРОВЕРКА КОНФИГУРАЦИИ ЮKASSA")
+    print(f"   Shop ID: {YOOKASSA_SHOP_ID}")
+    print(f"   Secret Key: {'*' * 10}{YOOKASSA_SECRET_KEY[-4:] if YOOKASSA_SECRET_KEY else 'NOT SET'}")
+    print("="*30)
     
     # Проверка загрузки профилей
     print("🔍 ПРОВЕРКА ЗАГРУЗКИ ПРОФИЛЕЙ")
