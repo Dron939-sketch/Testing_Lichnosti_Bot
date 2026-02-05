@@ -2499,7 +2499,7 @@ def main():
         print(f"❌ Ошибка загрузки профилей: {e}")
         print("Проверьте файлы профилей в папке profiles/")
     
-    from telegram.ext import ApplicationBuilder application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     
     conv_handler = ConversationHandler(
         entry_points=[
