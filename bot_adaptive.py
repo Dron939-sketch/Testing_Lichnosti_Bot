@@ -1,4 +1,12 @@
-### ДОБАВЛЕНО ###
+# -*- coding: utf-8 -*-
+"""
+АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
+4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
+ВЕРСИЯ 2.0: Добавлена интеграция с ЮKassa для автоматической отправки файлов
+"""
+
+### ИЗМЕНЕНО ###
+# Добавлены импорты для безопасной загрузки конфигурации
 import os
 import sys
 import logging
@@ -43,11 +51,11 @@ def setup_environment() -> Tuple[Dict[str, str], logging.Logger]:
     if not is_production:
         env_loaded = load_dotenv()
         if env_loaded:
-            logger.warning("⚠️  Загружен .env файл (режим разработки)")
+            logger.warning("WARNING: Загружен .env файл (режим разработки)")
         else:
-            logger.info("ℹ️  .env файл не найден, используем системные переменные")
+            logger.info("INFO: .env файл не найден, используем системные переменные")
     else:
-        logger.info("🚀 Продакшен окружение, используем системные переменные")
+        logger.info("INFO: Продакшен окружение, используем системные переменные")
     
     # Собираем все переменные
     config = {
@@ -58,7 +66,7 @@ def setup_environment() -> Tuple[Dict[str, str], logging.Logger]:
     
     # Проверяем продакшен ключ в .env (опасно!)
     if not is_production and config['YOOKASSA_SECRET_KEY'] and config['YOOKASSA_SECRET_KEY'].startswith('live_'):
-        logger.error("❌ КРИТИЧЕСКАЯ ОШИБКА: Продакшен ключ ЮKassa в .env файле!")
+        logger.error("ERROR: КРИТИЧЕСКАЯ ОШИБКА: Продакшен ключ ЮKassa в .env файле!")
         logger.error("   Это небезопасно. Используйте .env только для тестовых ключей.")
         logger.error("   Продакшен ключи должны быть только в переменных окружения системы.")
     
@@ -104,23 +112,23 @@ def validate_config(config: Dict[str, str], logger: logging.Logger) -> bool:
     # Логируем ошибки и предупреждения
     if warnings:
         for warning in warnings:
-            logger.warning(f"⚠️ {warning}")
+            logger.warning(f"WARNING: {warning}")
     
     if errors:
         for error in errors:
-            logger.error(f"❌ {error}")
+            logger.error(f"ERROR: {error}")
         
         # Выводим инструкцию
         print("\n" + "="*60)
-        print("❌ НЕВОЗМОЖНО ЗАПУСТИТЬ БОТА ИЗ-ЗА ОШИБОК КОНФИГУРАЦИИ")
+        print("ERROR: НЕВОЗМОЖНО ЗАПУСТИТЬ БОТА ИЗ-ЗА ОШИБОК КОНФИГУРАЦИИ")
         print("="*60)
-        print("\n📋 ИНСТРУКЦИЯ ПО НАСТРОЙКЕ:")
+        print("\nИНСТРУКЦИЯ ПО НАСТРОЙКЕ:")
         print("1. Для локальной разработки:")
         print("   - Скопируйте .env.example в .env")
         print("   - Отредактируйте .env: добавьте TELEGRAM_BOT_TOKEN")
         print("   - Установите YOOKASSA_SECRET_KEY=test_ваш_тестовый_ключ")
         print("\n2. Для продакшена на Render:")
-        print("   - Environment → Add Environment Variable")
+        print("   - Environment -> Add Environment Variable")
         print("   - Добавьте: TELEGRAM_BOT_TOKEN, YOOKASSA_SECRET_KEY")
         print("   - YOOKASSA_SHOP_ID можно оставить 1262862")
         print("   - Перезапустите сервис")
@@ -139,7 +147,7 @@ def print_config_info(config: Dict[str, str], logger: logging.Logger):
     - Информация о режиме работы
     """
     print("\n" + "="*50)
-    print("⚙️  КОНФИГУРАЦИЯ БОТА")
+    print("CONFIG: КОНФИГУРАЦИЯ БОТА")
     print("="*50)
     
     # Маскируем Telegram токен
@@ -151,7 +159,7 @@ def print_config_info(config: Dict[str, str], logger: logging.Logger):
             masked_token = "********"
     else:
         masked_token = "NOT SET"
-    print(f"🤖 Telegram Bot Token: {masked_token}")
+    print(f"Telegram Bot Token: {masked_token}")
     
     # Маскируем ключ ЮKassa
     yookassa_key = config.get('YOOKASSA_SECRET_KEY')
@@ -169,13 +177,13 @@ def print_config_info(config: Dict[str, str], logger: logging.Logger):
         masked_key = "NOT SET"
         mode = "НЕ НАСТРОЕНО"
     
-    print(f"💳 YooKassa Shop ID: {config.get('YOOKASSA_SHOP_ID', 'NOT SET')}")
-    print(f"🔑 YooKassa Secret Key: {masked_key}")
-    print(f"📊 Режим: {mode}")
+    print(f"YooKassa Shop ID: {config.get('YOOKASSA_SHOP_ID', 'NOT SET')}")
+    print(f"YooKassa Secret Key: {masked_key}")
+    print(f"Режим: {mode}")
     
     # Дополнительная информация
     is_production = os.getenv('ENVIRONMENT') == 'production' or os.getenv('RENDER') is not None
-    print(f"🏭 Окружение: {'ПРОДАКШЕН' if is_production else 'РАЗРАБОТКА'}")
+    print(f"Окружение: {'ПРОДАКШЕН' if is_production else 'РАЗРАБОТКА'}")
     print("="*50 + "\n")
 
 ### ИЗМЕНЕНО ###
@@ -183,7 +191,7 @@ def print_config_info(config: Dict[str, str], logger: logging.Logger):
 CONFIG, config_logger = setup_environment()
 
 if not validate_config(CONFIG, config_logger):
-    config_logger.error("❌ Невозможно запустить бота из-за ошибок конфигурации")
+    config_logger.error("ERROR: Невозможно запустить бота из-за ошибок конфигурации")
     sys.exit(1)
 
 print_config_info(CONFIG, config_logger)
@@ -198,7 +206,7 @@ YOOKASSA_SECRET_KEY = CONFIG['YOOKASSA_SECRET_KEY']
 BOT_LINK = "t.me/Testing_Lichnosti_bot"
 GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"
 AUTHOR_LINK = "@meysternlp"
-SHARE_TEXT = "Только что узнал о себе то, о чём ещё не знал... Тест показывает скрытые паттерны. КатеГОрически рекомендую.."
+SHARE_TEXT = "Только что узнал о себе то, о чем еще не знал... Тест показывает скрытые паттерны. КатеГОрически рекомендую.."
 OLD_PAYMENT_LINK = "https://yookassa.ru/my/i/aYHvs0MnrXUT/l"  # Старая ссылка
 
 # Настройка логирования
@@ -758,7 +766,7 @@ STAGE_2_QUESTIONS = {
             "options": {
                 "1": "Ещё больше вопросов",
                 "2": "Новые идеи, но нет действий",
-                "4": "Понимание и действия",
+                "4": "Понимаение и действия",
                 "5": "Трансформация опыта"
             }
         },
