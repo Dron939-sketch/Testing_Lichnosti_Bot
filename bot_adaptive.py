@@ -5,8 +5,7 @@
 ВЕРСИЯ 2.0: Добавлена интеграция с ЮKassa для автоматической отправки файлов
 """
 
-### ИЗМЕНЕНО ###
-# Добавлены импорты для безопасной загрузки конфигурации
+### КОНФИГУРАЦИЯ ТОКЕНОВ (согласно ТЗ) ###
 import os
 import sys
 import logging
@@ -20,7 +19,14 @@ import requests
 from datetime import datetime
 from collections import Counter
 from typing import Dict, Any, Optional, Tuple
-from dotenv import load_dotenv
+
+# Проверяем наличие dotenv только для разработки
+try:
+    from dotenv import load_dotenv
+    DOTENV_AVAILABLE = True
+except ImportError:
+    DOTENV_AVAILABLE = False
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -36,191 +42,365 @@ from telegram.ext import (
 from loader import loader
 from base import VariaticaProfile
 
-### ДОБАВЛЕНО ###
-def setup_environment() -> Tuple[Dict[str, str], logging.Logger]:
-    """
-    Безопасная загрузка переменных окружения.
-    Приоритет: переменные системы -> .env файл (только для разработки)
-    """
-    logger = logging.getLogger(__name__)
-    
-    # Проверяем, находимся ли мы в продакшен окружении
-    is_production = os.getenv('ENVIRONMENT') == 'production' or os.getenv('RENDER') is not None
-    
-    # Загружаем .env только в разработке
-    if not is_production:
-        env_loaded = load_dotenv()
-        if env_loaded:
-            logger.warning("WARNING: Загружен .env файл (режим разработки)")
-        else:
-            logger.info("INFO: .env файл не найден, используем системные переменные")
-    else:
-        logger.info("INFO: Продакшен окружение, используем системные переменные")
-    
-    # Собираем все переменные
-    config = {
-        'TELEGRAM_BOT_TOKEN': os.getenv('TELEGRAM_BOT_TOKEN'),
-        'YOOKASSA_SHOP_ID': os.getenv('YOOKASSA_SHOP_ID', '1262862'),
-        'YOOKASSA_SECRET_KEY': os.getenv('YOOKASSA_SECRET_KEY'),
-    }
-    
-    # Проверяем продакшен ключ в .env (опасно!)
-    if not is_production and config['YOOKASSA_SECRET_KEY'] and config['YOOKASSA_SECRET_KEY'].startswith('live_'):
-        logger.error("ERROR: КРИТИЧЕСКАЯ ОШИБКА: Продакшен ключ ЮKassa в .env файле!")
-        logger.error("   Это небезопасно. Используйте .env только для тестовых ключей.")
-        logger.error("   Продакшен ключи должны быть только в переменных окружения системы.")
-    
-    return config, logger
+### ЗАГРУЗКА ТОКЕНОВ ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ (согласно ТЗ) ###
 
-### ДОБАВЛЕНО ###
-def validate_config(config: Dict[str, str], logger: logging.Logger) -> bool:
-    """
-    Валидация конфигурации:
-    - Проверка обязательных переменных
-    - Проверка формата ключей ЮKassa (test_... или live_...)
-    - Логирование режима (тестовый/продакшен)
-    """
-    errors = []
-    warnings = []
-    
-    # Проверка обязательных переменных
-    required_vars = ['TELEGRAM_BOT_TOKEN']
-    missing_vars = [var for var in required_vars if not config.get(var)]
-    
-    if missing_vars:
-        errors.append(f"Отсутствуют обязательные переменные: {', '.join(missing_vars)}")
-    
-    # Проверка формата Telegram токена
-    telegram_token = config.get('TELEGRAM_BOT_TOKEN')
-    if telegram_token and len(telegram_token) < 30:
-        errors.append(f"Некорректный Telegram токен (слишком короткий)")
-    
-    # Проверка формата ключа ЮKassa
-    yookassa_key = config.get('YOOKASSA_SECRET_KEY')
-    if yookassa_key:
-        if not (yookassa_key.startswith('test_') or yookassa_key.startswith('live_')):
-            errors.append(f"Некорректный формат ключа ЮKassa. Должен начинаться с 'test_' или 'live_'")
-        else:
-            mode = "ТЕСТОВЫЙ" if yookassa_key.startswith('test_') else "ПРОДАКШЕН"
-            logger.info(f"Режим ЮKassa: {mode}")
-    
-    # Проверка Shop ID
-    shop_id = config.get('YOOKASSA_SHOP_ID')
-    if shop_id and not shop_id.isdigit():
-        errors.append(f"Shop ID должен быть числом, получено: {shop_id}")
-    
-    # Логируем ошибки и предупреждения
-    if warnings:
-        for warning in warnings:
-            logger.warning(f"WARNING: {warning}")
-    
-    if errors:
-        for error in errors:
-            logger.error(f"ERROR: {error}")
-        
-        # Выводим инструкцию
-        print("\n" + "="*60)
-        print("ERROR: НЕВОЗМОЖНО ЗАПУСТИТЬ БОТА ИЗ-ЗА ОШИБОК КОНФИГУРАЦИИ")
-        print("="*60)
-        print("\nИНСТРУКЦИЯ ПО НАСТРОЙКЕ:")
-        print("1. Для локальной разработки:")
-        print("   - Скопируйте .env.example в .env")
-        print("   - Отредактируйте .env: добавьте TELEGRAM_BOT_TOKEN")
-        print("   - Установите YOOKASSA_SECRET_KEY=test_ваш_тестовый_ключ")
-        print("\n2. Для продакшена на Render:")
-        print("   - Environment -> Add Environment Variable")
-        print("   - Добавьте: TELEGRAM_BOT_TOKEN, YOOKASSA_SECRET_KEY")
-        print("   - YOOKASSA_SHOP_ID можно оставить 1262862")
-        print("   - Перезапустите сервис")
-        print("="*60 + "\n")
-        
-        return False
-    
-    return True
+# Сначала пробуем загрузить .env для разработки
+if DOTENV_AVAILABLE:
+    env_loaded = load_dotenv()
+    if env_loaded:
+        print("⚠️ ЗАГРУЖЕН .env ФАЙЛ (режим разработки)")
 
-### ДОБАВЛЕНО ###
-def print_config_info(config: Dict[str, str], logger: logging.Logger):
-    """
-    Вывод информации о конфигурации БЕЗ СЕКРЕТОВ:
-    - Маскировка токенов (первые 10 + последние 5 символов)
-    - Маскировка ключей ЮKassa (test_***** или live_*****)
-    - Информация о режиме работы
-    """
-    print("\n" + "="*50)
-    print("CONFIG: КОНФИГУРАЦИЯ БОТА")
-    print("="*50)
-    
-    # Маскируем Telegram токен
-    telegram_token = config.get('TELEGRAM_BOT_TOKEN', 'NOT SET')
-    if telegram_token and telegram_token != 'NOT SET':
-        if len(telegram_token) > 15:
-            masked_token = f"{telegram_token[:10]}...{telegram_token[-5:]}"
-        else:
-            masked_token = "********"
-    else:
-        masked_token = "NOT SET"
-    print(f"Telegram Bot Token: {masked_token}")
-    
-    # Маскируем ключ ЮKassa
-    yookassa_key = config.get('YOOKASSA_SECRET_KEY')
-    if yookassa_key:
-        if yookassa_key.startswith('test_'):
-            masked_key = "test_*****" + yookassa_key[-4:]
-            mode = "ТЕСТОВЫЙ"
-        elif yookassa_key.startswith('live_'):
-            masked_key = "live_*****" + yookassa_key[-4:]
-            mode = "ПРОДАКШЕН"
-        else:
-            masked_key = "INVALID_FORMAT"
-            mode = "НЕИЗВЕСТНО"
-    else:
-        masked_key = "NOT SET"
-        mode = "НЕ НАСТРОЕНО"
-    
-    print(f"YooKassa Shop ID: {config.get('YOOKASSA_SHOP_ID', 'NOT SET')}")
-    print(f"YooKassa Secret Key: {masked_key}")
-    print(f"Режим: {mode}")
-    
-    # Дополнительная информация
-    is_production = os.getenv('ENVIRONMENT') == 'production' or os.getenv('RENDER') is not None
-    print(f"Окружение: {'ПРОДАКШЕН' if is_production else 'РАЗРАБОТКА'}")
-    print("="*50 + "\n")
+# Загружаем токены из переменных окружения
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID", "1262862")
+YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 
-### ИЗМЕНЕНО ###
-# Загрузка и валидация конфигурации
-CONFIG, config_logger = setup_environment()
-
-if not validate_config(CONFIG, config_logger):
-    config_logger.error("ERROR: Невозможно запустить бота из-за ошибок конфигурации")
+# ПРОВЕРКА ТОЛЬКО TELEGRAM ТОКЕНА (согласно ТЗ)
+if not TELEGRAM_BOT_TOKEN:
+    print("❌ ОШИБКА: TELEGRAM_BOT_TOKEN не найден в переменных окружения!")
+    print("\nИНСТРУКЦИЯ ПО НАСТРОЙКЕ:")
+    print("1. Для локальной разработки:")
+    print("   - Создайте файл .env в папке с ботом")
+    print("   - Добавьте: TELEGRAM_BOT_TOKEN=ваш_токен")
+    print("2. Для продакшена на Render:")
+    print("   - Environment -> Add Environment Variable")
+    print("   - Добавьте TELEGRAM_BOT_TOKEN")
+    print("   - Добавьте YOOKASSA_SECRET_KEY (test_... для тестов)")
+    print("   - YOOKASSA_SHOP_ID можно оставить 1262862")
+    print("   - Перезапустите сервис")
     sys.exit(1)
 
-print_config_info(CONFIG, config_logger)
-
-### ИЗМЕНЕНО ###
-# Присвоение глобальным переменным из безопасной конфигурации
-TOKEN = CONFIG['TELEGRAM_BOT_TOKEN']
-YOOKASSA_SHOP_ID = CONFIG['YOOKASSA_SHOP_ID']
-YOOKASSA_SECRET_KEY = CONFIG['YOOKASSA_SECRET_KEY']
-
-# Остальные константы
-BOT_LINK = "t.me/Testing_Lichnosti_bot"
-GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"
-AUTHOR_LINK = "@meysternlp"
-SHARE_TEXT = "Только что узнал о себе то, о чем еще не знал... Тест показывает скрытые паттерны. КатеГОрически рекомендую.."
-OLD_PAYMENT_LINK = "https://yookassa.ru/my/i/aYHvs0MnrXUT/l"  # Старая ссылка
-
-# Настройка логирования
+# ЛОГИРОВАНИЕ
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
+# ИНФОРМАЦИЯ О КОНФИГУРАЦИИ (согласно ТЗ)
+print("="*50)
+print("✅ TELEGRAM_BOT_TOKEN: Установлен")
+print(f"✅ YOO_KASSA_SHOP_ID: {YOOKASSA_SHOP_ID}")
+print(f"✅ YOO_KASSA_SECRET_KEY: {'Установлен' if YOOKASSA_SECRET_KEY else 'НЕТ'}")
+print("="*50)
+
+# Если ЮKassa не настроена, предупреждаем но продолжаем
+if not YOOKASSA_SECRET_KEY:
+    logger.warning("⚠️ YOO_KASSA_SECRET_KEY не настроен. Платежи работать не будут!")
+
+# ============================================
+# КОНСТАНТЫ (согласно ТЗ)
+# ============================================
+
+BOT_LINK = "t.me/Testing_Lichnosti_bot"
+GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"
+AUTHOR_LINK = "@meysternlp"
+SHARE_TEXT = "Только что узнал о себе то, о чем еще не знал..."
+
+# ФАЙЛЫ ДЛЯ ОТПРАВКИ ПОСЛЕ ОПЛАТЫ (согласно ТЗ)
+PAID_FILES = [
+    ("📚 Полный разбор профиля (PDF)", "https://disk.yandex.ru/d/full_analysis.pdf"),
+    ("📖 Терапевтическая сказка", GIFT_PDF_LINK),
+    ("📘 Книга ВАРИАТИКА", "https://disk.yandex.ru/d/book.pdf"),
+    ("📋 Рекомендации по развитию", "https://disk.yandex.ru/d/recommendations.pdf"),
+    ("🗺 Карта сильных и слабых сторон", "https://disk.yandex.ru/d/profile_map.pdf")
+]
+
 # Состояния ConversationHandler (добавлено PAYMENT_CHECK)
 STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS, GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, DILTS_CLARIFICATION, PAYMENT_CHECK = range(11)
 
 # ============================================
+# ФУНКЦИИ ЮKASSA (согласно ТЗ)
+# ============================================
+
+def create_payment_link(user_id: int) -> Dict[str, Any]:
+    """Создает платежную ссылку через ЮKassa API (согласно ТЗ)"""
+    
+    # Проверка наличия ключа ЮKassa
+    if not YOOKASSA_SECRET_KEY:
+        logger.error("❌ YOO_KASSA_SECRET_KEY не настроен")
+        return {"success": False, "error": "Платежная система не настроена"}
+    
+    payment_data = {
+        "amount": {
+            "value": "690.00",
+            "currency": "RUB"
+        },
+        "confirmation": {
+            "type": "redirect",
+            "return_url": "https://t.me/Testing_Lichnosti_bot"
+        },
+        "capture": True,
+        "description": "Полный пакет ВАРИАТИКА",
+        "metadata": {
+            "user_id": str(user_id),
+            "product": "full_package",
+            "telegram_bot": "VariaticaBot"
+        }
+    }
+    
+    try:
+        auth = base64.b64encode(f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}".encode()).decode()
+        headers = {
+            "Authorization": f"Basic {auth}",
+            "Content-Type": "application/json",
+            "Idempotence-Key": str(int(datetime.now().timestamp()))
+        }
+        
+        response = requests.post(
+            "https://api.yookassa.ru/v3/payments",
+            json=payment_data,
+            headers=headers,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            logger.info(f"✅ Платеж создан: {result['id']} для пользователя {user_id}")
+            return {
+                "success": True,
+                "payment_url": result["confirmation"]["confirmation_url"],
+                "payment_id": result["id"]
+            }
+        else:
+            logger.error(f"❌ YooKassa API error: {response.status_code} - {response.text[:200]}")
+            return {"success": False, "error": f"API error {response.status_code}"}
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка создания платежа: {e}")
+        return {"success": False, "error": str(e)}
+
+def check_payment_status(payment_id: str) -> Dict[str, Any]:
+    """Проверяет статус платежа в ЮKassa (согласно ТЗ)"""
+    
+    if not YOOKASSA_SECRET_KEY:
+        return {"success": False, "error": "ЮKassa не настроена"}
+    
+    try:
+        auth = base64.b64encode(f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}".encode()).decode()
+        headers = {"Authorization": f"Basic {auth}"}
+        
+        response = requests.get(
+            f"https://api.yookassa.ru/v3/payments/{payment_id}",
+            headers=headers,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            logger.info(f"✅ Статус платежа {payment_id}: {result['status']}")
+            return {
+                "success": True,
+                "status": result["status"],
+                "paid": result["status"] == "succeeded",
+                "metadata": result.get("metadata", {})
+            }
+        else:
+            logger.error(f"❌ YooKassa API error: {response.status_code} - {response.text[:200]}")
+            return {"success": False, "error": f"API error {response.status_code}"}
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка проверки платежа: {e}")
+        return {"success": False, "error": str(e)}
+
+# ============================================
+# ОБНОВЛЕННЫЕ ЭКРАНЫ С ОПЛАТОЙ (согласно ТЗ)
+# ============================================
+
+async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ЭКРАН: ПОЛНЫЙ ПАКЕТ с созданием платежа (согласно ТЗ)"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    
+    # Создаем платеж
+    payment_result = create_payment_link(user_id)
+    
+    if payment_result["success"]:
+        keyboard = [
+            [InlineKeyboardButton("💳 Оплатить 690 ₽", url=payment_result["payment_url"])],
+            [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"check_{payment_result['payment_id']}")],
+            [InlineKeyboardButton("📨 Помощь", url="https://t.me/meysternlp")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
+        ]
+        
+        message_text = (
+            f"<b>💎 ПОЛНЫЙ ПАКЕТ ВАРИАТИКА</b>\n\n"
+            f"Сумма: <b>690 ₽</b>\n"
+            f"ID платежа: <code>{payment_result['payment_id']}</code>\n\n"
+            f"<b>Что входит:</b>\n"
+            f"• Полный разбор вашего профиля (15+ страниц детального анализа)\n"
+            f"• Персональная терапевтическая сказка для коррекции конфликтующих частей\n"
+            f"• Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (.PDF)\n"
+            f"• Персональные рекомендации по развитию\n"
+            f"• Карта сильных и слабых сторон\n\n"
+            f"<b>Как получить файлы:</b>\n"
+            f"1. Нажмите '💳 Оплатить 690 ₽'\n"
+            f"2. Оплатите в открывшемся окне\n"
+            f"3. Нажмите '✅ Проверить оплату'\n"
+            f"4. Файлы придут автоматически\n\n"
+            f"<i>Проблемы с оплатой? Нажмите '📨 Помощь'</i>"
+        )
+        
+    else:
+        keyboard = [
+            [InlineKeyboardButton("🔄 Попробовать снова", callback_data="show_package")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
+        ]
+        message_text = (
+            f"❌ <b>Ошибка создания платежа</b>\n\n"
+            f"Попробуйте позже или напишите @meysternlp\n\n"
+            f"Ошибка: {payment_result.get('error', 'Неизвестно')[:100]}"
+        )
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode="HTML")
+    return PACKAGE_SCREEN
+
+async def check_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверка оплаты (согласно ТЗ)"""
+    query = update.callback_query
+    await query.answer()
+    
+    payment_id = query.data.replace("check_", "")
+    
+    # Сохраняем payment_id для повторных проверок
+    context.user_data["last_payment_id"] = payment_id
+    
+    try:
+        # Проверяем статус платежа через API
+        status_result = check_payment_status(payment_id)
+        
+        if not status_result["success"]:
+            raise Exception(f"Ошибка API: {status_result.get('error', 'Неизвестно')}")
+        
+        if status_result["paid"]:
+            # УСПЕШНАЯ ОПЛАТА!
+            user_id = status_result["metadata"].get("user_id")
+            
+            # Валидация user_id для безопасности
+            if user_id and int(user_id) == query.from_user.id:
+                # Отправляем файлы
+                await send_files_after_payment(update, context, int(user_id))
+                return ConversationHandler.END
+            else:
+                logger.error(f"❌ User ID mismatch: metadata={user_id}, query={query.from_user.id}")
+                await query.edit_message_text(
+                    "❌ <b>ОШИБКА БЕЗОПАСНОСТИ</b>\n\n"
+                    "ID пользователя не совпадает. Напишите @meysternlp для помощи.",
+                    parse_mode="HTML"
+                )
+                return PAYMENT_CHECK
+                
+        elif status_result["status"] == "pending":
+            # Ожидание оплаты
+            keyboard = [
+                [InlineKeyboardButton("🔄 Проверить еще раз", callback_data=f"check_{payment_id}")],
+                [InlineKeyboardButton("📨 Помощь", url="https://t.me/meysternlp")],
+                [InlineKeyboardButton("💳 Оплатить снова", callback_data="show_package")]
+            ]
+            
+            await query.edit_message_text(
+                f"⏳ <b>ОЖИДАНИЕ ОПЛАТЫ</b>\n\n"
+                f"ID: <code>{payment_id}</code>\n"
+                f"Статус: ожидание оплаты\n\n"
+                f"Если вы уже оплатили:\n"
+                f"1. Подождите 2-3 минуты\n"
+                f"2. Проверьте снова\n"
+                f"3. Или напишите @meysternlp",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML"
+            )
+            return PAYMENT_CHECK
+            
+        else:
+            # Неуспешный статус
+            keyboard = [
+                [InlineKeyboardButton("🔄 Создать новый платеж", callback_data="show_package")],
+                [InlineKeyboardButton("📨 Помощь", url="https://t.me/meysternlp")]
+            ]
+            
+            await query.edit_message_text(
+                f"❌ <b>ПЛАТЕЖ НЕ ОПЛАЧЕН</b>\n\n"
+                f"ID: <code>{payment_id}</code>\n"
+                f"Статус: {status_result['status']}\n\n"
+                f"Создать новый платеж?",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML"
+            )
+            return PAYMENT_CHECK
+                
+    except Exception as e:
+        logger.error(f"❌ Payment check error for {payment_id}: {e}")
+        await query.edit_message_text(
+            f"⚠️ <b>ОШИБКА ПРОВЕРКИ</b>\n\n"
+            f"ID: <code>{payment_id}</code>\n"
+            f"Ошибка: {str(e)[:100]}\n\n"
+            f"Напишите @meysternlp для помощи",
+            parse_mode="HTML"
+        )
+        return PAYMENT_CHECK
+
+async def send_files_after_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int):
+    """Отправляет файлы после успешной оплаты (согласно ТЗ)"""
+    query = update.callback_query
+    
+    # Сообщение об успехе
+    success_message = await query.edit_message_text(
+        "🎉 <b>ОПЛАТА ПРОШЛА УСПЕШНО!</b>\n\n"
+        "Подготовка файлов...",
+        parse_mode="HTML"
+    )
+    
+    sent_files = 0
+    total_files = len(PAID_FILES)
+    
+    # Отправляем файлы с прогрессом
+    for i, (file_name, file_url) in enumerate(PAID_FILES, 1):
+        try:
+            # Обновляем прогресс
+            if i > 1:
+                await success_message.edit_text(
+                    f"🎉 <b>ОПЛАТА ПРОШЛА УСПЕШНО!</b>\n\n"
+                    f"Отправляю файлы...\n"
+                    f"📦 {i-1}/{total_files} отправлено",
+                    parse_mode="HTML"
+                )
+            
+            # Отправляем файл
+            await context.bot.send_document(
+                chat_id=user_id,
+                document=file_url,
+                caption=file_name
+            )
+            sent_files += 1
+            await asyncio.sleep(0.5)
+            
+        except Exception as e:
+            logger.error(f"❌ Error sending file {file_name}: {e}")
+            # Отправляем ссылку как сообщение, если файл не отправляется
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=f"❌ Не удалось отправить {file_name}\nСсылка: {file_url}"
+            )
+    
+    # Финальное сообщение
+    await success_message.edit_text(
+        f"✅ <b>ВСЕ ФАЙЛЫ ОТПРАВЛЕНЫ!</b>\n\n"
+        f"Отправлено: {sent_files}/{total_files} файлов\n\n"
+        f"Если нужна консультация:\n"
+        f"👉 @meysternlp",
+        parse_mode="HTML"
+    )
+    
+    # Очищаем данные о платеже
+    if "last_payment_id" in context.user_data:
+        del context.user_data["last_payment_id"]
+
+# ============================================
 # ВОПРОСЫ ЭТАПА 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
+# (БЕЗ ИЗМЕНЕНИЙ - сохранена вся оригинальная логика тестирования)
 # ============================================
 
 STAGE_1_QUESTIONS = [
@@ -329,333 +509,6 @@ PERCEPTION_TYPES = {
         "description": "Фокус на внутреннем порядке и системах понимания"
     }
 }
-
-# ============================================
-# ФАЙЛЫ ДЛЯ ОТПРАВКИ ПОСЛЕ ОПЛАТЫ (ДОБАВЛЕНО согласно ТЗ)
-# ============================================
-
-PAID_FILES = [
-    ("📚 Полный разбор профиля (PDF)", "https://disk.yandex.ru/d/full_analysis.pdf"),
-    ("📖 Терапевтическая сказка", "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"),
-    ("📘 Книга ВАРИАТИКА", "https://disk.yandex.ru/d/book.pdf"),
-    ("📋 Рекомендации по развитию", "https://disk.yandex.ru/d/recommendations.pdf"),
-    ("🗺 Карта сильных и слабых сторон", "https://disk.yandex.ru/d/profile_map.pdf")
-]
-
-# ============================================
-# ФУНКЦИИ ДЛЯ РАБОТЫ С ЮKASSA (ОБНОВЛЕНЫ согласно ТЗ)
-# ============================================
-
-def create_payment_link(user_id: int) -> Dict[str, Any]:
-    """Создает платежную ссылку с метаданными"""
-    
-    payment_data = {
-        "amount": {
-            "value": "690.00",
-            "currency": "RUB"
-        },
-        "confirmation": {
-            "type": "redirect",
-            "return_url": "https://t.me/Testing_Lichnosti_bot"
-        },
-        "capture": True,
-        "description": "Полный пакет ВАРИАТИКА",
-        "metadata": {
-            "user_id": str(user_id),
-            "product": "full_package",
-            "telegram_bot": "VariaticaBot"
-        }
-    }
-    
-    auth = base64.b64encode(f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}".encode()).decode()
-    
-    headers = {
-        "Authorization": f"Basic {auth}",
-        "Content-Type": "application/json",
-        "Idempotence-Key": str(int(datetime.now().timestamp()))
-    }
-    
-    try:
-        response = requests.post(
-            "https://api.yookassa.ru/v3/payments",
-            json=payment_data,
-            headers=headers,
-            auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            logger.info(f"✅ Платеж создан: {result['id']} для пользователя {user_id}")
-            return {
-                "success": True,
-                "payment_url": result["confirmation"]["confirmation_url"],
-                "payment_id": result["id"]
-            }
-        else:
-            logger.error(f"❌ YooKassa API error: {response.status_code} - {response.text[:200]}")
-            return {"success": False, "error": f"API error {response.status_code}"}
-            
-    except requests.exceptions.Timeout:
-        logger.error("❌ Таймаут при создании платежа")
-        return {"success": False, "error": "Таймаут соединения"}
-    except requests.exceptions.ConnectionError:
-        logger.error("❌ Ошибка соединения с ЮKassa")
-        return {"success": False, "error": "Ошибка соединения"}
-    except Exception as e:
-        logger.error(f"❌ Error creating payment: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
-
-def check_payment_status(payment_id: str) -> Dict[str, Any]:
-    """Проверяет статус платежа"""
-    
-    auth = base64.b64encode(f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}".encode()).decode()
-    
-    headers = {
-        "Authorization": f"Basic {auth}",
-    }
-    
-    try:
-        response = requests.get(
-            f"https://api.yookassa.ru/v3/payments/{payment_id}",
-            headers=headers,
-            auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            logger.info(f"✅ Статус платежа {payment_id}: {result['status']}")
-            return {
-                "success": True,
-                "status": result["status"],
-                "paid": result["status"] == "succeeded",
-                "metadata": result.get("metadata", {})
-            }
-        elif response.status_code == 404:
-            logger.error(f"❌ Платеж не найден: {payment_id}")
-            return {"success": False, "error": "Платеж не найден"}
-        else:
-            logger.error(f"❌ YooKassa API error: {response.status_code} - {response.text[:200]}")
-            return {"success": False, "error": f"API error {response.status_code}"}
-            
-    except requests.exceptions.Timeout:
-        logger.error(f"❌ Таймаут при проверке платежа {payment_id}")
-        return {"success": False, "error": "Таймаут соединения"}
-    except requests.exceptions.ConnectionError:
-        logger.error(f"❌ Ошибка соединения при проверке платежа {payment_id}")
-        return {"success": False, "error": "Ошибка соединения"}
-    except Exception as e:
-        logger.error(f"❌ Error checking payment status: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
-
-# ============================================
-# МОДИФИЦИРОВАННАЯ ФУНКЦИЯ ПОКАЗА ПАКЕТА
-# ============================================
-
-async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН: ПОЛНЫЙ ПАКЕТ с созданием платежа"""
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = query.from_user.id
-    
-    # Создаем платеж
-    payment_result = create_payment_link(user_id)
-    
-    if payment_result["success"]:
-        keyboard = [
-            [InlineKeyboardButton("💳 Оплатить 690 ₽", url=payment_result["payment_url"])],
-            [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"check_{payment_result['payment_id']}")],
-            [InlineKeyboardButton("📨 Помощь", url="https://t.me/meysternlp")],
-            [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
-        ]
-        
-        message_text = (
-            f"<b>💎 ПОЛНЫЙ ПАКЕТ ВАРИАТИКА</b>\n\n"
-            f"Сумма: <b>690 ₽</b>\n"
-            f"ID платежа: <code>{payment_result['payment_id']}</code>\n\n"
-            f"<b>Что входит:</b>\n"
-            f"• Полный разбор вашего профиля (15+ страниц детального анализа)\n"
-            f"• Персональная терапевтическая сказка для коррекции конфликтующих частей\n"
-            f"• Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (.PDF)\n"
-            f"• Персональные рекомендации по развитию\n"
-            f"• Карта сильных и слабых сторон\n\n"
-            f"<b>Как получить файлы:</b>\n"
-            f"1. Нажмите '💳 Оплатить 690 ₽'\n"
-            f"2. Оплатите в открывшемся окне\n"
-            f"3. Нажмите '✅ Проверить оплату'\n"
-            f"4. Файлы придут автоматически\n\n"
-            f"<i>Проблемы с оплатой? Нажмите '📨 Помощь'</i>"
-        )
-        
-    else:
-        keyboard = [
-            [InlineKeyboardButton("🔄 Попробовать снова", callback_data="show_package")],
-            [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
-        ]
-        message_text = (
-            f"❌ <b>Ошибка создания платежа</b>\n\n"
-            f"Попробуйте позже или напишите @meysternlp\n\n"
-            f"Ошибка: {payment_result.get('error', 'Неизвестно')[:100]}"
-        )
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode="HTML")
-    return PACKAGE_SCREEN
-
-# ============================================
-# НОВАЯ ФУНКЦИЯ ПРОВЕРКИ ОПЛАТЫ (ДОБАВЛЕНО согласно ТЗ)
-# ============================================
-
-async def check_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Проверка оплаты"""
-    query = update.callback_query
-    await query.answer()
-    
-    payment_id = query.data.replace("check_", "")
-    
-    # Сохраняем payment_id в контексте пользователя для повторных проверок
-    context.user_data["last_payment_id"] = payment_id
-    
-    try:
-        # Проверяем статус платежа через API
-        status_result = check_payment_status(payment_id)
-        
-        if not status_result["success"]:
-            raise Exception(f"Ошибка API: {status_result.get('error', 'Неизвестно')}")
-        
-        if status_result["paid"]:
-            # УСПЕШНАЯ ОПЛАТА!
-            user_id = status_result["metadata"].get("user_id")
-            
-            # ДОБАВЛЕНО: Валидация user_id для безопасности
-            if user_id and int(user_id) == query.from_user.id:
-                # Отправляем файлы
-                await send_files_after_payment(update, context, int(user_id))
-                return ConversationHandler.END
-            else:
-                logger.error(f"❌ User ID mismatch: metadata={user_id}, query={query.from_user.id}")
-                await query.edit_message_text(
-                    "❌ <b>ОШИБКА БЕЗОПАСНОСТИ</b>\n\n"
-                    "ID пользователя не совпадает. Напишите @meysternlp для помощи.",
-                    parse_mode="HTML"
-                )
-                return PAYMENT_CHECK
-                
-        elif status_result["status"] == "pending":
-            # Ожидание оплаты
-            keyboard = [
-                [InlineKeyboardButton("🔄 Проверить еще раз", callback_data=f"check_{payment_id}")],
-                [InlineKeyboardButton("📨 Помощь", url="https://t.me/meysternlp")],
-                [InlineKeyboardButton("💳 Оплатить снова", callback_data="show_package")]
-            ]
-            
-            await query.edit_message_text(
-                f"⏳ <b>ОЖИДАНИЕ ОПЛАТЫ</b>\n\n"
-                f"ID: <code>{payment_id}</code>\n"
-                f"Статус: ожидание оплаты\n\n"
-                f"Если вы уже оплатили:\n"
-                f"1. Подождите 2-3 минуты\n"
-                f"2. Проверьте снова\n"
-                f"3. Или напишите @meysternlp",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="HTML"
-            )
-            return PAYMENT_CHECK
-            
-        else:
-            # Неуспешный статус
-            keyboard = [
-                [InlineKeyboardButton("🔄 Создать новый платеж", callback_data="show_package")],
-                [InlineKeyboardButton("📨 Помощь", url="https://t.me/meysternlp")]
-            ]
-            
-            await query.edit_message_text(
-                f"❌ <b>ПЛАТЕЖ НЕ ОПЛАЧЕН</b>\n\n"
-                f"ID: <code>{payment_id}</code>\n"
-                f"Статус: {status_result['status']}\n\n"
-                f"Создать новый платеж?",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="HTML"
-            )
-            return PAYMENT_CHECK
-                
-    except Exception as e:
-        # ДОБАВЛЕНО: Логирование ошибок
-        logger.error(f"❌ Payment check error for {payment_id}: {e}", exc_info=True)
-        await query.edit_message_text(
-            f"⚠️ <b>ОШИБКА ПРОВЕРКИ</b>\n\n"
-            f"ID: <code>{payment_id}</code>\n"
-            f"Ошибка: {str(e)[:100]}\n\n"
-            f"Напишите @meysternlp для помощи",
-            parse_mode="HTML"
-        )
-        return PAYMENT_CHECK
-
-# ============================================
-# НОВАЯ ФУНКЦИЯ ОТПРАВКИ ФАЙЛОВ ПОСЛЕ ОПЛАТЫ (ДОБАВЛЕНО согласно ТЗ)
-# ============================================
-
-async def send_files_after_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int):
-    """Отправляет файлы после успешной оплаты"""
-    query = update.callback_query
-    
-    # Сообщение об успехе
-    success_message = await query.edit_message_text(
-        "🎉 <b>ОПЛАТА ПРОШЛА УСПЕШНО!</b>\n\n"
-        "Подготовка файлов...",
-        parse_mode="HTML"
-    )
-    
-    sent_files = 0
-    total_files = len(PAID_FILES)
-    
-    # Отправляем файлы с прогрессом
-    for i, (file_name, file_url) in enumerate(PAID_FILES, 1):
-        try:
-            # Обновляем прогресс
-            if i > 1:
-                await success_message.edit_text(
-                    f"🎉 <b>ОПЛАТА ПРОШЛА УСПЕШНО!</b>\n\n"
-                    f"Отправляю файлы...\n"
-                    f"📦 {i-1}/{total_files} отправлено",
-                    parse_mode="HTML"
-                )
-            
-            # Отправляем файл
-            await context.bot.send_document(
-                chat_id=user_id,
-                document=file_url,
-                caption=file_name
-            )
-            sent_files += 1
-            await asyncio.sleep(0.5)
-            
-        except Exception as e:
-            logger.error(f"❌ Error sending file {file_name}: {e}")
-            # Отправляем ссылку как сообщение, если файл не отправляется
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=f"❌ Не удалось отправить {file_name}\nСсылка: {file_url}"
-            )
-    
-    # Финальное сообщение
-    await success_message.edit_text(
-        f"✅ <b>ВСЕ ФАЙЛЫ ОТПРАВЛЕНЫ!</b>\n\n"
-        f"Отправлено: {sent_files}/{total_files} файлов\n\n"
-        f"Если нужна консультация:\n"
-        f"👉 @meysternlp",
-        parse_mode="HTML"
-    )
-    
-    # ДОБАВЛЕНО: Очищаем данные о платеже
-    if "last_payment_id" in context.user_data:
-        del context.user_data["last_payment_id"]
-
-# ============================================
-# ОСТАЛЬНЫЙ КОД (БЕЗ ИЗМЕНЕНИЙ - сохранена вся оригинальная логика)
-# ============================================
 
 # ВОПРОСЫ ЭТАПА 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ
 STAGE_2_QUESTIONS = {
@@ -957,7 +810,7 @@ STAGE_2_QUESTIONS = {
     ]
 }
 
-# Таблица баллов для этапа 2 (остается без изменений)
+# Таблица баллов для этапа 2
 STAGE_2_SCORING = {
     "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": {
         0: {"1": 2, "2": 2, "3": 2, "5": 2},
@@ -1001,7 +854,7 @@ STAGE_2_SCORING = {
     }
 }
 
-# ВОПРОСЫ ЭТАПА 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ (без изменений)
+# ВОПРОСЫ ЭТАПА 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ
 STAGE_3_QUESTIONS = [
     {"id": "q3_1", "text": "Вспомни последнюю неделю.\n\nСколько раз ты сделал что-то, что потом пожалел?", "options": {"a": {"text": "Ни разу", "level": 5}, "b": {"text": "1-2 раза", "level": 3}, "c": {"text": "3-5 раз", "level": 2}, "d": {"text": "Больше 5 раз", "level": 1}}},
     {"id": "q3_2", "text": "Последний конфликт.\n\nЧто ты сделал?", "options": {"a": {"text": "Избежал", "level": 1}, "b": {"text": "Уступил", "level": 1}, "c": {"text": "Отстоял позицию", "level": 3}, "d": {"text": "Нашёл компромисс", "level": 5}}},
@@ -1013,7 +866,7 @@ STAGE_3_QUESTIONS = [
     {"id": "q3_8", "text": "Что ты делаешь, когда не знаешь, что делать?", "options": {"a": {"text": "Паникую", "level": 1}, "b": {"text": "Ищу информацию", "level": 2}, "c": {"text": "Действую методом проб", "level": 3}, "d": {"text": "Жду ясности", "level": 4}}}
 ]
 
-# ВОПРОСЫ ЭТАПА 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ (без изменений)
+# ВОПРОСЫ ЭТАПА 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
 STAGE_4_QUESTIONS = [
     {"id": "q4_1", "text": "Как часто ты чувствуешь, что «что-то не так» в жизни?", "options": {"a": {"text": "Постоянно", "dilts": "IDENTITY"}, "b": {"text": "Часто", "dilts": "VALUES"}, "c": {"text": "Иногда", "dilts": "CAPABILITIES"}, "d": {"text": "Редко или никогда", "dilts": "ENVIRONMENT"}}},
     {"id": "q4_2", "text": "Что именно «не так»?\n\nВыбери то, что ближе всего:", "options": {"a": {"text": "Не то окружение (место, люди, условия)", "dilts": "ENVIRONMENT"}, "b": {"text": "Делаю не то, что хочу", "dilts": "BEHAVIOR"}, "c": {"text": "Не умею делать то, что хочу", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимаю, чего хочу", "dilts": "VALUES"}}},
@@ -1025,7 +878,7 @@ STAGE_4_QUESTIONS = [
     {"id": "q4_8", "text": "Если бы у тебя была волшебная палочка, что бы ты изменил?", "options": {"a": {"text": "Своё окружение", "dilts": "ENVIRONMENT"}, "b": {"text": "Своё поведение", "dilts": "BEHAVIOR"}, "c": {"text": "Свои способности", "dilts": "CAPABILITIES"}, "d": {"text": "Себя (кто я)", "dilts": "IDENTITY"}}}
 ]
 
-# Уровни Дилтса (без изменений)
+# Уровни Дилтса
 DILTS_LEVELS = {
     "ENVIRONMENT": {"name": "ОКРУЖЕНИЕ", "code": "env", "description": "Проблема во внешних условиях", "solution": "Измени окружение или отношение к нему"},
     "BEHAVIOR": {"name": "ПОВЕДЕНИЕ", "code": "beh", "description": "Проблема в действиях", "solution": "Начни действовать по-другому"},
@@ -1034,7 +887,7 @@ DILTS_LEVELS = {
     "IDENTITY": {"name": "ИДЕНТИЧНОСТЬ", "code": "ide", "description": "Проблема в самоопределении", "solution": "Переопредели, кто ты"}
 }
 
-# АДАПТИВНЫЕ УТОЧНЯЮЩИЕ ВОПРОСЫ (без изменений)
+# АДАПТИВНЫЕ УТОЧНЯЮЩИЕ ВОПРОСЫ
 CLARIFICATION_QUESTIONS = {
     "stage1_external_internal": [
         {"id": "c1_1", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nПосле напряжённого дня что тебе нужнее?", "options": {"a": {"text": "Встретиться с людьми", "scores": {"EXTERNAL": 2}}, "b": {"text": "Побыть в одиночестве", "scores": {"INTERNAL": 2}}}},
@@ -1055,7 +908,7 @@ CLARIFICATION_QUESTIONS = {
     ],
     "stage4_tie": [
         {"id": "c4_1", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nЕсли бы ты мог изменить только одно, что бы выбрал?", "options": {"a": {"text": "Где я нахожусь", "dilts": "ENVIRONMENT"}, "b": {"text": "Что я делаю", "dilts": "BEHAVIOR"}, "c": {"text": "Что я умею", "dilts": "CAPABILITIES"}, "d": {"text": "Что для меня важно", "dilts": "VALUES"}, "e": {"text": "Кто я", "dilts": "IDENTITY"}}},
-        {"id": "c4_2", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nГде находится твоя главная проблема?", "options": {"a": {"text": "В обстоятельствах", "dilts": "ENVIRONMENT"}, "b": {"text": "В моих действиях", "dilts": "BEHAVIOR"}, "c": {"text": "В моих навыках", "dilts": "CAPABILITIES"}, "d": {"text": "В моих целях", "dilts": "VALUES"}, "e": {"text": "В моём самоопределении", "dilts": "IDENTITY"}}}
+        {"id": "c4_2", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nГде находится твоя главная проблема?", "options": {"a": {"text": "В обстоятельствах", "dilts": "ENVIRONMENT"}, "b": {"text": "В моих действиях", "dilts": "BEHAVIOR"}, "c": {"text": "В моих навыков", "dilts": "CAPABILITIES"}, "d": {"text": "В моих целях", "dilts": "VALUES"}, "e": {"text": "В моём самоопределении", "dilts": "IDENTITY"}}}
     ]
 }
 
@@ -1210,9 +1063,8 @@ def format_profile_title(profile_title: str, profile_header: str) -> str:
 
 def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
     """
-    ИСПРАВЛЕННАЯ ВЕРСИЯ: Находит реально существующий файл профиля.
+    Находит реально существующий файл профиля.
     Приоритет: точное совпадение → разные суффиксы → без суффикса → любой файл уровня → ближайший уровень
-    Поддерживает все типы: SA, SP, IA, IP (с обработкой ip/ip-адрес и ip - адрес)
     """
     type_code = profile_data.get('type_code', 'sa').lower()
     level = profile_data.get('level', 1)
@@ -1227,8 +1079,6 @@ def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
     elif type_code == "ip - адрес":
         search_types = ["ip - адрес", "ip-адрес", "ip"]
     
-    logger.info(f"🔍 Варианты поиска для типа {type_code}: {search_types}")
-    
     for search_type in search_types:
         target_key = f"{search_type}_{level}_{dilts_code}"
         profile = loader.get_profile(target_key)
@@ -1236,13 +1086,8 @@ def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
             logger.info(f"✅ Exact match: {target_key}")
             return profile
     
-    logger.info(f"🔍 Точное совпадение не найдено для {type_code}_{level}_{dilts_code}")
-    
-    possible_suffixes = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
-    
     for search_type in search_types:
-        logger.info(f"🔍 Ищу {search_type}_{level}_* с разными суффиксами")
-        
+        possible_suffixes = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
         for suffix in possible_suffixes:
             test_key = f"{search_type}_{level}_{suffix}"
             profile = loader.get_profile(test_key)
@@ -1257,7 +1102,6 @@ def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
             logger.info(f"✅ Найден без суффикса: {test_key}")
             return profile
     
-    logger.info(f"🔍 Ищу любой профиль *_{level}_* для типа {type_code}")
     all_profiles = loader.get_all_profiles()
     
     all_type_profiles = []
@@ -1267,10 +1111,6 @@ def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
             if key_lower.startswith(f"{search_type}_"):
                 all_type_profiles.append((key, key_lower))
                 break
-    
-    logger.info(f"📚 Все доступные профили типа {type_code} (варианты: {search_types}):")
-    for key, key_lower in sorted(all_type_profiles):
-        logger.info(f"   - {key}")
     
     same_level_profiles = []
     for key, key_lower in all_type_profiles:
@@ -1283,14 +1123,10 @@ def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
         except (ValueError, IndexError):
             continue
     
-    logger.info(f"📊 Профили уровня {level} типа {type_code}: {same_level_profiles}")
-    
     if same_level_profiles:
         fallback_key = same_level_profiles[0]
         logger.info(f"✅ Найден профиль уровня {level}: {fallback_key}")
         return loader.get_profile(fallback_key)
-    
-    logger.info(f"⚠️ Нет профилей уровня {level}, ищу ближайший уровень для типа {type_code}")
     
     available_levels = []
     for key, key_lower in all_type_profiles:
@@ -1482,11 +1318,11 @@ def need_clarification_stage4(dilts_answers):
     return False
 
 # ============================================
-# ИСПРАВЛЕННЫЙ ЭКРАН РЕЗУЛЬТАТОВ (КОМПАКТНЫЙ)
+# ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА (БЕЗ ИЗМЕНЕНИЙ)
 # ============================================
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - версия 1.9 (исправлен fallback)"""
+    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА"""
     query = update.callback_query
     
     has_shared = context.user_data.get("has_shared", False)
@@ -2635,7 +2471,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# ГЛАВНАЯ ФУНКЦИЯ С ПРОВЕРКОЙ КОНФИГУРАЦИИ (ИЗМЕНЕНО согласно ТЗ)
+# ГЛАВНАЯ ФУНКЦИЯ
 # ============================================
 
 def main():
@@ -2644,50 +2480,26 @@ def main():
     print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.0")
     print("="*50)
     
-    # ДИАГНОСТИКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
-    print("🔐 ДИАГНОСТИКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ:")
-    print("="*30)
+    # Проверяем работу ЮKassa
+    if YOOKASSA_SECRET_KEY:
+        if YOOKASSA_SECRET_KEY.startswith("test_"):
+            print("💰 Режим ЮKassa: ТЕСТОВЫЙ (test_...)")
+        elif YOOKASSA_SECRET_KEY.startswith("live_"):
+            print("💰 Режим ЮKassa: ПРОДАКШЕН (live_...)")
+        else:
+            print("⚠️  Режим ЮKassa: НЕИЗВЕСТНЫЙ ФОРМАТ КЛЮЧА")
+    else:
+        print("⚠️  ЮKassa: НЕ НАСТРОЕНА (платежи не будут работать)")
     
-    # Конфигурация уже загружена и проверена в начале файла
-    print("✅ Конфигурация загружена и проверена")
-    print("="*30)
+    # Проверяем загрузку профилей
+    try:
+        all_profiles = loader.get_all_profiles()
+        print(f"📊 Загружено профилей: {len(all_profiles)}")
+    except Exception as e:
+        print(f"❌ Ошибка загрузки профилей: {e}")
+        print("Проверьте файлы профилей в папке profiles/")
     
-    # Проверка загрузки профилей
-    print("🔍 ПРОВЕРКА ЗАГРУЗКИ ПРОФИЛЕЙ")
-    print("="*30)
-    
-    all_profiles = loader.get_all_profiles()
-    print(f"📊 Всего профилей загружено: {len(all_profiles)}")
-    
-    # Проверяем профили по типам
-    for profile_type in ['sa', 'sp', 'ia', 'ip']:
-        type_profiles = [p for p in all_profiles if p.lower().startswith(f"{profile_type}_")]
-        print(f"🔍 {profile_type.upper()} профилей: {len(type_profiles)}")
-    
-    # Тестируем поиск fallback
-    test_cases = [
-        ("sp", 4, "cap", "sp_4_exp.py"),
-        ("ia", 4, "cap", "ia_4_exp.py"),
-        ("sa", 4, "cap", "sa_4_exp.py"),
-        ("ip", 4, "cap", "ip_4_exp.py"),
-        ("sa", 1, "def", "sa_1_def.py"),
-        ("ip", 1, "def", "ip_1_def.py"),
-    ]
-    
-    print("\n🧪 Тестируем fallback поиск:")
-    for type_code, level, dilts, expected in test_cases:
-        test_data = {"type_code": type_code, "level": level, "dilts_code": dilts}
-        try:
-            profile = get_profile_fallback(test_data)
-            status = "✅" if profile else "❌"
-            print(f"  {type_code}_{level}_{dilts:3} → {status} {expected}")
-        except Exception as e:
-            print(f"  {type_code}_{level}_{dilts:3} → ❌ ОШИБКА: {e}")
-    
-    print("="*30)
-    print("✅ Проверка завершена. Запускаю бота...")
-    
-    application = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
     conv_handler = ConversationHandler(
         entry_points=[
@@ -2763,7 +2575,7 @@ def main():
     application.add_handler(conv_handler)
     
     logger.info("🚀 Bot started: ВАРИАТИКА ver 2.0!")
-    logger.info(f"📊 Configuration: YooKassa mode = {'TEST' if YOOKASSA_SECRET_KEY.startswith('test_') else 'PRODUCTION'}")
+    logger.info(f"📊 Configuration: YooKassa mode = {'TEST' if YOOKASSA_SECRET_KEY and YOOKASSA_SECRET_KEY.startswith('test_') else 'PRODUCTION or NOT SET'}")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
