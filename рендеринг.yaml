@@ -1,12 +1,40 @@
 services:
   - type: web
+    name: variatica-api
+    env: python
+    region: frankfurt
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: gunicorn simple_server:app
+    envVars:
+      - key: PORT
+        value: "5000"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: YOOKASSA_SHOP_ID
+        sync: false
+      - key: YOOKASSA_SECRET_KEY
+        sync: false
+      - key: BOT_LINK
+        value: "https://t.me/your_bot"
+      - key: GIFT_PDF_LINK
+        value: "https://example.com/gift.pdf"
+      - key: AUTHOR_LINK
+        value: "@your_username"
+      - key: PAYMENT_LINK
+        value: "https://example.com/payment"
+      - key: PAYMENT_AMOUNT
+        value: "690"
+  
+  - type: worker
     name: variatica-bot
     env: python
     region: frankfurt
     buildCommand: |
       pip install --upgrade pip
       pip install -r requirements.txt
-    startCommand: python run_bot.py  # Используем отдельный скрипт для бота
+    startCommand: python run_bot.py
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
@@ -14,6 +42,13 @@ services:
         sync: false
       - key: YOOKASSA_SECRET_KEY
         sync: false
-      - key: PORT
-        value: "5000"
-    autoDeploy: true
+      - key: BOT_LINK
+        value: "https://t.me/your_bot"
+      - key: GIFT_PDF_LINK
+        value: "https://example.com/gift.pdf"
+      - key: AUTHOR_LINK
+        value: "@your_username"
+      - key: PAYMENT_LINK
+        value: "https://example.com/payment"
+      - key: PAYMENT_AMOUNT
+        value: "690"
