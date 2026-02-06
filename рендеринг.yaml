@@ -4,21 +4,50 @@ services:
     env: python
     region: frankfurt
     buildCommand: |
-      pip install --upgrade pip setuptools wheel
-      pip install python-telegram-bot==20.7 --no-cache-dir
-      pip install -r requirements.txt --no-cache-dir
+      # Обновляем pip и устанавливаем зависимости
+      python -m pip install --upgrade pip setuptools wheel
+      
+      # Принудительно устанавливаем python-telegram-bot 20.7
+      pip install python-telegram-bot==20.7 --no-cache-dir --force-reinstall
+      
+      # Устанавливаем остальные зависимости
+      pip install pyyaml==6.0.3 --no-cache-dir
+      pip install flask==2.3.3 --no-cache-dir
+      pip install gunicorn==20.1.0 --no-cache-dir
+      pip install python-dotenv==1.0.0 --no-cache-dir
+      pip install requests==2.31.0 --no-cache-dir
+      
+      # Проверяем установленные версии
       echo "=== УСТАНОВЛЕННЫЕ ВЕРСИИ ==="
-      pip show python-telegram-bot
-    startCommand: python app.py
+      pip show python-telegram-bot || echo "python-telegram-bot не найден"
+      pip show pyyaml || echo "pyyaml не найден"
+      pip show flask || echo "flask не найден"
+      
+      # Создаем runtime.txt если нет (для Python 3.10)
+      if [ ! -f runtime.txt ]; then
+        echo "python-3.10.12" > runtime.txt
+        echo "✅ Создан runtime.txt с Python 3.10.12"
+      fi
+      
+      echo "✅ Сборка завершена"
+    
+    startCommand: python bot_adapter.py
+    
     envVars:
       - key: PORT
         value: "10000"
+      
+      # Telegram
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      
+      # ЮKassa
       - key: YOOKASSA_SHOP_ID
         sync: false
       - key: YOOKASSA_SECRET_KEY
         sync: false
+      
+      # Конфигурация бота
       - key: BOT_LINK
         sync: false
       - key: GIFT_PDF_LINK
@@ -29,4 +58,22 @@ services:
         sync: false
       - key: PAYMENT_AMOUNT
         value: "690"
+      
+      # Дополнительные настройки
+      - key: WEBHOOK_URL
+        value: "https://testing-lichnosti-bot-qyra.onrender.com"
+      - key: IS_TEST_MODE
+        value: "false"
+      - key: ADMIN_ID
+        sync: false
+    
     healthCheckPath: /health
+    
+    # Автоматический перезапуск при падении
+    autoDeploy: true
+    
+    # Ресурсы (бесплатный тариф)
+    plan: free
+    
+    # Бранч для деплоя
+    branch: main
