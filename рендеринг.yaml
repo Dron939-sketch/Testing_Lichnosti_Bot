@@ -6,6 +6,10 @@ services:
     buildCommand: |
       pip install -r requirements.txt
       # Создаем симлинк для обратной совместимости
-      ln -sf app.py simple_server.py || true
-    startCommand: python app.py
-    envVars: ...
+      ln -sf app.py simple_server.py
+      echo "✅ Создан симлинк: app.py → simple_server.py"
+    startCommand: python app.py  # или gunicorn app:app
+    envVars:
+      - key: PORT
+        value: "10000"
+      # ... остальные переменные
