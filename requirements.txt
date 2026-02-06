@@ -1,3 +1,7 @@
+# Основные зависимости
 python-telegram-bot==20.3
 urllib3>=1.26.0
 python-dotenv>=1.0.0
+# Дополнительные
+pytz==2023.3
+aiohttp==3.9.1
