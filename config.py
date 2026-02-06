@@ -35,7 +35,7 @@ class Config:
         
         # ==================== TELEGRAM БОТ ====================
         self.TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
-        self.TELEGRAM_ADMIN_IDS = self._parse_admin_ids()
+        self.BOT_TOKEN = self.TELEGRAM_BOT_TOKEN  # Дублируем для совместимости
         
         # Проверка токена бота
         if not self.TELEGRAM_BOT_TOKEN:
@@ -43,7 +43,6 @@ class Config:
             raise ValueError("TELEGRAM_BOT_TOKEN не установлен в переменных окружения")
         
         logger.info(f"🤖 Telegram Bot Token: {'✅ Установлен' if self.TELEGRAM_BOT_TOKEN else '❌ Отсутствует'}")
-        logger.info(f"👑 Admin IDs: {self.TELEGRAM_ADMIN_IDS}")
         
         # ==================== БАЗА ДАННЫХ ====================
         self.DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///bot_database.db')
@@ -59,7 +58,8 @@ class Config:
         self.YOOKASSA_SECRET_KEY = os.getenv('YOOKASSA_SECRET_KEY', '')
         
         # Webhook URL для YooKassa (критически важно!)
-        self.WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')
+        # Ваш Render URL: https://testing-lichnosti-bot-qyra.onrender.com
+        self.WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://testing-lichnosti-bot-qyra.onrender.com')
         if self.WEBHOOK_URL:
             self.WEBHOOK_URL = self.WEBHOOK_URL.rstrip('/')
         
@@ -71,33 +71,25 @@ class Config:
         self.is_payment_enabled = yookassa_configured
         
         if yookassa_configured:
-            logger.info("💰 YooKassa: ✅ Настроен")
+            logger.info("💰 YooKassa: ✅ Настроен (БОЕВОЙ РЕЖИМ)")
             logger.info(f"   Shop ID: {self.YOOKASSA_SHOP_ID[:10]}...")
-            logger.info(f"   Secret Key: {'*' * 20}")
-            logger.info(f"   Webhook URL: {self.WEBHOOK_URL if self.WEBHOOK_URL else '❌ Не настроен'}")
+            logger.info(f"   Webhook URL: {self.WEBHOOK_URL}")
             logger.info(f"   Return URL: {self.RETURN_URL}")
         else:
-            logger.warning("💰 YooKassa: ❌ НЕ настроен (демо-режим)")
+            logger.error("❌ YooKassa: ❌ НЕ настроен")
+            logger.error("   Платежи работать НЕ БУДУТ!")
         
         # ==================== НАСТРОЙКИ ПЛАТЕЖЕЙ ====================
         self.PAYMENT_AMOUNT = float(os.getenv('PAYMENT_AMOUNT', '199.00'))
         self.PAYMENT_CURRENCY = os.getenv('PAYMENT_CURRENCY', 'RUB')
         self.PAYMENT_DESCRIPTION = os.getenv('PAYMENT_DESCRIPTION', 'Оплата подписки Variatica')
         
-        # Проверяем тестовый режим
-        test_shop_id = os.getenv('TEST_YOOKASSA_SHOP_ID', '')
-        test_secret_key = os.getenv('TEST_YOOKASSA_SECRET_KEY', '')
-        self.is_test_mode = bool(test_shop_id and test_secret_key)
-        
-        if self.is_test_mode:
-            logger.info("🧪 ТЕСТОВЫЙ РЕЖИМ YooKassa: ✅ Включен")
-            # Используем тестовые ключи вместо реальных
-            self.YOOKASSA_SHOP_ID = test_shop_id
-            self.YOOKASSA_SECRET_KEY = test_secret_key
+        # ВСЕГДА боевой режим (без тестового)
+        self.is_test_mode = False
         
         logger.info(f"💵 Сумма платежа: {self.PAYMENT_AMOUNT} {self.PAYMENT_CURRENCY}")
         logger.info(f"📝 Описание: {self.PAYMENT_DESCRIPTION}")
-        logger.info(f"🔧 Режим: {'Тестовый' if self.is_test_mode else 'Боевой'}")
+        logger.info(f"🔧 Режим: {'🟡 Тестовый' if self.is_test_mode else '🟢 Боевой'}")
         
         # ==================== OPENAI API ====================
         self.OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
@@ -132,6 +124,16 @@ class Config:
         self.FREE_MESSAGES_LIMIT = int(os.getenv('FREE_MESSAGES_LIMIT', '5'))
         self.PREMIUM_MESSAGES_LIMIT = int(os.getenv('PREMIUM_MESSAGES_LIMIT', '1000'))
         
+        # ==================== ССЫЛКИ ДЛЯ БОТА ====================
+        self.BOT_LINK = os.getenv('BOT_LINK', 'https://t.me/variatica_bot')
+        self.AUTHOR_LINK = os.getenv('AUTHOR_LINK', '@meysternlp')
+        self.PAYMENT_LINK = os.getenv('PAYMENT_LINK', 'https://yoomoney.ru/checkout/payments/v2/contract')
+        self.GIFT_PDF_LINK = os.getenv('GIFT_PDF_LINK', 'https://drive.google.com/file/d/ваш_файл/view')
+        
+        logger.info(f"🔗 Bot Link: {self.BOT_LINK}")
+        logger.info(f"👤 Author: {self.AUTHOR_LINK}")
+        logger.info(f"🎁 Gift PDF: {self.GIFT_PDF_LINK}")
+        
         # ==================== ПРОВЕРКИ И ВАЛИДАЦИЯ ====================
         self._validate_configuration()
         
@@ -159,9 +161,9 @@ class Config:
             logger.error(f"❌ Ошибка парсинга TELEGRAM_ADMIN_IDS: {e}")
             return []
     
-    def _validate_configuration(self):
+    def validate(self):
         """
-        Проверка валидности конфигурации
+        Валидация конфигурации
         """
         errors = []
         warnings = []
@@ -173,17 +175,17 @@ class Config:
         if not self.DATABASE_URL:
             warnings.append("DATABASE_URL не установлен, используется SQLite по умолчанию")
         
+        # Проверка YooKassa для боевого режима
+        if not self.is_payment_enabled:
+            errors.append("YooKassa не настроен. Платежи работать не будут")
+        
+        # Проверка webhook URL
+        if not self.WEBHOOK_URL:
+            warnings.append("WEBHOOK_URL не установлен. Автоматическое обновление статусов платежей недоступно")
+        
         # Проверка OpenAI (не обязательно, но рекомендуется)
         if not self.OPENAI_API_KEY:
             warnings.append("OPENAI_API_KEY не установлен. Некоторые функции могут не работать")
-        
-        # Проверка YooKassa (не обязательно для демо-режима)
-        if not self.is_payment_enabled and not self.is_test_mode:
-            warnings.append("YooKassa не настроен. Платежи работать не будут")
-        
-        # Проверка webhook URL
-        if self.is_payment_enabled and not self.WEBHOOK_URL:
-            warnings.append("WEBHOOK_URL не установлен. Автоматическое обновление статусов платежей недоступно")
         
         # Логирование ошибок и предупреждений
         if errors:
@@ -196,6 +198,18 @@ class Config:
             logger.warning("⚠️  Предупреждения конфигурации:")
             for warning in warnings:
                 logger.warning(f"   - {warning}")
+        
+        return True
+    
+    def _validate_configuration(self):
+        """
+        Проверка валидности конфигурации
+        """
+        try:
+            self.validate()
+        except ValueError as e:
+            logger.error(f"❌ Критическая ошибка конфигурации: {e}")
+            raise
     
     def get_database_config(self) -> dict:
         """
@@ -269,7 +283,11 @@ class Config:
             'debug': self.DEBUG_MODE,
             'session_timeout': self.SESSION_TIMEOUT,
             'free_messages_limit': self.FREE_MESSAGES_LIMIT,
-            'premium_messages_limit': self.PREMIUM_MESSAGES_LIMIT
+            'premium_messages_limit': self.PREMIUM_MESSAGES_LIMIT,
+            'bot_link': self.BOT_LINK,
+            'author_link': self.AUTHOR_LINK,
+            'payment_link': self.PAYMENT_LINK,
+            'gift_pdf_link': self.GIFT_PDF_LINK
         }
     
     def __str__(self) -> str:
@@ -285,13 +303,12 @@ class Config:
         config_str.append("="*50)
         
         config_str.append(f"🤖 Telegram Bot: {'✅' if self.TELEGRAM_BOT_TOKEN else '❌'}")
-        config_str.append(f"   Admin IDs: {len(self.TELEGRAM_ADMIN_IDS)}")
         
         config_str.append(f"🗄️  Database: {self.DATABASE_URL}")
         
         config_str.append(f"💰 YooKassa: {'✅' if self.is_payment_enabled else '❌'}")
         if self.is_payment_enabled:
-            config_str.append(f"   Режим: {'🧪 Тестовый' if self.is_test_mode else '🚀 Боевой'}")
+            config_str.append(f"   Режим: {'🟡 Тестовый' if self.is_test_mode else '🟢 Боевой'}")
             config_str.append(f"   Webhook: {'✅' if self.WEBHOOK_URL else '❌'}")
             config_str.append(f"   Сумма: {self.PAYMENT_AMOUNT} {self.PAYMENT_CURRENCY}")
         
@@ -299,8 +316,10 @@ class Config:
         if self.OPENAI_API_KEY:
             config_str.append(f"   Модель: {self.OPENAI_MODEL}")
         
-        config_str.append(f"🔧 Режим отладки: {'✅ Включен' if self.DEBUG_MODE else '❌ Выключен'}")
-        config_str.append(f"📊 Уровень логирования: {self.LOG_LEVEL}")
+        config_str.append(f"🔗 Ссылки:")
+        config_str.append(f"   Бот: {self.BOT_LINK}")
+        config_str.append(f"   Автор: {self.AUTHOR_LINK}")
+        config_str.append(f"   Webhook: {self.WEBHOOK_URL}")
         
         config_str.append(f"📱 Приложение: {self.APP_NAME} v{self.APP_VERSION}")
         config_str.append(f"⏱️  Таймаут сессии: {self.SESSION_TIMEOUT} сек")
@@ -330,10 +349,9 @@ if __name__ == "__main__":
     
     print("\n📋 Подробная информация:")
     print(f"   Токен бота: {'✅' if config.TELEGRAM_BOT_TOKEN else '❌'}")
-    print(f"   Администраторы: {config.TELEGRAM_ADMIN_IDS}")
     print(f"   База данных: {config.DATABASE_URL}")
     print(f"   YooKassa настроен: {'✅' if config.is_payment_enabled else '❌'}")
-    print(f"   Webhook URL: {config.WEBHOOK_URL if config.WEBHOOK_URL else '❌ Не настроен'}")
+    print(f"   Webhook URL: {config.WEBHOOK_URL}")
     print(f"   OpenAI API ключ: {'✅' if config.OPENAI_API_KEY else '❌'}")
     print(f"   Режим отладки: {config.DEBUG_MODE}")
     
@@ -342,6 +360,8 @@ if __name__ == "__main__":
     for key, value in yookassa_config.items():
         if key == 'secret_key' and value:
             value = f"{value[:5]}...{value[-5:]}" if len(value) > 10 else "***"
+        elif key == 'shop_id' and value:
+            value = f"{value[:5]}...{value[-5:]}" if len(value) > 10 else value
         print(f"   {key}: {value}")
     
     print("\n✅ Конфигурация загружена успешно!")
