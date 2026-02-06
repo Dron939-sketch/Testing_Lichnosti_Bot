@@ -1,12 +1,21 @@
+# app.py
 import os
+import sys
 import threading
 import logging
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from datetime import datetime
-import asyncio
-import sys
 
-app = Flask(__name__)
+# ============ ПАТЧ ДЛЯ urllib3 ============
+import types
+class DummyModule(types.ModuleType):
+    def __init__(self, name):
+        super().__init__(name)
+        self.__all__ = []
+    def __getattr__(self, name):
+        return None
+sys.modules['urllib3.contrib.appengine'] = DummyModule('urllib3.contrib.appengine')
+# ============ КОНЕЦ ПАТЧА ============
 
 # Настройка логирования
 logging.basicConfig(
@@ -14,6 +23,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+app = Flask(__name__)
 
 # Глобальные переменные
 bot_thread = None
@@ -27,10 +38,14 @@ def run_bot():
         # Добавляем текущую директорию в путь Python
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         
+        # Подавляем warnings
+        import warnings
+        warnings.filterwarnings("ignore")
+        
         # Импортируем и запускаем бота
         from bot_adaptive import main as bot_main
         
-        logger.info("🚀 Запуск Telegram бота...")
+        logger.info("🚀 Запуск Telegram бота ВАРИАТИКА v2.0...")
         bot_running = True
         
         # Запускаем бота
@@ -38,7 +53,8 @@ def run_bot():
         
     except ImportError as e:
         logger.error(f"❌ Ошибка импорта бота: {e}")
-        logger.error("Убедитесь что файл bot_adaptive.py существует")
+        import traceback
+        logger.error(traceback.format_exc())
     except Exception as e:
         logger.error(f"❌ Ошибка запуска бота: {e}")
         import traceback
@@ -55,8 +71,7 @@ def home():
         "timestamp": datetime.now().isoformat(),
         "endpoints": {
             "health": "/health",
-            "bot_status": "/bot-status",
-            "start_bot": "/start-bot (POST)"
+            "bot_status": "/bot-status"
         }
     })
 
@@ -75,52 +90,35 @@ def bot_status():
         "thread_alive": bot_thread.is_alive() if bot_thread else False
     }), 200
 
-@app.route('/start-bot', methods=['POST'])
-def start_bot():
-    """Запуск бота через API"""
-    global bot_thread
-    
-    if bot_thread and bot_thread.is_alive():
-        return jsonify({"status": "already_running"}), 200
-    
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-    
-    return jsonify({"status": "bot_started"}), 200
-
-# ЮKassa webhook endpoint (если нужно)
-@app.route('/yookassa-webhook', methods=['POST'])
-def yookassa_webhook():
-    """Webhook для уведомлений от ЮKassa"""
-    try:
-        data = request.json
-        logger.info(f"📦 Webhook от ЮKassa: {data.get('event', 'unknown')}")
-        
-        # Обработка уведомлений
-        # Здесь можно обновлять статусы платежей
-        
-        return jsonify({"status": "received"}), 200
-    except Exception as e:
-        logger.error(f"Ошибка обработки webhook: {e}")
-        return jsonify({"error": str(e)}), 500
-
 def start_bot_on_init():
     """Автозапуск бота при старте сервера"""
     global bot_thread
     
     # Ждем немного перед запуском бота
     import time
-    time.sleep(2)
+    time.sleep(3)
     
-    logger.info("⏳ Автозапуск Telegram бота...")
+    # Проверяем токен
+    token = os.getenv('TELEGRAM_BOT_TOKEN')
+    if not token:
+        logger.error("❌ TELEGRAM_BOT_TOKEN не установлен!")
+        logger.error("Добавьте в Environment Variables на Render")
+        return
+    
+    logger.info(f"✅ Токен найден: {token[:10]}...")
+    logger.info("🤖 Запуск Telegram бота в фоновом режиме...")
+    
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
 
 if __name__ == '__main__':
-    # Запускаем бота при старте
+    # Проверяем Python версию
+    logger.info(f"🐍 Python версия: {sys.version}")
+    
+    # Автозапуск бота
     start_bot_on_init()
     
-    # Запускаем Flask
-    port = int(os.environ.get('PORT', 5000))
+    # Запуск Flask
+    port = int(os.environ.get('PORT', 10000))
     logger.info(f"🌐 Запуск Flask сервера на порту {port}")
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
