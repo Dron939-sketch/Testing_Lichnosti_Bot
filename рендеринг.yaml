@@ -1,10 +1,10 @@
 services:
-  - type: web  # Оставляем web, т.к. есть Flask
-    name: variatica-bot-and-api
+  - type: web
+    name: variatica-bot
     env: python
     region: frankfurt
     buildCommand: |
-      pip install --upgrade pip
+      python -m pip install --upgrade pip setuptools wheel
       pip install -r requirements.txt
     startCommand: gunicorn simple_server:app
     envVars:
@@ -26,7 +26,3 @@ services:
         sync: false
       - key: PAYMENT_AMOUNT
         value: "690"
-      - key: WEBHOOK_URL
-        value: "https://testing-lichnosti-bot-qyra.onrender.com"
-    healthCheckPath: /health
-    autoDeploy: true
