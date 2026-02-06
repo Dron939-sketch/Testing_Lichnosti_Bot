@@ -1029,10 +1029,10 @@ def analyze_discrepancy(search_metadata: dict) -> str:
     1. Берем requested_dilts (что показал тест)
     2. Берем actual_suffix (суффикс найденного файла)
     3. Преобразуем actual_suffix в actual_dilts с помощью SUFFIX_TO_DILTS
-    4. Если requested_dilts == actual_dilts → возвращаем пустую строку
+    4. Если requested_dilts == actual_dilts -> возвращаем пустую строку
     5. Ищем фразу в CONFLICT_PHRASES по ключу (requested_dilts, actual_dilts)
-    6. Если нашли → возвращаем фразу
-    7. Если не нашли → создаем общую фразу
+    6. Если нашли -> возвращаем фразу
+    7. Если не нашли -> создаем общую фразу
     """
     if search_metadata.get('is_exact_match', True):
         return ""
