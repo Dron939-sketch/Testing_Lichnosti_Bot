@@ -1,5 +1,5 @@
 """
-Загрузчик профилей из файловой системы - улучшенная версия
+Загрузчик профилей из файловой системы
 """
 
 import os
@@ -19,7 +19,6 @@ class ProfileLoader:
         """
         self.profiles_dir = profiles_dir
         self.profiles = {}  # Словарь профилей: {profile_key: VariaticaProfile}
-        self.aliases = {}   # Словарь алиасов для быстрого поиска
         self.load_all_profiles()
     
     def find_profile_files(self) -> list:
@@ -43,34 +42,16 @@ class ProfileLoader:
             # Пропускаем __pycache__ и другие служебные директории
             dirs[:] = [d for d in dirs if not d.startswith('__') and not d.startswith('.')]
             
-            # Ищем файлы профилей (формат: тип_уровень_суффикс.py)
-            for file in files:
-                if file.endswith('.py') and file != '__init__.py':
-                    # Проверяем формат имени файла
-                    if self._is_profile_filename(file):
-                        filepath = os.path.join(root, file)
-                        profile_files.append(filepath)
-                        print(f"  ✅ Найден: {file}")
-                    else:
-                        print(f"  ⚠️  Пропущен (неверный формат): {file}")
+            py_files = [f for f in files if f.endswith('.py') and f != '__init__.py']
+            if py_files:
+                print(f"  📁 Папка: {os.path.basename(root)}, файлов: {len(py_files)}")
+                
+            for file in py_files:
+                filepath = os.path.join(root, file)
+                profile_files.append(filepath)
         
         print(f"✅ Всего найдено файлов: {len(profile_files)}")
         return profile_files
-    
-    def _is_profile_filename(self, filename: str) -> bool:
-        """Проверяет, является ли имя файла корректным именем профиля"""
-        if not filename.endswith('.py'):
-            return False
-        
-        name = filename[:-3]  # Убираем .py
-        parts = name.split('_')
-        
-        # Допустимые форматы: sa_1_def, ia_9_ide, sp_1_def, ip_4_exp
-        if len(parts) >= 2:
-            type_part = parts[0].lower()
-            return type_part in ['sa', 'ia', 'sp', 'ip']
-        
-        return False
     
     def load_profile_from_file(self, filepath: str) -> VariaticaProfile:
         """
@@ -90,8 +71,34 @@ class ProfileLoader:
             with open(filepath, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Исправляем импорты
-            content = self._fix_imports(content, file_name)
+            print(f"    📄 Размер файла: {len(content)} символов")
+            
+            # Исправляем относительные импорты
+            if 'from ..base import VariaticaProfile' in content:
+                content = content.replace(
+                    'from ..base import VariaticaProfile',
+                    '# Импорт исправлен загрузчиком'
+                )
+                print(f"    🔧 Исправлен импорт 'from ..base import' в {file_name}")
+            
+            # Также исправляем другие возможные варианты
+            if 'from .base import VariaticaProfile' in content:
+                content = content.replace(
+                    'from .base import VariaticaProfile',
+                    '# Импорт исправлен загрузчиком'
+                )
+                print(f"    🔧 Исправлен импорт 'from .base import' в {file_name}")
+            
+            # Удаляем все импорты с VariaticaProfile
+            lines = content.split('\n')
+            cleaned_lines = []
+            for line in lines:
+                if 'VariaticaProfile' in line and ('import' in line or 'from' in line):
+                    print(f"    🗑 Удален импорт: {line.strip()}")
+                    continue
+                cleaned_lines.append(line)
+            
+            content = '\n'.join(cleaned_lines)
             
             # Создаем уникальное имя модуля
             module_name = f"profile_{file_name.replace('.py', '').replace('-', '_')}"
@@ -110,41 +117,73 @@ class ProfileLoader:
             # Создаем модуль
             module = importlib.util.module_from_spec(spec)
             
-            # Добавляем необходимые переменные в глобальное пространство
-            module_globals = {
-                'VariaticaProfile': VariaticaProfile,
-                '__name__': module_name,
-                '__file__': filepath,
-                'sys': sys,
-                'os': os,
-                'print': print  # Добавляем print для отладки внутри профилей
-            }
+            # КРИТИЧЕСКИ ВАЖНО: Добавляем VariaticaProfile в глобальное пространство
+            module.__dict__['VariaticaProfile'] = VariaticaProfile
+            module.__dict__['__name__'] = module_name
+            module.__dict__['__file__'] = filepath
+            
+            # Также добавляем sys и os для совместимости
+            module.__dict__['sys'] = sys
+            module.__dict__['os'] = os
             
             # Выполняем код модуля
             print(f"    ⚙️ Выполняем код модуля...")
-            exec(content, module_globals)
+            exec(content, module.__dict__)
+            
+            # ОТЛАДОЧНЫЙ ВЫВОД: что есть в модуле?
+            print(f"    🔍 Переменные в модуле после exec:")
+            profile_vars = []
+            for var_name, var_value in module.__dict__.items():
+                if not var_name.startswith('__') and not var_name in ['sys', 'os', 'VariaticaProfile']:
+                    var_type = type(var_value).__name__
+                    print(f"      - {var_name}: {var_type}")
+                    if isinstance(var_value, VariaticaProfile):
+                        profile_vars.append((var_name, var_value))
             
             # Ищем объект VariaticaProfile в модуле
-            profile = self._find_profile_in_module(module_globals, file_name)
+            profile = None
             
-            if profile:
-                # Добавляем метаинформацию о файле
-                profile._source_file = filepath
-                profile._source_filename = file_name
+            if profile_vars:
+                print(f"    ✅ Найдены {len(profile_vars)} объектов VariaticaProfile")
+                for var_name, var_value in profile_vars:
+                    print(f"      - {var_name}: {var_value}")
                 
-                # Устанавливаем корректный ключ, если его нет
+                # Берем первый найденный профиль
+                profile = profile_vars[0][1]
+                print(f"    🎯 Выбран профиль: {profile_vars[0][0]}")
+                
+                # Устанавливаем ключ профиля из имени файла, если его нет
                 if not hasattr(profile, 'key') or not profile.key:
-                    profile.key = file_name[:-3]  # Без .py
-                    print(f"    🔧 Установлен ключ профиля: {profile.key}")
-                
-                print(f"    ✅ Успешно загружен: {profile.key}")
-                return profile
-            else:
+                    key_from_file = self.extract_profile_key_from_filename(filepath)
+                    profile.key = key_from_file
+                    print(f"    🔧 Установлен ключ профиля: {key_from_file}")
+            
+            # Если не нашли профиль в явных переменных, ищем в значениях
+            if not profile:
+                print(f"    🔍 Поиск профиля в значениях объектов...")
+                for var_name, var_value in module.__dict__.items():
+                    if isinstance(var_value, VariaticaProfile):
+                        profile = var_value
+                        print(f"    ✅ Найден профиль в переменной {var_name}")
+                        break
+            
+            if not profile:
                 print(f"    ❌ Не найден объект VariaticaProfile в {file_name}")
-                return None
+                # Посмотрим первые 20 строк файла для отладки
+                print(f"    Первые 20 строк файла:")
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    for i, line in enumerate(f, 1):
+                        if i <= 20:
+                            print(f"      {i:2}: {line.rstrip()}")
+                        else:
+                            break
+            
+            return profile
             
         except SyntaxError as e:
             print(f"    ❌ Синтаксическая ошибка в {os.path.basename(filepath)}: {e}")
+            import traceback
+            traceback.print_exc()
             return None
         except Exception as e:
             print(f"    ❌ Ошибка загрузки профиля из {os.path.basename(filepath)}: {type(e).__name__}: {e}")
@@ -152,125 +191,61 @@ class ProfileLoader:
             traceback.print_exc()
             return None
     
-    def _fix_imports(self, content: str, filename: str) -> str:
-        """Исправляет импорты в содержимом файла"""
-        lines = content.split('\n')
-        cleaned_lines = []
-        
-        for line in lines:
-            # Удаляем все импорты, связанные с VariaticaProfile
-            if 'VariaticaProfile' in line and ('import' in line or 'from' in line):
-                print(f"    🗑 Удален импорт: {line.strip()}")
-                continue
-            
-            # Исправляем относительные импорты
-            if 'from ..' in line and 'VariaticaProfile' in line:
-                print(f"    🔧 Исправлен относительный импорт в {filename}")
-                continue
-            
-            cleaned_lines.append(line)
-        
-        return '\n'.join(cleaned_lines)
-    
-    def _find_profile_in_module(self, module_globals: dict, filename: str):
-        """Ищет объект VariaticaProfile в глобальных переменных модуля"""
-        profiles_found = []
-        
-        for var_name, var_value in module_globals.items():
-            if not var_name.startswith('__') and var_name not in ['sys', 'os', 'VariaticaProfile', 'print']:
-                if isinstance(var_value, VariaticaProfile):
-                    profiles_found.append((var_name, var_value))
-        
-        if len(profiles_found) == 1:
-            var_name, profile = profiles_found[0]
-            print(f"    ✅ Найден профиль в переменной '{var_name}'")
-            return profile
-        elif len(profiles_found) > 1:
-            print(f"    ⚠️ Найдено {len(profiles_found)} профилей, берём первый")
-            return profiles_found[0][1]
-        
-        # Если не нашли по типу, ищем в значениях объектов
-        print(f"    🔍 Углубленный поиск профиля...")
-        for var_name, var_value in module_globals.items():
-            if isinstance(var_value, dict):
-                for key, val in var_value.items():
-                    if isinstance(val, VariaticaProfile):
-                        print(f"    ✅ Найден профиль в словаре {var_name}[{key}]")
-                        return val
-        
-        return None
-    
-    def extract_profile_key(self, filepath: str) -> str:
+    def extract_profile_key_from_filename(self, filename: str) -> str:
         """
-        Извлекает ключ профиля из пути к файлу
+        Извлекает ключ профиля из имени файла
         
         Примеры:
-            profiles/ia/ia_1_def.py → IA_1_def
-            profiles/sa/sa_4_exp.py → SA_4_exp
-            profiles/sp/sp_1_def.py → SP_1_def
-            profiles/ip/ip_9_ide.py → IP_9_ide
+            sp_1_def.py → SP_1_def
+            SA/SA_1_def.py → SA_1_def
+            profiles/SA/sa_1_def.py → SA_1_def
+            profiles/ip-адрес/ip_4_exp.py → IP_4_exp
         """
-        # Получаем относительный путь от profiles_dir
-        rel_path = os.path.relpath(filepath, self.profiles_dir)
+        # Извлекаем только имя файла без пути
+        basename = os.path.basename(filename)
         
-        # Преобразуем путь в ключ
-        key = rel_path.replace('/', '_').replace('\\', '_').replace('.py', '')
+        # Удаляем расширение .py
+        if basename.endswith('.py'):
+            basename = basename[:-3]
         
-        # Нормализуем ключ (верхний регистр для типа)
+        # Преобразуем в верхний регистр для типа (SA, SP, IA, IP)
+        parts = basename.split('_')
+        if len(parts) >= 2:
+            # Преобразуем первую часть (тип) в верхний регистр
+            parts[0] = parts[0].upper()
+            # Оставляем остальные части как есть
+            return '_'.join(parts)
+        
+        return basename
+    
+    def normalize_profile_key(self, key: str) -> str:
+        """
+        Нормализует ключ профиля для поиска
+        
+        Примеры:
+            IP_4_exp → IP_4_exp
+            ip_4_exp → IP_4_exp
+            IP-АДРЕС_4_exp → IP_4_exp
+        """
+        if not key:
+            return key
+        
+        # Удаляем дефисы и нормализуем
+        if '-' in key:
+            key = key.replace('-', '_')
+        
         parts = key.split('_')
         if len(parts) >= 2:
+            # Преобразуем тип в верхний регистр
             parts[0] = parts[0].upper()
+            
+            # Удаляем "АДРЕС" из IP типа если есть
+            if parts[0] == "IP" and len(parts) > 1 and parts[1].upper() == "АДРЕС":
+                parts.pop(1)
+            
             return '_'.join(parts)
         
         return key.upper()
-    
-    def create_search_aliases(self, key: str) -> list:
-        """
-        Создает все возможные варианты ключа для поиска
-        
-        Args:
-            key: Основной ключ (например: "IA_4_exp")
-            
-        Returns:
-            Список всех возможных вариантов для поиска
-        """
-        aliases = []
-        
-        # Оригинальный ключ
-        aliases.append(key)
-        
-        # Все в нижнем регистре
-        aliases.append(key.lower())
-        
-        # Все в верхнем регистре
-        aliases.append(key.upper())
-        
-        # Без суффикса (только тип_уровень)
-        parts = key.split('_')
-        if len(parts) >= 2:
-            # Тип_уровень
-            type_level = f"{parts[0]}_{parts[1]}"
-            aliases.append(type_level)
-            aliases.append(type_level.lower())
-            aliases.append(type_level.upper())
-            
-            # Только уровень
-            aliases.append(parts[1])  # Только номер уровня
-            aliases.append(f"level_{parts[1]}")  # level_4
-        
-        # Для IP типа добавляем варианты с дефисом
-        if key.startswith('IP_'):
-            ip_with_dash = key.replace('IP_', 'IP-АДРЕС_')
-            aliases.append(ip_with_dash)
-            aliases.append(ip_with_dash.lower())
-            
-            # Также вариант без типа, только номер
-            if len(parts) >= 2:
-                aliases.append(f"IP{parts[1]}")  # IP4
-                aliases.append(f"ip{parts[1]}")  # ip4
-        
-        # Убираем дубликаты и возвращаем
-        return list(dict.fromkeys(aliases))
     
     def load_all_profiles(self):
         """Загружает все профили из директории profiles и поддиректорий"""
@@ -280,13 +255,11 @@ class ProfileLoader:
             # Создаём директорию, если её нет
             os.makedirs(self.profiles_dir, exist_ok=True)
             
-            # Находим все файлы профилей
+            # Рекурсивно находим все файлы профилей
             profile_files = self.find_profile_files()
             
             if not profile_files:
                 print("❌ Не найдено файлов профилей!")
-                print("   Ожидаемые файлы: ia_1_def.py, sa_4_exp.py, sp_1_def.py, ip_9_ide.py и т.д.")
-                print("   В папках: ia/, sa/, sp/, ip/")
                 return
             
             print(f"\n🔄 Загрузка {len(profile_files)} профилей...")
@@ -298,35 +271,51 @@ class ProfileLoader:
                 try:
                     profile = self.load_profile_from_file(filepath)
                     if profile:
-                        # Получаем ключ из имени файла
-                        main_key = self.extract_profile_key(filepath)
+                        # Сначала пытаемся сгенерировать ключ из данных профиля
+                        key_from_profile = self._generate_profile_key(profile)
                         
-                        # Сохраняем профиль под основным ключом
-                        self.profiles[main_key] = profile
-                        print(f"    💾 Сохранён как: {main_key}")
+                        # Если не получилось, извлекаем из имени файла
+                        if not key_from_profile:
+                            key_from_profile = self.extract_profile_key_from_filename(filepath)
                         
-                        # Создаем все алиасы для поиска
-                        aliases = self.create_search_aliases(main_key)
-                        for alias in aliases:
-                            if alias != main_key:  # Основной ключ уже сохранен
-                                self.aliases[alias] = main_key
+                        # Нормализуем ключ
+                        normalized_key = self.normalize_profile_key(key_from_profile)
                         
-                        successful_loads += 1
+                        if normalized_key:
+                            print(f"    🔑 Сохраняем профиль с ключом: {normalized_key}")
+                            
+                            # Сохраняем профиль с нормализованным ключом
+                            self.profiles[normalized_key] = profile
+                            
+                            # Также сохраняем версию в нижнем регистре для поиска
+                            self.profiles[normalized_key.lower()] = profile
+                            
+                            # Сохраняем версию с дефисом для ip-адрес
+                            if normalized_key.startswith("IP_"):
+                                ip_with_dash = normalized_key.replace("IP_", "IP-АДРЕС_", 1)
+                                self.profiles[ip_with_dash] = profile
+                                self.profiles[ip_with_dash.lower()] = profile
+                            
+                            successful_loads += 1
+                        else:
+                            print(f"    ⚠️ Не удалось сгенерировать ключ для профиля из {os.path.basename(filepath)}")
+                            failed_loads += 1
                     else:
                         print(f"    ❌ Не удалось загрузить профиль из {os.path.basename(filepath)}")
                         failed_loads += 1
                         
                 except Exception as e:
                     print(f"    ❌ Ошибка обработки файла {os.path.basename(filepath)}: {type(e).__name__}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     failed_loads += 1
             
             print(f"\n📊 Результаты загрузки:")
             print(f"  ✅ Успешно: {successful_loads}")
             print(f"  ❌ Ошибок: {failed_loads}")
-            print(f"  🎯 Всего ключей: {len(self.profiles)}")
-            print(f"  🔍 Алиасов для поиска: {len(self.aliases)}")
+            print(f"  🎯 Всего в памяти: {len(self.profiles)} записей (включая альтернативные ключи)")
             
-            # Выводим статистику
+            # Выводим статистику по типам
             self.print_statistics()
             
         except Exception as e:
@@ -337,210 +326,249 @@ class ProfileLoader:
     def print_statistics(self):
         """Выводит статистику по загруженным профилям"""
         type_counts = {'SA': 0, 'IA': 0, 'SP': 0, 'IP': 0}
-        levels = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0}
+        unique_keys = set()
         
         for key in self.profiles.keys():
-            parts = key.split('_')
-            if len(parts) >= 2:
-                type_code = parts[0]
-                level = int(parts[1]) if parts[1].isdigit() else 0
+            # Пропускаем ключи в нижнем регистре и с дефисами
+            if key.islower() or '-' in key:
+                continue
                 
-                if type_code in type_counts:
-                    type_counts[type_code] += 1
-                
-                if level in levels:
-                    levels[level] += 1
+            unique_keys.add(key)
+            
+            if key.startswith('SA_'):
+                type_counts['SA'] += 1
+            elif key.startswith('IA_'):
+                type_counts['IA'] += 1
+            elif key.startswith('SP_'):
+                type_counts['SP'] += 1
+            elif key.startswith('IP_'):
+                type_counts['IP'] += 1
         
-        print("\n" + "="*50)
+        print("\n" + "="*40)
         print("📊 СТАТИСТИКА ПРОФИЛЕЙ")
-        print("="*50)
+        print("="*40)
         
-        # Статистика по типам
-        print("\n📈 По типам:")
-        for type_code in ['SA', 'IA', 'SP', 'IP']:
-            count = type_counts[type_code]
-            print(f"  {type_code}: {count} профилей")
+        total_unique = len(unique_keys)
+        for type_code, count in type_counts.items():
+            percentage = (count / total_unique * 100) if total_unique > 0 else 0
+            print(f"  {type_code}: {count} профилей ({percentage:.1f}%)")
         
-        # Статистика по уровням
-        print("\n📊 По уровням:")
-        for level in sorted(levels.keys()):
-            count = levels[level]
-            if count > 0:
-                print(f"  Уровень {level}: {count} профилей")
+        print(f"\n  Всего уникальных профилей: {total_unique}")
         
-        # Список всех профилей
-        print(f"\n📋 Все загруженные профили ({len(self.profiles)}):")
-        sorted_keys = sorted(self.profiles.keys())
-        for key in sorted_keys:
-            profile = self.profiles[key]
-            if hasattr(profile, 'title'):
-                title = profile.title[:50] + "..." if len(profile.title) > 50 else profile.title
-                print(f"  • {key:15} → {title}")
-            else:
-                print(f"  • {key:15} → (без названия)")
+        # Выводим все ключи
+        if unique_keys:
+            print(f"\n🔑 Все загруженные профили:")
+            sorted_keys = sorted(list(unique_keys))
+            for key in sorted_keys:
+                profile = self.profiles[key]
+                if hasattr(profile, 'title'):
+                    title = profile.title[:40] + "..." if len(profile.title) > 40 else profile.title
+                    print(f"  - {key:15} → {title}")
+                else:
+                    print(f"  - {key:15} → БЕЗ ЗАГОЛОВКА")
         
-        print("="*50)
+        print("="*40)
+    
+    def _generate_profile_key(self, profile: VariaticaProfile) -> str:
+        """
+        Генерирует ключ профиля
+        
+        Формат: {type_code}_{level}_{suffix}
+        
+        Пример: SP_1_def, SA_3_sit и т.д.
+        """
+        try:
+            print(f"    🔧 Генерация ключа для профиля...")
+            
+            # Для нового формата
+            if hasattr(profile, 'type_code') and hasattr(profile, 'level'):
+                type_code = profile.type_code
+                level = profile.level
+                
+                print(f"      type_code={type_code}, level={level}")
+                
+                # Извлекаем суффикс из ключа или имени файла
+                suffix = "def"  # По умолчанию
+                
+                if hasattr(profile, 'key'):
+                    print(f"      profile.key = {profile.key}")
+                    # Пример: SP_1_def → def
+                    parts = profile.key.split('_')
+                    if len(parts) >= 3:
+                        suffix = parts[-1]
+                    elif len(parts) == 2:
+                        suffix = parts[-1]
+                    else:
+                        # Пробуем получить из названия файла
+                        suffix = "def"
+                else:
+                    print(f"      profile не имеет атрибута 'key'")
+                
+                result = f"{type_code}_{level}_{suffix}"
+                print(f"      Сгенерированный ключ: {result}")
+                return result
+            
+            # Для старого формата (если есть profile_name)
+            elif hasattr(profile, 'profile_name'):
+                # Парсим название профиля
+                name = profile.profile_name
+                print(f"      profile_name = {name}")
+                
+                # Определяем тип
+                if "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ" in name or "SA" in name:
+                    type_code = "SA"
+                elif "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ" in name or "IA" in name:
+                    type_code = "IA"
+                elif "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ" in name or "SP" in name:
+                    type_code = "SP"
+                elif "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ" in name or "IP" in name:
+                    type_code = "IP"
+                else:
+                    type_code = "SA"  # По умолчанию
+                
+                # Извлекаем уровень
+                level = 1  # По умолчанию
+                if hasattr(profile, 'thinking_level'):
+                    level = profile.thinking_level
+                
+                # Суффикс по умолчанию
+                suffix = "def"
+                
+                result = f"{type_code}_{level}_{suffix}"
+                print(f"      Сгенерированный ключ: {result}")
+                return result
+            
+            # Если не удалось определить формат
+            print(f"    ⚠️ Не удалось сгенерировать ключ для профиля")
+            return None
+            
+        except Exception as e:
+            print(f"⚠️ Ошибка генерации ключа для профиля: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
     
     def get_profile(self, profile_key: str) -> VariaticaProfile:
         """
-        Получает профиль по ключу (с расширенным поиском)
+        Получает профиль по ключу
         
         Args:
-            profile_key: Ключ профиля или любой из алиасов
+            profile_key: Ключ профиля (например, "SP_1_def", "ip_4_exp")
             
         Returns:
             Объект VariaticaProfile или None
         """
         if not profile_key or not isinstance(profile_key, str):
-            print(f"❌ Неверный ключ профиля: {profile_key}")
             return None
         
-        # Очищаем ключ
+        # Убираем лишние пробелы
         profile_key = profile_key.strip()
         
-        print(f"\n🔍 Поиск профиля: '{profile_key}'")
+        print(f"\n🔍 ЗАГРУЗЧИК: Поиск профиля '{profile_key}'")
         
-        # 1. Прямой поиск по основным ключам
+        # 1. Пробуем как есть
         if profile_key in self.profiles:
             print(f"   ✅ Найден напрямую: {profile_key}")
             return self.profiles[profile_key]
         
-        # 2. Поиск через алиасы
-        if profile_key in self.aliases:
-            main_key = self.aliases[profile_key]
-            print(f"   ✅ Найден через алиас '{profile_key}' → {main_key}")
-            return self.profiles[main_key]
+        # 2. Пробуем нормализованный ключ
+        normalized_key = self.normalize_profile_key(profile_key)
+        if normalized_key in self.profiles:
+            print(f"   ✅ Найден по нормализованному ключу: {normalized_key}")
+            return self.profiles[normalized_key]
         
-        # 3. Попробуем нормализовать ключ
-        normalized = self.normalize_key(profile_key)
-        if normalized and normalized in self.profiles:
-            print(f"   ✅ Найден по нормализованному ключу: {normalized}")
-            return self.profiles[normalized]
+        # 3. Пробуем нижний регистр
+        lower_key = profile_key.lower()
+        if lower_key in self.profiles:
+            print(f"   ✅ Найден по нижнему регистру: {lower_key}")
+            return self.profiles[lower_key]
         
-        # 4. Поиск по частичному совпадению
-        print(f"   🔍 Поиск по частичному совпадению...")
-        
-        # Сначала по типу и уровню
-        search_lower = profile_key.lower().replace('-', '_')
-        
-        # Пробуем разные варианты поиска
-        search_patterns = [
-            search_lower,  # Как есть
-            search_lower.upper(),  # В верхнем регистре
-            search_lower.replace('_', ''),  # Без подчеркиваний
-        ]
-        
-        # Добавляем варианты для IP
-        if search_lower.startswith('ip'):
-            search_patterns.append(search_lower.replace('ip', 'ip-адрес'))
-            search_patterns.append(search_lower.replace('ip_', 'ip-адрес_'))
-        
-        # Ищем во всех алиасах
-        for pattern in search_patterns:
-            for alias, main_key in self.aliases.items():
-                if alias.lower() == pattern.lower():
-                    print(f"   ✅ Найден через частичное совпадение: {alias} → {main_key}")
-                    return self.profiles[main_key]
-        
-        # 5. Поиск по уровню (если введен только номер)
-        if profile_key.isdigit():
-            level = int(profile_key)
-            print(f"   🔍 Поиск всех профилей уровня {level}...")
+        # 4. Для IP типа пробуем разные варианты
+        if profile_key.lower().startswith("ip"):
+            variations = [
+                profile_key,
+                profile_key.upper(),
+                profile_key.lower(),
+                normalized_key,
+                normalized_key.lower(),
+                profile_key.replace("ip_", "ip-адрес_"),
+                profile_key.replace("IP_", "IP-АДРЕС_"),
+                profile_key.replace("ip-адрес_", "ip_"),
+                profile_key.replace("IP-АДРЕС_", "IP_"),
+            ]
             
-            # Ищем профили этого уровня
-            found_profiles = []
-            for key in self.profiles.keys():
-                parts = key.split('_')
-                if len(parts) >= 2 and parts[1] == str(level):
-                    found_profiles.append(key)
+            # Убираем дубликаты
+            variations = list(dict.fromkeys(variations))
             
-            if found_profiles:
-                print(f"   ⚠️ Найдено {len(found_profiles)} профилей уровня {level}")
-                print(f"   👉 Используйте конкретный ключ, например: {found_profiles[0]}")
-                return self.profiles[found_profiles[0]]
+            print(f"   🔍 Проверяем варианты для IP типа:")
+            for var in variations:
+                if var in self.profiles:
+                    print(f"   ✅ Найден по варианту: {var}")
+                    return self.profiles[var]
+                else:
+                    print(f"   ❌ Не найден: {var}")
         
-        # 6. Выводим подсказки
+        # 5. Поиск по частичному совпадению (без учёта регистра)
+        search_key = profile_key.upper().replace('-', '_')
+        print(f"   🔍 Поиск по частичному совпадению: {search_key}")
+        
+        found_key = None
+        for key in self.profiles.keys():
+            if key.upper() == search_key:
+                found_key = key
+                break
+        
+        if found_key:
+            print(f"   ✅ Найден по частичному совпадению: {found_key}")
+            return self.profiles[found_key]
+        
+        # 6. Логируем ошибку
         print(f"\n❌ Профиль не найден: '{profile_key}'")
-        self.show_search_suggestions(profile_key)
+        
+        # Показываем доступные ключи для этого типа
+        if '_' in profile_key:
+            prefix = profile_key.split('_')[0].upper()
+            similar_keys = []
+            for key in self.profiles.keys():
+                if key.upper().startswith(prefix):
+                    similar_keys.append(key)
+            
+            if similar_keys:
+                print(f"   📋 Доступные ключи начинающиеся с '{prefix}':")
+                unique_similar = sorted(set(similar_keys))
+                for key in unique_similar[:15]:  # Показываем первые 15
+                    print(f"   - {key}")
+                if len(unique_similar) > 15:
+                    print(f"   ... и ещё {len(unique_similar) - 15} ключей")
         
         return None
     
-    def normalize_key(self, key: str) -> str:
-        """Нормализует ключ профиля"""
-        if not key:
-            return key
-        
-        # Заменяем дефисы на подчеркивания
-        key = key.replace('-', '_').replace(' ', '_')
-        
-        # Разбиваем на части
-        parts = [p for p in key.split('_') if p]
-        
-        if len(parts) >= 2:
-            # Первая часть - тип (в верхнем регистре)
-            parts[0] = parts[0].upper()
-            
-            # Вторая часть - уровень (должна быть цифрой)
-            if parts[1].isdigit():
-                # Оставляем как есть
-                pass
-            
-            return '_'.join(parts)
-        
-        return key.upper()
-    
-    def show_search_suggestions(self, search_key: str):
-        """Показывает подсказки для поиска"""
-        print(f"\n💡 Подсказки для поиска '{search_key}':")
-        
-        # Преобразуем поисковый запрос
-        search_lower = search_key.lower()
-        
-        # Ищем похожие ключи
-        suggestions = []
-        
-        for main_key in self.profiles.keys():
-            main_lower = main_key.lower()
-            
-            # Проверяем разные варианты совпадения
-            if search_lower in main_lower or main_lower in search_lower:
-                suggestions.append(main_key)
-            elif search_lower.replace('_', '') in main_lower.replace('_', ''):
-                suggestions.append(main_key)
-            elif search_lower.startswith('ip') and 'ip' in main_lower:
-                suggestions.append(main_key)
-        
-        # Также проверяем алиасы
-        for alias in self.aliases.keys():
-            if search_lower in alias.lower():
-                main_key = self.aliases[alias]
-                if main_key not in suggestions:
-                    suggestions.append(main_key)
-        
-        if suggestions:
-            print(f"   Возможно, вы искали один из этих профилей:")
-            for key in sorted(set(suggestions))[:10]:  # Показываем первые 10
-                profile = self.profiles[key]
-                title = ""
-                if hasattr(profile, 'title'):
-                    title = profile.title[:40] + "..." if len(profile.title) > 40 else profile.title
-                
-                print(f"   • {key:15} → {title}")
-            
-            if len(suggestions) > 10:
-                print(f"   ... и ещё {len(suggestions) - 10} вариантов")
-        else:
-            print(f"   Доступные типы профилей: SA, IA, SP, IP")
-            print(f"   Примеры ключей: SA_1_def, IA_4_exp, SP_1_def, IP_9_ide")
-            print(f"   Всего доступно {len(self.profiles)} профилей")
-    
     def get_all_profiles(self) -> list:
-        """Возвращает список всех основных ключей профилей"""
-        return sorted(list(self.profiles.keys()))
+        """
+        Возвращает список всех уникальных ключей профилей (только нормализованные)
+        
+        Returns:
+            Список ключей профилей
+        """
+        unique_keys = set()
+        for key in self.profiles.keys():
+            # Берем только нормализованные ключи (в верхнем регистре, без дефисов)
+            if not key.islower() and '-' not in key:
+                unique_keys.add(key)
+        
+        return sorted(list(unique_keys))
     
     def get_profiles_by_type(self, type_code: str) -> dict:
-        """Получает все профили определённого типа"""
-        normalized_type = type_code.upper()
+        """
+        Получает все профили определённого типа
+        
+        Args:
+            type_code: Код типа (SA, IA, SP, IP)
+            
+        Returns:
+            Словарь профилей {key: profile} указанного типа
+        """
+        normalized_type = type_code.upper().replace('-', '_')
         result = {}
         
         for key, profile in self.profiles.items():
@@ -549,24 +577,12 @@ class ProfileLoader:
         
         return result
     
-    def get_profiles_by_level(self, level: int) -> dict:
-        """Получает все профили определённого уровня"""
-        result = {}
-        
-        for key, profile in self.profiles.items():
-            parts = key.split('_')
-            if len(parts) >= 2 and parts[1] == str(level):
-                result[key] = profile
-        
-        return result
-    
     def reload_profiles(self):
         """Перезагружает все профили из файлов"""
         print("\n🔄 Перезагрузка профилей...")
         self.profiles.clear()
-        self.aliases.clear()
         self.load_all_profiles()
-        print(f"✅ Профили перезагружены. Всего: {len(self.profiles)}")
+        print(f"✅ Профили перезагружены. Всего: {len(self.get_all_profiles())}")
 
 # Создаём глобальный экземпляр загрузчика
 loader = ProfileLoader()
@@ -580,69 +596,61 @@ def get_all_profiles() -> list:
     """Возвращает все уникальные ключи профилей"""
     return loader.get_all_profiles()
 
-def get_profiles_by_type(type_code: str) -> dict:
-    """Получает все профили определённого типа"""
-    return loader.get_profiles_by_type(type_code)
-
-def get_profiles_by_level(level: int) -> dict:
-    """Получает все профили определённого уровня"""
-    return loader.get_profiles_by_level(level)
-
 def profile_exists(profile_key: str) -> bool:
     """Проверяет существование профиля"""
     return loader.get_profile(profile_key) is not None
 
-# Функция для тестирования всех профилей
-def test_all_profiles():
-    """Тестирует загрузку всех профилей"""
+# Вспомогательная функция для отладки
+def debug_profile_loading():
+    """Функция для отладки загрузки профилей"""
     print("\n" + "="*60)
-    print("🧪 ТЕСТИРОВАНИЕ ЗАГРУЗКИ ВСЕХ ПРОФИЛЕЙ")
+    print("🐛 ОТЛАДКА ЗАГРУЗЧИКА ПРОФИЛЕЙ")
     print("="*60)
     
-    all_keys = get_all_profiles()
-    print(f"📊 Всего профилей: {len(all_keys)}")
+    # Получаем все профили
+    all_profiles = get_all_profiles()
+    print(f"📊 Всего уникальных профилей: {len(all_profiles)}")
     
-    if len(all_keys) != 36:
-        print(f"⚠️ Ожидалось 36 профилей, найдено {len(all_keys)}")
+    if all_profiles:
+        # Группируем по типам
+        types = {}
+        for key in all_profiles:
+            type_code = key.split('_')[0]
+            if type_code not in types:
+                types[type_code] = []
+            types[type_code].append(key)
+        
+        # Выводим по типам
+        for type_code in sorted(types.keys()):
+            profiles = types[type_code]
+            print(f"\n{type_code} профилей ({len(profiles)}):")
+            for i, key in enumerate(sorted(profiles), 1):
+                print(f"  {i:2d}. {key}")
     
-    # Тестируем поиск по разным вариантам
-    test_cases = [
-        # Основные форматы
-        ("SA_1_def", True),
-        ("ia_4_exp", True),
-        ("SP_1_def", True),
-        ("IP_9_ide", True),
-        
-        # Без суффикса
-        ("SA_1", True),
-        ("ia_4", True),
-        
-        # Только уровень
-        ("4", True),  # Должен найти любой профиль уровня 4
-        
-        # Неправильные, но близкие
-        ("sa1def", True),  # Без подчеркиваний
-        ("IP-АДРЕС_4", True),  # С дефисом
-        
-        # Несуществующие
-        ("XX_1_def", False),
-        ("SA_10_def", False),
+    # Тестируем поиск
+    print("\n🔍 Тестируем поиск профилей:")
+    test_keys = [
+        "ia_4",
+        "IA_4",
+        "ia_4_exp",
+        "IA_4_exp",
+        "ia_4_cap",
+        "IA_4_cap",
+        "sp_1_def",
+        "SA_1_def"
     ]
     
-    print("\n🔍 Тестируем поиск:")
-    for search_key, should_exist in test_cases:
-        profile = get_profile(search_key)
-        found = profile is not None
-        status = "✅" if found == should_exist else "❌"
-        
-        if found:
-            actual_key = getattr(profile, 'key', 'unknown')
-            print(f"  {status} '{search_key:20}' → найдено ({actual_key})")
-        else:
-            print(f"  {status} '{search_key:20}' → не найдено (ожидалось: {'да' if should_exist else 'нет'})")
+    for key in test_keys:
+        profile = get_profile(key)
+        status = "✅ НАЙДЕН" if profile else "❌ НЕ НАЙДЕН"
+        title = ""
+        if profile and hasattr(profile, 'title'):
+            title = profile.title[:30] + "..." if len(profile.title) > 30 else profile.title
+            status = f"{status}: {title}"
+        print(f"  {key:20} → {status}")
     
     print("="*60)
 
-# При запуске напрямую, выполняем тестирование
+# При запуске loader.py напрямую, выполняем отладку
 if __name__ == "__main__":
-    test_all_profiles()
+    debug_profile_loading()
