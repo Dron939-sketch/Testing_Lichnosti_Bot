@@ -1,8 +1,37 @@
-"""
-АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
-4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
-ВЕРСИЯ 2.0: Добавлен анализ расхождений между тестом и профилем
-+ ИНТЕГРАЦИЯ ЮKASSA
+python
+# ============ ПАТЧ ДЛЯ TELEGRAM-BOT ============
+try:
+    # Пробуем импортировать патч
+    import telegram_patch
+    print("✅ Патч для telegram-bot загружен")
+except ImportError:
+    # Если файла нет, применяем патч напрямую
+    try:
+        import telegram.ext._updater as updater_module
+        
+        # Сохраняем оригинальный __init__
+        original_init = updater_module.Updater.__init__
+        
+        def patched_init(self, *args, **kwargs):
+            # Вызываем оригинальный __init__
+            result = original_init(self, *args, **kwargs)
+            
+            # Удаляем проблемный приватный атрибут
+            try:
+                delattr(self, '_Updater__polling_cleanup_cb')
+            except AttributeError:
+                pass
+            
+            return result
+        
+        # Применяем патч
+        updater_module.Updater.__init__ = patched_init
+        print("✅ Встроенный патч для telegram-bot применен")
+    except Exception as e:
+        print(f"⚠️  Не удалось применить патч: {e}")
+
+# ============ КОНЕЦ ПАТЧА ============
+
 """
 
 import logging
