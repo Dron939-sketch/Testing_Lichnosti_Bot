@@ -1,72 +1,11 @@
 services:
-  - type: web  # ОБЯЗАТЕЛЬНО web, чтобы был публичный URL
-    name: variatica-bot-web
+  - type: web
+    name: variatica-bot
     env: python
-    region: frankfurt
-    
-    buildCommand: |
-      # Создаем runtime.txt для Python 3.10 (совместимость)
-      echo "python-3.10.12" > runtime.txt
-      
-      # Устанавливаем зависимости
-      pip install --upgrade pip
-      pip install python-telegram-bot==20.7 --no-cache-dir
-      pip install pyyaml==6.0.3 --no-cache-dir
-      pip install flask==2.3.3 --no-cache-dir
-      pip install gunicorn==20.1.0 --no-cache-dir
-      pip install python-dotenv==1.0.0 --no-cache-dir
-      pip install requests==2.31.0 --no-cache-dir
-      
-      # Проверяем
-      echo "=== ВЕРСИИ ==="
-      python --version
-      pip show python-telegram-bot flask
-    
-    startCommand: |
-      # Запускаем Telegram бота в фоне
-      echo "🤖 Запуск Telegram бота в фоне..."
-      python run_bot_simple.py &
-      
-      # Запускаем Flask сервер для webhook ЮKassa
-      echo "🌐 Запуск Flask сервера для webhook..."
-      gunicorn webhook_server:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
-    
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
     envVars:
       - key: PORT
-        value: "10000"
-      
-      # Telegram
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      
-      # ЮKassa (ОБЯЗАТЕЛЬНЫ для webhook)
-      - key: YOOKASSA_SHOP_ID
-        sync: false
-      - key: YOOKASSA_SECRET_KEY
-        sync: false
-      - key: YOOKASSA_WEBHOOK_SECRET
-        sync: false
-      
-      # Конфигурация
-      - key: BOT_LINK
-        sync: false
-      - key: GIFT_PDF_LINK
-        sync: false
-      - key: AUTHOR_LINK
-        sync: false
-      - key: PAYMENT_LINK
-        sync: false
-      - key: PAYMENT_AMOUNT
-        value: "690"
-      
-      # Webhook URL (автоматически)
+        value: 10000
       - key: WEBHOOK_URL
-        value: "https://variatica-bot-web.onrender.com"
-      - key: YOOKASSA_WEBHOOK_URL
-        value: "https://variatica-bot-web.onrender.com/yookassa-webhook"
-    
-    healthCheckPath: /health
-    
-    plan: free
-    autoDeploy: true
-    branch: main
+        value: https://testing-lichnosti-bot-qyra.onrender.com
