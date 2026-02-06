@@ -2941,7 +2941,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 def main():
-    """Запуск бота"""
+    "Запуск бота"
     print("\n" + "="*50)
     print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.0 + ЮKASSA")
     print("="*50)
