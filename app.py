@@ -1,176 +1,185 @@
+"""
+app.py - Основной файл для запуска на Render
+Содержит Flask сервер для webhook и запускает Telegram бота в отдельном потоке
+"""
+
+import os
+import sys
+import logging
+import threading
+import asyncio
+import traceback
+from flask import Flask, request, jsonify
+from datetime import datetime
+
+# Настройка логирования
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# Создание Flask приложения
+app = Flask(__name__)
+
+# Импортируем конфигурацию для проверки
+try:
+    from config import Config
+    config = Config()
+except ImportError as e:
+    logger.error(f"❌ Не удалось импортировать конфигурацию: {e}")
+    config = None
+
 # ============================================
-# ГЛАВНАЯ ФУНКЦИЯ (асинхронная версия)
+# WEBHOOK ДЛЯ ЮKASSA
 # ============================================
 
-async def main_async():
-    """Асинхронная версия основной функции"""
-    print("\n" + "="*50)
-    print("🚀 ЗАПУСК TELEGRAM БОТА ВАРИАТИКА ver 2.0")
-    print("="*50)
-    print("РЕЖИМ: БОЕВОЙ С ЮKASSA")
-    print("="*50 + "\n")
-    
-    # Проверка конфигурации:
+@app.route('/yookassa-webhook', methods=['POST'])
+def yookassa_webhook():
+    """
+    Webhook для обработки уведомлений от ЮKassa
+    Этот endpoint должен быть указан в настройках кабинета ЮKassa
+    """
     try:
-        config.validate()
-        print("✅ Конфигурация проверена")
+        # Получаем данные от ЮKassa
+        event_json = request.get_json()
         
-        print(f"🤖 Bot Token: {'✅' if config.TELEGRAM_BOT_TOKEN else '❌'}")
-        print(f"💰 YooKassa: {'✅' if config.YOOKASSA_SHOP_ID and config.YOOKASSA_SECRET_KEY else '❌'}")
-        print(f"🔗 Webhook: {config.WEBHOOK_URL}")
-        print(f"💵 Сумма: {config.PAYMENT_AMOUNT} {config.PAYMENT_CURRENCY}")
+        if not event_json:
+            logger.warning("⚠️ Получен пустой webhook от ЮKassa")
+            return jsonify({"status": "error", "message": "Empty payload"}), 400
         
-        if not config.is_payment_enabled:
-            print("\n⚠️  ПРЕДУПРЕЖДЕНИЕ: Платежи ЮKassa НЕ настроены!")
-            print("   Бот будет работать, но платежи НЕ БУДУТ доступны!")
-            
-    except ValueError as e:
-        print(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
-        print("="*50)
-        print("ПРОВЕРЬТЕ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ:")
-        print("1. TELEGRAM_BOT_TOKEN - токен бота")
-        print("2. YOOKASSA_SHOP_ID - Shop ID из ЮKassa")
-        print("3. YOOKASSA_SECRET_KEY - Secret Key из ЮKassa")
-        print("4. WEBHOOK_URL - ваш Render URL")
+        logger.info(f"📨 Получен webhook от ЮKassa: {event_json.get('event', 'unknown')}")
+        
+        # Логируем основные данные
+        event = event_json.get('event', '')
+        payment_id = event_json.get('object', {}).get('id', '')
+        status = event_json.get('object', {}).get('status', '')
+        
+        logger.info(f"💰 Событие: {event}, ID: {payment_id}, Статус: {status}")
+        
+        # Здесь должна быть логика обновления статуса платежа в вашей базе данных
+        # Например, можно записать в файл или использовать базу данных
+        
+        # Простая логика логирования
+        with open('payment_webhooks.log', 'a') as f:
+            f.write(f"{datetime.now().isoformat()} - {event} - {payment_id} - {status}\n")
+        
+        # Всегда возвращаем 200 OK, чтобы ЮKassa не отправлял повторные запросы
+        return jsonify({"status": "ok"}), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка обработки webhook: {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/yookassa-webhook', methods=['GET'])
+def yookassa_webhook_verify():
+    """Метод для верификации webhook (нужен для некоторых настроек)"""
+    return jsonify({"status": "webhook_ready", "service": "variatica_bot"}), 200
+
+# ============================================
+# HEALTH CHECK И СТАТУС
+# ============================================
+
+@app.route('/')
+def index():
+    """Главная страница - показывает статус сервиса"""
+    status = {
+        "service": "Variatica Telegram Bot + YooKassa Webhook",
+        "status": "running",
+        "timestamp": datetime.now().isoformat(),
+        "endpoints": {
+            "webhook": "/yookassa-webhook (POST)",
+            "health": "/health",
+            "status": "/status"
+        }
+    }
+    return jsonify(status)
+
+@app.route('/health')
+def health_check():
+    """Health check для Render"""
+    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()}), 200
+
+@app.route('/status')
+def status_check():
+    """Проверка статуса сервиса"""
+    try:
+        # Проверяем конфигурацию
+        config_status = "loaded" if config else "error"
+        payment_enabled = config.is_payment_enabled if config else False
+        
+        status = {
+            "service": "Variatica Bot",
+            "status": "operational",
+            "config": config_status,
+            "payments_enabled": payment_enabled,
+            "webhook_url": config.WEBHOOK_URL if config else "not_configured",
+            "timestamp": datetime.now().isoformat(),
+            "bot_thread": "running" if hasattr(app, 'bot_thread') and app.bot_thread.is_alive() else "stopped"
+        }
+        return jsonify(status), 200
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+# ============================================
+# ЗАПУСК TELEGRAM БОТА
+# ============================================
+
+def run_bot():
+    """Запуск Telegram бота в отдельном потоке"""
+    try:
+        logger.info("🤖 Запускаю Telegram бота в отдельном потоке...")
+        
+        # Создаем новый цикл событий для этого потока
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Импортируем и запускаем бота
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        
+        from bot_adaptive import main as bot_main
+        
+        # Запускаем бота в цикле событий этого потока
+        loop.run_until_complete(bot_main())
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка запуска бота: {e}")
+        logger.error(f"📋 Трассировка:\n{traceback.format_exc()}")
+
+def start_bot_thread():
+    """Запускает бота в отдельном потоке"""
+    if hasattr(app, 'bot_thread') and app.bot_thread.is_alive():
+        logger.info("🤖 Бот уже запущен")
         return
     
-    # Проверка загрузки профилей
-    print("\n🔍 ПРОВЕРКА ЗАГРУЗКИ ПРОФИЛЕЙ")
-    print("="*30)
+    logger.info("🚀 Создаю поток для Telegram бота...")
+    app.bot_thread = threading.Thread(target=run_bot, name="telegram-bot")
+    app.bot_thread.daemon = True  # Демонизированный поток (завершится с основным)
+    app.bot_thread.start()
+    logger.info("✅ Поток для бота создан и запущен")
+
+# ============================================
+# ЗАПУСК ПРИЛОЖЕНИЯ
+# ============================================
+
+if __name__ == '__main__':
+    # Запускаем бота в отдельном потоке
+    start_bot_thread()
     
-    all_profiles = loader.get_all_profiles()
-    print(f"📊 Всего профилей загружено: {len(all_profiles)}")
+    # Запускаем Flask сервер
+    port = int(os.getenv('PORT', 10000))
     
-    # Проверяем профили по типам
-    for profile_type in ['sa', 'sp', 'ia', 'ip']:
-        type_profiles = [p for p in all_profiles if p.lower().startswith(f"{profile_type}_")]
-        print(f"🔍 {profile_type.upper()} профилей: {len(type_profiles)}")
+    logger.info(f"🌐 Запускаю Flask сервер на порту {port}")
+    logger.info(f"💰 Webhook URL: {config.WEBHOOK_URL if config else 'Не настроен'}/yookassa-webhook")
+    logger.info(f"📊 Режим платежей: {'🟢 ВКЛЮЧЕН' if config and config.is_payment_enabled else '🔴 ВЫКЛЮЧЕН'}")
     
-    # Проверяем наличие sp_4_val (проблемный профиль)
-    sp_4_profiles = [p for p in all_profiles if 'sp_4' in p.lower()]
-    print(f"\n🔍 SP_4 профили: {sp_4_profiles}")
+    # Для разработки используем debug, для продакшена - нет
+    debug_mode = os.getenv('DEBUG', 'False').lower() == 'true'
     
-    # Если нет sp_4_val, используем fallback
-    if 'sp_4_val' not in [p.lower() for p in all_profiles]:
-        print("⚠️  ВНИМАНИЕ: профиль sp_4_val не найден!")
-        print("   Будет использован fallback профиль")
-    
-    print("="*30)
-    print("🤖 Запускаю Telegram бота...")
-    
-    # Создание приложения
-    application = Application.builder().token(TOKEN).build()
-    
-    # Создаем ConversationHandler с per_message=True
-    conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler("start", start),
-            CallbackQueryHandler(start_test, pattern="^start_test$")
-        ],
-        states={
-            STAGE_1: [
-                CallbackQueryHandler(show_stage_1_details, pattern="^stage1_details$"),
-                CallbackQueryHandler(back_to_stage1_intro, pattern="^back_to_stage1_intro$"),
-                CallbackQueryHandler(start_stage_1, pattern="^start_stage_1$"),
-                CallbackQueryHandler(handle_stage_1_answer, pattern="^stage1_")
-            ],
-            STAGE_2: [
-                CallbackQueryHandler(show_stage_2_intro, pattern="^show_stage_2_intro$"),
-                CallbackQueryHandler(show_stage_2_details, pattern="^stage2_details$"),
-                CallbackQueryHandler(back_to_stage2_intro, pattern="^back_to_stage2_intro$"),
-                CallbackQueryHandler(start_stage_2, pattern="^start_stage_2$"),
-                CallbackQueryHandler(handle_stage_2_answer, pattern="^stage2_")
-            ],
-            STAGE_3: [
-                CallbackQueryHandler(show_stage_3_intro, pattern="^show_stage_3_intro$"),
-                CallbackQueryHandler(show_stage_3_details, pattern="^stage3_details$"),
-                CallbackQueryHandler(back_to_stage3_intro, pattern="^back_to_stage3_intro$"),
-                CallbackQueryHandler(start_stage_3, pattern="^start_stage_3$"),
-                CallbackQueryHandler(handle_stage_3_answer, pattern="^stage3_")
-            ],
-            STAGE_4: [
-                CallbackQueryHandler(show_stage_4_intro, pattern="^show_stage_4_intro$"),
-                CallbackQueryHandler(show_stage_4_details, pattern="^stage4_details$"),
-                CallbackQueryHandler(back_to_stage4_intro, pattern="^back_to_stage4_intro$"),
-                CallbackQueryHandler(start_stage_4, pattern="^start_stage_4$"),
-                CallbackQueryHandler(handle_stage_4_answer, pattern="^stage4_")
-            ],
-            CLARIFICATION: [
-                CallbackQueryHandler(handle_clarification_answer, pattern="^clarify_")
-            ],
-            DILTS_CLARIFICATION: [
-                CallbackQueryHandler(handle_dilts_clarification, pattern="^dilts_clarify_")
-            ],
-            RESULTS: [
-                CallbackQueryHandler(get_gift_screen, pattern="^get_gift$"),
-                CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
-                CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
-                CallbackQueryHandler(restart_test, pattern="^restart_test$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(show_results_screen, pattern="^show_results$")
-            ],
-            GIFT_SCREEN: [
-                CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(get_gift_screen, pattern="^get_gift$")
-            ],
-            PACKAGE_SCREEN: [
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
-                CallbackQueryHandler(handle_payment_start, pattern="^start_payment$")
-            ],
-            PAYMENT_SCREEN: [
-                CallbackQueryHandler(check_payment_status, pattern="^check_payment_"),
-                CallbackQueryHandler(cancel_payment, pattern="^cancel_payment$"),
-                CallbackQueryHandler(retry_payment, pattern="^retry_payment$"),
-                CallbackQueryHandler(ask_for_email, pattern="^ask_email$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
-            ],
-            PAYMENT_EMAIL: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_email_input),
-                CallbackQueryHandler(skip_email, pattern="^skip_email$"),
-                CallbackQueryHandler(back_to_payment, pattern="^back_to_payment$")
-            ],
-            PAYMENT_CHECK: [
-                CallbackQueryHandler(check_payment_status, pattern="^check_payment_"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
-            ],
-            PAYMENT_SUCCESS: [
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(restart_test, pattern="^restart_test$")
-            ],
-            OPEN_GIFT_SCREEN: [
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(open_gift_screen, pattern="^open_gift$")
-            ]
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        allow_reentry=True,
-        per_message=True  # ← ОБЯЗАТЕЛЬНО!
+    app.run(
+        host='0.0.0.0',
+        port=port,
+        debug=debug_mode,
+        use_reloader=False  # Отключаем reloader, т.к. он создает дополнительные потоки
     )
-    
-    # Добавляем обработчики команд
-    application.add_handler(conv_handler)
-    application.add_handler(CommandHandler("payment_help", payment_help_command))
-    application.add_handler(CommandHandler("payment_status", payment_status_command))
-    application.add_handler(CommandHandler("payment_test", payment_test_command))
-    
-    logger.info("🚀 Telegram бот запущен: ВАРИАТИКА ver 2.0 + ЮKassa")
-    logger.info(f"💰 Payment enabled: {config.is_payment_enabled}")
-    logger.info(f"🔗 Webhook URL: {config.WEBHOOK_URL}")
-    logger.info(f"💵 Amount: {config.PAYMENT_AMOUNT} {config.PAYMENT_CURRENCY}")
-    
-    if config.is_payment_enabled:
-        logger.info("✅ Платежная система готова к работе")
-    else:
-        logger.warning("⚠️  Платежная система НЕ настроена")
-    
-    # Запуск бота
-    await application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-def main():
-    """Синхронная обертка для запуска бота"""
-    asyncio.run(main_async())
-
-if __name__ == "__main__":
-    main()
