@@ -1,7 +1,51 @@
-python-telegram-bot==13.15
-pyyaml==6.0.3
-flask==2.3.3
-gunicorn==20.1.0
-python-dotenv==1.0.0
-requests==2.26.0
-urllib3==1.26.18
+# patch_telegram.py
+import os
+import sys
+
+def patch_telegram_bot():
+    """Исправляет проблему с urllib3.contrib.appengine в python-telegram-bot"""
+    
+    # Находим путь к telegram
+    import telegram
+    telegram_path = os.path.dirname(telegram.__file__)
+    request_file = os.path.join(telegram_path, 'utils', 'request.py')
+    
+    print(f"🔍 Ищу файл: {request_file}")
+    
+    if os.path.exists(request_file):
+        # Читаем файл
+        with open(request_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Заменяем проблемный импорт
+        old_import = "from urllib3.contrib.appengine import AppEngineManager, is_appengine_sandbox"
+        new_import = "# PATCHED: from urllib3.contrib.appengine import AppEngineManager, is_appengine_sandbox"
+        
+        if old_import in content:
+            content = content.replace(old_import, new_import)
+            
+            # Также заменяем использование
+            content = content.replace(
+                "if is_appengine_sandbox():",
+                "# PATCHED: if is_appengine_sandbox():"
+            )
+            content = content.replace(
+                "manager = AppEngineManager()",
+                "# PATCHED: manager = AppEngineManager()"
+            )
+            
+            # Записываем обратно
+            with open(request_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            print("✅ Файл request.py исправлен")
+            return True
+        else:
+            print("⚠️  Импорт не найден, возможно уже исправлен")
+            return False
+    else:
+        print(f"❌ Файл не найден: {request_file}")
+        return False
+
+if __name__ == '__main__':
+    patch_telegram_bot()
