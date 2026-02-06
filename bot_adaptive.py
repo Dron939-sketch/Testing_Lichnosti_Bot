@@ -6,7 +6,6 @@
 """
 
 import logging
-import os
 import asyncio
 import urllib.parse
 import math
@@ -24,11 +23,9 @@ from telegram.ext import (
     ConversationHandler,
 )
 
-# Импорт загрузчика и профилей
+# ТОЛЬКО эти импорты:
 from loader import loader
 from base import VariaticaProfile
-
-# Импорт платежной системы
 from config import Config
 from yookassa_api import YooKassaAPI
 from payment_utils import format_price, validate_email, PaymentLogger
@@ -45,7 +42,11 @@ if not TOKEN:
 
 # Проверка конфигурации платежей
 if not config.is_payment_enabled:
-    logging.warning("⚠️ Платежи ЮKassa не настроены. Используется демо-режим.")
+    logging.error("❌ КРИТИЧЕСКАЯ ОШИБКА: Платежи ЮKassa не настроены!")
+    logging.error("   Для работы с реальными платежами настройте в .env:")
+    logging.error("   1. YOOKASSA_SHOP_ID")
+    logging.error("   2. YOOKASSA_SECRET_KEY")
+    logging.error("   3. WEBHOOK_URL")
 
 # Настройка логирования
 logging.basicConfig(
@@ -346,7 +347,7 @@ STAGE_2_QUESTIONS = {
             }
         },
         {
-            "text": "Человек погружён в экзистенциальный кризис.\n\nЧто ему делать?",
+            "text": "Человник погружён в экзистенциальный кризис.\n\nЧто ему делать?",
             "options": {
                 "1": "Отвлечься, не думать об этом",
                 "2": "Искать ответы (книги, терапия)",
@@ -420,7 +421,7 @@ STAGE_2_QUESTIONS = {
             }
         },
         {
-            "text": "Человек хочет большего, но не действует.\n\nПочему?",
+            "text": "Человник хочет большего, но не действует.\n\nПочему?",
             "options": {
                 "1": "Не верит в себя",
                 "2": "Не знает, как",
@@ -494,7 +495,7 @@ STAGE_2_QUESTIONS = {
             }
         },
         {
-            "text": "Человек перегружен информацией.\n\nЧто делать?",
+            "text": "Человник перегружен информацией.\n\nЧто делать?",
             "options": {
                 "1": "Избегать информации",
                 "2": "Пытаться всё изучить",
@@ -579,8 +580,8 @@ STAGE_3_QUESTIONS = [
 
 STAGE_4_QUESTIONS = [
     {"id": "q4_1", "text": "Как часто ты чувствуешь, что «что-то не так» в жизни?", "options": {"a": {"text": "Постоянно", "dilts": "IDENTITY"}, "b": {"text": "Часто", "dilts": "VALUES"}, "c": {"text": "Иногда", "dilts": "CAPABILITIES"}, "d": {"text": "Редко или никогда", "dilts": "ENVIRONMENT"}}},
-    {"id": "q4_2", "text": "Что именно «не так»?\n\nВыбери то, что ближе всего:", "options": {"a": {"text": "Не то окружение (место, люди, условия)", "dilts": "ENVIRONMENT"}, "b": {"text": "Делаю не то, что хочу", "dilts": "BEHAVIOR"}, "c": {"text": "Не обладаю навыками для того, что хочу", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимаю, чего хочу", "dilts": "VALUES"}}},
-    {"id": "q4_3", "text": "Человек чувствует себя несчастным.\n\nВ чём, скорее всего, причина?", "options": {"a": {"text": "Не те люди вокруг", "dilts": "ENVIRONMENT"}, "b": {"text": "Делает не то, что хочет", "dilts": "BEHAVIOR"}, "c": {"text": "Не обладает навыками для того, что хочет", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимает, чего хочет", "dilts": "VALUES"}}},
+    {"id": "q4_2", "text": "Что именно «не так»?\n\nВыбери то, что ближе всего:", "options": {"a": {"text": "Не то окружение (место, людей, условия)", "dilts": "ENVIRONMENT"}, "b": {"text": "Делаю не то, что хочу", "dilts": "BEHAVIOR"}, "c": {"text": "Не обладаю навыками для того, что хочу", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимаю, чего хочу", "dilts": "VALUES"}}},
+    {"id": "q4_3", "text": "Человник чувствует себя несчастным.\n\nВ чём, скорее всего, причина?", "options": {"a": {"text": "Не те люди вокруг", "dilts": "ENVIRONMENT"}, "b": {"text": "Делает не то, что хочет", "dilts": "BEHAVIOR"}, "c": {"text": "Не обладает навыками для того, что хочет", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимает, чего хочет", "dilts": "VALUES"}}},
     {"id": "q4_4", "text": "Если бы ты мог изменить что-то одно, что бы это было?", "options": {"a": {"text": "Своё окружение", "dilts": "ENVIRONMENT"}, "b": {"text": "Своё поведение", "dilts": "BEHAVIOR"}, "c": {"text": "Свои навыки", "dilts": "CAPABILITIES"}, "d": {"text": "Своё понимание целей", "dilts": "VALUES"}}},
     {"id": "q4_5", "text": "Что для тебя сложнее всего?", "options": {"a": {"text": "Изменить внешние условия", "dilts": "ENVIRONMENT"}, "b": {"text": "Начать действовать", "dilts": "BEHAVIOR"}, "c": {"text": "Освоить новые навыки", "dilts": "CAPABILITIES"}, "d": {"text": "Понять, чего я хочу", "dilts": "VALUES"}}},
     {"id": "q4_6", "text": "Когда ты застреваешь в проблеме, что обычно не хватает?", "options": {"a": {"text": "Ресурсов (время, деньги, связи)", "dilts": "ENVIRONMENT"}, "b": {"text": "Действий (не начинаю)", "dilts": "BEHAVIOR"}, "c": {"text": "Навыков (не умею)", "dilts": "CAPABILITIES"}, "d": {"text": "Понимания (не знаю зачем)", "dilts": "VALUES"}}},
@@ -730,7 +731,7 @@ CLARIFICATION_QUESTIONS = {
     ],
     "stage4_tie": [
         {"id": "c4_1", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nЕсли бы ты мог изменить только одно, что бы выбрал?", "options": {"a": {"text": "Где я нахожусь", "dilts": "ENVIRONMENT"}, "b": {"text": "Что я делаю", "dilts": "BEHAVIOR"}, "c": {"text": "Что я умею", "dilts": "CAPABILITIES"}, "d": {"text": "Что для меня важно", "dilts": "VALUES"}, "e": {"text": "Кем я себя вижу", "dilts": "IDENTITY"}}},
-        {"id": "c4_2", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nГде находится твоя главная проблема?", "options": {"a": {"text": "В обстоятельствах", "dilts": "ENVIRONMENT"}, "b": {"text": "В моих действиях", "dilts": "BEHAVIOR"}, "c": {"text": "В моих навыках", "dilts": "CAPABILITIES"}, "d": {"text": "В моих целях", "dilts": "VALUES"}, "e": {"text": "В моём самоопределении", "dilts": "IDENTITY"}}}
+        {"id": "c4_2", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nГде находится корень твоих главных трудностей?", "options": {"a": {"text": "В обстоятельствах", "dilts": "ENVIRONMENT"}, "b": {"text": "В моих действиях", "dilts": "BEHAVIOR"}, "c": {"text": "В навыках и умениях", "dilts": "CAPABILITIES"}, "d": {"text": "В целях и ценностях", "dilts": "VALUES"}, "e": {"text": "В моём самоопределении", "dilts": "IDENTITY"}}}
     ]
 }
 
@@ -1127,6 +1128,23 @@ async def handle_payment_start(update: Update, context: ContextTypes.DEFAULT_TYP
     """Начало процесса оплаты"""
     query = update.callback_query
     await query.answer()
+    
+    # === ДОБАВЛЕНА ПРОВЕРКА ===
+    if not config.is_payment_enabled:
+        error_text = (
+            "❌ <b>ПЛАТЕЖНАЯ СИСТЕМА НЕДОСТУПНА</b>\n\n"
+            "Платежи временно отключены.\n\n"
+            "Пожалуйста, попробуйте позже или обратитесь в поддержку."
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")],
+            [InlineKeyboardButton("📞 Поддержка", url=f"https://t.me/{AUTHOR_LINK[1:]}" if AUTHOR_LINK.startswith('@') else f"https://t.me/{AUTHOR_LINK}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(error_text, reply_markup=reply_markup, parse_mode="HTML")
+        return PAYMENT_SCREEN
     
     # Сохраняем информацию о пользователе
     user_id = query.from_user.id
@@ -1746,10 +1764,12 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"• Карта сильных и слабых сторон\n\n"
         f"<b>Цена:</b> {format_price(PAYMENT_AMOUNT)}\n\n"
         f"<b>🔒 БЕЗОПАСНАЯ ОПЛАТА ЧЕРЕЗ ЮKASSA</b>\n"
-        f"• Официальный платежный агрегатор\n"
+        f"• Официальный платежный агрегатор №1 в России\n"
+        f"• Защита по стандарту PCI DSS\n"
+        f"• Шифрование всех данных\n"
         f"• Поддержка карт, электронных кошельков\n"
         f"• Мгновенное получение материалов\n\n"
-        f"<i>После оплаты файлы будут отправлены автоматически.</i>"
+        f"<b>⚡ После оплаты файлы будут отправлены автоматически.</b>"
     )
     
     keyboard = [
@@ -2825,6 +2845,8 @@ async def handle_dilts_clarification(update: Update, context: ContextTypes.DEFAU
 
 async def payment_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда для проверки статуса платежей (для администратора)"""
+    import os
+    
     user_id = update.effective_user.id
     
     # Проверяем, является ли пользователь администратором
@@ -2896,6 +2918,38 @@ async def payment_help_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     await update.message.reply_text(help_text, reply_markup=reply_markup, parse_mode="HTML")
 
+async def payment_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для тестирования платежной системы"""
+    import os
+    
+    user_id = update.effective_user.id
+    
+    # Проверяем, является ли пользователь администратором
+    ADMIN_ID = os.getenv("ADMIN_ID", "")
+    if ADMIN_ID and str(user_id) != ADMIN_ID:
+        await update.message.reply_text("❌ У вас нет доступа к этой команде.")
+        return
+    
+    status_text = (
+        f"🧪 <b>ТЕСТ ПЛАТЕЖНОЙ СИСТЕМЫ</b>\n\n"
+        f"<b>Статус:</b>\n"
+        f"• YooKassa настроен: {'✅' if config.is_payment_enabled else '❌'}\n"
+        f"• Webhook URL: {config.WEBHOOK_URL if config.WEBHOOK_URL else '❌ Не установлен'}\n"
+        f"• Режим: {'🟢 БОЕВОЙ' if not config.is_test_mode else '🟡 ТЕСТОВЫЙ'}\n"
+        f"• Сумма: {config.PAYMENT_AMOUNT} {config.PAYMENT_CURRENCY}\n\n"
+        f"<b>Инструкция для настройки:</b>\n"
+        f"1. Получите ключи в кабинете ЮKassa\n"
+        f"2. Добавьте в .env:\n"
+        f"   YOOKASSA_SHOP_ID=ваш_shop_id\n"
+        f"   YOOKASSA_SECRET_KEY=ваш_secret_key\n"
+        f"   WEBHOOK_URL=https://testing-lichnosti-bot-qyra.onrender.com\n"
+        f"3. В кабинете ЮKassa настройте webhook:\n"
+        f"   {config.WEBHOOK_URL}/yookassa-webhook\n"
+        f"4. Перезапустите бота"
+    )
+    
+    await update.message.reply_text(status_text, parse_mode="HTML")
+
 # ============================================
 # ОТМЕНА ТЕСТА
 # ============================================
@@ -2912,36 +2966,35 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 def main():
-    """Запуск бота"""
+    """Запуск Telegram бота (без Flask)"""
     print("\n" + "="*50)
-    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.0 + ЮKASSA")
+    print("🚀 ЗАПУСК TELEGRAM БОТА ВАРИАТИКА ver 2.0")
     print("="*50)
-    print("ИЗМЕНЕНИЯ В v2.0:")
-    print("1. Добавлен анализ расхождений между тестом и профилем")
-    print("2. Поиск профиля ТОЛЬКО по типу и уровню")
-    print("3. Дилтс используется только для информации")
-    print("4. Добавлены конфликтные фразы для расхождений")
-    print("5. Обновлена терминология (способности → навыки)")
-    print("6. ИНТЕГРАЦИЯ ПЛАТЕЖЕЙ ЮKASSA")
+    print("РЕЖИМ: БОЕВОЙ С ЮKASSA")
     print("="*50 + "\n")
     
-    # Проверка конфигурации
+    # Проверка конфигурации:
     try:
         config.validate()
-        print("✅ Конфигурация валидна")
+        print("✅ Конфигурация проверена")
         
-        if config.is_test_mode:
-            print("⚠️  Внимание: Работа в ТЕСТОВОМ режиме платежей")
-            print("   Тестовые карты для проверки:")
-            print("   • 5555 5555 5555 4444 - успешная оплата")
-            print("   • 2200 0000 0000 0004 - ожидание (3DS)")
-            print("   • 2200 0000 0000 0005 - отказ")
-        else:
-            print("✅ Работа в ПРОДАКШЕН режиме платежей")
+        print(f"🤖 Bot Token: {'✅' if config.TELEGRAM_BOT_TOKEN else '❌'}")
+        print(f"💰 YooKassa: {'✅' if config.YOOKASSA_SHOP_ID and config.YOOKASSA_SECRET_KEY else '❌'}")
+        print(f"🔗 Webhook: {config.WEBHOOK_URL}")
+        print(f"💵 Сумма: {config.PAYMENT_AMOUNT} {config.PAYMENT_CURRENCY}")
+        
+        if not config.is_payment_enabled:
+            print("\n⚠️  ПРЕДУПРЕЖДЕНИЕ: Платежи ЮKassa НЕ настроены!")
+            print("   Бот будет работать, но платежи НЕ БУДУТ доступны!")
             
     except ValueError as e:
-        print(f"❌ Ошибка конфигурации: {e}")
-        print("Проверьте файл .env и переменные окружения")
+        print(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
+        print("="*50)
+        print("ПРОВЕРЬТЕ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ:")
+        print("1. TELEGRAM_BOT_TOKEN - токен бота")
+        print("2. YOOKASSA_SHOP_ID - Shop ID из ЮKassa")
+        print("3. YOOKASSA_SECRET_KEY - Secret Key из ЮKassa")
+        print("4. WEBHOOK_URL - ваш Render URL")
         return
     
     # Проверка загрузки профилей
@@ -2983,12 +3036,12 @@ def main():
             print(f"  {type_code}_{level}_{dilts} → ❌ ОШИБКА: {e}")
     
     print("="*30)
-    print("🤖 Запускаю бота v2.0 с платежной системой...")
+    print("🤖 Запускаю Telegram бота...")
     
-    # Создание приложения
+    # Создание приложения с per_message=True
     application = Application.builder().token(TOKEN).build()
     
-    # Создаем ConversationHandler
+    # ConversationHandler ДОЛЖЕН ИМЕТЬ per_message=True
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -3072,17 +3125,27 @@ def main():
             ]
         },
         fallbacks=[CommandHandler("cancel", cancel)],
-        allow_reentry=True
+        allow_reentry=True,
+        per_message=True  # ← ОБЯЗАТЕЛЬНО!
     )
     
     # Добавляем обработчики команд
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("payment_help", payment_help_command))
     application.add_handler(CommandHandler("payment_status", payment_status_command))
+    application.add_handler(CommandHandler("payment_test", payment_test_command))
     
-    logger.info("🚀 Bot started: ВАРИАТИКА ver 2.0 + ЮKassa!")
-    logger.info("📊 Changes: Added discrepancy analysis, new profile search system, YooKassa integration")
+    logger.info("🚀 Telegram бот запущен: ВАРИАТИКА ver 2.0 + ЮKassa")
+    logger.info(f"💰 Payment enabled: {config.is_payment_enabled}")
+    logger.info(f"🔗 Webhook URL: {config.WEBHOOK_URL}")
+    logger.info(f"💵 Amount: {config.PAYMENT_AMOUNT} {config.PAYMENT_CURRENCY}")
     
+    if config.is_payment_enabled:
+        logger.info("✅ Платежная система готова к работе")
+    else:
+        logger.warning("⚠️  Платежная система НЕ настроена")
+    
+    # Запуск бота
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
