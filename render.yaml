@@ -2,8 +2,35 @@ services:
   - type: web
     name: variatica-bot
     env: python
-    buildCommand: pip install -r requirements.txt
+    runtime: python-3.11.9  # опционально, если хочешь 3.11
+    
+    # Автоматическая сборка
+    autoDeploy: true
+    
+    # Сборка
+    buildCommand: |
+      pip install -r requirements.txt
+      echo "✅ Зависимости установлены"
+    
+    # Запуск
     startCommand: python bot_adaptive.py
+    
+    # Переменные окружения
     envVars:
+      # Обязательные (заполняются вручную в панели Render)
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: YOOKASSA_SHOP_ID
+        sync: false
+      - key: YOOKASSA_SECRET_KEY
+        sync: false
+      
+      # Опциональные
       - key: ENVIRONMENT
         value: production
+      - key: WEBHOOK_URL
+        generateValue: true  # Render сам подставит URL
+      - key: ADMIN_ID
+        sync: false  # ID администратора для команд
+      - key: LOG_LEVEL
+        value: INFO
