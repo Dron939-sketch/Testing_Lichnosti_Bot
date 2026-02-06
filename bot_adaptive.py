@@ -1,4 +1,10 @@
-python
+"""
+АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
+4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
+ВЕРСИЯ 2.0: Добавлен анализ расхождений между тестом и профилем
++ ИНТЕГРАЦИЯ ЮKASSA
+"""
+
 import logging
 import os
 import asyncio
@@ -836,7 +842,7 @@ def calculate_final_level(stage2_level, stage3_scores):
 # ============================================
 
 def clean_duplicate_headers(text: str, field_type: str) -> str:
-    
+    """
     Убирает заголовки, которые уже есть в тексте профиля.
     """
     if not text:
@@ -993,11 +999,11 @@ def analyze_discrepancy(search_metadata: dict) -> str:
     Алгоритм:
     1. Берем requested_dilts (что показал тест)
     2. Берем actual_suffix (суффикс найденного файла)
-    3. Преобразуем actual_suffix в actual_dilts с помощью SUFFIX_TO_DILTS
-    4. Если requested_dilts == actual_dilts -> возвращаем пустую строку
+    3. Преобразуем actual_suffix → actual_dilts через SUFFIX_TO_DILTS
+    4. Если requested_dilts == actual_dilts → возвращаем пустую строку
     5. Ищем фразу в CONFLICT_PHRASES по ключу (requested_dilts, actual_dilts)
-    6. Если нашли -> возвращаем фразу
-    7. Если не нашли -> создаем общую фразу
+    6. Если нашли → возвращаем фразу
+    7. Если не нашли → создаем общую фразу
     """
     if search_metadata.get('is_exact_match', True):
         return ""
@@ -2817,12 +2823,15 @@ async def handle_dilts_clarification(update: Update, context: ContextTypes.DEFAU
 # ДОПОЛНИТЕЛЬНЫЕ КОМАНДЫ ДЛЯ ПЛАТЕЖЕЙ
 # ============================================
 
-def clean_duplicate_headers(text: str, field_type: str) -> str:
-    """
-    Убирает заголовки, которые уже есть в тексте профиля.
-    """
-    if not text:
-        return ""
+async def payment_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для проверки статуса платежей (для администратора)"""
+    user_id = update.effective_user.id
+    
+    # Проверяем, является ли пользователь администратором
+    ADMIN_ID = os.getenv("ADMIN_ID", "")
+    if ADMIN_ID and str(user_id) != ADMIN_ID:
+        await update.message.reply_text("❌ У вас нет доступа к этой команде.")
+        return
     
     # Получаем историю платежей
     history = yookassa_api.get_payment_history(limit=5)
@@ -2903,7 +2912,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 def main():
-    "Запуск бота"
+    """Запуск бота"""
     print("\n" + "="*50)
     print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.0 + ЮKASSA")
     print("="*50)
