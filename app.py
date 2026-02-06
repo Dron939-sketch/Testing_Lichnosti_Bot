@@ -1,45 +1,10 @@
-# app.py
+# app.py - УПРОЩЕННАЯ ВЕРСИЯ
 import os
 import sys
 import threading
 import logging
 from flask import Flask, jsonify
 from datetime import datetime
-
-# ============ ПАТЧ ДЛЯ TELEGRAM БОТА ============
-def apply_telegram_patches():
-    """Применяем все необходимые патчи перед импортом"""
-    
-    import warnings
-    warnings.filterwarnings("ignore")
-    
-    # 1. Создаем фиктивный модуль для urllib3.contrib.appengine
-    import types
-    class DummyModule(types.ModuleType):
-        def __init__(self, name):
-            super().__init__(name)
-            self.__all__ = []
-            self.AppEngineManager = None
-            self.is_appengine_sandbox = lambda: False
-        
-        def __getattr__(self, name):
-            return None
-    
-    sys.modules['urllib3.contrib.appengine'] = DummyModule('urllib3.contrib.appengine')
-    
-    # 2. Монопатчим sys.modules перед любым импортом
-    import builtins
-    real_import = builtins.__import__
-    
-    def patched_import(name, *args, **kwargs):
-        if name == 'urllib3.contrib.appengine':
-            return sys.modules['urllib3.contrib.appengine']
-        return real_import(name, *args, **kwargs)
-    
-    builtins.__import__ = patched_import
-    
-    return True
-# ============ КОНЕЦ ПАТЧЕЙ ============
 
 # Настройка логирования
 logging.basicConfig(
@@ -59,14 +24,8 @@ def run_bot():
     global bot_running
     
     try:
-        # Применяем патчи ПЕРЕД любым импортом
-        logger.info("🔧 Применение патчей для совместимости...")
-        apply_telegram_patches()
-        
         # Добавляем текущую директорию в путь Python
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        
-        logger.info("📦 Импорт модуля бота...")
         
         # Импортируем и запускаем бота
         from bot_adaptive import main as bot_main
@@ -138,9 +97,6 @@ def start_bot_on_init():
     bot_thread.start()
 
 if __name__ == '__main__':
-    # Проверяем Python версию
-    logger.info(f"🐍 Python версия: {sys.version}")
-    
     # Автозапуск бота
     start_bot_on_init()
     
