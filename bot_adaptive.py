@@ -2817,15 +2817,12 @@ async def handle_dilts_clarification(update: Update, context: ContextTypes.DEFAU
 # ДОПОЛНИТЕЛЬНЫЕ КОМАНДЫ ДЛЯ ПЛАТЕЖЕЙ
 # ============================================
 
-async def payment_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда для проверки статуса платежей (для администратора)"""
-    user_id = update.effective_user.id
-    
-    # Проверяем, является ли пользователь администратором
-    ADMIN_ID = os.getenv("ADMIN_ID", "")
-    if ADMIN_ID and str(user_id) != ADMIN_ID:
-        await update.message.reply_text("❌ У вас нет доступа к этой команде.")
-        return
+def clean_duplicate_headers(text: str, field_type: str) -> str:
+    """
+    Убирает заголовки, которые уже есть в тексте профиля.
+    """
+    if not text:
+        return ""
     
     # Получаем историю платежей
     history = yookassa_api.get_payment_history(limit=5)
