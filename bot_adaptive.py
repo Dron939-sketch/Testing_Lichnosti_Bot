@@ -2965,8 +2965,12 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ГЛАВНАЯ ФУНКЦИЯ
 # ============================================
 
-def main():
-    """Запуск Telegram бота (без Flask)"""
+# ============================================
+# ГЛАВНАЯ ФУНКЦИЯ (асинхронная версия)
+# ============================================
+
+async def main_async():
+    """Асинхронная версия основной функции"""
     print("\n" + "="*50)
     print("🚀 ЗАПУСК TELEGRAM БОТА ВАРИАТИКА ver 2.0")
     print("="*50)
@@ -3009,39 +3013,22 @@ def main():
         type_profiles = [p for p in all_profiles if p.lower().startswith(f"{profile_type}_")]
         print(f"🔍 {profile_type.upper()} профилей: {len(type_profiles)}")
     
-    # Тестируем поиск по новой системе
-    test_cases = [
-        ("sp", 4, "VALUES", "sp_4_exp.py"),  # exp → CAPABILITIES, VALUES vs CAPABILITIES = расхождение
-        ("ia", 4, "CAPABILITIES", "ia_4_exp.py"),  # exp → CAPABILITIES, совпадение
-        ("sa", 1, "ENVIRONMENT", "sa_1_def.py"),  # def → ENVIRONMENT, совпадение
-        ("ip", 1, "ENVIRONMENT", "ip_1_def.py"),  # def → ENVIRONMENT, совпадение
-    ]
+    # Проверяем наличие sp_4_val (проблемный профиль)
+    sp_4_profiles = [p for p in all_profiles if 'sp_4' in p.lower()]
+    print(f"\n🔍 SP_4 профили: {sp_4_profiles}")
     
-    print("\n🧪 Тестируем новую систему поиска v2.0:")
-    for type_code, level, dilts, expected in test_cases:
-        test_data = {
-            "type_code": type_code, 
-            "level": level, 
-            "dilts_level": dilts,
-            "dilts_code": get_dilts_code(dilts)
-        }
-        try:
-            profile, search_metadata = get_profile_by_level_and_type(test_data)
-            discrepancy = analyze_discrepancy(search_metadata)
-            has_discrepancy = "⚠️" if discrepancy else "✅"
-            print(f"  {type_code}_{level} ({dilts}) → {has_discrepancy} {expected}")
-            if discrepancy:
-                print(f"     Расхождение: {discrepancy[:50]}...")
-        except Exception as e:
-            print(f"  {type_code}_{level}_{dilts} → ❌ ОШИБКА: {e}")
+    # Если нет sp_4_val, используем fallback
+    if 'sp_4_val' not in [p.lower() for p in all_profiles]:
+        print("⚠️  ВНИМАНИЕ: профиль sp_4_val не найден!")
+        print("   Будет использован fallback профиль")
     
     print("="*30)
     print("🤖 Запускаю Telegram бота...")
     
-    # Создание приложения с per_message=True
+    # Создание приложения
     application = Application.builder().token(TOKEN).build()
     
-    # ConversationHandler ДОЛЖЕН ИМЕТЬ per_message=True
+    # Создаем ConversationHandler с per_message=True
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -3146,8 +3133,11 @@ def main():
         logger.warning("⚠️  Платежная система НЕ настроена")
     
     # Запуск бота
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    await application.run_polling(allowed_updates=Update.ALL_TYPES)
 
+def main():
+    """Синхронная обертка для запуска бота"""
+    asyncio.run(main_async())
 
 if __name__ == "__main__":
     main()
