@@ -1,6 +1,6 @@
 python-telegram-bot==20.7
 pyyaml==6.0.3
-python-dotenv==1.0.0
 flask==2.3.3
 gunicorn==20.1.0
+python-dotenv==1.0.0
 requests==2.31.0
