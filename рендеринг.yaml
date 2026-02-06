@@ -1,37 +1,35 @@
 services:
-  - type: web
-    name: variatica-bot
+  - type: web  # ОБЯЗАТЕЛЬНО web, чтобы был публичный URL
+    name: variatica-bot-web
     env: python
     region: frankfurt
+    
     buildCommand: |
-      # Обновляем pip и устанавливаем зависимости
-      python -m pip install --upgrade pip setuptools wheel
+      # Создаем runtime.txt для Python 3.10 (совместимость)
+      echo "python-3.10.12" > runtime.txt
       
-      # Принудительно устанавливаем python-telegram-bot 20.7
-      pip install python-telegram-bot==20.7 --no-cache-dir --force-reinstall
-      
-      # Устанавливаем остальные зависимости
+      # Устанавливаем зависимости
+      pip install --upgrade pip
+      pip install python-telegram-bot==20.7 --no-cache-dir
       pip install pyyaml==6.0.3 --no-cache-dir
       pip install flask==2.3.3 --no-cache-dir
       pip install gunicorn==20.1.0 --no-cache-dir
       pip install python-dotenv==1.0.0 --no-cache-dir
       pip install requests==2.31.0 --no-cache-dir
       
-      # Проверяем установленные версии
-      echo "=== УСТАНОВЛЕННЫЕ ВЕРСИИ ==="
-      pip show python-telegram-bot || echo "python-telegram-bot не найден"
-      pip show pyyaml || echo "pyyaml не найден"
-      pip show flask || echo "flask не найден"
-      
-      # Создаем runtime.txt если нет (для Python 3.10)
-      if [ ! -f runtime.txt ]; then
-        echo "python-3.10.12" > runtime.txt
-        echo "✅ Создан runtime.txt с Python 3.10.12"
-      fi
-      
-      echo "✅ Сборка завершена"
+      # Проверяем
+      echo "=== ВЕРСИИ ==="
+      python --version
+      pip show python-telegram-bot flask
     
-    startCommand: python bot_adapter.py
+    startCommand: |
+      # Запускаем Telegram бота в фоне
+      echo "🤖 Запуск Telegram бота в фоне..."
+      python run_bot_simple.py &
+      
+      # Запускаем Flask сервер для webhook ЮKassa
+      echo "🌐 Запуск Flask сервера для webhook..."
+      gunicorn webhook_server:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
     
     envVars:
       - key: PORT
@@ -41,13 +39,15 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       
-      # ЮKassa
+      # ЮKassa (ОБЯЗАТЕЛЬНЫ для webhook)
       - key: YOOKASSA_SHOP_ID
         sync: false
       - key: YOOKASSA_SECRET_KEY
         sync: false
+      - key: YOOKASSA_WEBHOOK_SECRET
+        sync: false
       
-      # Конфигурация бота
+      # Конфигурация
       - key: BOT_LINK
         sync: false
       - key: GIFT_PDF_LINK
@@ -59,21 +59,14 @@ services:
       - key: PAYMENT_AMOUNT
         value: "690"
       
-      # Дополнительные настройки
+      # Webhook URL (автоматически)
       - key: WEBHOOK_URL
-        value: "https://testing-lichnosti-bot-qyra.onrender.com"
-      - key: IS_TEST_MODE
-        value: "false"
-      - key: ADMIN_ID
-        sync: false
+        value: "https://variatica-bot-web.onrender.com"
+      - key: YOOKASSA_WEBHOOK_URL
+        value: "https://variatica-bot-web.onrender.com/yookassa-webhook"
     
     healthCheckPath: /health
     
-    # Автоматический перезапуск при падении
-    autoDeploy: true
-    
-    # Ресурсы (бесплатный тариф)
     plan: free
-    
-    # Бранч для деплоя
+    autoDeploy: true
     branch: main
