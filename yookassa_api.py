@@ -27,6 +27,7 @@ class YooKassaAPI:
         logger.info(f"⚙️  Конфигурация:")
         logger.info(f"   Shop ID: {'✅ УСТАНОВЛЕН' if config.YOOKASSA_SHOP_ID else '❌ НЕ УСТАНОВЛЕН'}")
         logger.info(f"   Secret Key: {'✅ УСТАНОВЛЕН' if config.YOOKASSA_SECRET_KEY else '❌ НЕ УСТАНОВЛЕН'}")
+        logger.info(f"   Webhook URL: {'✅ ' + config.WEBHOOK_URL if config.WEBHOOK_URL else '❌ НЕ УСТАНОВЛЕН'}")
         logger.info(f"   Test Mode: {'🟡 ДА' if config.is_test_mode else '🟢 НЕТ'}")
         logger.info(f"   Payment Enabled: {'✅ ДА' if config.is_payment_enabled else '❌ НЕТ'}")
         logger.info(f"   Base URL: {self.base_url}")
@@ -63,6 +64,7 @@ class YooKassaAPI:
         logger.info(f"   📝 Description: {description}")
         logger.info(f"   💰 Amount: {self.config.PAYMENT_AMOUNT} {self.config.PAYMENT_CURRENCY}")
         logger.info(f"   🌐 Mode: {'DEMO' if not self.config.is_payment_enabled else 'REAL'}")
+        logger.info(f"   🔗 Webhook: {self.config.WEBHOOK_URL if self.config.WEBHOOK_URL else '❌ Не настроен'}")
         logger.info("="*40)
     
     def _log_payment_response(self, success: bool, response_data: Dict[str, Any]):
@@ -119,7 +121,7 @@ class YooKassaAPI:
             return result
         
         try:
-            # Формируем данные платежа
+            # Формируем данные платежа с webhook URL
             payment_data = {
                 "amount": {
                     "value": f"{self.config.PAYMENT_AMOUNT:.2f}",
@@ -139,6 +141,15 @@ class YooKassaAPI:
                     "version": "2.0"
                 }
             }
+            
+            # Добавляем webhook URL если он указан в конфиге
+            if hasattr(self.config, 'WEBHOOK_URL') and self.config.WEBHOOK_URL:
+                webhook_url = self.config.WEBHOOK_URL.rstrip('/')
+                payment_data["webhook_url"] = f"{webhook_url}/yookassa-webhook"
+                logger.info(f"🔗 Webhook URL добавлен: {payment_data['webhook_url']}")
+            else:
+                logger.warning("⚠️  Webhook URL не указан в конфигурации!")
+                logger.warning("   Автоматическое обновление статусов недоступно")
             
             logger.debug(f"📦 Данные платежа для API:")
             logger.debug(json.dumps(payment_data, indent=2, ensure_ascii=False))
@@ -340,10 +351,12 @@ if __name__ == "__main__":
     # Проверяем переменные окружения
     shop_id = os.getenv('YOOKASSA_SHOP_ID')
     secret_key = os.getenv('YOOKASSA_SECRET_KEY')
+    webhook_url = os.getenv('WEBHOOK_URL')
     
     print(f"🔍 Проверка переменных окружения:")
     print(f"   YOOKASSA_SHOP_ID: {'✅' if shop_id else '❌'} {'установлен' if shop_id else 'не установлен'}")
     print(f"   YOOKASSA_SECRET_KEY: {'✅' if secret_key else '❌'} {'установлен' if secret_key else 'не установлен'}")
+    print(f"   WEBHOOK_URL: {'✅ ' + webhook_url if webhook_url else '❌ не установлен'}")
     
     # Создаем конфиг
     from config import Config
