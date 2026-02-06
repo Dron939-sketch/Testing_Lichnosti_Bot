@@ -4,12 +4,29 @@ services:
     env: python
     region: frankfurt
     buildCommand: |
-      pip install -r requirements.txt
-      # Создаем симлинк для обратной совместимости
-      ln -sf app.py simple_server.py
-      echo "✅ Создан симлинк: app.py → simple_server.py"
-    startCommand: python app.py  # или gunicorn app:app
+      pip install --upgrade pip setuptools wheel
+      pip install python-telegram-bot==20.7 --no-cache-dir
+      pip install -r requirements.txt --no-cache-dir
+      echo "=== УСТАНОВЛЕННЫЕ ВЕРСИИ ==="
+      pip show python-telegram-bot
+    startCommand: python app.py
     envVars:
       - key: PORT
         value: "10000"
-      # ... остальные переменные
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: YOOKASSA_SHOP_ID
+        sync: false
+      - key: YOOKASSA_SECRET_KEY
+        sync: false
+      - key: BOT_LINK
+        sync: false
+      - key: GIFT_PDF_LINK
+        sync: false
+      - key: AUTHOR_LINK
+        sync: false
+      - key: PAYMENT_LINK
+        sync: false
+      - key: PAYMENT_AMOUNT
+        value: "690"
+    healthCheckPath: /health
