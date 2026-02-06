@@ -836,7 +836,7 @@ def calculate_final_level(stage2_level, stage3_scores):
 # ============================================
 
 def clean_duplicate_headers(text: str, field_type: str) -> str:
-    """
+    
     Убирает заголовки, которые уже есть в тексте профиля.
     """
     if not text:
