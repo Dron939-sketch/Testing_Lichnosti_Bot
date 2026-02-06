@@ -1,135 +1,100 @@
-"""
-Основной файл приложения для Render
-"""
-
-import os
-import logging
-from threading import Thread
-from flask import Flask, request, jsonify
-from datetime import datetime
-
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-# Создаем Flask приложение
-app = Flask(__name__)
-
-@app.route('/')
-def index():
-    """Главная страница"""
-    return '''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Variatica Bot</title>
-        <style>
-            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-            .status { color: green; font-weight: bold; }
-        </style>
-    </head>
-    <body>
-        <h1>🤖 Variatica Bot</h1>
-        <p>Бот психодиагностического теста ВАРИАТИКА</p>
-        <p class="status">✅ Сервер работает</p>
-        <p>Telegram: <a href="https://t.me/variatica_bot">@variatica_bot</a></p>
-    </body>
-    </html>
-    '''
-
-@app.route('/yookassa-webhook', methods=['POST'])
-def yookassa_webhook():
+def get_profile_by_level_and_type(profile_data: dict) -> tuple[VariaticaProfile, dict]:
     """
-    Обработчик webhook от ЮKassa
+    НОВАЯ ФУНКЦИЯ: Находит профиль только по типу и уровню.
+    Суффикс файла определяется по уровню через LEVEL_TO_SUFFIX.
+    
+    Возвращает: (профиль, метаданные_поиска)
     """
-    try:
-        # Получаем данные из запроса
-        data = request.get_json(silent=True)
-        
-        if not data:
-            logger.error("❌ Webhook: Нет данных в запросе")
-            return jsonify({'success': False, 'error': 'No data'}), 400
-        
-        # Логируем полученные данные
-        logger.info("🔄 Webhook получен от ЮKassa")
-        
-        # Извлекаем информацию
-        event = data.get('event')
-        payment_data = data.get('object', {})
-        
-        payment_id = payment_data.get('id', 'N/A')[:8]
-        logger.info(f"📋 Событие: {event}, Payment ID: {payment_id}...")
-        logger.info(f"📋 Статус: {payment_data.get('status')}")
-        
-        # Проверяем событие
-        if event == 'payment.succeeded':
-            metadata = payment_data.get('metadata', {})
-            user_id = metadata.get('user_id')
-            
-            if not user_id:
-                logger.error("❌ Webhook: Не найден user_id в metadata")
-                return jsonify({'success': False, 'error': 'No user_id'}), 400
-            
-            logger.info(f"✅ Платеж успешен! User ID: {user_id}")
-            
-            # Запись в лог файл
-            with open('payments.log', 'a', encoding='utf-8') as f:
-                f.write(f"{datetime.now().isoformat()} | SUCCESS | User: {user_id} | Payment: {payment_data.get('id')} | Amount: {payment_data.get('amount', {}).get('value')} RUB\n")
-        
-        elif event == 'payment.canceled':
-            logger.info(f"❌ Платеж отменен: {payment_id}...")
-        
-        elif event == 'payment.waiting_for_capture':
-            logger.info(f"⏳ Платеж ожидает захвата: {payment_id}...")
-        
-        else:
-            logger.info(f"ℹ️  Необрабатываемое событие: {event}")
-        
-        # ВСЕГДА возвращаем 200 OK
-        return jsonify({'success': True}), 200
-        
-    except Exception as e:
-        logger.error(f"🔥 Критическая ошибка обработки webhook: {e}")
-        import traceback
-        logger.error(f"📋 Трассировка:\n{traceback.format_exc()}")
-        
-        # ВСЕГДА возвращаем 200, чтобы ЮKassa не повторял запросы
-        return jsonify({'success': False, 'error': str(e)}), 200
-
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Проверка здоровья сервера"""
-    return jsonify({
-        'status': 'healthy',
-        'service': 'variatica-bot',
-        'timestamp': datetime.now().isoformat()
-    }), 200
-
-def run_telegram_bot():
-    """Запуск Telegram бота в отдельном потоке"""
-    try:
-        # Импорт должен быть внутри функции
-        from bot_adaptive import main as run_bot
-        
-        logger.info("🤖 Запускаю Telegram бота...")
-        run_bot()
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка бота: {e}")
-        import traceback
-        logger.error(f"📋 Трассировка:\n{traceback.format_exc()}")
-
-if __name__ == "__main__":
-    # Запускаем Telegram бот в отдельном потоке
-    bot_thread = Thread(target=run_telegram_bot, daemon=True, name="telegram-bot-thread")
-    bot_thread.start()
+    # 1. Нормализация типа (решаем проблему ip-адрес)
+    type_code = profile_data.get('type_code', 'sa').lower()
     
-    # Запускаем Flask (основной поток для Render)
-    port = int(os.getenv('PORT', 10000))
-    logger.info(f"🌐 Запускаю Flask сервер на порту {port}")
-    logger.info(f"🔗 Webhook URL: https://testing-lichnosti-bot-qyra.onrender.com/yookassa-webhook")
+    if type_code in ["ip", "ip-адрес", "ip - адрес"]:
+        normalized_type = "ip"
+    elif type_code == "иа":  # русская буква
+        normalized_type = "ia"
+    elif type_code == "ср":  # русская буква
+        normalized_type = "sp"
+    elif type_code == "са":  # русская буква
+        normalized_type = "sa"
+    else:
+        normalized_type = type_code
     
-    app.run(host='0.0.0.0', port=port, debug=False)
+    # 2. Получаем уровень (1-9)
+    level = profile_data.get('level', 1)
+    level = max(1, min(9, level))  # ограничиваем 1-9
+    
+    # 3. Суффикс ТОЛЬКО по уровню (игнорируем Дилтс!)
+    suffix = LEVEL_TO_SUFFIX.get(level, "def")
+    
+    # 4. Формируем имя профиля
+    profile_name = f"{normalized_type}_{level}_{suffix}"
+    
+    # 5. Пробуем найти точный профиль
+    profile = loader.get_profile(profile_name)
+    
+    # 6. Если не нашли, ищем fallback
+    search_metadata = {
+        "requested_type": normalized_type,
+        "requested_level": level,
+        "requested_suffix": suffix,
+        "requested_dilts": profile_data.get('dilts_level', 'ENVIRONMENT'),
+        "found_profile": None,
+        "actual_suffix": None,
+        "actual_dilts": None,
+        "is_exact_match": False,
+        "used_fallback": False
+    }
+    
+    if profile:
+        search_metadata.update({
+            "found_profile": profile_name,
+            "actual_suffix": suffix,
+            "actual_dilts": SUFFIX_TO_DILTS.get(suffix, "ENVIRONMENT"),
+            "is_exact_match": True
+        })
+        return profile, search_metadata
+    
+    # 7. Fallback: пробуем другие суффиксы
+    fallback_suffixes = ["def", "sit", "con", "exp", "int", "aut", "val", "tra", "ide"]
+    
+    for fallback_suffix in fallback_suffixes:
+        fallback_name = f"{normalized_type}_{level}_{fallback_suffix}"
+        profile = loader.get_profile(fallback_name)
+        
+        if profile:
+            search_metadata.update({
+                "found_profile": fallback_name,
+                "actual_suffix": fallback_suffix,
+                "actual_dilts": SUFFIX_TO_DILTS.get(fallback_suffix, "ENVIRONMENT"),
+                "is_exact_match": False,
+                "used_fallback": True
+            })
+            return profile, search_metadata
+    
+    # 8. Если уровень 4 и тип sp, но нет val, используем exp
+    if level == 4 and normalized_type == "sp" and suffix == "val":
+        exp_name = "sp_4_exp"
+        profile = loader.get_profile(exp_name)
+        if profile:
+            search_metadata.update({
+                "found_profile": exp_name,
+                "actual_suffix": "exp",
+                "actual_dilts": "CAPABILITIES",
+                "is_exact_match": False,
+                "used_fallback": True
+            })
+            return profile, search_metadata
+    
+    # 9. Если вообще ничего не нашли, возвращаем дефолтный
+    default_name = "sa_1_def"
+    profile = loader.get_profile(default_name)
+    
+    search_metadata.update({
+        "found_profile": default_name,
+        "actual_suffix": "def",
+        "actual_dilts": "ENVIRONMENT",
+        "is_exact_match": False,
+        "used_fallback": True
+    })
+    
+    return profile, search_metadata
