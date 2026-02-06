@@ -4,25 +4,8 @@ services:
     env: python
     region: frankfurt
     buildCommand: |
-      python -m pip install --upgrade pip setuptools wheel
       pip install -r requirements.txt
-    startCommand: gunicorn simple_server:app
-    envVars:
-      - key: PORT
-        value: "10000"
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: YOOKASSA_SHOP_ID
-        sync: false
-      - key: YOOKASSA_SECRET_KEY
-        sync: false
-      - key: BOT_LINK
-        sync: false
-      - key: GIFT_PDF_LINK
-        sync: false
-      - key: AUTHOR_LINK
-        sync: false
-      - key: PAYMENT_LINK
-        sync: false
-      - key: PAYMENT_AMOUNT
-        value: "690"
+      # Создаем симлинк для обратной совместимости
+      ln -sf app.py simple_server.py || true
+    startCommand: python app.py
+    envVars: ...
