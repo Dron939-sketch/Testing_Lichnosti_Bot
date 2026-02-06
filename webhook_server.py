@@ -1,158 +1,166 @@
+# webhook_server.py
 """
-HTTP сервер для обработки webhook от ЮKassa
+Flask сервер для получения webhook от ЮKassa
 """
 
-from aiohttp import web
 import os
 import json
 import logging
-import asyncio
-from webhook_handler import create_webhook_handler
+import hmac
+import hashlib
+from flask import Flask, request, jsonify
+from datetime import datetime
 
 # Настройка логирования
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Глобальный обработчик
-webhook_handler = None
+app = Flask(__name__)
 
-async def handle_yookassa_webhook(request):
+# Глобальный словарь для хранения статусов платежей
+payments_status = {}
+
+def verify_yookassa_signature(body: bytes, signature: str, secret: str) -> bool:
     """
-    Обработчик POST запросов от ЮKassa
+    Проверяет подпись webhook от ЮKassa
+    """
+    if not secret:
+        logger.warning("⚠️  YOOKASSA_WEBHOOK_SECRET не установлен, пропускаем проверку подписи")
+        return True
+    
+    expected_signature = hmac.new(
+        secret.encode('utf-8'),
+        body,
+        hashlib.sha256
+    ).hexdigest()
+    
+    return hmac.compare_digest(expected_signature, signature)
+
+@app.route('/')
+def home():
+    """Главная страница"""
+    return jsonify({
+        "status": "running",
+        "service": "Variatica Bot Webhook Server",
+        "timestamp": datetime.now().isoformat(),
+        "endpoints": {
+            "health": "/health",
+            "yookassa_webhook": "/yookassa-webhook (POST)",
+            "payment_status": "/payment/<payment_id>"
+        }
+    })
+
+@app.route('/health')
+def health():
+    """Health check для Render"""
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "payments_processed": len(payments_status)
+    }), 200
+
+@app.route('/yookassa-webhook', methods=['POST'])
+def yookassa_webhook():
+    """
+    Webhook эндпоинт для ЮKassa
+    Документация: https://yookassa.ru/developers/api#webhook
     """
     try:
-        # Читаем тело запроса
-        body = await request.text()
+        # Получаем данные
+        body = request.get_data()
+        signature = request.headers.get('YooKassa-Signature', '')
         
-        if not body:
-            logger.error("❌ Empty request body")
-            return web.Response(text='Empty body', status=400)
+        # Проверяем подпись
+        secret = os.getenv('YOOKASSA_WEBHOOK_SECRET', '')
+        if not verify_yookassa_signature(body, signature, secret):
+            logger.warning("❌ Неверная подпись webhook")
+            return jsonify({"error": "Invalid signature"}), 400
         
-        # Получаем заголовки
-        headers = dict(request.headers)
+        # Парсим JSON
+        data = request.json
+        event = data.get('event', 'unknown')
+        payment_id = data.get('object', {}).get('id', 'unknown')
         
-        # Логируем входящий запрос (без sensitive данных)
-        logger.info(f"🌐 Webhook received from {request.remote}")
+        logger.info(f"📦 Webhook от ЮKassa: {event} для payment {payment_id}")
         
-        # Обрабатываем webhook
-        result = await webhook_handler.handle_webhook_request(body, headers)
-        
-        if result.get('status') == 'success':
-            logger.info(f"✅ Webhook processed successfully: {result.get('event')}")
-            return web.Response(
-                text=json.dumps(result),
-                content_type='application/json',
-                status=200
-            )
-        else:
-            logger.error(f"❌ Webhook processing failed: {result.get('message')}")
-            return web.Response(
-                text=json.dumps(result),
-                content_type='application/json',
-                status=400
-            )
+        # Обрабатываем события
+        if event == 'payment.succeeded':
+            # Платеж успешно завершен
+            amount = data['object']['amount']
+            description = data['object'].get('description', '')
+            metadata = data['object'].get('metadata', {})
             
-    except Exception as e:
-        logger.error(f"❌ Unexpected error in webhook handler: {e}")
-        return web.Response(
-            text=json.dumps({"status": "error", "message": str(e)}),
-            content_type='application/json',
-            status=500
-        )
-
-async def handle_health_check(request):
-    """Health check endpoint"""
-    return web.Response(
-        text=json.dumps({
-            "status": "healthy",
-            "service": "YooKassa Webhook Handler",
-            "time": asyncio.get_event_loop().time()
-        }),
-        content_type='application/json'
-    )
-
-async def handle_test_webhook(request):
-    """Тестовый endpoint для проверки"""
-    return web.Response(
-        text=json.dumps({
-            "status": "ok",
-            "message": "Webhook server is running",
-            "endpoints": {
-                "POST /yookassa-webhook": "Handle YooKassa notifications",
-                "GET /health": "Health check",
-                "GET /test": "Test endpoint"
+            logger.info(f"✅ Платеж успешен: {payment_id}")
+            logger.info(f"💰 Сумма: {amount['value']} {amount['currency']}")
+            logger.info(f"📝 Описание: {description}")
+            
+            # Сохраняем статус
+            payments_status[payment_id] = {
+                'status': 'succeeded',
+                'amount': amount,
+                'description': description,
+                'metadata': metadata,
+                'updated_at': datetime.now().isoformat()
             }
-        }),
-        content_type='application/json'
-    )
+            
+            # Здесь можно:
+            # 1. Отправить уведомление в Telegram
+            # 2. Обновить БД
+            # 3. Выдать доступ к продукту
+            
+        elif event == 'payment.waiting_for_capture':
+            # Платеж ожидает подтверждения (для двухстадийных платежей)
+            logger.info(f"⏳ Платеж ожидает подтверждения: {payment_id}")
+            payments_status[payment_id] = {
+                'status': 'waiting_for_capture',
+                'updated_at': datetime.now().isoformat()
+            }
+            
+        elif event == 'payment.canceled':
+            # Платеж отменен
+            logger.info(f"❌ Платеж отменен: {payment_id}")
+            payments_status[payment_id] = {
+                'status': 'canceled',
+                'updated_at': datetime.now().isoformat()
+            }
+            
+        else:
+            logger.info(f"📄 Другое событие: {event} для {payment_id}")
+        
+        # Всегда возвращаем 200 OK
+        return jsonify({
+            "status": "received",
+            "event": event,
+            "payment_id": payment_id
+        }), 200
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Ошибка парсинга JSON: {e}")
+        return jsonify({"error": "Invalid JSON"}), 400
+    except Exception as e:
+        logger.error(f"❌ Ошибка обработки webhook: {e}")
+        return jsonify({"error": str(e)}), 500
 
-async def start_background_tasks(app):
-    """Запуск фоновых задач"""
-    logger.info("🚀 Starting background tasks...")
-    # Здесь можно запустить периодические задачи
-    
-async def cleanup_background_tasks(app):
-    """Очистка фоновых задач"""
-    logger.info("🧹 Cleaning up background tasks...")
+@app.route('/payment/<payment_id>', methods=['GET'])
+def get_payment_status(payment_id):
+    """Проверка статуса платежа"""
+    if payment_id in payments_status:
+        return jsonify(payments_status[payment_id]), 200
+    else:
+        return jsonify({"error": "Payment not found"}), 404
 
-def create_app(bot_instance=None):
-    """
-    Создание приложения
-    
-    Args:
-        bot_instance: Экземпляр Telegram бота (для отправки уведомлений)
-    """
-    global webhook_handler
-    
-    # Создаем обработчик
-    webhook_handler = create_webhook_handler(bot_instance)
-    
-    app = web.Application()
-    
-    # Добавляем middleware для логирования
-    @web.middleware
-    async def log_middleware(request, handler):
-        logger.debug(f"📥 {request.method} {request.path} from {request.remote}")
-        response = await handler(request)
-        logger.debug(f"📤 {request.method} {request.path} -> {response.status}")
-        return response
-    
-    app.middlewares.append(log_middleware)
-    
-    # Регистрируем маршруты
-    app.router.add_post('/yookassa-webhook', handle_yookassa_webhook)
-    app.router.add_get('/health', handle_health_check)
-    app.router.add_get('/test', handle_test_webhook)
-    app.router.add_get('/', handle_test_webhook)
-    
-    # Фоновые задачи
-    app.on_startup.append(start_background_tasks)
-    app.on_cleanup.append(cleanup_background_tasks)
-    
-    return app
+@app.route('/payments', methods=['GET'])
+def list_payments():
+    """Список всех обработанных платежей"""
+    return jsonify({
+        "count": len(payments_status),
+        "payments": list(payments_status.keys())
+    }), 200
 
-def run_server(host='0.0.0.0', port=None, bot_instance=None):
-    """
-    Запуск сервера
-    
-    Args:
-        host: Хост для запуска
-        port: Порт (берется из переменной окружения PORT или 10000)
-        bot_instance: Экземпляр Telegram бота
-    """
-    port = int(os.environ.get("PORT", port or 10000))
-    
-    app = create_app(bot_instance)
-    
-    logger.info(f"🚀 Starting webhook server on {host}:{port}")
-    logger.info(f"🌐 Webhook URL: https://your-domain.onrender.com/yookassa-webhook")
-    logger.info(f"🏥 Health check: https://your-domain.onrender.com/health")
-    
-    web.run_app(app, host=host, port=port)
-
-if __name__ == "__main__":
-    # Запуск сервера без бота (для тестирования)
-    run_server()
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 10000))
+    logger.info(f"🚀 Запуск webhook сервера на порту {port}")
+    app.run(host='0.0.0.0', port=port, debug=False)
