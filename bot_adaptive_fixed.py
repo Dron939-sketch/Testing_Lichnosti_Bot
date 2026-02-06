@@ -37,18 +37,42 @@ def fix_bot_code(source_code: str) -> str:
         )
         fixes_applied.append("CallbackContext → ContextTypes.DEFAULT_TYPE")
     
-    # 3. Добавляем недостающие async (простые случаи)
-    async_patterns = [
-        (r'def start\(', r'async def start('),
-        (r'def help\(', r'async def help('),
-        (r'def handle_', r'async def handle_'),
-        (r'def (\w+)_handler\(', r'async def \1_handler('),
-    ]
+    # 3. Добавляем недостающие async (только если еще нет async)
+    # Более точные паттерны для поиска функций, которые нуждаются в async
+    lines = source_code.split('\n')
+    fixed_lines = []
     
-    for pattern, replacement in async_patterns:
-        if re.search(pattern, source_code):
-            source_code = re.sub(pattern, replacement, source_code)
-            fixes_applied.append(f"Добавлен async для функций")
+    for line in lines:
+        # Проверяем, начинается ли строка с "def " и не содержит ли уже "async"
+        if line.strip().startswith('def ') and 'async' not in line:
+            # Проверяем, это ли обработчик телеграма по имени функции
+            func_name = line.split('def ')[1].split('(')[0].strip()
+            
+            # Список функций, которые должны быть async (обработчики телеграма)
+            telegram_handlers = [
+                'start', 'help', 'test', 'handle_',
+                'payment', 'gift', 'package', 'results',
+                'stage', 'clarification', 'dilts', 'cancel'
+            ]
+            
+            # Проверяем, является ли это обработчиком телеграма
+            should_be_async = False
+            for handler in telegram_handlers:
+                if handler in func_name.lower():
+                    should_be_async = True
+                    break
+            
+            # Также проверяем по параметрам функции
+            if 'Update' in line or 'context:' in line:
+                should_be_async = True
+            
+            if should_be_async:
+                line = line.replace('def ', 'async def ', 1)
+                fixes_applied.append(f"Добавлен async для {func_name}")
+        
+        fixed_lines.append(line)
+    
+    source_code = '\n'.join(fixed_lines)
     
     # 4. Исправляем Updater -> Application
     if 'Updater(' in source_code:
@@ -66,14 +90,11 @@ def fix_bot_code(source_code: str) -> str:
         source_code = source_code.replace('start_polling()', 'run_polling()')
         fixes_applied.append("start_polling → run_polling")
     
-    # 6. Добавляем await к callback_query.answer()
-    if 'callback_query.answer()' in source_code and 'await' not in source_code:
-        source_code = re.sub(
-            r'([^a-zA-Z0-9_])callback_query\.answer\(\)',
-            r'\1await callback_query.answer()',
-            source_code
-        )
-        fixes_applied.append("Добавлен await к callback_query.answer()")
+    # 6. Удаляем двойные async если есть
+    source_code = re.sub(r'async async def', 'async def', source_code)
+    if 'async async def' in source_code:
+        source_code = source_code.replace('async async def', 'async def')
+        fixes_applied.append("Удалены двойные async")
     
     logger.info(f"✅ Применено исправлений: {len(fixes_applied)}")
     for fix in fixes_applied:
@@ -87,11 +108,25 @@ def load_and_fix_bot():
     """
     try:
         # Путь к оригинальному файлу
-        original_file = 'bot_adaptive.py'
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        original_file = os.path.join(current_dir, 'bot_adaptive.py')
         
         if not os.path.exists(original_file):
             logger.error(f"❌ Файл {original_file} не найден!")
-            return None
+            
+            # Проверяем другие возможные файлы
+            for filename in ['bot_adaptive_fixed.py', 'bot.py', 'main.py']:
+                alt_file = os.path.join(current_dir, filename)
+                if os.path.exists(alt_file):
+                    logger.info(f"🔍 Найден альтернативный файл: {filename}")
+                    original_file = alt_file
+                    break
+            
+            if not os.path.exists(original_file):
+                logger.error(f"📂 Файлы в директории: {os.listdir('.')}")
+                return None
+        
+        logger.info(f"📖 Загружаем файл: {original_file}")
         
         # Читаем оригинальный код
         with open(original_file, 'r', encoding='utf-8') as f:
@@ -101,6 +136,11 @@ def load_and_fix_bot():
         
         # Применяем исправления
         fixed_code = fix_bot_code(original_code)
+        
+        # Проверяем на двойные async перед выполнением
+        if 'async async' in fixed_code:
+            logger.warning("⚠️  Обнаружены двойные async, исправляю...")
+            fixed_code = fixed_code.replace('async async', 'async')
         
         # Создаем временный модуль
         spec = importlib.util.spec_from_loader('bot_fixed', loader=None)
@@ -112,11 +152,65 @@ def load_and_fix_bot():
         logger.info("✅ Модуль успешно загружен и исправлен")
         return module
         
+    except SyntaxError as e:
+        logger.error(f"❌ Синтаксическая ошибка: {e}")
+        
+        # Попробуем найти и показать проблемную строку
+        lines = original_code.split('\n')
+        if e.lineno and e.lineno < len(lines):
+            problem_line = lines[e.lineno - 1]
+            logger.error(f"📝 Проблемная строка {e.lineno}: {problem_line}")
+        
+        import traceback
+        logger.error(f"Трассировка:\n{traceback.format_exc()}")
+        return None
+        
     except Exception as e:
         logger.error(f"❌ Ошибка загрузки модуля: {e}")
         import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"Трассировка:\n{traceback.format_exc()}")
         return None
+
+def simple_bot_fallback():
+    """
+    Простой запасной бот если основной не работает
+    """
+    try:
+        import os
+        import asyncio
+        from telegram import Update
+        from telegram.ext import Application, CommandHandler, ContextTypes
+        
+        TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+        if not TOKEN:
+            raise ValueError("❌ TELEGRAM_BOT_TOKEN не установлен!")
+        
+        async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            await update.message.reply_text(
+                "🤖 Бот работает!\n\n"
+                "Тестовая версия.\n\n"
+                "Нажми /help для помощи."
+            )
+        
+        async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            await update.message.reply_text(
+                "🆘 Помощь:\n\n"
+                "/start - Начать\n"
+                "/help - Эта справка\n\n"
+                "Основной бот временно недоступен."
+            )
+        
+        application = Application.builder().token(TOKEN).build()
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("help", help_command))
+        
+        print("🤖 Запущен простой тестовый бот")
+        application.run_polling()
+        
+    except Exception as e:
+        print(f"❌ Ошибка в простом боте: {e}")
+        import traceback
+        print(f"Трассировка:\n{traceback.format_exc()}")
 
 def main():
     """
@@ -131,6 +225,8 @@ def main():
     
     if not bot_module:
         logger.error("❌ Не удалось загрузить модуль бота")
+        logger.info("🔄 Запускаю простой тестовый бот...")
+        simple_bot_fallback()
         return
     
     try:
@@ -142,8 +238,16 @@ def main():
         if hasattr(bot_module, 'main'):
             logger.info("🚀 Запуск исправленного бота...")
             bot_module.main()
+        elif hasattr(bot_module, 'run_bot'):
+            logger.info("🚀 Запуск через run_bot...")
+            bot_module.run_bot()
+        elif hasattr(bot_module, 'start_bot'):
+            logger.info("🚀 Запуск через start_bot...")
+            bot_module.start_bot()
         else:
-            logger.error("❌ Функция main() не найдена в модуле")
+            logger.error("❌ Функция запуска не найдена")
+            logger.info("🔄 Запускаю простой тестовый бот...")
+            simple_bot_fallback()
             
     except ImportError as e:
         logger.error(f"❌ Ошибка импорта: {e}")
@@ -151,7 +255,9 @@ def main():
     except Exception as e:
         logger.error(f"❌ Ошибка запуска бота: {e}")
         import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"Трассировка:\n{traceback.format_exc()}")
+        logger.info("🔄 Запускаю простой тестовый бот...")
+        simple_bot_fallback()
 
 if __name__ == '__main__':
     main()
