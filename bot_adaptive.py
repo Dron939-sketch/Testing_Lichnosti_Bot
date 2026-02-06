@@ -3133,7 +3133,10 @@ async def main_async():
         logger.warning("⚠️  Платежная система НЕ настроена")
     
     # Запуск бота
-    await application.run_polling(allowed_updates=Update.ALL_TYPES)
+    await application.run_polling(
+    allowed_updates=Update.ALL_TYPES,
+    stop_signals=()  # ← ОТКЛЮЧАЕМ обработку сигналов
+)
 
 def main():
     """Синхронная обертка для запуска бота"""
