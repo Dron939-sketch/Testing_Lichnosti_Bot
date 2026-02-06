@@ -23,8 +23,15 @@ class Config:
     PAYMENT_CURRENCY: str = "RUB"
     PAYMENT_DESCRIPTION: str = "Полный пакет ВАРИАТИКА"
     
-    # Пути возврата
-    RETURN_URL: str = "https://t.me/Testing_Lichnosti_bot"
+    # Пути возврата - ИЗМЕНИТЕ ЭТО!
+    # Старый вариант (не работает):
+    # RETURN_URL: str = "https://t.me/Testing_Lichnosti_bot"
+    
+    # Новый вариант (работает):
+    RETURN_URL: str = "https://www.yoomoney.ru"  # или любой другой валидный HTTP URL
+    # ИЛИ используйте ваш домен Render:
+    # RETURN_URL: str = "https://testing-lichnosti-bot-qyra.onrender.com/payment-success"
+    
     SUCCESS_URL: str = "https://t.me/Testing_Lichnosti_bot?start=success"
     FAILURE_URL: str = "https://t.me/Testing_Lichnosti_bot?start=failed"
     
@@ -51,8 +58,11 @@ class Config:
         if not self.BOT_TOKEN:
             errors.append("TELEGRAM_BOT_TOKEN не установлен")
         
+        # Если платежи не настроены, просто предупреждаем
         if not self.is_payment_enabled:
-            errors.append("ЮKassa не настроена (нужны SHOP_ID и SECRET_KEY)")
+            print("⚠️  ЮKassa не настроена. Платежи будут в демо-режиме.")
+            # Не добавляем ошибку, чтобы бот мог работать
+            # errors.append("ЮKassa не настроена (нужны SHOP_ID и SECRET_KEY)")
         
         if errors:
             raise ValueError("\n".join(errors))
