@@ -1,11 +1,15 @@
 services:
-  - type: worker  # КЛЮЧЕВОЕ ИЗМЕНЕНИЕ!
-    name: variatica-telegram-bot
+  - type: web  # Оставляем web, т.к. есть Flask
+    name: variatica-bot-and-api
     env: python
     region: frankfurt
-    buildCommand: pip install -r requirements.txt
-    startCommand: python bot_adaptive.py  # ТОЛЬКО бот, без Flask!
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: gunicorn simple_server:app
     envVars:
+      - key: PORT
+        value: "10000"
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: YOOKASSA_SHOP_ID
@@ -13,13 +17,16 @@ services:
       - key: YOOKASSA_SECRET_KEY
         sync: false
       - key: BOT_LINK
-        value: "https://t.me/your_bot"
+        sync: false
       - key: GIFT_PDF_LINK
-        value: "https://example.com/gift.pdf"
+        sync: false
       - key: AUTHOR_LINK
-        value: "@your_username"
+        sync: false
       - key: PAYMENT_LINK
-        value: "https://example.com/payment"
+        sync: false
       - key: PAYMENT_AMOUNT
         value: "690"
-    plan: free
+      - key: WEBHOOK_URL
+        value: "https://testing-lichnosti-bot-qyra.onrender.com"
+    healthCheckPath: /health
+    autoDeploy: true
