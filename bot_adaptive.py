@@ -2,6 +2,7 @@
 АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
 4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
 ВЕРСИЯ 2.0: Добавлен анализ расхождений между тестом и профилем
++ ИНТЕГРАЦИЯ ЮKASSA
 """
 
 import logging
@@ -10,6 +11,7 @@ import asyncio
 import urllib.parse
 import math
 import re
+from datetime import datetime
 from collections import Counter
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -26,10 +28,24 @@ from telegram.ext import (
 from loader import loader
 from base import VariaticaProfile
 
-# Получение токена
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# Импорт платежной системы
+from config import Config
+from yookassa_api import YooKassaAPI
+from payment_utils import format_price, validate_email, PaymentLogger
+
+# Загрузка конфигурации
+config = Config()
+yookassa_api = YooKassaAPI(config)
+payment_logger = PaymentLogger()
+
+# Получение токена из конфига
+TOKEN = config.BOT_TOKEN
 if not TOKEN:
     raise ValueError("❌ ОШИБКА: Переменная TELEGRAM_BOT_TOKEN не установлена!")
+
+# Проверка конфигурации платежей
+if not config.is_payment_enabled:
+    logging.warning("⚠️ Платежи ЮKassa не настроены. Используется демо-режим.")
 
 # Настройка логирования
 logging.basicConfig(
@@ -39,14 +55,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Состояния ConversationHandler
-STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS, GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, DILTS_CLARIFICATION = range(10)
+(
+    STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, 
+    RESULTS, GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, 
+    DILTS_CLARIFICATION, PAYMENT_SCREEN, PAYMENT_EMAIL, 
+    PAYMENT_CHECK, PAYMENT_SUCCESS
+) = range(14)
 
 # Константы
-BOT_LINK = "t.me/Testing_Lichnosti_bot"
-GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"
-AUTHOR_LINK = "@meysternlp"
+BOT_LINK = config.BOT_LINK
+GIFT_PDF_LINK = config.GIFT_PDF_LINK
+AUTHOR_LINK = config.AUTHOR_LINK
 SHARE_TEXT = "Только что узнал о себе то, о чём ещё не знал... Тест показывает скрытые паттерны. КатеГОрически рекомендую.."
-PAYMENT_LINK = "https://yookassa.ru/my/i/aYHvs0MnrXUT/l"
+PAYMENT_LINK = config.PAYMENT_LINK
+PAYMENT_AMOUNT = config.PAYMENT_AMOUNT
 
 # ============================================
 # НОВЫЕ КОНСТАНТЫ ДЛЯ v2.0
@@ -1098,6 +1120,436 @@ def calculate_profile_final(context_data: dict) -> dict:
     }
 
 # ============================================
+# ФУНКЦИИ ОБРАБОТКИ ПЛАТЕЖЕЙ
+# ============================================
+
+async def handle_payment_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало процесса оплаты"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Сохраняем информацию о пользователе
+    user_id = query.from_user.id
+    context.user_data["payment_user_id"] = user_id
+    
+    # Создаем платеж
+    payment_result = yookassa_api.create_payment(
+        user_id=user_id,
+        description="Полный пакет ВАРИАТИКА - персональные рекомендации"
+    )
+    
+    if not payment_result["success"]:
+        error_text = (
+            f"❌ <b>ОШИБКА СОЗДАНИЯ ПЛАТЕЖА</b>\n\n"
+            f"{payment_result.get('error', 'Неизвестная ошибка')}\n\n"
+            f"Пожалуйста, попробуйте позже или свяжитесь с поддержкой."
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")],
+            [InlineKeyboardButton("📞 Поддержка", url=f"https://t.me/{AUTHOR_LINK[1:]}" if AUTHOR_LINK.startswith('@') else f"https://t.me/{AUTHOR_LINK}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(error_text, reply_markup=reply_markup, parse_mode="HTML")
+        return PAYMENT_SCREEN
+    
+    # Сохраняем данные платежа
+    context.user_data["current_payment"] = {
+        "payment_id": payment_result["payment_id"],
+        "payment_url": payment_result["payment_url"],
+        "amount": payment_result["amount"],
+        "status": payment_result["status"],
+        "created_at": datetime.now().isoformat()
+    }
+    
+    # Логируем создание платежа
+    payment_logger.log_payment_event("created", {
+        "user_id": user_id,
+        "payment_id": payment_result["payment_id"],
+        "amount": payment_result["amount"]
+    })
+    
+    # Показываем экран оплаты
+    return await show_payment_screen(update, context, payment_result)
+
+
+async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE, payment_result: dict = None):
+    """Экран оплаты"""
+    query = update.callback_query if hasattr(update, 'callback_query') else None
+    
+    if not payment_result and "current_payment" in context.user_data:
+        payment_data = context.user_data["current_payment"]
+        payment_result = {
+            "payment_id": payment_data["payment_id"],
+            "payment_url": payment_data["payment_url"],
+            "amount": payment_data["amount"],
+            "status": payment_data.get("status", "pending")
+        }
+    elif not payment_result:
+        error_text = "❌ Информация о платеже не найдена. Пожалуйста, начните заново."
+        keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if query:
+            await query.edit_message_text(error_text, reply_markup=reply_markup, parse_mode="HTML")
+        else:
+            await update.message.reply_text(error_text, reply_markup=reply_markup, parse_mode="HTML")
+        return PAYMENT_SCREEN
+    
+    payment_text = (
+        f"💎 <b>ПОЛНЫЙ ПАКЕТ ВАРИАТИКА</b>\n\n"
+        f"<b>Что входит:</b>\n"
+        f"• Полный разбор вашего профиля (15+ страниц детального анализа)\n"
+        f"• Персональная терапевтическая сказка для коррекции конфликтующих частей\n"
+        f"• Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (.PDF)\n"
+        f"• Персональные рекомендации по развитию\n"
+        f"• Карта сильных и слабых сторон\n\n"
+        f"<b>Цена:</b> {format_price(PAYMENT_AMOUNT)}\n"
+        f"<b>ID заказа:</b> <code>{payment_result['payment_id'][:8]}...</code>\n\n"
+        f"<b>📋 ИНСТРУКЦИЯ:</b>\n"
+        f"1. Нажмите «💳 Оплатить»\n"
+        f"2. Оплатите в открывшемся окне\n"
+        f"3. Вернитесь в бота и нажмите «🔄 Проверить оплату»\n\n"
+        f"<i>После успешной оплаты файлы будут отправлены автоматически.</i>"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton(
+            f"💳 Оплатить {format_price(PAYMENT_AMOUNT)}",
+            url=payment_result["payment_url"]
+        )],
+        [InlineKeyboardButton(
+            "🔄 Проверить оплату",
+            callback_data=f"check_payment_{payment_result['payment_id']}"
+        )],
+        [
+            InlineKeyboardButton("📞 Поддержка", url=f"https://t.me/{AUTHOR_LINK[1:]}" if AUTHOR_LINK.startswith('@') else f"https://t.me/{AUTHOR_LINK}"),
+            InlineKeyboardButton("❌ Отмена", callback_data="cancel_payment")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if query:
+        await query.edit_message_text(payment_text, reply_markup=reply_markup, parse_mode="HTML")
+    else:
+        await update.message.reply_text(payment_text, reply_markup=reply_markup, parse_mode="HTML")
+    
+    return PAYMENT_SCREEN
+
+
+async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверка статуса платежа"""
+    query = update.callback_query
+    await query.answer("🔍 Проверяем оплату...")
+    
+    # Извлекаем payment_id из callback_data
+    payment_id = query.data.replace("check_payment_", "")
+    
+    if not payment_id:
+        payment_data = context.user_data.get("current_payment", {})
+        payment_id = payment_data.get("payment_id")
+    
+    if not payment_id:
+        await query.answer("❌ ID платежа не найден", show_alert=True)
+        return PAYMENT_SCREEN
+    
+    # Проверяем статус платежа
+    status_result = yookassa_api.check_payment(payment_id)
+    
+    if not status_result["success"]:
+        error_text = (
+            f"⚠️ <b>ОШИБКА ПРОВЕРКИ</b>\n\n"
+            f"ID: <code>{payment_id[:8]}...</code>\n"
+            f"Ошибка: {status_result.get('error', 'Неизвестно')}\n\n"
+            f"Попробуйте позже или обратитесь в поддержку."
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("🔄 Попробовать снова", callback_data=f"check_payment_{payment_id}")],
+            [InlineKeyboardButton("📞 Поддержка", url=f"https://t.me/{AUTHOR_LINK[1:]}" if AUTHOR_LINK.startswith('@') else f"https://t.me/{AUTHOR_LINK}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(error_text, reply_markup=reply_markup, parse_mode="HTML")
+        return PAYMENT_SCREEN
+    
+    payment_status = status_result["status"]
+    user_id = query.from_user.id
+    
+    # Логируем проверку статуса
+    payment_logger.log_payment_event("status_check", {
+        "user_id": user_id,
+        "payment_id": payment_id,
+        "status": payment_status
+    })
+    
+    if payment_status == "succeeded":
+        # ✅ Успешная оплата
+        await query.answer("✅ Оплата прошла успешно!", show_alert=True)
+        
+        # Логируем успешную оплату
+        payment_logger.log_payment_event("succeeded", {
+            "user_id": user_id,
+            "payment_id": payment_id,
+            "amount": status_result["amount"]
+        })
+        
+        # Отправляем файлы
+        await deliver_product(update, context, user_id)
+        
+        # Очищаем данные платежа
+        if "current_payment" in context.user_data:
+            del context.user_data["current_payment"]
+        
+        return PAYMENT_SUCCESS
+        
+    elif payment_status == "pending":
+        # ⏳ Ожидание оплаты
+        keyboard = [
+            [InlineKeyboardButton("🔄 Проверить еще раз", callback_data=f"check_payment_{payment_id}")],
+            [
+                InlineKeyboardButton("💳 Оплатить", url=context.user_data.get("current_payment", {}).get("payment_url", PAYMENT_LINK)),
+                InlineKeyboardButton("📞 Поддержка", url=f"https://t.me/{AUTHOR_LINK[1:]}" if AUTHOR_LINK.startswith('@') else f"https://t.me/{AUTHOR_LINK}")
+            ]
+        ]
+        
+        await query.edit_message_text(
+            f"⏳ <b>ОЖИДАНИЕ ОПЛАТЫ</b>\n\n"
+            f"ID: <code>{payment_id[:8]}...</code>\n"
+            f"Статус: ожидание оплаты\n\n"
+            f"Если вы уже оплатили, подождите 1-2 минуты "
+            f"и проверьте снова.\n\n"
+            f"<i>Иногда платежи обрабатываются с задержкой.</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
+    else:
+        # ❌ Неудачный платеж
+        keyboard = [
+            [InlineKeyboardButton("🔄 Попробовать снова", callback_data="start_payment")],
+            [InlineKeyboardButton("📞 Поддержка", url=f"https://t.me/{AUTHOR_LINK[1:]}" if AUTHOR_LINK.startswith('@') else f"https://t.me/{AUTHOR_LINK}")]
+        ]
+        
+        await query.edit_message_text(
+            f"❌ <b>ПЛАТЕЖ НЕ ОПЛАЧЕН</b>\n\n"
+            f"ID: <code>{payment_id[:8]}...</code>\n"
+            f"Статус: {payment_status}\n\n"
+            f"Попробуйте оплатить снова или обратитесь в поддержку.\n\n"
+            f"<i>Если проблема повторяется, попробуйте другой способ оплаты.</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    
+    return PAYMENT_CHECK
+
+
+async def deliver_product(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int):
+    """Доставка продукта после успешной оплаты"""
+    query = update.callback_query
+    
+    # Показываем сообщение об успехе
+    success_text = (
+        "🎉 <b>ОПЛАТА ПРОШЛА УСПЕШНО!</b>\n\n"
+        "✅ Ваш заказ подтвержден\n"
+        "📦 Подготавливаем материалы...\n\n"
+        "<i>Файлы будут отправлены в течение нескольких минут.</i>"
+    )
+    
+    await query.edit_message_text(success_text, parse_mode="HTML")
+    
+    try:
+        # Здесь должна быть логика отправки файлов
+        # Для примера отправляем сообщение с инструкцией
+        
+        delivery_text = (
+            "📚 <b>ВАШИ МАТЕРИАЛЫ ГОТОВЫ!</b>\n\n"
+            "<b>Что вы получили:</b>\n\n"
+            "1. <b>Полный разбор профиля</b> (PDF)\n"
+            "   • Детальный анализ вашего типа\n"
+            "   • Рекомендации по развитию\n"
+            "   • Карта сильных сторон\n\n"
+            "2. <b>Терапевтическая сказка</b> (PDF)\n"
+            "   • Для трансформации восприятия\n"
+            "   • Работа с внутренними конфликтами\n\n"
+            "3. <b>Книга «ВАРИАТИКА»</b> (PDF)\n"
+            "   • Полное руководство по системе\n"
+            "   • Примеры и практики\n\n"
+            "4. <b>Персональные рекомендации</b>\n"
+            "   • Пошаговый план развития\n"
+            "   • Инструменты для работы\n\n"
+            "<b>📥 Ссылки для скачивания:</b>\n\n"
+            "• Основные материалы: https://disk.yandex.ru/d/variatica_package\n"
+            "• Дополнительные файлы: https://disk.yandex.ru/d/variatica_extra\n\n"
+            "<b>📞 Поддержка:</b>\n"
+            "Если возникли вопросы: @meysternlp\n\n"
+            "<i>Спасибо за покупку! 🎁</i>"
+        )
+        
+        # Отправляем пользователю
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=delivery_text,
+            parse_mode="HTML"
+        )
+        
+        # Обновляем исходное сообщение
+        final_text = (
+            "✅ <b>ЗАКАЗ ВЫПОЛНЕН!</b>\n\n"
+            "Все материалы отправлены.\n"
+            "Проверьте чат с ботом 📩\n\n"
+            "Спасибо за покупку! 🎁\n\n"
+            "<i>Если что-то не получили, напишите в поддержку: @meysternlp</i>"
+        )
+        
+        await query.edit_message_text(final_text, parse_mode="HTML")
+        
+        # Логируем успешную доставку
+        payment_logger.log_payment_event("delivered", {
+            "user_id": user_id,
+            "success": True
+        })
+        
+    except Exception as e:
+        logger.error(f"Ошибка доставки продукта: {e}")
+        
+        error_text = (
+            "⚠️ <b>ОШИБКА ДОСТАВКИ</b>\n\n"
+            "Файлы не были отправлены автоматически.\n"
+            "Пожалуйста, обратитесь в поддержку:\n"
+            f"👉 {AUTHOR_LINK}\n\n"
+            "<i>При обращении укажите ID заказа.</i>"
+        )
+        
+        await query.edit_message_text(error_text, parse_mode="HTML")
+        
+        # Логируем ошибку доставки
+        payment_logger.log_payment_event("delivery_error", {
+            "user_id": user_id,
+            "error": str(e)
+        })
+
+
+async def cancel_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отмена платежа"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Очищаем данные платежа
+    if "current_payment" in context.user_data:
+        payment_id = context.user_data["current_payment"].get("payment_id")
+        
+        # Логируем отмену
+        payment_logger.log_payment_event("cancelled", {
+            "user_id": query.from_user.id,
+            "payment_id": payment_id
+        })
+        
+        del context.user_data["current_payment"]
+    
+    # Возвращаемся к результатам
+    return await show_results_screen(update, context)
+
+
+async def retry_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Повторная попытка оплаты"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Начинаем новый платеж
+    return await handle_payment_start(update, context)
+
+
+async def ask_for_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Запрос email для чека"""
+    query = update.callback_query
+    await query.answer()
+    
+    email_text = (
+        "📧 <b>EMAIL ДЛЯ ЧЕКА</b>\n\n"
+        "Укажите ваш email, если хотите получить электронный чек:\n\n"
+        "<i>Отправьте ваш email сообщением или нажмите «Пропустить»</i>"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("⏭ Пропустить", callback_data="skip_email")],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_payment")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(email_text, reply_markup=reply_markup, parse_mode="HTML")
+    return PAYMENT_EMAIL
+
+
+async def handle_email_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ввода email"""
+    email = update.message.text.strip()
+    
+    if validate_email(email):
+        context.user_data["user_email"] = email
+        await update.message.reply_text(f"✅ Email сохранен: {email}\n\nПродолжаем оформление...")
+        return await handle_payment_start_with_email(update, context)
+    else:
+        await update.message.reply_text(
+            "❌ Неверный формат email. Попробуйте еще раз или нажмите «Пропустить».",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⏭ Пропустить", callback_data="skip_email")]
+            ])
+        )
+        return PAYMENT_EMAIL
+
+
+async def handle_payment_start_with_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало оплаты с email"""
+    user_id = update.effective_user.id if hasattr(update, 'effective_user') else context.user_data.get("payment_user_id")
+    email = context.user_data.get("user_email")
+    
+    payment_result = yookassa_api.create_payment(
+        user_id=user_id,
+        email=email,
+        description="Полный пакет ВАРИАТИКА - персональные рекомендации"
+    )
+    
+    if not payment_result["success"]:
+        error_text = (
+            f"❌ <b>ОШИБКА СОЗДАНИЯ ПЛАТЕЖА</b>\n\n"
+            f"{payment_result.get('error', 'Неизвестная ошибка')}\n\n"
+            f"Пожалуйста, попробуйте позже."
+        )
+        
+        await update.message.reply_text(error_text, parse_mode="HTML")
+        return PAYMENT_SCREEN
+    
+    context.user_data["current_payment"] = {
+        "payment_id": payment_result["payment_id"],
+        "payment_url": payment_result["payment_url"],
+        "amount": payment_result["amount"]
+    }
+    
+    return await show_payment_screen(update, context, payment_result)
+
+
+async def skip_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пропуск ввода email"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Начинаем оплату без email
+    return await handle_payment_start(update, context)
+
+
+async def back_to_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возврат к экрану оплаты"""
+    query = update.callback_query
+    await query.answer()
+    
+    if "current_payment" in context.user_data:
+        return await show_payment_screen(update, context)
+    else:
+        return await handle_payment_start(update, context)
+
+# ============================================
 # ОБНОВЛЕННЫЙ ЭКРАН РЕЗУЛЬТАТОВ ДЛЯ v2.0
 # ============================================
 
@@ -1280,7 +1732,7 @@ async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_results_screen(update, context)
 
 async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН: ПОЛНЫЙ ПАКЕТ"""
+    """ЭКРАН: ПОЛНЫЙ ПАКЕТ с интеграцией ЮKassa"""
     query = update.callback_query
     await query.answer()
     
@@ -1292,13 +1744,16 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"• Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (.PDF)\n"
         f"• Персональные рекомендации по развитию\n"
         f"• Карта сильных и слабых сторон\n\n"
-        f"<b>Цена:</b> 690 ₽\n\n"
-        f"После оплаты свяжись со мной для получения материалов:\n"
-        f"👉 @meysternlp"
+        f"<b>Цена:</b> {format_price(PAYMENT_AMOUNT)}\n\n"
+        f"<b>🔒 БЕЗОПАСНАЯ ОПЛАТА ЧЕРЕЗ ЮKASSA</b>\n"
+        f"• Официальный платежный агрегатор\n"
+        f"• Поддержка карт, электронных кошельков\n"
+        f"• Мгновенное получение материалов\n\n"
+        f"<i>После оплаты файлы будут отправлены автоматически.</i>"
     )
     
     keyboard = [
-        [InlineKeyboardButton("💳 Купить", url=PAYMENT_LINK)],
+        [InlineKeyboardButton(f"💳 Купить за {format_price(PAYMENT_AMOUNT)}", callback_data="start_payment")],
         [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")],
         [InlineKeyboardButton("💬 Консультация", url=f"https://t.me/{AUTHOR_LINK[1:]}" if AUTHOR_LINK.startswith('@') else f"https://t.me/{AUTHOR_LINK}")]
     ]
@@ -2365,6 +2820,83 @@ async def handle_dilts_clarification(update: Update, context: ContextTypes.DEFAU
     return await show_results_screen(update, context)
 
 # ============================================
+# ДОПОЛНИТЕЛЬНЫЕ КОМАНДЫ ДЛЯ ПЛАТЕЖЕЙ
+# ============================================
+
+async def payment_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для проверки статуса платежей (для администратора)"""
+    user_id = update.effective_user.id
+    
+    # Проверяем, является ли пользователь администратором
+    ADMIN_ID = os.getenv("ADMIN_ID", "")
+    if ADMIN_ID and str(user_id) != ADMIN_ID:
+        await update.message.reply_text("❌ У вас нет доступа к этой команде.")
+        return
+    
+    # Получаем историю платежей
+    history = yookassa_api.get_payment_history(limit=5)
+    
+    if not history.get("success", False):
+        status_text = "❌ Не удалось получить историю платежей"
+    else:
+        payments = history.get("items", [])
+        status_text = f"📊 <b>Последние платежи:</b> {len(payments)}\n\n"
+        
+        for payment in payments:
+            status_text += (
+                f"• ID: {payment.get('id', 'N/A')[:8]}...\n"
+                f"  Статус: {payment.get('status', 'N/A')}\n"
+                f"  Сумма: {payment.get('amount', {}).get('value', '0')} {payment.get('amount', {}).get('currency', 'RUB')}\n"
+                f"  Дата: {payment.get('created_at', 'N/A')[:19]}\n\n"
+            )
+        
+        status_text += f"<b>Режим:</b> {'🟢 ПРОДАКШЕН' if not config.is_test_mode else '🟡 ТЕСТОВЫЙ'}"
+    
+    await update.message.reply_text(status_text, parse_mode="HTML")
+
+async def payment_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Справка по оплате"""
+    help_text = (
+        "💰 <b>ИНСТРУКЦИЯ ПО ОПЛАТЕ</b>\n\n"
+        "<b>Как оплатить:</b>\n"
+        "1. Выберите «Полный пакет рекомендаций»\n"
+        "2. Нажмите «Купить за 690 ₽»\n"
+        "3. Оплатите в открывшемся окне\n"
+        "4. Вернитесь в бота и нажмите «Проверить оплату»\n\n"
+        "<b>Поддерживаемые способы оплаты:</b>\n"
+        "• Банковские карты (Visa, MasterCard, МИР)\n"
+        "• Электронные кошельки (ЮMoney, QIWI)\n"
+        "• Мобильные платежи\n"
+        "• Интернет-банкинг\n\n"
+        "<b>Безопасность:</b>\n"
+        "• Все платежи защищены ЮKassa\n"
+        "• Ваши данные не передаются третьим лицам\n"
+        "• Мгновенная доставка файлов после оплаты\n\n"
+        "<b>Если возникли проблемы:</b>\n"
+        "• Напишите в поддержку: @meysternlp\n"
+        "• Укажите ID заказа (первые 8 символов)\n"
+        "• Опишите проблему\n\n"
+    )
+    
+    if config.is_test_mode:
+        help_text += (
+            "<b>⚠️ ТЕСТОВЫЙ РЕЖИМ</b>\n"
+            "Для проверки используйте тестовую карту:\n"
+            "• 5555 5555 5555 4444 — успешная оплата\n"
+            "• 2200 0000 0000 0004 — ожидание (3DS)\n"
+            "• 2200 0000 0000 0005 — отказ\n\n"
+            "<i>Деньги не списываются в тестовом режиме.</i>"
+        )
+    
+    keyboard = [
+        [InlineKeyboardButton("💎 Купить пакет", callback_data="show_package")],
+        [InlineKeyboardButton("📞 Поддержка", url="https://t.me/meysternlp")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(help_text, reply_markup=reply_markup, parse_mode="HTML")
+
+# ============================================
 # ОТМЕНА ТЕСТА
 # ============================================
 
@@ -2382,7 +2914,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*50)
-    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.0")
+    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.0 + ЮKASSA")
     print("="*50)
     print("ИЗМЕНЕНИЯ В v2.0:")
     print("1. Добавлен анализ расхождений между тестом и профилем")
@@ -2390,10 +2922,30 @@ def main():
     print("3. Дилтс используется только для информации")
     print("4. Добавлены конфликтные фразы для расхождений")
     print("5. Обновлена терминология (способности → навыки)")
+    print("6. ИНТЕГРАЦИЯ ПЛАТЕЖЕЙ ЮKASSA")
     print("="*50 + "\n")
     
+    # Проверка конфигурации
+    try:
+        config.validate()
+        print("✅ Конфигурация валидна")
+        
+        if config.is_test_mode:
+            print("⚠️  Внимание: Работа в ТЕСТОВОМ режиме платежей")
+            print("   Тестовые карты для проверки:")
+            print("   • 5555 5555 5555 4444 - успешная оплата")
+            print("   • 2200 0000 0000 0004 - ожидание (3DS)")
+            print("   • 2200 0000 0000 0005 - отказ")
+        else:
+            print("✅ Работа в ПРОДАКШЕН режиме платежей")
+            
+    except ValueError as e:
+        print(f"❌ Ошибка конфигурации: {e}")
+        print("Проверьте файл .env и переменные окружения")
+        return
+    
     # Проверка загрузки профилей
-    print("🔍 ПРОВЕРКА ЗАГРУЗКИ ПРОФИЛЕЙ")
+    print("\n🔍 ПРОВЕРКА ЗАГРУЗКИ ПРОФИЛЕЙ")
     print("="*30)
     
     all_profiles = loader.get_all_profiles()
@@ -2431,10 +2983,12 @@ def main():
             print(f"  {type_code}_{level}_{dilts} → ❌ ОШИБКА: {e}")
     
     print("="*30)
-    print("✅ Проверка завершена. Запускаю бота v2.0...")
+    print("🤖 Запускаю бота v2.0 с платежной системой...")
     
+    # Создание приложения
     application = Application.builder().token(TOKEN).build()
     
+    # Создаем ConversationHandler
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -2489,7 +3043,28 @@ def main():
             ],
             PACKAGE_SCREEN: [
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(show_package_screen, pattern="^show_package$")
+                CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
+                CallbackQueryHandler(handle_payment_start, pattern="^start_payment$")
+            ],
+            PAYMENT_SCREEN: [
+                CallbackQueryHandler(check_payment_status, pattern="^check_payment_"),
+                CallbackQueryHandler(cancel_payment, pattern="^cancel_payment$"),
+                CallbackQueryHandler(retry_payment, pattern="^retry_payment$"),
+                CallbackQueryHandler(ask_for_email, pattern="^ask_email$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
+            ],
+            PAYMENT_EMAIL: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_email_input),
+                CallbackQueryHandler(skip_email, pattern="^skip_email$"),
+                CallbackQueryHandler(back_to_payment, pattern="^back_to_payment$")
+            ],
+            PAYMENT_CHECK: [
+                CallbackQueryHandler(check_payment_status, pattern="^check_payment_"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
+            ],
+            PAYMENT_SUCCESS: [
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(restart_test, pattern="^restart_test$")
             ],
             OPEN_GIFT_SCREEN: [
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
@@ -2500,11 +3075,16 @@ def main():
         allow_reentry=True
     )
     
+    # Добавляем обработчики команд
     application.add_handler(conv_handler)
+    application.add_handler(CommandHandler("payment_help", payment_help_command))
+    application.add_handler(CommandHandler("payment_status", payment_status_command))
     
-    logger.info("🚀 Bot started: ВАРИАТИКА ver 2.0!")
-    logger.info("📊 Changes: Added discrepancy analysis, new profile search system")
+    logger.info("🚀 Bot started: ВАРИАТИКА ver 2.0 + ЮKassa!")
+    logger.info("📊 Changes: Added discrepancy analysis, new profile search system, YooKassa integration")
+    
     application.run_polling(allowed_updates=Update.ALL_TYPES)
+
 
 if __name__ == "__main__":
     main()
