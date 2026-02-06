@@ -140,8 +140,8 @@ def run_bot():
         
         from bot_adaptive import main as bot_main
         
-        # Запускаем бота в цикле событий этого потока
-        loop.run_until_complete(bot_main())
+        # Запускаем бота
+        bot_main()
         
     except Exception as e:
         logger.error(f"❌ Ошибка запуска бота: {e}")
