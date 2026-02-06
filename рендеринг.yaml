@@ -1,13 +1,18 @@
 services:
   - type: web
     name: variatica-bot
-    runtime: python
-    buildCommand: |
-      pip install --upgrade pip
-      pip install -r requirements.txt
-    startCommand: python bot_adaptive.py
+    env: python
+    region: frankfurt  # или другой регион
+    buildCommand: pip install -r requirements.txt
+    startCommand: python your_main_file.py  # замените your_main_file.py на имя вашего файла
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
-    plan: free
-    autoDeploy: true
+      - key: YOOKASSA_SHOP_ID
+        sync: false
+      - key: YOOKASSA_SECRET_KEY
+        sync: false
+      - key: WEBHOOK_URL
+        sync: false
+      - key: WEB_CONCURRENCY
+        value: "1"
