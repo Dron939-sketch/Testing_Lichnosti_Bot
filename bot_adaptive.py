@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Telegram Bot для боевого режима ЮKassa
-Версия 6.0 - с защитой от конфликтов и автоматическим восстановлением
+Telegram Bot для платежной системы ЮKassa
+Оптимизированная версия с защитой от конфликтов
 """
 
 import os
@@ -32,103 +32,74 @@ logger = logging.getLogger(__name__)
 # Уменьшаем логирование библиотек
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.getLogger('httpcore').setLevel(logging.WARNING)
+logging.getLogger('telegram').setLevel(logging.WARNING)
 
 # ========== КОНФИГУРАЦИЯ ==========
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
-YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")  # 1262862
-YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")  # live_...
+YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
+YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 
-# ========== ЗАЩИТА ОТ КОНФЛИКТОВ ==========
-def check_and_resolve_conflict():
-    """
-    Проверяет и автоматически решает конфликт с другим ботом
-    Возвращает True если конфликт решен или его нет
-    """
-    try:
-        print("🔄 Проверяю наличие конфликтов...")
-        
-        # 1. Пробуем получить информацию о боте
-        response = requests.get(
-            f"https://api.telegram.org/bot{TOKEN}/getMe",
-            timeout=10
-        )
-        
-        if response.status_code == 409:
-            # КОНФЛИКТ: другой бот уже запущен
-            print("⚠️ Обнаружен конфликт: другой бот уже запущен")
-            print("🔄 Пытаюсь решить конфликт автоматически...")
-            
-            # Пробуем удалить вебхук (на случай если бот запущен в режиме вебхуков)
-            try:
-                delete_response = requests.post(
-                    f"https://api.telegram.org/bot{TOKEN}/deleteWebhook",
-                    json={"drop_pending_updates": True},
-                    timeout=5
-                )
-                if delete_response.status_code == 200:
-                    print("✅ Вебхук удален")
-                else:
-                    print(f"⚠️ Не удалось удалить вебхук: {delete_response.status_code}")
-            except:
-                pass
-            
-            # Ждем немного и проверяем снова
-            print("⏳ Жду 3 секунды...")
-            time.sleep(3)
-            
-            # Повторная проверка
-            response2 = requests.get(
-                f"https://api.telegram.org/bot{TOKEN}/getMe",
-                timeout=10
-            )
-            
-            if response2.status_code == 200:
-                print("✅ Конфликт решен автоматически!")
-                return True
-            else:
-                print("❌ Не удалось решить конфликт автоматически")
-                print("💡 Решение: Удалите других ботов на Render")
-                return False
-                
-        elif response.status_code == 200:
-            print("✅ Конфликта нет, можно запускать")
-            return True
-            
-        else:
-            print(f"⚠️ Неизвестный статус: {response.status_code}")
-            print(f"📄 Ответ: {response.text[:200]}")
-            return True  # Пробуем запуститься
-            
-    except Exception as e:
-        print(f"❌ Ошибка проверки конфликта: {e}")
-        return True  # Пробуем запуститься несмотря на ошибку
+# ========== ПРОВЕРКА КОНФИГУРАЦИИ ==========
+def check_configuration():
+    """Проверяет все настройки перед запуском"""
+    print("=" * 60)
+    print("🤖 ЗАПУСК ТЕЛЕГРАМ БОТА")
+    print("=" * 60)
+    
+    errors = []
+    
+    # Проверка токена
+    if not TOKEN:
+        errors.append("❌ TELEGRAM_BOT_TOKEN не установлен")
+    else:
+        print(f"✅ Токен бота: установлен")
+    
+    # Проверка URL API
+    if not API_URL:
+        errors.append("⚠️ API_URL не установлен, используется по умолчанию")
+    else:
+        print(f"✅ API URL: {API_URL}")
+    
+    # Проверка ЮKassa
+    if not YOOKASSA_SHOP_ID:
+        errors.append("❌ YOOKASSA_SHOP_ID не установлен")
+    else:
+        print(f"✅ Shop ID: {'установлен' if YOOKASSA_SHOP_ID else 'НЕТ!'}")
+    
+    if not YOOKASSA_SECRET_KEY:
+        errors.append("❌ YOOKASSA_SECRET_KEY не установлен")
+    else:
+        key_type = "ТЕСТОВЫЙ" if YOOKASSA_SECRET_KEY.startswith('test_') else "БОЕВОЙ"
+        print(f"✅ Secret Key: {key_type}")
+    
+    print("=" * 60)
+    
+    if errors:
+        for error in errors:
+            print(error)
+        return False
+    
+    return True
 
-# ========== ФУНКЦИЯ ДЛЯ ЮKASSA API ==========
-def create_yookassa_payment_test(payment_id: str, user_id: int, email: str = None) -> dict:
-    """
-    Создание ТЕСТОВОГО платежа (1 рубль) с ПРАВИЛЬНЫМ receipt
-    """
+# ========== ФУНКЦИИ ДЛЯ ЮKASSA ==========
+def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0) -> dict:
+    """Создает платеж в ЮKassa (версия для yookassa==2.3.0)"""
     try:
-        # Формируем email
-        if not email:
-            email = f"user_{user_id}@telegram.org"
-        
-        # Basic Auth
+        # Basic Auth для ЮKassa API v3
         auth_string = f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}"
         auth_encoded = base64.b64encode(auth_string.encode()).decode()
         
         headers = {
             'Authorization': f'Basic {auth_encoded}',
             'Content-Type': 'application/json',
-            'Idempotence-Key': payment_id,
-            'User-Agent': 'TestBot/1.0'
+            'Idempotence-Key': payment_id
         }
         
-        # ВАЖНО: Для боевого режима НУЖЕН receipt даже для 1 рубля!
+        # Используем версию без receipt для yookassa==2.3.0
         payload = {
             "amount": {
-                "value": "1.00",  # Тестовая сумма
+                "value": f"{amount:.2f}",
                 "currency": "RUB"
             },
             "payment_method_data": {
@@ -139,38 +110,15 @@ def create_yookassa_payment_test(payment_id: str, user_id: int, email: str = Non
                 "return_url": "https://t.me/variatica_bot"
             },
             "capture": True,
-            "description": "Тестовая оплата курса ВАРИАТИКА",
+            "description": f"Тестовый платеж #{payment_id}",
             "metadata": {
                 "payment_id": payment_id,
                 "user_id": user_id,
-                "telegram_id": str(user_id),
-                "test": "true"
-            },
-            "receipt": {
-                "customer": {
-                    "email": email
-                },
-                "items": [
-                    {
-                        "description": "Тестовый доступ к курсу ВАРИАТИКА",
-                        "quantity": "1.00",
-                        "amount": {
-                            "value": "1.00",  # Важно: та же сумма что и в amount
-                            "currency": "RUB"
-                        },
-                        "vat_code": 1,  # НДС 20% (обязательно для РФ)
-                        "payment_subject": "service",  # Услуга
-                        "payment_mode": "full_payment"
-                    }
-                ]
+                "telegram_id": str(user_id)
             }
         }
         
-        logger.info(f"🔄 Создаю тестовый платеж {payment_id} на 1 рубль")
-        
-        # Отладочная информация
-        print(f"📤 Отправляю в ЮKassa:")
-        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        logger.info(f"Создаю платеж в ЮKassa: {payment_id} на {amount} руб")
         
         response = requests.post(
             "https://api.yookassa.ru/v3/payments",
@@ -179,79 +127,68 @@ def create_yookassa_payment_test(payment_id: str, user_id: int, email: str = Non
             timeout=30
         )
         
-        logger.info(f"📥 Ответ ЮKassa: {response.status_code}")
+        logger.info(f"Ответ ЮKassa: {response.status_code}")
         
         if response.status_code == 200:
             data = response.json()
+            yookassa_id = data.get('id')
             
-            # Сохраняем yookassa_id в БД
+            # Сохраняем ID ЮKassa в базе
             try:
                 requests.post(
                     f"{API_URL}/api/update-yookassa-id",
                     json={
                         "payment_id": payment_id,
-                        "yookassa_id": data.get('id'),
+                        "yookassa_id": yookassa_id,
                         "status": "waiting"
                     },
-                    timeout=5
+                    timeout=10
                 )
-                logger.info(f"✅ ID сохранен в БД: {data.get('id')}")
+                logger.info(f"ID сохранен в БД: {yookassa_id}")
             except Exception as e:
-                logger.error(f"⚠️ Ошибка сохранения ID: {e}")
+                logger.error(f"Ошибка сохранения ID: {e}")
             
             return {
                 "success": True,
                 "payment_id": payment_id,
-                "yookassa_id": data.get('id'),
+                "yookassa_id": yookassa_id,
                 "confirmation_url": data.get('confirmation', {}).get('confirmation_url'),
                 "status": data.get('status'),
-                "amount": "1.00"
+                "amount": amount
             }
-            
         else:
-            error_text = response.text[:500]
-            logger.error(f"❌ Ошибка ЮKassa {response.status_code}: {error_text}")
-            
-            # Показываем детали ошибки для отладки
-            print(f"🔥 ДЕТАЛИ ОШИБКИ:")
-            print(f"Код: {response.status_code}")
-            print(f"Текст: {error_text}")
+            error_text = response.text[:300]
+            logger.error(f"Ошибка ЮKassa {response.status_code}: {error_text}")
             
             return {
                 "success": False,
-                "error": f"ЮKassa error {response.status_code}",
+                "error": f"Код {response.status_code}",
                 "details": error_text
             }
             
     except Exception as e:
-        logger.error(f"❌ Исключение при создании платежа: {e}")
-        import traceback
-        traceback.print_exc()
-        
+        logger.error(f"Исключение: {e}")
         return {
             "success": False,
-            "error": str(e)[:200]
+            "error": str(e)
         }
 
 # ========== ФУНКЦИИ ДЛЯ БАЗЫ ДАННЫХ ==========
-def create_payment_in_db(user_id: int, email: str = None) -> dict:
-    """Создает тестовый платеж в базе данных"""
+def create_payment_in_db(user_id: int, amount: float = 1.0) -> dict:
+    """Создает запись о платеже в базе данных"""
     try:
         timestamp = int(time.time())
         payment_id = f"test_{user_id}_{timestamp}"
         
-        if not email:
-            email = f"user_{user_id}@telegram.org"
-        
         payload = {
             "payment_id": payment_id,
             "user_id": user_id,
-            "amount": 1.00,  # Тестовая сумма
-            "email": email,
-            "description": "Тестовый платеж 1 рубль"
+            "amount": amount,
+            "email": f"user_{user_id}@telegram.org",
+            "description": f"Тестовый платеж {amount} руб"
         }
         
-        logger.info(f"📦 Создаю платеж в БД: {payment_id}")
+        logger.info(f"Создаю платеж в БД: {payment_id}")
         
         response = requests.post(
             f"{API_URL}/api/create-payment",
@@ -259,29 +196,28 @@ def create_payment_in_db(user_id: int, email: str = None) -> dict:
             timeout=10
         )
         
-        if response.status_code == 201:
-            logger.info(f"✅ Платеж создан в БД: {payment_id}")
+        if response.status_code in [200, 201]:
+            logger.info(f"Платеж создан в БД: {payment_id}")
             return {
                 "success": True,
-                "payment_id": payment_id,
-                "email": email
+                "payment_id": payment_id
             }
         else:
-            logger.error(f"❌ Ошибка БД {response.status_code}: {response.text}")
+            logger.error(f"Ошибка БД {response.status_code}: {response.text}")
             return {
                 "success": False,
                 "error": f"API error: {response.status_code}"
             }
             
     except Exception as e:
-        logger.error(f"❌ Ошибка БД: {e}")
+        logger.error(f"Ошибка БД: {e}")
         return {
             "success": False,
             "error": str(e)
         }
 
 def check_payment_status_db(payment_id: str) -> dict:
-    """Проверяет статус платежа в БД"""
+    """Проверяет статус платежа"""
     try:
         response = requests.get(
             f"{API_URL}/api/payment-status/{payment_id}",
@@ -290,11 +226,11 @@ def check_payment_status_db(payment_id: str) -> dict:
         
         if response.status_code == 200:
             data = response.json()
-            status = data.get('payment', {}).get('status', 'unknown')
+            status = data.get('status', 'unknown')
             return {
                 "success": True,
-                "data": data,
-                "status": status
+                "status": status,
+                "data": data
             }
         else:
             return {
@@ -318,17 +254,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     
     message_text = (
-        "🧪 *ТЕСТОВЫЙ РЕЖИМ*\n\n"
-        f"Привет, {user.first_name}!\n\n"
-        "*🔍 Цель:* Проверить всю цепочку платежей\n"
-        "*💳 Сумма:* 1 рубль\n"
-        "*🎯 Что тестируем:*\n"
-        "• Создание платежа в ЮKassa\n"
-        "• Отправку чека (по 54-ФЗ)\n"
-        "• Получение вебхуков\n"
-        "• Обновление статуса в БД\n"
-        "• Предоставление доступа\n\n"
-        "Нажмите кнопку для теста:"
+        f"👋 Привет, {user.first_name}!\n\n"
+        "*Тестовая платежная система*\n\n"
+        "💰 *Сумма:* 1 рубль\n"
+        "🎯 *Цель:* Проверить работу платежей\n\n"
+        "Нажмите кнопку ниже для создания тестового платежа:"
     )
     
     await update.message.reply_text(
@@ -338,67 +268,43 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Тестовая покупка за 1 рубль"""
+    """Обработка тестовой покупки"""
     query = update.callback_query
     await query.answer()
     
-    user = query.from_user
-    user_id = user.id
+    user_id = query.from_user.id
     
-    await query.edit_message_text("🧪 *Шаг 1/3:* Создаю тестовый платеж в базе данных...", parse_mode='Markdown')
+    # Шаг 1: Создаем в БД
+    await query.edit_message_text("📦 *Создаю платеж в базе данных...*", parse_mode='Markdown')
     
-    # Создаем в БД
     db_result = create_payment_in_db(user_id)
-    
     if not db_result["success"]:
-        await query.edit_message_text(
-            f"❌ *Ошибка базы данных:*\n{db_result.get('error', 'Неизвестная ошибка')}",
-            parse_mode='Markdown'
-        )
+        await query.edit_message_text(f"❌ *Ошибка базы:* {db_result.get('error')}", parse_mode='Markdown')
         return
     
     payment_id = db_result["payment_id"]
     
-    await query.edit_message_text("🧪 *Шаг 2/3:* Создаю платеж в ЮKassa (с чеком)...", parse_mode='Markdown')
+    # Шаг 2: Создаем в ЮKassa
+    await query.edit_message_text("💳 *Создаю платеж в ЮKassa...*", parse_mode='Markdown')
     
-    # Создаем в ЮKassa с правильным receipt
-    payment_result = create_yookassa_payment_test(payment_id, user_id)
-    
+    payment_result = create_yookassa_payment(payment_id, user_id)
     if not payment_result["success"]:
         error_msg = payment_result.get('error', 'Неизвестная ошибка')
-        details = payment_result.get('details', '')
-        
-        error_text = f"❌ *Ошибка ЮKassa:*\n{error_msg}"
-        if details:
-            # Экранируем специальные символы в деталях ошибки
-            safe_details = details.replace('_', r'\_').replace('*', r'\*').replace('[', r'\[').replace(']', r'\]')
-            error_text += f"\n\n*Детали:*\n{safe_details[:150]}"
-        
-        await query.edit_message_text(error_text, parse_mode='Markdown')
+        await query.edit_message_text(f"❌ *Ошибка ЮKassa:* {error_msg}", parse_mode='Markdown')
         return
     
-    await query.edit_message_text("🧪 *Шаг 3/3:* Формирую ссылку для оплаты...", parse_mode='Markdown')
-    
-    # Формируем кнопку
+    # Шаг 3: Показываем ссылку
     keyboard = [
         [InlineKeyboardButton("💳 ОПЛАТИТЬ 1 РУБЛЬ", url=payment_result["confirmation_url"])],
-        [InlineKeyboardButton("🔄 Проверить статус оплаты", callback_data=f"status_{payment_id}")],
-        [InlineKeyboardButton("📋 Инструкция по оплате", callback_data="payment_instructions")]
+        [InlineKeyboardButton("🔄 Проверить статус", callback_data=f"status_{payment_id}")]
     ]
     
-    # Экранируем специальные символы в email
-    safe_email = db_result.get('email', 'user@telegram.org').replace('_', r'\_').replace('@', r'\@')
-    
     message_text = (
-        f"✅ *ТЕСТОВЫЙ ПЛАТЕЖ ГОТОВ!*\n\n"
-        f"*📋 ID платежа:* `{payment_id}`\n"
-        f"*👤 Пользователь:* {user.first_name}\n"
-        f"*💰 Сумма:* 1 рубль\n"
-        f"*📧 Email для чека:* {safe_email}\n"
-        f"*🎯 Режим:* Боевой (с чеком по 54-ФЗ)\n\n"
-        f"*Нажмите кнопку для оплаты:*\n"
-        f"После оплаты чек придет на указанный email.\n\n"
-        f"⚠️ *ВАЖНО:* Используйте реальную карту, спишется 1 рубль."
+        f"✅ *Платеж создан!*\n\n"
+        f"*ID:* `{payment_id}`\n"
+        f"*Сумма:* 1 рубль\n"
+        f"*Статус:* ожидание оплаты\n\n"
+        f"Нажмите кнопку для оплаты:"
     )
     
     await query.edit_message_text(
@@ -408,98 +314,52 @@ async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Проверка статуса"""
+    """Проверка статуса платежа"""
     query = update.callback_query
     await query.answer()
     
     if query.data.startswith("status_"):
         payment_id = query.data[7:]
         
-        await query.edit_message_text(f"🔍 Проверяю статус платежа `{payment_id}`...", parse_mode='Markdown')
+        await query.edit_message_text(f"🔍 Проверяю статус `{payment_id}`...", parse_mode='Markdown')
         
         result = check_payment_status_db(payment_id)
         
         if not result["success"]:
-            await query.edit_message_text("❌ Не удалось проверить статус")
+            await query.edit_message_text(f"❌ Не удалось проверить статус", parse_mode='Markdown')
             return
         
         status = result.get("status", "unknown")
         
         if status == "succeeded":
-            message = (
-                f"🎉 *ОПЛАЧЕНО!*\n\n"
-                f"✅ Платеж `{payment_id}` успешно завершен!\n"
-                f"💰 Сумма: 1 рубль\n\n"
-                f"*🔓 ДОСТУП ОТКРЫТ!*\n"
-                f"Тестовая цепочка работает корректно!\n\n"
-                f"📧 Чек отправлен на ваш email."
-            )
+            message = f"🎉 *ОПЛАЧЕНО!*\n\nПлатеж `{payment_id}` успешно завершен!"
         elif status in ["pending", "waiting"]:
-            message = (
-                f"⏳ *ОЖИДАЕТ ОПЛАТЫ*\n\n"
-                f"Платеж `{payment_id}` еще не оплачен.\n"
-                f"💰 Сумма: 1 рубль\n\n"
-                f"*Для оплаты нажмите кнопку:*"
-            )
-            keyboard = [[InlineKeyboardButton("💳 Оплатить 1 рубль", callback_data="test_buy")]]
-            await query.edit_message_text(
-                message,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-            return
+            message = f"⏳ *ОЖИДАНИЕ*\n\nПлатеж `{payment_id}` ожидает оплаты"
         else:
-            message = f"📊 Статус платежа `{payment_id}`: *{status}*"
+            message = f"📊 Статус: *{status}*"
         
         await query.edit_message_text(message, parse_mode='Markdown')
 
-async def payment_instructions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Инструкция по оплате"""
+async def check_status_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Меню проверки статуса"""
     query = update.callback_query
     await query.answer()
     
-    instructions = (
-        "💳 *ИНСТРУКЦИЯ ПО ТЕСТОВОЙ ОПЛАТЕ*\n\n"
-        
-        "*Для теста используйте:*\n"
-        "1. *Реальную банковскую карту*\n"
-        "2. *Сумма:* 1 (один) рубль\n"
-        "3. *Что произойдет:*\n"
-        "   - Банк спишет 1 рубль\n"
-        "   - ЮKassa отправит нам уведомление\n"
-        "   - Мы получим чек по 54-ФЗ\n"
-        "   - Статус обновится в базе\n"
-        "   - Вам откроется доступ\n\n"
-        
-        "*Шаги оплаты:*\n"
-        "1. Нажмите 'Оплатить 1 рубль'\n"
-        "2. На странице ЮKassa введите данные карты\n"
-        "3. Подтвердите платеж\n"
-        "4. Вернитесь в бот и нажмите 'Проверить статус'\n\n"
-        
-        "*Чек (по закону 54-ФЗ):*\n"
-        "• Чек придет на email, указанный при регистрации\n"
-        "• В чеке будет указано: 'Тестовый доступ к курсу ВАРИАТИКА'\n"
-        "• Сумма: 1 рубль (включая НДС 20%)\n\n"
-        
-        "*После успешной оплата:*\n"
-        "Вы увидите статус 'ОПЛАЧЕНО' и получите доступ."
-    )
-    
-    keyboard = [[InlineKeyboardButton("🔙 Назад к оплате", callback_data="test_buy")]]
-    
     await query.edit_message_text(
-        instructions,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='Markdown'
+        "📊 *Проверка статуса*\n\n"
+        "Используйте команду:\n"
+        "`/check ID_платежа`\n\n"
+        "Или создайте новый платеж:",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧪 Новый тестовый платеж", callback_data="test_buy")]])
     )
 
 async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /check [payment_id]"""
+    """Команда /check"""
     if not context.args:
         await update.message.reply_text(
-            "Использование: `/check ID_платежа`\n\n"
-            "Пример: `/check test_532205848_1234567890`",
+            "Использование: `/check ID_платежа`\n"
+            "Пример: `/check test_123456_1234567890`",
             parse_mode='Markdown'
         )
         return
@@ -509,129 +369,46 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if result["success"]:
         status = result.get("status", "unknown")
-        await update.message.reply_text(f"Статус платежа `{payment_id}`: *{status}*", parse_mode='Markdown')
+        await update.message.reply_text(f"Статус `{payment_id}`: *{status}*", parse_mode='Markdown')
     else:
-        await update.message.reply_text(f"Не удалось проверить платеж `{payment_id}`")
-
-async def check_status_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Меню проверки статуса"""
-    query = update.callback_query
-    await query.answer()
-    
-    await query.edit_message_text(
-        "📊 *Проверка статуса платежа*\n\n"
-        "Для проверки статуса:\n"
-        "1. Используйте команду `/check ID_платежа`\n"
-        "2. Или создайте новый платеж\n\n"
-        "ID платежа выглядит так: `test_123456789_1234567890`",
-        parse_mode='Markdown',
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧪 Создать тестовый платеж", callback_data="test_buy")]])
-    )
+        await update.message.reply_text(f"❌ Ошибка проверки `{payment_id}`")
 
 # ========== ОБРАБОТЧИК ОШИБОК ==========
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Глобальный обработчик ошибок"""
-    try:
-        error_msg = str(context.error)
-        
-        # Обрабатываем конфликт отдельно
-        if "Conflict" in error_msg and "getUpdates" in error_msg:
-            logger.warning("⚠️ Обнаружен конфликт с другим ботом")
-            
-            # Пробуем решить конфликт
-            print("🔄 Пытаюсь решить конфликт автоматически...")
-            if check_and_resolve_conflict():
-                print("✅ Конфликт решен, перезапускаю бота...")
-                # Перезапускаем бота через 5 секунд
-                await asyncio.sleep(5)
-                restart_bot()
-                return
-            
-            # Если не удалось решить, уведомляем пользователя
-            if update and hasattr(update, 'callback_query') and update.callback_query:
-                try:
-                    await update.callback_query.message.reply_text(
-                        "⚠️ *Обнаружен конфликт с другим ботом*\n\n"
-                        "Пожалуйста, подождите 1 минуту и попробуйте снова.",
-                        parse_mode='Markdown'
-                    )
-                except:
-                    pass
-        else:
-            # Другие ошибки
-            logger.error(f"⚠️ Ошибка в обработчике: {context.error}")
-            
-            if update and hasattr(update, 'callback_query') and update.callback_query:
-                try:
-                    await update.callback_query.message.reply_text(
-                        f"❌ *Произошла ошибка:*\n{error_msg[:100]}",
-                        parse_mode='Markdown'
-                    )
-                except:
-                    pass
-                    
-    except Exception as e:
-        logger.critical(f"💥 Ошибка в обработчике ошибок: {e}")
-
-def restart_bot():
-    """Перезапускает бота"""
-    print("🔄 Перезапуск бота...")
-    os.execv(sys.executable, ['python'] + sys.argv)
-
-# ========== ГЛАВНАЯ ФУНКЦИЯ ==========
-def main():
-    """Запуск бота с защитой от конфликтов"""
-    print("=" * 70)
-    print("🤖 TELEGRAM БОТ С ЗАЩИТОЙ ОТ КОНФЛИКТОВ")
-    print("=" * 70)
-    print(f"💳 РЕЖИМ: БОЕВОЙ (с чеком 54-ФЗ)")
-    print(f"💰 СУММА: 1 рубль для теста")
-    print(f"⏰ Запуск: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("=" * 70)
+    """Упрощенный обработчик ошибок"""
+    error_msg = str(context.error)
     
-    # Проверка настроек
-    if not TOKEN:
-        print("❌ ОШИБКА: TELEGRAM_BOT_TOKEN не найден!")
+    # Логируем все ошибки
+    logger.error(f"Ошибка: {error_msg}")
+    
+    # Конфликт с другим ботом
+    if "Conflict" in error_msg and "getUpdates" in error_msg:
+        logger.warning("⚠️ Конфликт с другим ботом!")
+        # Просто логируем, не пытаемся исправить
+        
+    # Уведомляем пользователя только если есть update
+    if update and isinstance(update, Update):
+        try:
+            if update.callback_query:
+                await update.callback_query.message.reply_text("⚠️ Произошла ошибка, попробуйте снова")
+            elif update.message:
+                await update.message.reply_text("⚠️ Произошла ошибка, попробуйте снова")
+        except:
+            pass
+
+# ========== ЗАПУСК БОТА ==========
+def main():
+    """Основная функция запуска"""
+    # Проверяем конфигурацию
+    if not check_configuration():
+        print("❌ Конфигурация неполная, выход...")
         sys.exit(1)
     
-    print(f"✅ Токен бота: установлен")
-    print(f"🔗 API URL: {API_URL}")
-    print(f"🏪 Shop ID: {'установлен' if YOOKASSA_SHOP_ID else 'НЕТ!'}")
-    print(f"🔑 Secret Key: {'установлен' if YOOKASSA_SECRET_KEY else 'НЕТ!'}")
-    
-    if not YOOKASSA_SHOP_ID or not YOOKASSA_SECRET_KEY:
-        print("⚠️  ВНИМАНИЕ: Данные ЮKassa неполные!")
-        print("Платежи могут не работать")
-    
-    # Проверяем конфликты перед запуском
-    print("=" * 70)
-    print("🔍 Проверка конфликтов...")
-    
-    if not check_and_resolve_conflict():
-        print("❌ Не удалось решить конфликт с другим ботом")
-        print("💡 Решение: Удалите других ботов на Render Dashboard")
-        print("⏳ Перезапуск через 30 секунд...")
-        time.sleep(30)
-        main()  # Рекурсивный перезапуск
-        return
-    
-    print("=" * 70)
-    print("🔄 Запуск бота...")
-    
     try:
-        # Создаем приложение с увеличенными таймаутами
-        app = (
-            ApplicationBuilder()
-            .token(TOKEN)
-            .connection_pool_size(8)
-            .pool_timeout(30)
-            .read_timeout(30)
-            .write_timeout(30)
-            .connect_timeout(30)
-            .build()
-        )
+        # Создаем приложение
+        app = ApplicationBuilder().token(TOKEN).build()
         
-        # Команды
+        # Добавляем обработчики
         app.add_handler(CommandHandler("start", start))
         app.add_handler(CommandHandler("test", start))
         app.add_handler(CommandHandler("check", check_command))
@@ -639,37 +416,31 @@ def main():
         # Callback обработчики
         app.add_handler(CallbackQueryHandler(test_buy_callback, pattern="^test_buy$"))
         app.add_handler(CallbackQueryHandler(status_callback, pattern="^status_"))
-        app.add_handler(CallbackQueryHandler(payment_instructions, pattern="^payment_instructions$"))
         app.add_handler(CallbackQueryHandler(check_status_menu, pattern="^check_status_menu$"))
         
         # Обработчик ошибок
         app.add_error_handler(error_handler)
         
         print("✅ Бот запущен!")
-        print("📱 Используйте команду /start")
-        print("🧪 Для теста нажмите 'ТЕСТОВАЯ ОПЛАТА'")
-        print("=" * 70)
+        print("📱 Используйте /start")
+        print("=" * 60)
         
-        # Запуск с параметрами для избежания конфликтов
+        # Запускаем с защитой от конфликтов
         app.run_polling(
-            drop_pending_updates=True,  # ОЧЕНЬ ВАЖНО!
-            allowed_updates=Update.ALL_TYPES,
-            close_loop=False,
-            stop_signals=[]  # Не обрабатываем сигналы завершения
+            drop_pending_updates=True,  # ВАЖНО: очищаем очередь обновлений
+            allowed_updates=['message', 'callback_query'],
+            close_loop=False
         )
         
-    except KeyboardInterrupt:
-        print("\n🛑 Бот остановлен пользователем")
-        
     except Exception as e:
-        print(f"❌ КРИТИЧЕСКАЯ ОШИБКА ЗАПУСКА: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.critical(f"Критическая ошибка запуска: {e}")
         
-        # Автоматический перезапуск с задержкой
+        # Простой перезапуск через 10 секунд
         print(f"🔄 Перезапуск через 10 секунд...")
         time.sleep(10)
-        main()
+        
+        # Перезапускаем процесс
+        os.execv(sys.executable, ['python'] + sys.argv)
 
 if __name__ == "__main__":
     main()
