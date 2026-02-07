@@ -1,82 +1,63 @@
 #!/usr/bin/env python3
 """
-Запуск бота ВАРИАТИКА v2.0
-Отдельный процесс для бота
+Минимальный запуск бота для Render
 """
 
+import asyncio
 import os
 import sys
 import logging
-import asyncio
 
 # Настройка логирования
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-def check_environment():
-    """Проверка необходимых переменных окружения"""
-    required_vars = [
-        'TELEGRAM_BOT_TOKEN',
-        'YOOKASSA_SHOP_ID',
-        'YOOKASSA_SECRET_KEY'
-    ]
-    
-    missing = []
-    for var in required_vars:
-        if not os.getenv(var):
-            missing.append(var)
-    
-    if missing:
-        logger.error(f"❌ Отсутствуют переменные окружения: {', '.join(missing)}")
-        logger.error("Установите их в настройках Render.com")
-        return False
-    
-    return True
-
-async def main_async():
-    """Асинхронный запуск бота"""
+async def main():
+    """Минимальный запуск"""
     try:
-        # Импортируем основной модуль бота
-        from bot_adaptive import main as bot_main
+        # Проверка токена
+        TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+        if not TOKEN:
+            logger.error("❌ TELEGRAM_BOT_TOKEN не установлен")
+            sys.exit(1)
         
-        logger.info("🤖 Запускаю бота ВАРИАТИКА v2.0...")
+        logger.info("🚀 Запуск минимального бота...")
         
-        # Запускаем бота
-        await bot_main()
+        # Импорт здесь, чтобы избежать циклических импортов
+        from telegram.ext import Application
         
-    except ImportError as e:
-        logger.error(f"❌ Ошибка импорта: {e}")
-        logger.error("Проверьте наличие файла bot_adaptive.py")
-        return False
+        # Создаем простое приложение
+        application = Application.builder().token(TOKEN).build()
+        
+        # Простая команда /start
+        from telegram import Update
+        from telegram.ext import CommandHandler, ContextTypes
+        
+        async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            await update.message.reply_text("✅ Бот работает! Используйте /test для проверки.")
+        
+        async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            await update.message.reply_text("✅ Тест пройден! Бот работает корректно.")
+        
+        # Добавляем обработчики
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("test", test))
+        
+        # Запускаем
+        logger.info("🤖 Бот запущен и готов к работе")
+        await application.run_polling(
+            drop_pending_updates=True,
+            close_loop=False  # Важно для Render
+        )
+        
     except Exception as e:
-        logger.error(f"❌ Ошибка запуска бота: {e}")
+        logger.error(f"❌ Ошибка: {e}")
         import traceback
-        logger.error(traceback.format_exc())
-        return False
-    
-    return True
-
-def main():
-    """Точка входа"""
-    logger.info("=" * 50)
-    logger.info("🚀 ЗАПУСК БОТА ВАРИАТИКА v2.0")
-    logger.info("=" * 50)
-    
-    # Проверяем переменные окружения
-    if not check_environment():
-        sys.exit(1)
-    
-    # Запускаем асинхронно
-    try:
-        asyncio.run(main_async())
-    except KeyboardInterrupt:
-        logger.info("⏹ Бот остановлен пользователем")
-    except Exception as e:
-        logger.error(f"❌ Критическая ошибка: {e}")
+        traceback.print_exc()
         sys.exit(1)
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    asyncio.run(main())
