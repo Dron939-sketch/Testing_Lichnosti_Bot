@@ -1,8 +1,7 @@
 python-telegram-bot==20.3
 Flask==2.3.2
-Flask-CORS==4.0.0  
+Flask-CORS==4.0.0
 gunicorn==21.2.0
 requests==2.31.0
 python-dotenv==1.0.0
-psycopg[binary]==3.2.13
 yookassa==2.4.0
