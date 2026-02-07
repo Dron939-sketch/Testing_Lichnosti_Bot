@@ -1493,7 +1493,7 @@ async def main_async():
     # Создаем ConversationHandler
     conv_handler = ConversationHandler(
         entry_points=[
-            CommandHandler("start", start),
+            CommandHandler("start", start_command)
             CallbackQueryHandler(start_test, pattern="^start_test$")
         ],
         states={
