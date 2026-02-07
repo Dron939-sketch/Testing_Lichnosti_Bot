@@ -1,6 +1,6 @@
 """
-ТЕСТОВЫЙ БОТ - Полная диагностика платежной системы v2.0
-С улучшенной обработкой ошибок и пошаговой диагностикой
+ТЕСТОВЫЙ БОТ - Полная диагностика платежной системы v2.1
+Исправленная версия для Render
 """
 
 import logging
@@ -18,7 +18,6 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
     ContextTypes,
-    filters
 )
 from telegram.error import Conflict, RetryAfter, TimedOut
 
@@ -76,19 +75,46 @@ async def safe_edit_message(query, text: str, reply_markup=None):
         logger.error(f"Error editing message: {e}")
         return False
 
-async def retry_api_call(func, *args, max_retries=3, delay=1, **kwargs):
-    """Повторные попытки вызова API с экспоненциальной задержкой"""
-    for attempt in range(max_retries):
-        try:
-            result = await func(*args, **kwargs)
-            return result
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-            if attempt == max_retries - 1:
-                raise
-            wait_time = delay * (2 ** attempt)
-            logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s...")
-            await asyncio.sleep(wait_time)
-    raise Exception(f"API call failed after {max_retries} attempts")
+async def safe_api_request(method: str, endpoint: str, **kwargs):
+    """Безопасный запрос к API"""
+    try:
+        url = f"{FLASK_API_URL}{endpoint}"
+        if method.upper() == "GET":
+            response = requests.get(url, **kwargs, timeout=10)
+        elif method.upper() == "POST":
+            response = requests.post(url, **kwargs, timeout=10)
+        elif method.upper() == "PUT":
+            response = requests.put(url, **kwargs, timeout=10)
+        else:
+            return {"success": False, "error": f"Unsupported method: {method}"}
+        
+        logger.info(f"API {method} {endpoint} -> {response.status_code}")
+        
+        if response.status_code in [200, 201]:
+            try:
+                data = response.json()
+                data["_status_code"] = response.status_code
+                return data
+            except json.JSONDecodeError:
+                return {
+                    "success": False,
+                    "error": "Invalid JSON response",
+                    "text": response.text[:200],
+                    "_status_code": response.status_code
+                }
+        else:
+            return {
+                "success": False,
+                "error": f"HTTP {response.status_code}",
+                "text": response.text[:200],
+                "_status_code": response.status_code
+            }
+    except requests.exceptions.Timeout:
+        return {"success": False, "error": "Request timeout"}
+    except requests.exceptions.ConnectionError:
+        return {"success": False, "error": "Connection error"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 # ========== ДИАГНОСТИЧЕСКИЕ ФУНКЦИИ ==========
 
@@ -354,7 +380,7 @@ async def test_payment_creation(user_id: int):
             json=payload,
             headers={
                 "Content-Type": "application/json",
-                "User-Agent": "PaymentDiagnosticBot/2.0"
+                "User-Agent": "PaymentDiagnosticBot/2.1"
             },
             timeout=15
         )
@@ -622,12 +648,51 @@ async def show_diagnostic_report(steps, message_func):
         # Если это query
         await safe_edit_message(message_func, report, reply_markup)
 
+async def show_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE, payment_id: str = None):
+    """Показать статус платежа"""
+    if not payment_id and payment_data.test_payment_id:
+        payment_id = payment_data.test_payment_id
+    
+    if not payment_id:
+        await update.message.reply_text("❌ Нет активного платежа для проверки")
+        return
+    
+    await update.message.reply_text(f"🔍 Проверяю статус платежа {payment_id[:10]}...")
+    
+    try:
+        response = requests.get(
+            f"{FLASK_API_URL}/api/payment-status/{payment_id}",
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            status_text = f"""
+📊 Статус платежа:
+
+🆔 ID: {payment_id}
+📈 Статус: {result.get('status', 'unknown')}
+            """
+            
+            if result.get('details'):
+                details = result['details']
+                for key, value in details.items():
+                    if key not in ['payment_id', 'id']:
+                        status_text += f"• {key}: {value}\n"
+            
+            await update.message.reply_text(status_text)
+        else:
+            await update.message.reply_text(f"❌ Ошибка проверки: HTTP {response.status_code}")
+            
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {str(e)}")
+
 # ========== ОСНОВНЫЕ КОМАНДЫ ==========
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /start"""
     welcome_text = """
-🔧 **ТЕСТОВЫЙ БОТ - Диагностика платежной системы v2.0**
+🔧 **ТЕСТОВЫЙ БОТ - Диагностика платежной системы v2.1**
 
 *Возможности:*
 ✅ Пошаговая диагностика всех компонентов
@@ -685,46 +750,154 @@ async def quick_diagnostic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await safe_edit_message(query, report, InlineKeyboardMarkup(keyboard))
 
+async def test_payment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик тестового платежа"""
+    query = update.callback_query
+    await query.answer("⏳ Создаю тестовый платеж...")
+    
+    # Простая версия тестового платежа
+    user_id = query.from_user.id
+    payment_id = f"test_{user_id}_{int(time.time())}"
+    
+    await query.edit_message_text(
+        f"🧪 **Тестовый платеж**\n\n"
+        f"🆔 ID платежа: `{payment_id}`\n"
+        f"👤 Пользователь: {user_id}\n"
+        f"💰 Сумма: 1 рубль\n\n"
+        f"Для тестирования используйте команды:\n"
+        f"• /create_test - создать тестовый платеж\n"
+        f"• /check_status - проверить статус\n"
+        f"• /diagnostic - полная диагностика",
+        parse_mode='Markdown'
+    )
+
+async def handle_check_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик проверки статуса"""
+    query = update.callback_query
+    if payment_data.test_payment_id:
+        await show_payment_status(update, context, payment_data.test_payment_id)
+    else:
+        await query.answer("❌ Нет активного платежа", show_alert=True)
+
+async def handle_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик техподдержки"""
+    query = update.callback_query
+    await query.answer()
+    
+    support_text = """
+🆘 **Техническая поддержка**
+
+Если у вас возникли проблемы:
+
+1. **Ошибки при создании платежа:**
+   - Проверьте логи Flask API
+   - Убедитесь, что база данных доступна
+
+2. **Проблемы с ЮKassa:**
+   - Проверьте настройки магазина в ЮKassa
+   - Убедитесь, что webhook настроен правильно
+
+3. **Проверка системы:**
+   - Запустите полную диагностику
+   - Проверьте доступность всех компонентов
+
+**Контакты:**
+- Логи приложения: `payment_bot.log`
+- Flask API: {FLASK_API_URL}
+    """.format(FLASK_API_URL=FLASK_API_URL)
+    
+    await query.edit_message_text(support_text, parse_mode='Markdown')
+
+async def handle_real_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик реального платежа"""
+    query = update.callback_query
+    await query.answer()
+    
+    await query.edit_message_text(
+        "💰 **Реальный платеж**\n\n"
+        "Для создания реального платежа используйте:\n\n"
+        "1. Команду `/create_payment` для создания платежа\n"
+        "2. Или обратитесь к администратору\n\n"
+        "⚠️ **Внимание:** Реальные платежи требуют настройки "
+        "платежной системы и подключения ЮKassa.",
+        parse_mode='Markdown'
+    )
+
+async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка всех callback запросов"""
+    query = update.callback_query
+    data = query.data
+    
+    if data == "full_diagnostic":
+        await start_detailed_diagnostic(update, context)
+    elif data == "quick_diagnostic":
+        await quick_diagnostic(update, context)
+    elif data == "test_payment":
+        await test_payment_handler(update, context)
+    elif data == "check_status":
+        await handle_check_status(update, context)
+    elif data == "support":
+        await handle_support(update, context)
+    elif data == "real_payment":
+        await handle_real_payment(update, context)
+    elif data.startswith("check_status_"):
+        payment_id = data.replace("check_status_", "")
+        await show_payment_status(update, context, payment_id)
+
+async def create_test_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Создание тестового платежа"""
+    user_id = update.effective_user.id
+    await update.message.reply_text(f"🧪 Создаю тестовый платеж для пользователя {user_id}...")
+    
+    # Тестируем создание платежа
+    result = await test_payment_creation(user_id)
+    
+    if result["status"] == "success":
+        await update.message.reply_text(
+            f"✅ Тестовый платеж создан!\n\n"
+            f"🆔 ID: {result.get('payment_id')}\n"
+            f"📊 Статус: Готов к интеграции с ЮKassa\n\n"
+            f"Используйте /check_status для проверки статуса"
+        )
+    else:
+        await update.message.reply_text(
+            f"❌ Ошибка создания платежа:\n{result.get('message')}\n\n"
+            f"Детали: {result.get('details', 'Нет деталей')}"
+        )
+
+async def check_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда проверки статуса"""
+    if payment_data.test_payment_id:
+        await show_payment_status(update, context, payment_data.test_payment_id)
+    else:
+        await update.message.reply_text(
+            "❌ Нет активных платежей для проверки.\n\n"
+            "Сначала создайте тестовый платеж командой /create_test"
+        )
+
 # ========== ЗАПУСК БОТА С ОБРАБОТКОЙ ОШИБОК ==========
 
 def main():
     """Запуск бота с улучшенной обработкой ошибок"""
     print("="*60)
-    print("🤖 ТЕСТОВЫЙ БОТ v2.0 - Запускается...")
+    print("🤖 ТЕСТОВЫЙ БОТ v2.1 - Запускается...")
     print(f"🔗 Flask API: {FLASK_API_URL}")
     print(f"📁 Логи: payment_bot.log")
     print("="*60)
     
-    # Создание приложения с настройками для избежания Conflict
+    # Создание приложения
     application = Application.builder().token(TOKEN).build()
     
-    # Конфигурация polling
-    application.run_polling = lambda **kwargs: application._run_polling(
-        poll_interval=0.5,  # Уменьшаем интервал опроса
-        timeout=10,
-        drop_pending_updates=True,
-        allowed_updates=Update.ALL_TYPES,
-        **kwargs
-    )
-    
-    # Добавляем обработчики
+    # Добавляем обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("diagnostic", start_detailed_diagnostic))
-    application.add_handler(CallbackQueryHandler(start_detailed_diagnostic, pattern="^full_diagnostic$"))
-    application.add_handler(CallbackQueryHandler(quick_diagnostic, pattern="^quick_diagnostic$"))
+    application.add_handler(CommandHandler("create_test", create_test_payment))
+    application.add_handler(CommandHandler("check_status", check_status_command))
+    application.add_handler(CommandHandler("status", check_status_command))
+    application.add_handler(CommandHandler("help", start))
     
-    # Обработчики для тестирования платежей (упрощенные версии)
-    async def handle_test_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        query = update.callback_query
-        await query.answer()
-        await query.edit_message_text(
-            "Для тестового платежа используйте команду /test_payment",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ Назад", callback_data="back")]
-            ])
-        )
-    
-    application.add_handler(CallbackQueryHandler(handle_test_payment, pattern="^test_payment$"))
+    # Добавляем обработчики callback запросов
+    application.add_handler(CallbackQueryHandler(handle_callback_query))
     
     # Обработчик ошибок
     async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -757,8 +930,11 @@ def main():
     print("="*60)
     
     try:
-        # Запуск с обработкой KeyboardInterrupt
-        application.run_polling()
+        # Запуск с параметрами по умолчанию (убрана проблема с перезаписью run_polling)
+        application.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES
+        )
     except KeyboardInterrupt:
         print("\n🛑 Бот остановлен пользователем")
     except Exception as e:
