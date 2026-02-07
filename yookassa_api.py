@@ -1,4 +1,4 @@
-# yookassa_api.py
+# yookassa_api.py - ОБНОВЛЕННЫЙ ДЛЯ WORKER
 import os
 import base64
 import uuid
@@ -6,16 +6,16 @@ import requests
 import json
 import logging
 from datetime import datetime
-from database import db
 
 logger = logging.getLogger(__name__)
 
 class YooKassaAPI:
-    """Класс для работы с API ЮKassa"""
+    """Класс для работы с API ЮKassa - ДЛЯ WORKER"""
     
-    def __init__(self):
-        self.shop_id = os.getenv('YOOKASSA_SHOP_ID')
-        self.secret_key = os.getenv('YOOKASSA_SECRET_KEY')
+    def __init__(self, config):
+        self.config = config
+        self.shop_id = config.YOOKASSA_SHOP_ID
+        self.secret_key = config.YOOKASSA_SECRET_KEY
         self.api_url = "https://api.yookassa.ru/v3/payments"
         
         if not self.shop_id or not self.secret_key:
@@ -30,37 +30,96 @@ class YooKassaAPI:
         """Генерация ключа идемпотентности"""
         return str(uuid.uuid4())
     
-    def create_payment(self, amount, description, user_id, email=None, payment_id=None):
+    def create_payment_via_api(self, amount, description, user_id, email=None, payment_id=None):
         """
-        Создает платеж в ЮKassa
+        Создает платеж ЧЕРЕЗ ВАШ FLASK API (не напрямую в ЮKassa)
         
-        Args:
-            amount: Сумма (рубли)
-            description: Описание платежа
-            user_id: ID пользователя Telegram
-            email: Email для чека (опционально)
-            payment_id: Наш внутренний payment_id
-            
-        Returns:
-            dict: Данные платежа или None при ошибке
+        Worker → Flask API → ЮKassa → Flask API → PostgreSQL
         """
+        try:
+            # Вызываем наш Flask API для создания платежа
+            response = requests.post(
+                f"{self.config.API_URL}/api/create-payment",
+                json={
+                    "payment_id": payment_id or f"payment_{user_id}_{int(datetime.now().timestamp())}",
+                    "user_id": user_id,
+                    "amount": amount,
+                    "email": email or "",
+                    "description": description
+                },
+                timeout=30
+            )
+            
+            if response.status_code == 201:
+                data = response.json()
+                logger.info(f"✅ Платеж создан через API: {data.get('payment_id')}")
+                
+                # Теперь создаем платеж в ЮKassa
+                if not self.config.is_test_mode and self.shop_id and self.secret_key:
+                    yookassa_result = self._create_yookassa_payment(
+                        amount, description, user_id, payment_id
+                    )
+                    
+                    if yookassa_result:
+                        # Обновляем yookassa_id через API
+                        requests.post(
+                            f"{self.config.API_URL}/api/update-yookassa-id",
+                            json={
+                                "payment_id": payment_id,
+                                "yookassa_id": yookassa_result.get('id')
+                            },
+                            timeout=10
+                        )
+                        
+                        return {
+                            "success": True,
+                            "payment_id": payment_id,
+                            "yookassa_id": yookassa_result.get('id'),
+                            "payment_url": yookassa_result.get('confirmation', {}).get('confirmation_url'),
+                            "amount": amount,
+                            "status": "pending",
+                            "api_data": data
+                        }
+                
+                # Если тестовый режим или нет ключей
+                return {
+                    "success": True,
+                    "payment_id": payment_id,
+                    "yookassa_id": None,
+                    "payment_url": f"https://yookassa.ru/test/{payment_id}",
+                    "amount": amount,
+                    "status": "pending",
+                    "api_data": data,
+                    "message": "Тестовый режим (реальный платеж не создан)"
+                }
+            else:
+                logger.error(f"❌ Ошибка API: {response.status_code} - {response.text}")
+                return {
+                    "success": False,
+                    "error": f"API error: {response.status_code}",
+                    "payment_id": payment_id
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка создания платежа: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "payment_id": payment_id
+            }
+    
+    def _create_yookassa_payment(self, amount, description, user_id, payment_id):
+        """Создает реальный платеж в ЮKassa"""
         if not self.shop_id or not self.secret_key:
-            logger.error("❌ Ключи ЮKassa не настроены!")
             return None
         
         try:
-            # Подготавливаем данные
             payment_data = {
-                "amount": {
-                    "value": str(amount),
-                    "currency": "RUB"
-                },
-                "payment_method_data": {
-                    "type": "bank_card"
-                },
+                "amount": {"value": str(amount), "currency": "RUB"},
+                "payment_method_data": {"type": "bank_card"},
                 "confirmation": {
                     "type": "redirect",
-                    "return_url": "https://t.me/Testing_Lichnosti_bot"
+                    "return_url": self.config.BOT_LINK
                 },
                 "capture": True,
                 "description": description,
@@ -71,31 +130,12 @@ class YooKassaAPI:
                 }
             }
             
-            # Добавляем чек, если есть email
-            if email:
-                payment_data["receipt"] = {
-                    "customer": {"email": email},
-                    "items": [
-                        {
-                            "description": description,
-                            "quantity": "1",
-                            "amount": {
-                                "value": str(amount),
-                                "currency": "RUB"
-                            },
-                            "vat_code": 1  # НДС 20%
-                        }
-                    ]
-                }
-            
-            # Устанавливаем заголовки
             headers = {
                 "Authorization": f"Basic {self._get_auth_token()}",
                 "Idempotence-Key": self._generate_idempotence_key(),
                 "Content-Type": "application/json"
             }
             
-            # Отправляем запрос
             response = requests.post(
                 self.api_url,
                 headers=headers,
@@ -104,49 +144,54 @@ class YooKassaAPI:
             )
             
             if response.status_code == 200:
-                payment_info = response.json()
-                
-                # Обновляем наш платеж с yookassa_id
-                if payment_id:
-                    db.update_payment_status(
-                        payment_id, 
-                        payment_info.get('status', 'pending'),
-                        payment_info.get('id')
-                    )
-                
-                logger.info(f"✅ Платеж создан в ЮKassa: {payment_info.get('id')}")
-                return payment_info
+                return response.json()
             else:
-                logger.error(f"❌ Ошибка создания платежа: {response.status_code} - {response.text}")
+                logger.error(f"❌ ЮKassa error: {response.status_code}")
                 return None
                 
         except Exception as e:
-            logger.error(f"❌ Ошибка в create_payment: {e}")
+            logger.error(f"❌ Ошибка ЮKassa: {e}")
             return None
     
-    def get_payment_info(self, yookassa_id):
-        """Получает информацию о платеже из ЮKassa"""
+    def check_payment_via_api(self, payment_id):
+        """Проверяет статус платежа через Flask API"""
         try:
-            headers = {
-                "Authorization": f"Basic {self._get_auth_token()}",
-                "Content-Type": "application/json"
-            }
-            
             response = requests.get(
-                f"{self.api_url}/{yookassa_id}",
-                headers=headers,
+                f"{self.config.API_URL}/api/payment-status/{payment_id}",
                 timeout=10
             )
             
             if response.status_code == 200:
-                return response.json()
+                data = response.json()
+                
+                if data.get("found"):
+                    return {
+                        "success": True,
+                        "status": data.get("status", "pending"),
+                        "amount": data.get("amount", 0),
+                        "yookassa_id": data.get("yookassa_id"),
+                        "user_id": data.get("user_id"),
+                        "payment_data": data
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "status": "not_found",
+                        "error": "Payment not found"
+                    }
             else:
-                logger.error(f"❌ Ошибка получения платежа: {response.status_code}")
-                return None
+                return {
+                    "success": False,
+                    "status": "api_error",
+                    "error": f"API error: {response.status_code}"
+                }
                 
         except Exception as e:
-            logger.error(f"❌ Ошибка в get_payment_info: {e}")
-            return None
+            return {
+                "success": False,
+                "status": "error",
+                "error": str(e)
+            }
 
 # Глобальный экземпляр
-yookassa_api = YooKassaAPI()
+yookassa_api = None  # Инициализируется в основном файле
