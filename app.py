@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 app.py - Полный Flask API для платежной системы с мгновенными уведомлениями
-Версия с полной интеграцией Telegram и защищенными материалами
+Версия с системой восстановления при падении и отказоустойчивостью
 """
 
 import os
@@ -11,6 +11,8 @@ import logging
 import hashlib
 import hmac
 import time
+import signal
+import threading
 import requests
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
@@ -23,6 +25,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Обработчики сигналов для graceful shutdown
+def handle_exit(signum, frame):
+    logger.info(f"📴 Получен сигнал {signum}, graceful shutdown...")
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, handle_exit)
+signal.signal(signal.SIGINT, handle_exit)
+
 # Проверяем наличие psycopg3
 try:
     import psycopg
@@ -32,7 +42,7 @@ except ImportError as e:
     POSTGRES_AVAILABLE = False
     logger.error(f"❌ psycopg3 не установлен: {e}")
 
-# Ссылка на бота для возврата после оплаты
+# Конфигурация
 TELEGRAM_BOT_URL = "https://t.me/Testing_Lichnosti_bot"
 YANDEX_DISK_BASE_URL = "https://disk.yandex.ru/d/ваша_ссылка"  # ЗАМЕНИТЕ НА РЕАЛЬНУЮ
 
@@ -75,11 +85,8 @@ def create_payments_table():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("DROP TABLE IF EXISTS payments CASCADE")
-        logger.info("🗑️ Старая таблица payments удалена")
-        
         cursor.execute("""
-        CREATE TABLE payments (
+        CREATE TABLE IF NOT EXISTS payments (
             id SERIAL PRIMARY KEY,
             payment_id VARCHAR(100) UNIQUE NOT NULL,
             yookassa_id VARCHAR(100),
@@ -91,20 +98,35 @@ def create_payments_table():
             metadata TEXT DEFAULT '{}',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            confirmed_at TIMESTAMP
+            confirmed_at TIMESTAMP,
+            recovery_attempts INTEGER DEFAULT 0,
+            last_recovery_attempt TIMESTAMP
         )
         """)
         
-        cursor.execute("CREATE INDEX idx_payments_payment_id ON payments(payment_id)")
-        cursor.execute("CREATE INDEX idx_payments_user_id ON payments(user_id)")
-        cursor.execute("CREATE INDEX idx_payments_status ON payments(status)")
-        cursor.execute("CREATE INDEX idx_payments_yookassa_id ON payments(yookassa_id)")
+        # Создаем индексы если их нет
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_payments_payment_id ON payments(payment_id)
+        """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id)
+        """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)
+        """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_payments_yookassa_id ON payments(yookassa_id)
+        """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_payments_recovery ON payments(status, created_at) 
+        WHERE status IN ('pending', 'waiting_for_capture')
+        """)
         
         conn.commit()
         cursor.close()
         conn.close()
         
-        logger.info("✅ Таблица 'payments' создана с правильной структурой")
+        logger.info("✅ Таблица 'payments' создана/проверена")
         return True
         
     except Exception as e:
@@ -121,10 +143,8 @@ def create_user_access_table():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("DROP TABLE IF EXISTS user_access CASCADE")
-        
         cursor.execute("""
-        CREATE TABLE user_access (
+        CREATE TABLE IF NOT EXISTS user_access (
             id SERIAL PRIMARY KEY,
             user_id BIGINT NOT NULL,
             payment_id VARCHAR(100),
@@ -135,19 +155,26 @@ def create_user_access_table():
             yandex_disk_link TEXT,
             access_token VARCHAR(255),
             expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '30 days'),
+            recovery_notified BOOLEAN DEFAULT FALSE,
             UNIQUE(user_id, payment_id)
         )
         """)
         
-        cursor.execute("CREATE INDEX idx_user_access_user_id ON user_access(user_id)")
-        cursor.execute("CREATE INDEX idx_user_access_has_access ON user_access(has_access)")
-        cursor.execute("CREATE INDEX idx_user_access_token ON user_access(access_token)")
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_access_user_id ON user_access(user_id)
+        """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_access_has_access ON user_access(has_access)
+        """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_access_token ON user_access(access_token)
+        """)
         
         conn.commit()
         cursor.close()
         conn.close()
         
-        logger.info("✅ Таблица 'user_access' создана с токенами доступа")
+        logger.info("✅ Таблица 'user_access' создана/проверена")
         return True
         
     except Exception as e:
@@ -164,10 +191,8 @@ def create_yookassa_webhooks_table():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("DROP TABLE IF EXISTS yookassa_webhooks CASCADE")
-        
         cursor.execute("""
-        CREATE TABLE yookassa_webhooks (
+        CREATE TABLE IF NOT EXISTS yookassa_webhooks (
             id SERIAL PRIMARY KEY,
             webhook_id VARCHAR(255) NOT NULL DEFAULT 'unknown_' || EXTRACT(EPOCH FROM NOW())::TEXT,
             event VARCHAR(100) NOT NULL,
@@ -175,19 +200,26 @@ def create_yookassa_webhooks_table():
             status VARCHAR(50) NOT NULL,
             received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             payload TEXT,
-            processed BOOLEAN DEFAULT FALSE
+            processed BOOLEAN DEFAULT FALSE,
+            retry_count INTEGER DEFAULT 0
         )
         """)
         
-        cursor.execute("CREATE INDEX idx_webhooks_payment_id ON yookassa_webhooks(payment_id)")
-        cursor.execute("CREATE INDEX idx_webhooks_event ON yookassa_webhooks(event)")
-        cursor.execute("CREATE INDEX idx_webhooks_webhook_id ON yookassa_webhooks(webhook_id)")
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_webhooks_payment_id ON yookassa_webhooks(payment_id)
+        """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_webhooks_event ON yookassa_webhooks(event)
+        """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_webhooks_webhook_id ON yookassa_webhooks(webhook_id)
+        """)
         
         conn.commit()
         cursor.close()
         conn.close()
         
-        logger.info("✅ Таблица 'yookassa_webhooks' создана")
+        logger.info("✅ Таблица 'yookassa_webhooks' создана/проверена")
         return True
         
     except Exception as e:
@@ -204,10 +236,8 @@ def create_notifications_log_table():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("DROP TABLE IF EXISTS notifications_log CASCADE")
-        
         cursor.execute("""
-        CREATE TABLE notifications_log (
+        CREATE TABLE IF NOT EXISTS notifications_log (
             id SERIAL PRIMARY KEY,
             user_id BIGINT NOT NULL,
             payment_id VARCHAR(100) NOT NULL,
@@ -216,43 +246,94 @@ def create_notifications_log_table():
             sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             success BOOLEAN DEFAULT TRUE,
             error_message TEXT,
-            retry_count INTEGER DEFAULT 0
+            retry_count INTEGER DEFAULT 0,
+            auto_recovery BOOLEAN DEFAULT FALSE
         )
         """)
         
-        cursor.execute("CREATE INDEX idx_notifications_user_id ON notifications_log(user_id)")
-        cursor.execute("CREATE INDEX idx_notifications_payment_id ON notifications_log(payment_id)")
-        cursor.execute("CREATE INDEX idx_notifications_sent_at ON notifications_log(sent_at)")
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications_log(user_id)
+        """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_notifications_payment_id ON notifications_log(payment_id)
+        """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_notifications_sent_at ON notifications_log(sent_at)
+        """)
         
         conn.commit()
         cursor.close()
         conn.close()
         
-        logger.info("✅ Таблица 'notifications_log' создана")
+        logger.info("✅ Таблица 'notifications_log' создана/проверена")
         return True
         
     except Exception as e:
         logger.error(f"❌ Ошибка создания таблицы notifications_log: {e}")
         return False
 
+def create_recovery_log_table():
+    """Создает таблицу для логов восстановления"""
+    if not POSTGRES_AVAILABLE:
+        logger.error("❌ Невозможно создать таблицу: psycopg3 не доступен")
+        return False
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS recovery_log (
+            id SERIAL PRIMARY KEY,
+            recovery_type VARCHAR(50) NOT NULL,
+            payment_id VARCHAR(100),
+            user_id BIGINT,
+            status_before VARCHAR(50),
+            status_after VARCHAR(50),
+            recovery_result VARCHAR(50) NOT NULL,
+            error_message TEXT,
+            recovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            details TEXT
+        )
+        """)
+        
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_recovery_payment_id ON recovery_log(payment_id)
+        """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_recovery_recovered_at ON recovery_log(recovered_at)
+        """)
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info("✅ Таблица 'recovery_log' создана/проверена")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка создания таблицы recovery_log: {e}")
+        return False
+
 def create_all_tables():
     """Создает все таблицы с нуля"""
-    logger.info("🗄️ Создание всех таблиц базы данных...")
+    logger.info("🗄️ Создание/проверка всех таблиц базы данных...")
     
     results = {
         "payments": create_payments_table(),
         "user_access": create_user_access_table(),
         "yookassa_webhooks": create_yookassa_webhooks_table(),
-        "notifications_log": create_notifications_log_table()
+        "notifications_log": create_notifications_log_table(),
+        "recovery_log": create_recovery_log_table()
     }
     
     success_count = sum(1 for result in results.values() if result)
     
     if success_count == len(results):
-        logger.info("✅ Все таблицы созданы успешно")
+        logger.info("✅ Все таблицы созданы/проверены успешно")
         return True
     else:
-        logger.error(f"❌ Создано только {success_count}/{len(results)} таблиц")
+        logger.error(f"❌ Успешно создано/проверено только {success_count}/{len(results)} таблиц")
         return False
 
 # ============================================
@@ -316,16 +397,28 @@ def verify_access_token(token):
         logger.error(f"❌ Ошибка проверки токена: {e}")
         return False
 
-def send_telegram_notification(user_id, payment_id, access_token=None):
-    """Отправляет мгновенное уведомление в Telegram после успешной оплаты"""
+def send_telegram_notification(user_id, payment_id, access_token=None, is_recovery=False):
+    """Отправляет мгновенное уведомление в Telegram"""
     try:
         telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
         if not telegram_token:
-            logger.error("❌ TELEGRAM_BOT_TOKEN не настроен в переменных окружения")
+            logger.error("❌ TELEGRAM_BOT_TOKEN не настроен")
             return False
         
-        # Форматируем сообщение
-        message = f"""
+        # Форматируем сообщение в зависимости от типа
+        if is_recovery:
+            message = f"""
+🔧 *ВОССТАНОВЛЕНИЕ ДОСТУПА*
+
+✅ Ваш платеж `#{payment_id[:8]}` был восстановлен после сбоя системы!
+
+📁 Для получения материалов нажмите кнопку ниже:
+`/materials`
+
+⏳ Доступ действителен 30 дней
+            """
+        else:
+            message = f"""
 ✅ *ОПЛАТА ПОДТВЕРЖДЕНА!*
 
 🎉 Ваш платеж `#{payment_id[:8]}` успешно обработан!
@@ -335,11 +428,10 @@ def send_telegram_notification(user_id, payment_id, access_token=None):
 
 💰 Спасибо за покупку курса "ВАРИАТИКА"!
 ⏳ Доступ действителен 30 дней
-        """
+            """
         
         url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
         
-        # Создаем inline-клавиатуру
         keyboard = [[
             {
                 "text": "📁 ПОЛУЧИТЬ МАТЕРИАЛЫ",
@@ -360,54 +452,58 @@ def send_telegram_notification(user_id, payment_id, access_token=None):
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        notification_type = 'payment_success_recovery' if is_recovery else 'payment_success'
+        
         if response.status_code == 200:
-            logger.info(f"✅ Уведомление отправлено пользователю {user_id} для платежа {payment_id}")
+            logger.info(f"✅ Уведомление отправлено пользователю {user_id}")
             
-            # Сохраняем токен доступа если передан
             if access_token:
                 cursor.execute("""
                 UPDATE user_access 
                 SET access_token = %s, 
                     link_sent = TRUE,
-                    materials_sent_at = CURRENT_TIMESTAMP
+                    materials_sent_at = CURRENT_TIMESTAMP,
+                    recovery_notified = %s
                 WHERE user_id = %s AND payment_id = %s
-                """, (access_token, user_id, payment_id))
+                """, (access_token, is_recovery, user_id, payment_id))
             
             cursor.execute("""
-            INSERT INTO notifications_log (user_id, payment_id, notification_type, success)
-            VALUES (%s, %s, 'payment_success', TRUE)
-            """, (user_id, payment_id))
+            INSERT INTO notifications_log 
+            (user_id, payment_id, notification_type, success, auto_recovery)
+            VALUES (%s, %s, %s, TRUE, %s)
+            """, (user_id, payment_id, notification_type, is_recovery))
             
             conn.commit()
-            cursor.close()
-            conn.close()
             return True
         else:
-            error_msg = f"Ошибка Telegram API: {response.status_code} - {response.text}"
+            error_msg = f"Telegram API: {response.status_code} - {response.text}"
             logger.error(f"❌ {error_msg}")
             
             cursor.execute("""
-            INSERT INTO notifications_log (user_id, payment_id, notification_type, success, error_message)
-            VALUES (%s, %s, 'payment_success', FALSE, %s)
-            """, (user_id, payment_id, error_msg))
+            INSERT INTO notifications_log 
+            (user_id, payment_id, notification_type, success, error_message, auto_recovery)
+            VALUES (%s, %s, %s, FALSE, %s, %s)
+            """, (user_id, payment_id, notification_type, error_msg, is_recovery))
             
             conn.commit()
-            cursor.close()
-            conn.close()
             return False
             
     except Exception as e:
-        logger.error(f"❌ Ошибка в send_telegram_notification: {e}")
+        logger.error(f"❌ Ошибка отправки уведомления: {e}")
         return False
+    finally:
+        try:
+            cursor.close()
+            conn.close()
+        except:
+            pass
 
 def generate_yandex_disk_link(user_id, payment_id, token=None):
     """Генерирует защищенную ссылку на Яндекс.Диск"""
     try:
-        # Если есть токен, используем его для подписи
         if token:
             link = f"{YANDEX_DISK_BASE_URL}?access_token={token}&user_id={user_id}&ref=variatica"
         else:
-            # Или создаем простую ссылку с параметрами для отслеживания
             timestamp = int(time.time())
             link = f"{YANDEX_DISK_BASE_URL}?user={user_id}&payment={payment_id[:8]}&ts={timestamp}&ref=telegram_bot"
         
@@ -416,6 +512,205 @@ def generate_yandex_disk_link(user_id, payment_id, token=None):
     except Exception as e:
         logger.error(f"❌ Ошибка генерации ссылки: {e}")
         return YANDEX_DISK_BASE_URL
+
+# ============================================
+# СИСТЕМА ВОССТАНОВЛЕНИЯ ПРИ ПАДЕНИИ
+# ============================================
+
+def log_recovery_action(recovery_type, payment_id=None, user_id=None, 
+                        status_before=None, status_after=None, 
+                        result="success", error=None, details=None):
+    """Логирует действия восстановления"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        INSERT INTO recovery_log 
+        (recovery_type, payment_id, user_id, status_before, status_after, 
+         recovery_result, error_message, details)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (recovery_type, payment_id, user_id, status_before, 
+              status_after, result, error, json.dumps(details) if details else None))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        logger.error(f"❌ Ошибка логирования восстановления: {e}")
+
+def check_yookassa_payment_status(yookassa_id):
+    """Проверяет статус платежа в ЮKassa через API"""
+    try:
+        # Импортируем здесь, чтобы не создавать зависимость при старте
+        from yookassa import Configuration, Payment
+        
+        shop_id = os.getenv('YOOKASSA_SHOP_ID')
+        secret_key = os.getenv('YOOKASSA_SECRET_KEY')
+        
+        if not shop_id or not secret_key:
+            logger.error("❌ Не настроены ключи ЮKassa")
+            return None
+        
+        Configuration.account_id = shop_id
+        Configuration.secret_key = secret_key
+        
+        payment = Payment.find_one(yookassa_id)
+        return {
+            'id': payment.id,
+            'status': payment.status,
+            'paid': payment.paid,
+            'amount': payment.amount.value if hasattr(payment, 'amount') else None
+        }
+    except Exception as e:
+        logger.error(f"❌ Ошибка проверки платежа в ЮKassa {yookassa_id}: {e}")
+        return None
+
+def find_and_recover_lost_payments():
+    """Находит и восстанавливает потерянные платежи"""
+    try:
+        logger.info("🔄 Запуск поиска потерянных платежей...")
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Ищем платежи, которые могли быть потеряны
+        # 1. Платежи в pending статусе старше 10 минут
+        cursor.execute("""
+        SELECT p.payment_id, p.yookassa_id, p.user_id, p.status, p.created_at
+        FROM payments p
+        LEFT JOIN user_access ua ON p.payment_id = ua.payment_id
+        WHERE p.status IN ('pending', 'waiting_for_capture')
+        AND p.created_at < NOW() - INTERVAL '10 minutes'
+        AND p.created_at > NOW() - INTERVAL '24 hours'
+        AND (ua.id IS NULL OR ua.has_access = FALSE)
+        AND (p.recovery_attempts < 3 OR p.recovery_attempts IS NULL)
+        ORDER BY p.created_at DESC
+        LIMIT 20
+        """)
+        
+        lost_payments = cursor.fetchall()
+        recovered_count = 0
+        
+        logger.info(f"🔍 Найдено {len(lost_payments)} потенциально потерянных платежей")
+        
+        for payment in lost_payments:
+            payment_id, yookassa_id, user_id, status_before, created_at = payment
+            
+            try:
+                # Обновляем счетчик попыток
+                cursor.execute("""
+                UPDATE payments 
+                SET recovery_attempts = COALESCE(recovery_attempts, 0) + 1,
+                    last_recovery_attempt = CURRENT_TIMESTAMP
+                WHERE payment_id = %s
+                """, (payment_id,))
+                
+                # Проверяем статус в ЮKassa если есть yookassa_id
+                if yookassa_id:
+                    yk_status = check_yookassa_payment_status(yookassa_id)
+                    
+                    if yk_status and yk_status.get('status') == 'succeeded':
+                        # Платеж оплачен! Восстанавливаем
+                        logger.info(f"🎉 Найден оплаченный платеж: {payment_id}")
+                        
+                        # Обновляем статус
+                        cursor.execute("""
+                        UPDATE payments 
+                        SET status = 'succeeded', 
+                            confirmed_at = CURRENT_TIMESTAMP,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE payment_id = %s
+                        """, (payment_id,))
+                        
+                        # Выдаем доступ
+                        access_token = generate_access_token(user_id, payment_id)
+                        cursor.execute("""
+                        INSERT INTO user_access (user_id, payment_id, has_access, access_token, recovery_notified)
+                        VALUES (%s, %s, TRUE, %s, FALSE)
+                        ON CONFLICT (user_id, payment_id) DO UPDATE SET
+                            has_access = TRUE,
+                            access_token = EXCLUDED.access_token,
+                            granted_at = CURRENT_TIMESTAMP
+                        """, (user_id, payment_id, access_token))
+                        
+                        # Отправляем уведомление о восстановлении
+                        send_telegram_notification(user_id, payment_id, access_token, is_recovery=True)
+                        
+                        # Логируем восстановление
+                        log_recovery_action(
+                            recovery_type="auto_recovery",
+                            payment_id=payment_id,
+                            user_id=user_id,
+                            status_before=status_before,
+                            status_after="succeeded",
+                            result="success",
+                            details={
+                                "yookassa_id": yookassa_id,
+                                "yk_status": yk_status
+                            }
+                        )
+                        
+                        recovered_count += 1
+                        logger.info(f"✅ Восстановлен платеж: {payment_id}")
+                        
+                conn.commit()
+                
+            except Exception as e:
+                logger.error(f"❌ Ошибка восстановления платежа {payment_id}: {e}")
+                log_recovery_action(
+                    recovery_type="auto_recovery",
+                    payment_id=payment_id,
+                    user_id=user_id,
+                    status_before=status_before,
+                    status_after=status_before,
+                    result="error",
+                    error=str(e)
+                )
+                conn.rollback()
+                continue
+        
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"✅ Автовосстановление завершено. Восстановлено: {recovered_count}/{len(lost_payments)}")
+        return {
+            "found": len(lost_payments),
+            "recovered": recovered_count
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в find_and_recover_lost_payments: {e}")
+        return {"error": str(e)}
+
+def recovery_worker():
+    """Фоновый воркер для восстановления платежей"""
+    while True:
+        try:
+            # Запускаем каждые 15 минут
+            time.sleep(900)  # 15 минут
+            
+            # Проверяем, что приложение запущено
+            with app.app_context():
+                result = find_and_recover_lost_payments()
+                if result.get('recovered', 0) > 0:
+                    logger.info(f"🔄 Воркер восстановления обработал {result['recovered']} платежей")
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка в recovery_worker: {e}")
+            time.sleep(300)  # Ждем 5 минут при ошибке
+
+# Запускаем воркер в отдельном потоке
+def start_recovery_worker():
+    """Запускает фоновый воркер восстановления"""
+    try:
+        thread = threading.Thread(target=recovery_worker, daemon=True)
+        thread.start()
+        logger.info("✅ Фоновый воркер восстановления запущен")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Не удалось запустить recovery worker: {e}")
+        return False
 
 # ============================================
 # API ЭНДПОИНТЫ
@@ -428,33 +723,29 @@ def home():
     
     return jsonify({
         "status": "Flask API работает! 🚀",
-        "version": "Payment System v4.0 (с мгновенными уведомлениями)",
+        "version": "Payment System v5.0 (с системой восстановления)",
         "database": db_status,
         "telegram_bot": TELEGRAM_BOT_URL,
         "features": [
             "✅ Мгновенные уведомления в Telegram",
             "✅ Защищенные ссылки на Яндекс.Диск",
-            "✅ Верификация токенов доступа",
+            "✅ Система автовосстановления при падении",
+            "✅ Панель администратора",
             "✅ Логирование всех действий"
         ],
         "endpoints": {
+            "admin": "/admin/dashboard (GET)",
+            "recovery": "/recovery/** (см. /admin/dashboard)",
             "create_payment": "/api/create-payment (POST)",
-            "update_yookassa_id": "/api/update-yookassa-id (POST)",
-            "payment_status": "/api/payment-status/<payment_id> (GET)",
             "yookassa_webhook": "/yookassa-webhook (POST)",
-            "grant_access": "/api/grant-access/<payment_id> (POST)",
-            "check_access": "/api/check-access/<user_id> (GET)",
             "get_materials": "/api/get-materials/<payment_id> (GET)",
-            "verify_token": "/api/verify-token (POST)",
             "health": "/health (GET)",
-            "check_db": "/check-db (GET)",
-            "create_tables": "/create-all-tables (GET)",
-            "test_notification": "/test-notification/<user_id> (GET)"
+            "check_db": "/check-db (GET)"
         }
     })
 
 # ============================================
-# 1. ЭНДПОИНТЫ ДЛЯ ПЛАТЕЖЕЙ
+# 1. ЭНДПОИНТЫ ДЛЯ ПЛАТЕЖЕЙ (существующие)
 # ============================================
 
 @app.route('/api/create-payment', methods=['POST'])
@@ -556,7 +847,7 @@ def api_update_yookassa_id():
         cursor.close()
         conn.close()
         
-        logger.info(f"✅ ЮKassa ID обновлен: {payment_id} -> {yookassa_id} (статус: {new_status})")
+        logger.info(f"✅ ЮKassa ID обновлен: {payment_id} -> {yookassa_id}")
         
         return jsonify({
             "success": True,
@@ -586,16 +877,9 @@ def api_payment_status(payment_id):
         
         cursor.execute("""
         SELECT 
-            payment_id, 
-            yookassa_id, 
-            user_id, 
-            amount, 
-            status, 
-            email,
-            description,
-            created_at,
-            updated_at,
-            confirmed_at
+            payment_id, yookassa_id, user_id, amount, status, email,
+            description, created_at, updated_at, confirmed_at,
+            recovery_attempts, last_recovery_attempt
         FROM payments 
         WHERE payment_id = %s
         """, (payment_id,))
@@ -621,7 +905,9 @@ def api_payment_status(payment_id):
             "description": payment[6],
             "created_at": payment[7].isoformat() if payment[7] else None,
             "updated_at": payment[8].isoformat() if payment[8] else None,
-            "confirmed_at": payment[9].isoformat() if payment[9] else None
+            "confirmed_at": payment[9].isoformat() if payment[9] else None,
+            "recovery_attempts": payment[10],
+            "last_recovery_attempt": payment[11].isoformat() if payment[11] else None
         }
         
         return jsonify({
@@ -644,7 +930,6 @@ def api_grant_access(payment_id):
         return jsonify({"success": False, "error": "psycopg3 не установлен"}), 500
     
     try:
-        # Получаем информацию о платеже
         conn = get_db_connection()
         cursor = conn.cursor()
         
@@ -659,10 +944,8 @@ def api_grant_access(payment_id):
             conn.close()
             return jsonify({"success": False, "error": "Payment not found"}), 404
         
-        user_id = payment[0]
-        status = payment[1]
+        user_id, status = payment
         
-        # Проверяем, что платеж успешен
         if status != 'succeeded':
             cursor.close()
             conn.close()
@@ -671,10 +954,8 @@ def api_grant_access(payment_id):
                 "error": f"Cannot grant access for payment with status: {status}"
             }), 400
         
-        # Генерируем токен доступа
         access_token = generate_access_token(user_id, payment_id)
         
-        # Выдаем доступ
         cursor.execute("""
         INSERT INTO user_access (user_id, payment_id, has_access, access_token)
         VALUES (%s, %s, TRUE, %s)
@@ -687,7 +968,6 @@ def api_grant_access(payment_id):
         
         result = cursor.fetchone()
         
-        # Отправляем уведомление
         send_telegram_notification(user_id, payment_id, access_token)
         
         conn.commit()
@@ -721,15 +1001,9 @@ def api_check_access(user_id):
         
         cursor.execute("""
         SELECT 
-            ua.payment_id,
-            ua.has_access,
-            ua.granted_at,
-            ua.expires_at,
-            ua.access_token,
-            p.description,
-            p.amount,
-            p.created_at,
-            p.status
+            ua.payment_id, ua.has_access, ua.granted_at, ua.expires_at,
+            ua.access_token, ua.recovery_notified,
+            p.description, p.amount, p.created_at, p.status
         FROM user_access ua
         LEFT JOIN payments p ON ua.payment_id = p.payment_id
         WHERE ua.user_id = %s AND ua.has_access = TRUE
@@ -754,10 +1028,11 @@ def api_check_access(user_id):
                 "granted_at": access[2].isoformat() if access[2] else None,
                 "expires_at": expires_at.isoformat() if expires_at else None,
                 "access_token": access[4],
-                "description": access[5],
-                "amount": float(access[6]) if access[6] else None,
-                "payment_date": access[7].isoformat() if access[7] else None,
-                "payment_status": access[8],
+                "recovery_notified": access[5],
+                "description": access[6],
+                "amount": float(access[7]) if access[7] else None,
+                "payment_date": access[8].isoformat() if access[8] else None,
+                "payment_status": access[9],
                 "is_active": is_active
             })
         
@@ -783,7 +1058,6 @@ def api_get_materials(payment_id):
         return jsonify({"success": False, "error": "psycopg3 не установлен"}), 500
     
     try:
-        # Получаем параметры
         user_id = request.args.get('user_id')
         token = request.args.get('token')
         
@@ -795,19 +1069,16 @@ def api_get_materials(payment_id):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Проверяем доступ через токен или напрямую
         has_access = False
         access_token = None
         
         if token:
-            # Проверяем токен
             token_data = verify_access_token(token)
             if token_data and token_data['user_id'] == user_id and token_data['payment_id'] == payment_id:
                 has_access = True
                 access_token = token
         
         if not has_access:
-            # Проверяем доступ через БД
             cursor.execute("""
             SELECT 
                 ua.has_access,
@@ -838,10 +1109,8 @@ def api_get_materials(payment_id):
             conn.close()
             return jsonify({"success": False, "error": "Доступ не найден"}), 403
         
-        # Генерируем защищенную ссылку
         yandex_link = generate_yandex_disk_link(user_id, payment_id, access_token)
         
-        # Обновляем запись в БД
         cursor.execute("""
         UPDATE user_access 
         SET yandex_disk_link = %s,
@@ -849,7 +1118,6 @@ def api_get_materials(payment_id):
         WHERE user_id = %s AND payment_id = %s
         """, (yandex_link, user_id, payment_id))
         
-        # Логируем доступ к материалам
         cursor.execute("""
         INSERT INTO notifications_log (user_id, payment_id, notification_type, success)
         VALUES (%s, %s, 'materials_accessed', TRUE)
@@ -875,63 +1143,14 @@ def api_get_materials(payment_id):
         logger.error(f"❌ Ошибка выдачи материалов: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/verify-token', methods=['POST'])
-def api_verify_token():
-    """Проверяет токен доступа"""
-    try:
-        data = request.get_json()
-        token = data.get('token')
-        
-        if not token:
-            return jsonify({"valid": False, "error": "Token is required"}), 400
-        
-        # Проверяем токен
-        token_data = verify_access_token(token)
-        if not token_data:
-            return jsonify({"valid": False, "error": "Invalid or expired token"}), 200
-        
-        # Дополнительная проверка в БД
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-        SELECT 
-            ua.has_access,
-            ua.expires_at > CURRENT_TIMESTAMP as is_active,
-            p.status = 'succeeded' as payment_ok
-        FROM user_access ua
-        JOIN payments p ON ua.payment_id = p.payment_id
-        WHERE ua.user_id = %s AND ua.payment_id = %s
-        """, (token_data['user_id'], token_data['payment_id']))
-        
-        result = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        
-        if result and all(result):
-            return jsonify({
-                "valid": True,
-                "user_id": token_data['user_id'],
-                "payment_id": token_data['payment_id'],
-                "expires_at": token_data['expires_at'],
-                "expires_at_human": datetime.fromtimestamp(token_data['expires_at']).isoformat()
-            }), 200
-        
-        return jsonify({"valid": False, "error": "Access not found in database"}), 200
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка проверки токена: {e}")
-        return jsonify({"valid": False, "error": str(e)}), 500
-
 # ============================================
-# 3. ВЕБХУК ЮKASSA С МГНОВЕННЫМИ УВЕДОМЛЕНИЯМИ
+# 3. ВЕБХУК ЮKASSA С ВОССТАНОВЛЕНИЕМ
 # ============================================
 
 @app.route('/yookassa-webhook', methods=['POST'])
 def yookassa_webhook():
-    """Обработчик вебхуков от ЮKassa с мгновенными уведомлениями"""
+    """Обработчик вебхуков от ЮKassa с восстановлением"""
     try:
-        # Получаем данные
         event_json = request.get_json()
         if not event_json:
             logger.warning("❌ Пустой вебхук от ЮKassa")
@@ -939,14 +1158,12 @@ def yookassa_webhook():
         
         logger.info(f"📥 Получен вебхук от ЮKassa: {json.dumps(event_json, ensure_ascii=False)[:200]}...")
         
-        # Генерируем webhook_id если его нет
         webhook_id = event_json.get('id')
         if not webhook_id:
             timestamp = int(time.time())
             data_hash = hashlib.md5(json.dumps(event_json).encode()).hexdigest()[:8]
             webhook_id = f"wh_{timestamp}_{data_hash}"
         
-        # Извлекаем данные события
         event_type = event_json.get('event', 'unknown')
         payment_data = event_json.get('object', {})
         yookassa_id = payment_data.get('id', 'unknown')
@@ -958,7 +1175,6 @@ def yookassa_webhook():
         cursor = conn.cursor()
         
         try:
-            # Сохраняем вебхук в лог
             cursor.execute("""
             INSERT INTO yookassa_webhooks (webhook_id, event, payment_id, status, payload)
             VALUES (%s, %s, %s, %s, %s)
@@ -973,55 +1189,62 @@ def yookassa_webhook():
             
             webhook_db_id = cursor.fetchone()[0]
             
-            # Обрабатываем события
             if event_type == 'payment.succeeded' and yookassa_id != 'unknown':
                 logger.info(f"🎉 Платеж успешен: {yookassa_id}")
                 
-                # Обновляем статус платежа
                 cursor.execute("""
                 UPDATE payments 
                 SET status = 'succeeded', 
                     confirmed_at = CURRENT_TIMESTAMP,
                     updated_at = CURRENT_TIMESTAMP,
-                    metadata = %s
+                    metadata = %s,
+                    recovery_attempts = 0
                 WHERE yookassa_id = %s OR payment_id = %s
-                RETURNING user_id, payment_id
+                RETURNING user_id, payment_id, status as old_status
                 """, (json.dumps(metadata, ensure_ascii=False), yookassa_id, payment_id))
                 
                 result = cursor.fetchone()
                 if result:
-                    user_id = result[0]
-                    actual_payment_id = result[1]
+                    user_id, actual_payment_id, old_status = result
                     
-                    # Генерируем токен доступа
+                    # Логируем если это восстановление
+                    if old_status != 'succeeded':
+                        log_recovery_action(
+                            recovery_type="webhook_recovery",
+                            payment_id=actual_payment_id,
+                            user_id=user_id,
+                            status_before=old_status,
+                            status_after="succeeded",
+                            result="success",
+                            details={"yookassa_id": yookassa_id}
+                        )
+                    
                     access_token = generate_access_token(user_id, actual_payment_id)
                     
-                    # Выдаем доступ автоматически
                     cursor.execute("""
                     INSERT INTO user_access (user_id, payment_id, has_access, access_token)
                     VALUES (%s, %s, TRUE, %s)
                     ON CONFLICT (user_id, payment_id) DO UPDATE SET
                         has_access = TRUE,
                         access_token = EXCLUDED.access_token,
-                        granted_at = CURRENT_TIMESTAMP
+                        granted_at = CURRENT_TIMESTAMP,
+                        recovery_notified = FALSE
                     """, (user_id, actual_payment_id, access_token))
                     
-                    # Логируем факт выдачи доступа
                     cursor.execute("""
                     INSERT INTO notifications_log (user_id, payment_id, notification_type, success)
                     VALUES (%s, %s, 'access_granted', TRUE)
                     """, (user_id, actual_payment_id))
                     
-                    logger.info(f"✅ Доступ выдан пользователю {user_id} для платежа {actual_payment_id}")
+                    logger.info(f"✅ Доступ выдан пользователю {user_id}")
                     
-                    # 🔥 ВАЖНО: Отправляем мгновенное уведомление
                     try:
                         notification_sent = send_telegram_notification(user_id, actual_payment_id, access_token)
                         
                         if notification_sent:
                             logger.info(f"📲 Уведомление отправлено пользователю {user_id}")
                         else:
-                            logger.error(f"❌ Не удалось отправить уведомление пользователю {user_id}")
+                            logger.error(f"❌ Не удалось отправить уведомление")
                             
                     except Exception as notify_error:
                         logger.error(f"❌ Ошибка отправки уведомления: {notify_error}")
@@ -1046,7 +1269,6 @@ def yookassa_webhook():
                 
                 logger.info(f"⏳ Платеж ожидает подтверждения: {yookassa_id}")
             
-            # Помечаем как обработанный
             cursor.execute("UPDATE yookassa_webhooks SET processed = TRUE WHERE id = %s", (webhook_db_id,))
             
             conn.commit()
@@ -1057,6 +1279,18 @@ def yookassa_webhook():
         except Exception as e:
             conn.rollback()
             logger.error(f"❌ Ошибка обработки вебхука в БД: {e}")
+            
+            # Логируем ошибку вебхука
+            log_recovery_action(
+                recovery_type="webhook_error",
+                payment_id=payment_id,
+                status_before=status,
+                status_after=status,
+                result="error",
+                error=str(e),
+                details={"yookassa_id": yookassa_id, "event": event_type}
+            )
+            
             return jsonify({"status": "error", "message": str(e)}), 500
             
         finally:
@@ -1068,7 +1302,266 @@ def yookassa_webhook():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ============================================
-# 4. АДМИНИСТРАТИВНЫЕ И ТЕСТОВЫЕ ЭНДПОИНТЫ
+# 4. СИСТЕМА ВОССТАНОВЛЕНИЯ И АДМИН ПАНЕЛЬ
+# ============================================
+
+@app.route('/recovery/find-lost-payments', methods=['GET'])
+def recovery_find_lost_payments():
+    """Находит и восстанавливает потерянные платежи вручную"""
+    try:
+        result = find_and_recover_lost_payments()
+        return jsonify({
+            "success": True,
+            "message": "Восстановление запущено",
+            "result": result
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/recovery/force-process/<payment_id>', methods=['POST'])
+def recovery_force_process(payment_id):
+    """Принудительная обработка платежа"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT user_id, yookassa_id, status FROM payments WHERE payment_id = %s
+        """, (payment_id,))
+        
+        payment = cursor.fetchone()
+        
+        if not payment:
+            return jsonify({"success": False, "error": "Платеж не найден"}), 404
+        
+        user_id, yookassa_id, status_before = payment
+        
+        if yookassa_id:
+            yk_status = check_yookassa_payment_status(yookassa_id)
+            
+            if yk_status and yk_status.get('status') == 'succeeded':
+                cursor.execute("""
+                UPDATE payments 
+                SET status = 'succeeded', confirmed_at = CURRENT_TIMESTAMP
+                WHERE payment_id = %s
+                """, (payment_id,))
+                
+                access_token = generate_access_token(user_id, payment_id)
+                
+                cursor.execute("""
+                INSERT INTO user_access (user_id, payment_id, has_access, access_token, recovery_notified)
+                VALUES (%s, %s, TRUE, %s, TRUE)
+                ON CONFLICT (user_id, payment_id) DO UPDATE SET
+                    has_access = TRUE,
+                    access_token = EXCLUDED.access_token
+                """, (user_id, payment_id, access_token))
+                
+                send_telegram_notification(user_id, payment_id, access_token, is_recovery=True)
+                
+                log_recovery_action(
+                    recovery_type="manual_force",
+                    payment_id=payment_id,
+                    user_id=user_id,
+                    status_before=status_before,
+                    status_after="succeeded",
+                    result="success",
+                    details={"yookassa_id": yookassa_id, "yk_status": yk_status}
+                )
+                
+                conn.commit()
+                
+                return jsonify({
+                    "success": True,
+                    "message": "Платеж успешно обработан",
+                    "status": "succeeded",
+                    "notified": True
+                })
+        
+        return jsonify({
+            "success": False,
+            "error": "Платеж не найден в ЮKassa или не оплачен"
+        }), 400
+        
+    except Exception as e:
+        log_recovery_action(
+            recovery_type="manual_force",
+            payment_id=payment_id,
+            status_before=None,
+            status_after=None,
+            result="error",
+            error=str(e)
+        )
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        try:
+            cursor.close()
+            conn.close()
+        except:
+            pass
+
+@app.route('/recovery/resend-notifications/<int:user_id>', methods=['POST'])
+def recovery_resend_notifications(user_id):
+    """Повторная отправка уведомлений пользователю"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT p.payment_id, ua.access_token
+        FROM payments p
+        LEFT JOIN user_access ua ON p.payment_id = ua.payment_id
+        WHERE p.user_id = %s 
+        AND p.status = 'succeeded'
+        AND ua.has_access = TRUE
+        AND p.confirmed_at > CURRENT_TIMESTAMP - INTERVAL '7 days'
+        """, (user_id,))
+        
+        payments = cursor.fetchall()
+        
+        results = []
+        for payment_id, access_token in payments:
+            success = send_telegram_notification(user_id, payment_id, access_token, is_recovery=True)
+            results.append({
+                "payment_id": payment_id,
+                "notification_sent": success
+            })
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "payments_found": len(payments),
+            "notifications_resent": len([r for r in results if r["notification_sent"]]),
+            "results": results
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/admin/dashboard', methods=['GET'])
+def admin_dashboard():
+    """Панель администратора для мониторинга"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Статистика
+        cursor.execute("SELECT COUNT(*) FROM payments")
+        total_payments = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM payments WHERE status = 'succeeded'")
+        succeeded_payments = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM payments WHERE status = 'pending' AND created_at > NOW() - INTERVAL '1 hour'")
+        recent_pending = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM user_access WHERE has_access = TRUE")
+        active_accesses = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM recovery_log WHERE recovered_at > NOW() - INTERVAL '24 hours'")
+        recoveries_24h = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM recovery_log WHERE recovery_result = 'error' AND recovered_at > NOW() - INTERVAL '24 hours'")
+        recovery_errors_24h = cursor.fetchone()[0]
+        
+        # Проблемные платежи
+        cursor.execute("""
+        SELECT p.payment_id, p.user_id, p.status, p.created_at, p.recovery_attempts
+        FROM payments p
+        LEFT JOIN user_access ua ON p.payment_id = ua.payment_id
+        WHERE p.status IN ('pending', 'waiting_for_capture')
+        AND p.created_at > NOW() - INTERVAL '24 hours'
+        AND (ua.id IS NULL OR ua.has_access = FALSE)
+        ORDER BY p.created_at DESC
+        LIMIT 20
+        """)
+        problem_payments = cursor.fetchall()
+        
+        # Последние восстановления
+        cursor.execute("""
+        SELECT recovery_type, payment_id, user_id, status_before, status_after, 
+               recovery_result, recovered_at
+        FROM recovery_log 
+        ORDER BY recovered_at DESC 
+        LIMIT 10
+        """)
+        recent_recoveries = cursor.fetchall()
+        
+        # Статистика уведомлений
+        cursor.execute("""
+        SELECT notification_type, 
+               COUNT(*) as total,
+               SUM(CASE WHEN success THEN 1 ELSE 0 END) as success,
+               SUM(CASE WHEN NOT success THEN 1 ELSE 0 END) as failed
+        FROM notifications_log 
+        WHERE sent_at > NOW() - INTERVAL '24 hours'
+        GROUP BY notification_type
+        """)
+        notifications_stats = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "timestamp": datetime.now().isoformat(),
+            "stats": {
+                "total_payments": total_payments,
+                "succeeded_payments": succeeded_payments,
+                "recent_pending_payments": recent_pending,
+                "active_accesses": active_accesses,
+                "recoveries_last_24h": recoveries_24h,
+                "recovery_errors_last_24h": recovery_errors_24h
+            },
+            "problem_payments": [
+                {
+                    "payment_id": p[0],
+                    "user_id": p[1],
+                    "status": p[2],
+                    "created_at": p[3].isoformat() if p[3] else None,
+                    "recovery_attempts": p[4],
+                    "needs_recovery": True
+                } for p in problem_payments
+            ],
+            "recent_recoveries": [
+                {
+                    "type": r[0],
+                    "payment_id": r[1],
+                    "user_id": r[2],
+                    "status_before": r[3],
+                    "status_after": r[4],
+                    "result": r[5],
+                    "recovered_at": r[6].isoformat() if r[6] else None
+                } for r in recent_recoveries
+            ],
+            "notifications_stats": [
+                {
+                    "type": n[0],
+                    "total": n[1],
+                    "success": n[2],
+                    "failed": n[3],
+                    "success_rate": round((n[2] / n[1] * 100) if n[1] > 0 else 0, 1)
+                } for n in notifications_stats
+            ],
+            "recovery_endpoints": {
+                "find_lost_payments": "/recovery/find-lost-payments (GET)",
+                "force_process": "/recovery/force-process/<payment_id> (POST)",
+                "resend_notifications": "/recovery/resend-notifications/<user_id> (POST)"
+            },
+            "system": {
+                "recovery_worker": "active" if 'recovery_thread' in globals() else "inactive",
+                "postgres_available": POSTGRES_AVAILABLE,
+                "telegram_configured": bool(os.getenv('TELEGRAM_BOT_TOKEN'))
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# ============================================
+# 5. АДМИНИСТРАТИВНЫЕ И ТЕСТОВЫЕ ЭНДПОИНТЫ
 # ============================================
 
 @app.route('/create-all-tables', methods=['GET'])
@@ -1085,12 +1578,13 @@ def create_all_tables_endpoint():
         if success:
             return jsonify({
                 "success": True,
-                "message": "✅ Все таблицы созданы заново!",
+                "message": "✅ Все таблицы созданы/проверены!",
                 "tables": [
-                    "payments - платежи (с description, yookassa_id, metadata)",
-                    "user_access - доступы пользователей с токенами",
+                    "payments - платежи (с recovery_attempts)",
+                    "user_access - доступы пользователей",
                     "yookassa_webhooks - логи вебхуков",
-                    "notifications_log - логи уведомлений"
+                    "notifications_log - логи уведомлений",
+                    "recovery_log - логи восстановления"
                 ]
             })
         else:
@@ -1121,26 +1615,29 @@ def check_db():
         cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
         tables = [row[0] for row in cursor.fetchall()]
         
-        expected_tables = ['payments', 'user_access', 'yookassa_webhooks', 'notifications_log']
+        expected_tables = ['payments', 'user_access', 'yookassa_webhooks', 'notifications_log', 'recovery_log']
         table_status = {table: table in tables for table in expected_tables}
         
-        # Проверяем данные
         data_counts = {}
         for table in tables:
             cursor.execute(f"SELECT COUNT(*) FROM {table}")
             data_counts[table] = cursor.fetchone()[0]
         
-        # Проверяем последние уведомления
-        notifications_status = "N/A"
-        if 'notifications_log' in tables:
-            cursor.execute("""
-            SELECT notification_type, COUNT(*) 
-            FROM notifications_log 
-            GROUP BY notification_type 
-            ORDER BY COUNT(*) DESC
-            """)
-            notifications_stats = cursor.fetchall()
-            notifications_status = {ntype: count for ntype, count in notifications_stats}
+        cursor.execute("""
+        SELECT status, COUNT(*) 
+        FROM payments 
+        GROUP BY status 
+        ORDER BY COUNT(*) DESC
+        """)
+        payments_by_status = cursor.fetchall()
+        
+        cursor.execute("""
+        SELECT recovery_result, COUNT(*) 
+        FROM recovery_log 
+        WHERE recovered_at > NOW() - INTERVAL '24 hours'
+        GROUP BY recovery_result
+        """)
+        recent_recoveries = cursor.fetchall()
         
         cursor.close()
         conn.close()
@@ -1151,7 +1648,8 @@ def check_db():
             "tables": tables,
             "expected_tables_status": table_status,
             "data_counts": data_counts,
-            "notifications_stats": notifications_status,
+            "payments_by_status": {status: count for status, count in payments_by_status},
+            "recent_recoveries": {result: count for result, count in recent_recoveries},
             "health": "healthy" if all(table_status.values()) else "issues"
         })
         
@@ -1164,7 +1662,7 @@ def check_db():
 
 @app.route('/test-notification/<int:user_id>', methods=['GET'])
 def test_notification(user_id):
-    """Тестовая отправка уведомления (админ)"""
+    """Тестовая отправка уведомления"""
     try:
         payment_id = f"test_{int(time.time())}"
         success = send_telegram_notification(user_id, payment_id)
@@ -1196,22 +1694,23 @@ def health_check():
         else:
             db_status = "psycopg3_not_available"
         
-        # Проверяем токен бота
         telegram_token_set = bool(os.getenv('TELEGRAM_BOT_TOKEN'))
         
         return jsonify({
             "status": "healthy" if (POSTGRES_AVAILABLE and "connected" in db_status and telegram_token_set) else "degraded",
             "service": "variatica_payment_api",
-            "version": "4.0 (с уведомлениями)",
+            "version": "5.0 (с системой восстановления)",
             "database": db_status,
             "telegram_token_configured": telegram_token_set,
             "telegram_bot_url": TELEGRAM_BOT_URL,
+            "recovery_system": "active",
             "timestamp": datetime.now().isoformat(),
             "features": [
                 "Мгновенные уведомления",
                 "Защищенные ссылки",
-                "Верификация токенов",
-                "Логирование"
+                "Автовосстановление при падении",
+                "Панель администратора",
+                "Логирование восстановления"
             ]
         }), 200
         
@@ -1222,13 +1721,43 @@ def health_check():
             "timestamp": datetime.now().isoformat()
         }), 500
 
+# Обработчики ошибок
+@app.errorhandler(500)
+def handle_500(error):
+    """Обработчик 500 ошибок"""
+    logger.error(f"🔥 500 ошибка: {error}")
+    return jsonify({
+        "success": False,
+        "error": "Внутренняя ошибка сервера",
+        "recovery_suggestion": "Используйте /admin/dashboard для диагностики"
+    }), 500
+
+@app.errorhandler(404)
+def handle_404(error):
+    """Обработчик 404 ошибок"""
+    return jsonify({
+        "success": False,
+        "error": "Эндпоинт не найден",
+        "available_endpoints": ["/", "/health", "/admin/dashboard", "/api/**"]
+    }), 404
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Глобальный обработчик исключений"""
+    logger.error(f"🔥 Необработанное исключение: {e}")
+    return jsonify({
+        "success": False,
+        "error": "Внутренняя ошибка",
+        "type": type(e).__name__
+    }), 500
+
 # ============================================
 # ЗАПУСК СЕРВЕРА
 # ============================================
 
 if __name__ == '__main__':
     print("="*80)
-    print("🚀 VARIATICA PAYMENT API v4.0 - С МГНОВЕННЫМИ УВЕДОМЛЕНИЯМИ")
+    print("🚀 VARIATICA PAYMENT API v5.0 - С СИСТЕМОЙ ВОССТАНОВЛЕНИЯ")
     print("="*80)
     print(f"Python: {sys.version.split()[0]}")
     print(f"psycopg3 доступен: {POSTGRES_AVAILABLE}")
@@ -1238,19 +1767,33 @@ if __name__ == '__main__':
     print("📡 КЛЮЧЕВЫЕ ЭНДПОИНТЫ:")
     print("  /                        - Главная страница")
     print("  /health                  - Проверка здоровья")
+    print("  /admin/dashboard         - Панель администратора")
     print("  /check-db                - Проверка базы данных")
-    print("  /create-all-tables       - Создать таблицы заново")
-    print("  /test-notification/<id>  - Тест уведомления")
-    print("  /api/create-payment      - Создать платеж")
-    print("  /api/get-materials/{id}  - Получить материалы")
-    print("  /yookassa-webhook        - Вебхук ЮKassa (МГНОВЕННЫЕ УВЕДОМЛЕНИЯ!)")
+    print("  /create-all-tables       - Создать/проверить таблицы")
+    print("  /recovery/find-lost-payments - Восстановление платежей")
+    print("  /yookassa-webhook        - Вебхук ЮKassa")
+    print("="*80)
+    print("🛡️  СИСТЕМА ВОССТАНОВЛЕНИЯ:")
+    print("  • Автоматическое восстановление каждые 15 минут")
+    print("  • Панель администратора для мониторинга")
+    print("  • Ручное восстановление потерянных платежей")
+    print("  • Логирование всех действий восстановления")
     print("="*80)
     print("💡 Инструкция:")
-    print("  1. Используйте /create-all-tables для создания таблиц")
-    print("  2. Убедитесь, что TELEGRAM_BOT_TOKEN установлен в окружении")
-    print("  3. Настройте вебхук в ЮKassa на /yookassa-webhook")
-    print("  4. Замените YANDEX_DISK_BASE_URL на реальную ссылку")
+    print("  1. Замените YANDEX_DISK_BASE_URL на реальную ссылку")
+    print("  2. Используйте /admin/dashboard для мониторинга")
+    print("  3. При падении система автоматически восстановит платежи")
     print("="*80)
+    
+    # Создаем таблицы при старте
+    try:
+        create_all_tables()
+    except Exception as e:
+        logger.error(f"⚠️ Ошибка создания таблиц при старте: {e}")
+    
+    # Запускаем воркер восстановления
+    global recovery_thread
+    recovery_thread = start_recovery_worker()
     
     port = int(os.getenv('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
