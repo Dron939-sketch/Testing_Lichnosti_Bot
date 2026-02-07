@@ -37,7 +37,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Состояния
-STAGE_1, RESULTS, PAYMENT_SCREEN, PAYMENT_SUCCESS = range(4)
+RESULTS, PAYMENT_SCREEN, PAYMENT_SUCCESS = range(3)
 
 # Константы
 BOT_LINK = "https://t.me/testing_lichnosti_bot"
@@ -46,9 +46,17 @@ PAYMENT_AMOUNT = 690
 
 # ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 
-def make_sync_request(method: str, url: str, **kwargs):
+def make_sync_request(method: str, url: str, data=None, headers=None, timeout=10):
     """Синхронный HTTP-запрос"""
     try:
+        kwargs = {}
+        if data:
+            kwargs['json'] = data
+        if headers:
+            kwargs['headers'] = headers
+        if timeout:
+            kwargs['timeout'] = timeout
+            
         if method.lower() == 'get':
             response = requests.get(url, **kwargs)
         elif method.lower() == 'post':
@@ -65,10 +73,10 @@ def make_sync_request(method: str, url: str, **kwargs):
         logger.error(f"JSON decode error: {e}")
         return {"success": False, "error": "Invalid JSON response"}
 
-async def make_async_request(method: str, url: str, **kwargs):
+async def make_async_request(method: str, url: str, data=None, headers=None, timeout=10):
     """Асинхронная обертка для requests"""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, make_sync_request, method, url, **kwargs)
+    return await loop.run_in_executor(None, make_sync_request, method, url, data, headers, timeout)
 
 # ========== ОСНОВНЫЕ КОМАНДЫ ==========
 
@@ -160,9 +168,9 @@ async def handle_payment_start(update: Update, context: ContextTypes.DEFAULT_TYP
         }
         
         db_result = await make_async_request(
-            "POST", 
-            f"{FLASK_API_URL}/api/create-payment",
-            json=create_payload,
+            method="POST", 
+            url=f"{FLASK_API_URL}/api/create-payment",
+            data=create_payload,
             headers={"Content-Type": "application/json"},
             timeout=10
         )
@@ -182,9 +190,9 @@ async def handle_payment_start(update: Update, context: ContextTypes.DEFAULT_TYP
         }
         
         yookassa_result = await make_async_request(
-            "POST",
-            f"{FLASK_API_URL}/api/create-yookassa-payment",
-            json=yookassa_payload,
+            method="POST",
+            url=f"{FLASK_API_URL}/api/create-yookassa-payment",
+            data=yookassa_payload,
             headers={"Content-Type": "application/json"},
             timeout=10
         )
@@ -256,8 +264,8 @@ async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYP
     
     try:
         status_result = await make_async_request(
-            "GET",
-            f"{FLASK_API_URL}/api/payment-status/{payment_id}",
+            method="GET",
+            url=f"{FLASK_API_URL}/api/payment-status/{payment_id}",
             timeout=10
         )
         
@@ -362,12 +370,10 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("▶️ Начать", callback_data="start_test")]]
     
     await query.edit_message_text(start_text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return STAGE_1
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена"""
     await update.message.reply_text("Тест отменён. /start чтобы начать заново.")
-    return ConversationHandler.END
 
 # ========== ЗАПУСК БОТА ==========
 
@@ -393,34 +399,18 @@ def main():
     # Создание приложения
     application = Application.builder().token(TOKEN).build()
     
-    # Создаем ConversationHandler
-    conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler("start", start),
-            CallbackQueryHandler(start_test, pattern="^start_test$")
-        ],
-        states={
-            RESULTS: [
-                CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
-                CallbackQueryHandler(restart_test, pattern="^restart_test$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
-            ],
-            PAYMENT_SCREEN: [
-                CallbackQueryHandler(handle_payment_start, pattern="^start_payment$"),
-                CallbackQueryHandler(check_payment_status, pattern="^check_payment_"),
-                CallbackQueryHandler(cancel_payment, pattern="^cancel_payment$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
-            ],
-            PAYMENT_SUCCESS: [
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(restart_test, pattern="^restart_test$")
-            ]
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        allow_reentry=True
-    )
+    # Добавляем обработчики
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("cancel", cancel))
     
-    application.add_handler(conv_handler)
+    # Обработчики callback-ов
+    application.add_handler(CallbackQueryHandler(start_test, pattern="^start_test$"))
+    application.add_handler(CallbackQueryHandler(show_package_screen, pattern="^show_package$"))
+    application.add_handler(CallbackQueryHandler(handle_payment_start, pattern="^start_payment$"))
+    application.add_handler(CallbackQueryHandler(check_payment_status, pattern="^check_payment_"))
+    application.add_handler(CallbackQueryHandler(cancel_payment, pattern="^cancel_payment$"))
+    application.add_handler(CallbackQueryHandler(back_to_results, pattern="^back_to_results$"))
+    application.add_handler(CallbackQueryHandler(restart_test, pattern="^restart_test$"))
     
     print("\n🤖 Бот запускается...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
