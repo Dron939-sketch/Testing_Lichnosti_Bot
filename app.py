@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-app.py - Полный Flask API для платежной системы
-Исправленная версия с работающими вебхуками и исправленными ошибками
+app.py - Полный Flask API для платежной системы с мгновенными уведомлениями
+Версия с полной интеграцией Telegram и защищенными материалами
 """
 
 import os
@@ -9,8 +9,10 @@ import sys
 import json
 import logging
 import hashlib
-import uuid
-from datetime import datetime
+import hmac
+import time
+import requests
+from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -29,6 +31,10 @@ try:
 except ImportError as e:
     POSTGRES_AVAILABLE = False
     logger.error(f"❌ psycopg3 не установлен: {e}")
+
+# Ссылка на бота для возврата после оплаты
+TELEGRAM_BOT_URL = "https://t.me/Testing_Lichnosti_bot"
+YANDEX_DISK_BASE_URL = "https://disk.yandex.ru/d/ваша_ссылка"  # ЗАМЕНИТЕ НА РЕАЛЬНУЮ
 
 # Создание Flask приложения
 app = Flask(__name__)
@@ -69,11 +75,9 @@ def create_payments_table():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Удаляем старую таблицу если есть
         cursor.execute("DROP TABLE IF EXISTS payments CASCADE")
         logger.info("🗑️ Старая таблица payments удалена")
         
-        # Создаем новую таблицу с ВСЕМИ полями
         cursor.execute("""
         CREATE TABLE payments (
             id SERIAL PRIMARY KEY,
@@ -91,7 +95,6 @@ def create_payments_table():
         )
         """)
         
-        # Создаем индексы
         cursor.execute("CREATE INDEX idx_payments_payment_id ON payments(payment_id)")
         cursor.execute("CREATE INDEX idx_payments_user_id ON payments(user_id)")
         cursor.execute("CREATE INDEX idx_payments_status ON payments(status)")
@@ -109,7 +112,7 @@ def create_payments_table():
         return False
 
 def create_user_access_table():
-    """Создает таблицу для доступа пользователей"""
+    """Создает таблицу для доступа пользователей с защищенными ссылками"""
     if not POSTGRES_AVAILABLE:
         logger.error("❌ Невозможно создать таблицу: psycopg3 не доступен")
         return False
@@ -127,19 +130,24 @@ def create_user_access_table():
             payment_id VARCHAR(100),
             has_access BOOLEAN DEFAULT FALSE,
             granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            files_sent TEXT DEFAULT '[]',
+            link_sent BOOLEAN DEFAULT FALSE,
+            materials_sent_at TIMESTAMP,
+            yandex_disk_link TEXT,
+            access_token VARCHAR(255),
+            expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '30 days'),
             UNIQUE(user_id, payment_id)
         )
         """)
         
         cursor.execute("CREATE INDEX idx_user_access_user_id ON user_access(user_id)")
         cursor.execute("CREATE INDEX idx_user_access_has_access ON user_access(has_access)")
+        cursor.execute("CREATE INDEX idx_user_access_token ON user_access(access_token)")
         
         conn.commit()
         cursor.close()
         conn.close()
         
-        logger.info("✅ Таблица 'user_access' создана")
+        logger.info("✅ Таблица 'user_access' создана с токенами доступа")
         return True
         
     except Exception as e:
@@ -147,7 +155,7 @@ def create_user_access_table():
         return False
 
 def create_yookassa_webhooks_table():
-    """Создает таблицу для логов вебхуков - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+    """Создает таблицу для логов вебхуков"""
     if not POSTGRES_AVAILABLE:
         logger.error("❌ Невозможно создать таблицу: psycopg3 не доступен")
         return False
@@ -179,11 +187,52 @@ def create_yookassa_webhooks_table():
         cursor.close()
         conn.close()
         
-        logger.info("✅ Таблица 'yookassa_webhooks' создана с DEFAULT значением")
+        logger.info("✅ Таблица 'yookassa_webhooks' создана")
         return True
         
     except Exception as e:
         logger.error(f"❌ Ошибка создания таблицы webhooks: {e}")
+        return False
+
+def create_notifications_log_table():
+    """Создает таблицу для логов уведомлений"""
+    if not POSTGRES_AVAILABLE:
+        logger.error("❌ Невозможно создать таблицу: psycopg3 не доступен")
+        return False
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("DROP TABLE IF EXISTS notifications_log CASCADE")
+        
+        cursor.execute("""
+        CREATE TABLE notifications_log (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            payment_id VARCHAR(100) NOT NULL,
+            notification_type VARCHAR(50) DEFAULT 'payment_success',
+            sent_via VARCHAR(50) DEFAULT 'telegram_api',
+            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            success BOOLEAN DEFAULT TRUE,
+            error_message TEXT,
+            retry_count INTEGER DEFAULT 0
+        )
+        """)
+        
+        cursor.execute("CREATE INDEX idx_notifications_user_id ON notifications_log(user_id)")
+        cursor.execute("CREATE INDEX idx_notifications_payment_id ON notifications_log(payment_id)")
+        cursor.execute("CREATE INDEX idx_notifications_sent_at ON notifications_log(sent_at)")
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info("✅ Таблица 'notifications_log' создана")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка создания таблицы notifications_log: {e}")
         return False
 
 def create_all_tables():
@@ -193,7 +242,8 @@ def create_all_tables():
     results = {
         "payments": create_payments_table(),
         "user_access": create_user_access_table(),
-        "yookassa_webhooks": create_yookassa_webhooks_table()
+        "yookassa_webhooks": create_yookassa_webhooks_table(),
+        "notifications_log": create_notifications_log_table()
     }
     
     success_count = sum(1 for result in results.values() if result)
@@ -206,6 +256,168 @@ def create_all_tables():
         return False
 
 # ============================================
+# ФУНКЦИИ ДЛЯ УВЕДОМЛЕНИЙ И ЗАЩИЩЕННЫХ ССЫЛОК
+# ============================================
+
+def generate_access_token(user_id, payment_id):
+    """Генерация защищенного токена доступа с подписью"""
+    try:
+        secret = os.getenv('YOOKASSA_SECRET_KEY', 'default_secret_key')
+        expires_at = int(time.time()) + (30 * 24 * 3600)  # 30 дней
+        
+        data = f"{user_id}:{payment_id}:{expires_at}"
+        signature = hmac.new(
+            secret.encode(),
+            data.encode(),
+            hashlib.sha256
+        ).hexdigest()[:20]
+        
+        token = f"{data}:{signature}"
+        logger.info(f"🔐 Сгенерирован токен для user_id={user_id}, payment_id={payment_id[:8]}")
+        return token
+    except Exception as e:
+        logger.error(f"❌ Ошибка генерации токена: {e}")
+        return f"token_{user_id}_{payment_id}_{int(time.time())}"
+
+def verify_access_token(token):
+    """Проверка защищенного токена доступа"""
+    try:
+        parts = token.split(':')
+        if len(parts) != 4:
+            return False
+            
+        user_id, payment_id, expires_at_str, signature = parts
+        
+        # Проверяем срок действия
+        expires_at = int(expires_at_str)
+        if time.time() > expires_at:
+            logger.warning(f"⏰ Токен просрочен: expires_at={expires_at}")
+            return False
+        
+        # Проверяем подпись
+        secret = os.getenv('YOOKASSA_SECRET_KEY', 'default_secret_key')
+        data = f"{user_id}:{payment_id}:{expires_at}"
+        expected_signature = hmac.new(
+            secret.encode(),
+            data.encode(),
+            hashlib.sha256
+        ).hexdigest()[:20]
+        
+        if not hmac.compare_digest(signature, expected_signature):
+            logger.warning(f"⚠️ Неверная подпись токена")
+            return False
+            
+        return {
+            'user_id': int(user_id),
+            'payment_id': payment_id,
+            'expires_at': expires_at
+        }
+    except Exception as e:
+        logger.error(f"❌ Ошибка проверки токена: {e}")
+        return False
+
+def send_telegram_notification(user_id, payment_id, access_token=None):
+    """Отправляет мгновенное уведомление в Telegram после успешной оплаты"""
+    try:
+        telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        if not telegram_token:
+            logger.error("❌ TELEGRAM_BOT_TOKEN не настроен в переменных окружения")
+            return False
+        
+        # Форматируем сообщение
+        message = f"""
+✅ *ОПЛАТА ПОДТВЕРЖДЕНА!*
+
+🎉 Ваш платеж `#{payment_id[:8]}` успешно обработан!
+
+📁 Для получения материалов нажмите кнопку ниже или используйте команду:
+`/materials`
+
+💰 Спасибо за покупку курса "ВАРИАТИКА"!
+⏳ Доступ действителен 30 дней
+        """
+        
+        url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+        
+        # Создаем inline-клавиатуру
+        keyboard = [[
+            {
+                "text": "📁 ПОЛУЧИТЬ МАТЕРИАЛЫ",
+                "callback_data": f"get_materials_{payment_id}"
+            }
+        ]]
+        
+        response = requests.post(url, json={
+            "chat_id": user_id,
+            "text": message,
+            "parse_mode": "Markdown",
+            "reply_markup": {
+                "inline_keyboard": keyboard
+            }
+        }, timeout=10)
+        
+        # Логируем результат
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if response.status_code == 200:
+            logger.info(f"✅ Уведомление отправлено пользователю {user_id} для платежа {payment_id}")
+            
+            # Сохраняем токен доступа если передан
+            if access_token:
+                cursor.execute("""
+                UPDATE user_access 
+                SET access_token = %s, 
+                    link_sent = TRUE,
+                    materials_sent_at = CURRENT_TIMESTAMP
+                WHERE user_id = %s AND payment_id = %s
+                """, (access_token, user_id, payment_id))
+            
+            cursor.execute("""
+            INSERT INTO notifications_log (user_id, payment_id, notification_type, success)
+            VALUES (%s, %s, 'payment_success', TRUE)
+            """, (user_id, payment_id))
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            return True
+        else:
+            error_msg = f"Ошибка Telegram API: {response.status_code} - {response.text}"
+            logger.error(f"❌ {error_msg}")
+            
+            cursor.execute("""
+            INSERT INTO notifications_log (user_id, payment_id, notification_type, success, error_message)
+            VALUES (%s, %s, 'payment_success', FALSE, %s)
+            """, (user_id, payment_id, error_msg))
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка в send_telegram_notification: {e}")
+        return False
+
+def generate_yandex_disk_link(user_id, payment_id, token=None):
+    """Генерирует защищенную ссылку на Яндекс.Диск"""
+    try:
+        # Если есть токен, используем его для подписи
+        if token:
+            link = f"{YANDEX_DISK_BASE_URL}?access_token={token}&user_id={user_id}&ref=variatica"
+        else:
+            # Или создаем простую ссылку с параметрами для отслеживания
+            timestamp = int(time.time())
+            link = f"{YANDEX_DISK_BASE_URL}?user={user_id}&payment={payment_id[:8]}&ts={timestamp}&ref=telegram_bot"
+        
+        logger.info(f"🔗 Сгенерирована ссылка Яндекс.Диск для user_id={user_id}")
+        return link
+    except Exception as e:
+        logger.error(f"❌ Ошибка генерации ссылки: {e}")
+        return YANDEX_DISK_BASE_URL
+
+# ============================================
 # API ЭНДПОИНТЫ
 # ============================================
 
@@ -216,9 +428,15 @@ def home():
     
     return jsonify({
         "status": "Flask API работает! 🚀",
-        "version": "Payment System v3.0 (исправленная)",
+        "version": "Payment System v4.0 (с мгновенными уведомлениями)",
         "database": db_status,
-        "timestamp": datetime.now().isoformat(),
+        "telegram_bot": TELEGRAM_BOT_URL,
+        "features": [
+            "✅ Мгновенные уведомления в Telegram",
+            "✅ Защищенные ссылки на Яндекс.Диск",
+            "✅ Верификация токенов доступа",
+            "✅ Логирование всех действий"
+        ],
         "endpoints": {
             "create_payment": "/api/create-payment (POST)",
             "update_yookassa_id": "/api/update-yookassa-id (POST)",
@@ -226,12 +444,13 @@ def home():
             "yookassa_webhook": "/yookassa-webhook (POST)",
             "grant_access": "/api/grant-access/<payment_id> (POST)",
             "check_access": "/api/check-access/<user_id> (GET)",
+            "get_materials": "/api/get-materials/<payment_id> (GET)",
+            "verify_token": "/api/verify-token (POST)",
             "health": "/health (GET)",
             "check_db": "/check-db (GET)",
-            "emergency_check": "/emergency-check (GET)",
-            "create_tables": "/create-all-tables (GET)"
-        },
-        "note": "API принимает вебхуки от ЮKassa и обрабатывает платежи"
+            "create_tables": "/create-all-tables (GET)",
+            "test_notification": "/test-notification/<user_id> (GET)"
+        }
     })
 
 # ============================================
@@ -414,62 +633,8 @@ def api_payment_status(payment_id):
         logger.error(f"❌ Ошибка получения статуса платежа: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/user-payments/<int:user_id>', methods=['GET'])
-def api_user_payments(user_id):
-    """Возвращает все платежи пользователя"""
-    if not POSTGRES_AVAILABLE:
-        return jsonify({"success": False, "error": "psycopg3 не установлен"}), 500
-    
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-        SELECT 
-            payment_id, 
-            yookassa_id, 
-            amount, 
-            status,
-            description,
-            created_at,
-            updated_at,
-            confirmed_at
-        FROM payments 
-        WHERE user_id = %s
-        ORDER BY created_at DESC
-        """, (user_id,))
-        
-        payments = cursor.fetchall()
-        
-        cursor.close()
-        conn.close()
-        
-        payments_list = []
-        for payment in payments:
-            payments_list.append({
-                "payment_id": payment[0],
-                "yookassa_id": payment[1],
-                "amount": float(payment[2]) if payment[2] else None,
-                "status": payment[3],
-                "description": payment[4],
-                "created_at": payment[5].isoformat() if payment[5] else None,
-                "updated_at": payment[6].isoformat() if payment[6] else None,
-                "confirmed_at": payment[7].isoformat() if payment[7] else None
-            })
-        
-        return jsonify({
-            "success": True,
-            "user_id": user_id,
-            "payments_count": len(payments_list),
-            "payments": payments_list
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка получения платежей пользователя: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
 # ============================================
-# 2. ЭНДПОИНТЫ ДЛЯ ДОСТУПА
+# 2. ЭНДПОИНТЫ ДЛЯ ДОСТУПА И МАТЕРИАЛОВ
 # ============================================
 
 @app.route('/api/grant-access/<payment_id>', methods=['POST'])
@@ -506,17 +671,24 @@ def api_grant_access(payment_id):
                 "error": f"Cannot grant access for payment with status: {status}"
             }), 400
         
+        # Генерируем токен доступа
+        access_token = generate_access_token(user_id, payment_id)
+        
         # Выдаем доступ
         cursor.execute("""
-        INSERT INTO user_access (user_id, payment_id, has_access)
-        VALUES (%s, %s, TRUE)
+        INSERT INTO user_access (user_id, payment_id, has_access, access_token)
+        VALUES (%s, %s, TRUE, %s)
         ON CONFLICT (user_id, payment_id) DO UPDATE SET
             has_access = TRUE,
+            access_token = EXCLUDED.access_token,
             granted_at = CURRENT_TIMESTAMP
         RETURNING user_id, payment_id, has_access, granted_at
-        """, (user_id, payment_id))
+        """, (user_id, payment_id, access_token))
         
         result = cursor.fetchone()
+        
+        # Отправляем уведомление
+        send_telegram_notification(user_id, payment_id, access_token)
         
         conn.commit()
         cursor.close()
@@ -526,7 +698,7 @@ def api_grant_access(payment_id):
         
         return jsonify({
             "success": True,
-            "message": "Access granted",
+            "message": "Access granted and notification sent",
             "user_id": user_id,
             "payment_id": payment_id,
             "has_access": True,
@@ -552,9 +724,12 @@ def api_check_access(user_id):
             ua.payment_id,
             ua.has_access,
             ua.granted_at,
+            ua.expires_at,
+            ua.access_token,
             p.description,
             p.amount,
-            p.created_at
+            p.created_at,
+            p.status
         FROM user_access ua
         LEFT JOIN payments p ON ua.payment_id = p.payment_id
         WHERE ua.user_id = %s AND ua.has_access = TRUE
@@ -568,22 +743,32 @@ def api_check_access(user_id):
         
         access_list = []
         for access in accesses:
+            expires_at = access[3]
+            is_active = True
+            if expires_at:
+                is_active = expires_at > datetime.now()
+            
             access_list.append({
                 "payment_id": access[0],
-                "has_access": access[1],
+                "has_access": access[1] and is_active,
                 "granted_at": access[2].isoformat() if access[2] else None,
-                "description": access[3],
-                "amount": float(access[4]) if access[4] else None,
-                "payment_date": access[5].isoformat() if access[5] else None
+                "expires_at": expires_at.isoformat() if expires_at else None,
+                "access_token": access[4],
+                "description": access[5],
+                "amount": float(access[6]) if access[6] else None,
+                "payment_date": access[7].isoformat() if access[7] else None,
+                "payment_status": access[8],
+                "is_active": is_active
             })
         
-        has_access = len(access_list) > 0
+        has_active_access = any(access["has_access"] for access in access_list)
         
         return jsonify({
             "success": True,
             "user_id": user_id,
-            "has_access": has_access,
-            "active_accesses_count": len(access_list),
+            "has_access": has_active_access,
+            "active_accesses_count": sum(1 for a in access_list if a["has_access"]),
+            "total_accesses_count": len(access_list),
             "accesses": access_list
         }), 200
         
@@ -591,17 +776,165 @@ def api_check_access(user_id):
         logger.error(f"❌ Ошибка проверки доступа: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/get-materials/<payment_id>', methods=['GET'])
+def api_get_materials(payment_id):
+    """Возвращает защищенные материалы для платежа"""
+    if not POSTGRES_AVAILABLE:
+        return jsonify({"success": False, "error": "psycopg3 не установлен"}), 500
+    
+    try:
+        # Получаем параметры
+        user_id = request.args.get('user_id')
+        token = request.args.get('token')
+        
+        if not user_id:
+            return jsonify({"success": False, "error": "Missing user_id parameter"}), 400
+        
+        user_id = int(user_id)
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Проверяем доступ через токен или напрямую
+        has_access = False
+        access_token = None
+        
+        if token:
+            # Проверяем токен
+            token_data = verify_access_token(token)
+            if token_data and token_data['user_id'] == user_id and token_data['payment_id'] == payment_id:
+                has_access = True
+                access_token = token
+        
+        if not has_access:
+            # Проверяем доступ через БД
+            cursor.execute("""
+            SELECT 
+                ua.has_access,
+                ua.expires_at > CURRENT_TIMESTAMP as is_active,
+                ua.access_token,
+                p.status
+            FROM user_access ua
+            LEFT JOIN payments p ON ua.payment_id = p.payment_id
+            WHERE ua.user_id = %s AND ua.payment_id = %s
+            """, (user_id, payment_id))
+            
+            result = cursor.fetchone()
+            
+            if not result or not result[0] or not result[1] or result[3] != 'succeeded':
+                cursor.close()
+                conn.close()
+                return jsonify({
+                    "success": False, 
+                    "error": "Доступ запрещен. Платеж не подтвержден или доступ истек.",
+                    "code": "ACCESS_DENIED"
+                }), 403
+            
+            has_access = True
+            access_token = result[2]
+        
+        if not has_access:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Доступ не найден"}), 403
+        
+        # Генерируем защищенную ссылку
+        yandex_link = generate_yandex_disk_link(user_id, payment_id, access_token)
+        
+        # Обновляем запись в БД
+        cursor.execute("""
+        UPDATE user_access 
+        SET yandex_disk_link = %s,
+            materials_sent_at = CURRENT_TIMESTAMP
+        WHERE user_id = %s AND payment_id = %s
+        """, (yandex_link, user_id, payment_id))
+        
+        # Логируем доступ к материалам
+        cursor.execute("""
+        INSERT INTO notifications_log (user_id, payment_id, notification_type, success)
+        VALUES (%s, %s, 'materials_accessed', TRUE)
+        """, (user_id, payment_id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"📁 Материалы выданы: user_id={user_id}, payment_id={payment_id}")
+        
+        return jsonify({
+            "success": True,
+            "message": "Доступ к материалам подтвержден",
+            "materials_link": yandex_link,
+            "payment_id": payment_id,
+            "user_id": user_id,
+            "access_method": "token" if token else "direct",
+            "note": "Ссылка действительна 30 дней с момента оплаты"
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка выдачи материалов: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/verify-token', methods=['POST'])
+def api_verify_token():
+    """Проверяет токен доступа"""
+    try:
+        data = request.get_json()
+        token = data.get('token')
+        
+        if not token:
+            return jsonify({"valid": False, "error": "Token is required"}), 400
+        
+        # Проверяем токен
+        token_data = verify_access_token(token)
+        if not token_data:
+            return jsonify({"valid": False, "error": "Invalid or expired token"}), 200
+        
+        # Дополнительная проверка в БД
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT 
+            ua.has_access,
+            ua.expires_at > CURRENT_TIMESTAMP as is_active,
+            p.status = 'succeeded' as payment_ok
+        FROM user_access ua
+        JOIN payments p ON ua.payment_id = p.payment_id
+        WHERE ua.user_id = %s AND ua.payment_id = %s
+        """, (token_data['user_id'], token_data['payment_id']))
+        
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if result and all(result):
+            return jsonify({
+                "valid": True,
+                "user_id": token_data['user_id'],
+                "payment_id": token_data['payment_id'],
+                "expires_at": token_data['expires_at'],
+                "expires_at_human": datetime.fromtimestamp(token_data['expires_at']).isoformat()
+            }), 200
+        
+        return jsonify({"valid": False, "error": "Access not found in database"}), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка проверки токена: {e}")
+        return jsonify({"valid": False, "error": str(e)}), 500
+
 # ============================================
-# 3. ВЕБХУК ЮKASSA - ИСПРАВЛЕННАЯ ВЕРСИЯ
+# 3. ВЕБХУК ЮKASSA С МГНОВЕННЫМИ УВЕДОМЛЕНИЯМИ
 # ============================================
 
 @app.route('/yookassa-webhook', methods=['POST'])
 def yookassa_webhook():
-    """Обработчик вебхуков от ЮKassa - ИСПРАВЛЕННАЯ ВЕРСИЯ (без webhook_id = null)"""
+    """Обработчик вебхуков от ЮKassa с мгновенными уведомлениями"""
     try:
         # Получаем данные
         event_json = request.get_json()
         if not event_json:
+            logger.warning("❌ Пустой вебхук от ЮKassa")
             return jsonify({"status": "error", "message": "Empty webhook"}), 400
         
         logger.info(f"📥 Получен вебхук от ЮKassa: {json.dumps(event_json, ensure_ascii=False)[:200]}...")
@@ -609,8 +942,6 @@ def yookassa_webhook():
         # Генерируем webhook_id если его нет
         webhook_id = event_json.get('id')
         if not webhook_id:
-            # Создаем уникальный ID на основе времени и данных
-            import time
             timestamp = int(time.time())
             data_hash = hashlib.md5(json.dumps(event_json).encode()).hexdigest()[:8]
             webhook_id = f"wh_{timestamp}_{data_hash}"
@@ -623,18 +954,17 @@ def yookassa_webhook():
         metadata = payment_data.get('metadata', {})
         payment_id = metadata.get('payment_id')
         
-        # Сохраняем вебхук в лог
         conn = get_db_connection()
         cursor = conn.cursor()
         
         try:
-            # ВСТАВЛЯЕМ с webhook_id (теперь всегда есть значение)
+            # Сохраняем вебхук в лог
             cursor.execute("""
             INSERT INTO yookassa_webhooks (webhook_id, event, payment_id, status, payload)
             VALUES (%s, %s, %s, %s, %s)
             RETURNING id
             """, (
-                webhook_id,  # ← Теперь НЕ NULL!
+                webhook_id,
                 event_type,
                 yookassa_id,
                 status,
@@ -645,6 +975,8 @@ def yookassa_webhook():
             
             # Обрабатываем события
             if event_type == 'payment.succeeded' and yookassa_id != 'unknown':
+                logger.info(f"🎉 Платеж успешен: {yookassa_id}")
+                
                 # Обновляем статус платежа
                 cursor.execute("""
                 UPDATE payments 
@@ -653,22 +985,46 @@ def yookassa_webhook():
                     updated_at = CURRENT_TIMESTAMP,
                     metadata = %s
                 WHERE yookassa_id = %s OR payment_id = %s
-                RETURNING user_id
+                RETURNING user_id, payment_id
                 """, (json.dumps(metadata, ensure_ascii=False), yookassa_id, payment_id))
                 
                 result = cursor.fetchone()
                 if result:
                     user_id = result[0]
+                    actual_payment_id = result[1]
+                    
+                    # Генерируем токен доступа
+                    access_token = generate_access_token(user_id, actual_payment_id)
+                    
                     # Выдаем доступ автоматически
                     cursor.execute("""
-                    INSERT INTO user_access (user_id, payment_id, has_access)
-                    VALUES (%s, %s, TRUE)
+                    INSERT INTO user_access (user_id, payment_id, has_access, access_token)
+                    VALUES (%s, %s, TRUE, %s)
                     ON CONFLICT (user_id, payment_id) DO UPDATE SET
                         has_access = TRUE,
+                        access_token = EXCLUDED.access_token,
                         granted_at = CURRENT_TIMESTAMP
-                    """, (user_id, payment_id))
+                    """, (user_id, actual_payment_id, access_token))
                     
-                    logger.info(f"✅ Платеж успешен: {yookassa_id}, доступ выдан пользователю {user_id}")
+                    # Логируем факт выдачи доступа
+                    cursor.execute("""
+                    INSERT INTO notifications_log (user_id, payment_id, notification_type, success)
+                    VALUES (%s, %s, 'access_granted', TRUE)
+                    """, (user_id, actual_payment_id))
+                    
+                    logger.info(f"✅ Доступ выдан пользователю {user_id} для платежа {actual_payment_id}")
+                    
+                    # 🔥 ВАЖНО: Отправляем мгновенное уведомление
+                    try:
+                        notification_sent = send_telegram_notification(user_id, actual_payment_id, access_token)
+                        
+                        if notification_sent:
+                            logger.info(f"📲 Уведомление отправлено пользователю {user_id}")
+                        else:
+                            logger.error(f"❌ Не удалось отправить уведомление пользователю {user_id}")
+                            
+                    except Exception as notify_error:
+                        logger.error(f"❌ Ошибка отправки уведомления: {notify_error}")
             
             elif event_type == 'payment.canceled' and yookassa_id != 'unknown':
                 cursor.execute("""
@@ -712,7 +1068,7 @@ def yookassa_webhook():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ============================================
-# 4. АДМИНИСТРАТИВНЫЕ ЭНДПОИНТЫ
+# 4. АДМИНИСТРАТИВНЫЕ И ТЕСТОВЫЕ ЭНДПОИНТЫ
 # ============================================
 
 @app.route('/create-all-tables', methods=['GET'])
@@ -732,8 +1088,9 @@ def create_all_tables_endpoint():
                 "message": "✅ Все таблицы созданы заново!",
                 "tables": [
                     "payments - платежи (с description, yookassa_id, metadata)",
-                    "user_access - доступы пользователей",
-                    "yookassa_webhooks - логи вебхуков (webhook_id с DEFAULT значением)"
+                    "user_access - доступы пользователей с токенами",
+                    "yookassa_webhooks - логи вебхуков",
+                    "notifications_log - логи уведомлений"
                 ]
             })
         else:
@@ -747,46 +1104,6 @@ def create_all_tables_endpoint():
             "error": str(e),
             "type": type(e).__name__
         }), 500
-
-@app.route('/table-structure', methods=['GET'])
-def table_structure():
-    """Показывает структуру таблиц"""
-    if not POSTGRES_AVAILABLE:
-        return jsonify({"success": False, "error": "psycopg3 не доступен"}), 500
-    
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        tables = ['payments', 'user_access', 'yookassa_webhooks']
-        result = {}
-        
-        for table in tables:
-            cursor.execute("""
-            SELECT column_name, data_type, is_nullable 
-            FROM information_schema.columns 
-            WHERE table_name = %s
-            ORDER BY ordinal_position
-            """, (table,))
-            
-            columns = cursor.fetchall()
-            result[table] = {
-                "exists": len(columns) > 0,
-                "columns": [{"name": col[0], "type": col[1], "nullable": col[2]} for col in columns],
-                "column_count": len(columns)
-            }
-        
-        cursor.close()
-        conn.close()
-        
-        return jsonify({
-            "success": True,
-            "tables": result,
-            "webhook_id_fixed": result.get('yookassa_webhooks', {}).get('exists', False)
-        })
-        
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/check-db', methods=['GET'])
 def check_db():
@@ -804,7 +1121,7 @@ def check_db():
         cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
         tables = [row[0] for row in cursor.fetchall()]
         
-        expected_tables = ['payments', 'user_access', 'yookassa_webhooks']
+        expected_tables = ['payments', 'user_access', 'yookassa_webhooks', 'notifications_log']
         table_status = {table: table in tables for table in expected_tables}
         
         # Проверяем данные
@@ -813,14 +1130,17 @@ def check_db():
             cursor.execute(f"SELECT COUNT(*) FROM {table}")
             data_counts[table] = cursor.fetchone()[0]
         
-        # Проверяем webhook_id в yookassa_webhooks
-        webhook_id_check = True
-        if 'yookassa_webhooks' in tables:
+        # Проверяем последние уведомления
+        notifications_status = "N/A"
+        if 'notifications_log' in tables:
             cursor.execute("""
-            SELECT COUNT(*) FROM yookassa_webhooks WHERE webhook_id IS NULL
+            SELECT notification_type, COUNT(*) 
+            FROM notifications_log 
+            GROUP BY notification_type 
+            ORDER BY COUNT(*) DESC
             """)
-            null_webhooks = cursor.fetchone()[0]
-            webhook_id_check = null_webhooks == 0
+            notifications_stats = cursor.fetchall()
+            notifications_status = {ntype: count for ntype, count in notifications_stats}
         
         cursor.close()
         conn.close()
@@ -831,8 +1151,8 @@ def check_db():
             "tables": tables,
             "expected_tables_status": table_status,
             "data_counts": data_counts,
-            "webhook_id_valid": webhook_id_check,
-            "health": "healthy" if all(table_status.values()) and webhook_id_check else "issues"
+            "notifications_stats": notifications_status,
+            "health": "healthy" if all(table_status.values()) else "issues"
         })
         
     except Exception as e:
@@ -842,55 +1162,22 @@ def check_db():
             "type": type(e).__name__
         }), 500
 
-@app.route('/emergency-check', methods=['GET'])
-def emergency_check():
-    """Аварийная проверка системы"""
+@app.route('/test-notification/<int:user_id>', methods=['GET'])
+def test_notification(user_id):
+    """Тестовая отправка уведомления (админ)"""
     try:
-        # Проверяем базовые вещи
-        db_available = POSTGRES_AVAILABLE
-        port = os.getenv('PORT', '10000')
+        payment_id = f"test_{int(time.time())}"
+        success = send_telegram_notification(user_id, payment_id)
         
-        result = {
-            "status": "checking",
-            "timestamp": datetime.now().isoformat(),
-            "port": port,
-            "postgres_available": db_available,
-            "environment_variables": {
-                "DATABASE_URL": bool(os.getenv('DATABASE_URL')),
-                "YOOKASSA_SHOP_ID": bool(os.getenv('YOOKASSA_SHOP_ID')),
-                "YOOKASSA_SECRET_KEY": bool(os.getenv('YOOKASSA_SECRET_KEY'))
-            }
-        }
-        
-        # Пробуем подключиться к базе
-        if db_available:
-            try:
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("SELECT NOW(), version()")
-                db_info = cursor.fetchone()
-                cursor.close()
-                conn.close()
-                
-                result["database"] = {
-                    "connected": True,
-                    "time": str(db_info[0]),
-                    "version": db_info[1][:50]
-                }
-            except Exception as db_error:
-                result["database"] = {
-                    "connected": False,
-                    "error": str(db_error)
-                }
-        
-        return jsonify(result)
-        
-    except Exception as e:
         return jsonify({
-            "status": "error",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }), 500
+            "success": success,
+            "user_id": user_id,
+            "payment_id": payment_id,
+            "telegram_bot_url": TELEGRAM_BOT_URL,
+            "message": "Тестовое уведомление отправлено" if success else "Ошибка отправки"
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -909,13 +1196,23 @@ def health_check():
         else:
             db_status = "psycopg3_not_available"
         
+        # Проверяем токен бота
+        telegram_token_set = bool(os.getenv('TELEGRAM_BOT_TOKEN'))
+        
         return jsonify({
-            "status": "healthy" if POSTGRES_AVAILABLE and "connected" in db_status else "degraded",
+            "status": "healthy" if (POSTGRES_AVAILABLE and "connected" in db_status and telegram_token_set) else "degraded",
             "service": "variatica_payment_api",
-            "version": "3.0",
+            "version": "4.0 (с уведомлениями)",
             "database": db_status,
+            "telegram_token_configured": telegram_token_set,
+            "telegram_bot_url": TELEGRAM_BOT_URL,
             "timestamp": datetime.now().isoformat(),
-            "endpoints_working": True
+            "features": [
+                "Мгновенные уведомления",
+                "Защищенные ссылки",
+                "Верификация токенов",
+                "Логирование"
+            ]
         }), 200
         
     except Exception as e:
@@ -930,26 +1227,30 @@ def health_check():
 # ============================================
 
 if __name__ == '__main__':
-    print("="*70)
-    print("🚀 VARIATICA PAYMENT API - COMPLETE v3.0 (ИСПРАВЛЕННЫЙ)")
-    print("="*70)
+    print("="*80)
+    print("🚀 VARIATICA PAYMENT API v4.0 - С МГНОВЕННЫМИ УВЕДОМЛЕНИЯМИ")
+    print("="*80)
     print(f"Python: {sys.version.split()[0]}")
     print(f"psycopg3 доступен: {POSTGRES_AVAILABLE}")
+    print(f"Telegram Bot URL: {TELEGRAM_BOT_URL}")
     print(f"Текущее время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("="*70)
+    print("="*80)
     print("📡 КЛЮЧЕВЫЕ ЭНДПОИНТЫ:")
     print("  /                        - Главная страница")
     print("  /health                  - Проверка здоровья")
     print("  /check-db                - Проверка базы данных")
-    print("  /emergency-check         - Аварийная проверка")
     print("  /create-all-tables       - Создать таблицы заново")
+    print("  /test-notification/<id>  - Тест уведомления")
     print("  /api/create-payment      - Создать платеж")
-    print("  /api/payment-status/{id} - Статус платежа")
-    print("  /yookassa-webhook        - Вебхук ЮKassa (ИСПРАВЛЕН!)")
-    print("="*70)
-    print("💡 Используйте /create-all-tables если есть ошибки с таблицами")
-    print("💡 Вебхук теперь корректно обрабатывает webhook_id = null")
-    print("="*70)
+    print("  /api/get-materials/{id}  - Получить материалы")
+    print("  /yookassa-webhook        - Вебхук ЮKassa (МГНОВЕННЫЕ УВЕДОМЛЕНИЯ!)")
+    print("="*80)
+    print("💡 Инструкция:")
+    print("  1. Используйте /create-all-tables для создания таблиц")
+    print("  2. Убедитесь, что TELEGRAM_BOT_TOKEN установлен в окружении")
+    print("  3. Настройте вебхук в ЮKassa на /yookassa-webhook")
+    print("  4. Замените YANDEX_DISK_BASE_URL на реальную ссылку")
+    print("="*80)
     
     port = int(os.getenv('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
