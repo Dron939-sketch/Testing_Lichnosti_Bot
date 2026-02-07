@@ -1,18 +1,21 @@
 """
 app.py - Flask сервер для обработки webhook от ЮKassa и API для бота
-Запускается на Render как второй сервис: gunicorn app:app
+Обновленная версия для работы с PostgreSQL на Render
+Запускается как: gunicorn app:app
 """
 
 import os
 import sys
 import json
 import logging
-import sqlite3
 from datetime import datetime
-from flask import Flask, request, jsonify, g
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from contextlib import contextmanager
 from dotenv import load_dotenv
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import sqlite3  # Для fallback в разработке
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -28,172 +31,315 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)  # Разрешаем CORS для API запросов
 
-# Путь к общей базе данных
-DB_PATH = "shared_payments.db"
+# ============================================
+# ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ (PostgreSQL/SQLite)
+# ============================================
 
-# ============================================
-# ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ
-# ============================================
+def get_db_connection():
+    """Подключение к БД (PostgreSQL на Render или SQLite для разработки)"""
+    database_url = os.getenv('DATABASE_URL')
+    
+    if database_url and database_url.startswith('postgresql://'):
+        # PostgreSQL на Render
+        logger.debug("✅ Используется PostgreSQL (продакшн)")
+        conn = psycopg2.connect(database_url, sslmode='require')
+        conn.autocommit = False
+        return conn
+    else:
+        # SQLite для разработки (fallback)
+        logger.debug("🧪 Используется SQLite (разработка)")
+        DB_PATH = "shared_payments.db"
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        return conn
 
 @contextmanager
-def get_db_connection():
-    """Контекстный менеджер для подключения к SQLite БД"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+def db_cursor():
+    """Контекстный менеджер для работы с БД"""
+    conn = get_db_connection()
+    cursor = None
     try:
-        yield conn
+        # Определяем тип БД и создаем соответствующий курсор
+        if isinstance(conn, psycopg2.extensions.connection):
+            # PostgreSQL
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            # SQLite
+            cursor = conn.cursor()
+        
+        yield cursor
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"❌ Ошибка БД: {e}")
+        raise
     finally:
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+def is_postgresql():
+    """Проверяет, используется ли PostgreSQL"""
+    database_url = os.getenv('DATABASE_URL')
+    return database_url and database_url.startswith('postgresql://')
 
 def init_database():
-    """Инициализация базы данных с таблицами"""
+    """Инициализация базы данных с таблицами (совместима с PostgreSQL и SQLite)"""
     logger.info("🗄️ Инициализация базы данных...")
     
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
+    try:
+        with db_cursor() as cursor:
+            # Определяем тип БД
+            postgresql = is_postgresql()
+            
+            if postgresql:
+                # PostgreSQL версия
+                logger.info("🔧 Создание таблиц для PostgreSQL")
+                
+                # Таблица платежей
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS payments (
+                    id SERIAL PRIMARY KEY,
+                    payment_id VARCHAR(100) UNIQUE NOT NULL,
+                    yookassa_id VARCHAR(100),
+                    user_id BIGINT NOT NULL,
+                    amount DECIMAL(10,2) NOT NULL DEFAULT 199.0,
+                    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+                    email VARCHAR(255),
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW(),
+                    metadata TEXT
+                )
+                """)
+                
+                # Таблица webhook уведомлений
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS yookassa_webhooks (
+                    id SERIAL PRIMARY KEY,
+                    webhook_id VARCHAR(100) NOT NULL,
+                    event VARCHAR(50) NOT NULL,
+                    payment_id VARCHAR(100) NOT NULL,
+                    status VARCHAR(50) NOT NULL,
+                    received_at TIMESTAMP DEFAULT NOW(),
+                    payload TEXT NOT NULL
+                )
+                """)
+                
+                # Таблица доставки
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS deliveries (
+                    id SERIAL PRIMARY KEY,
+                    payment_id VARCHAR(100) NOT NULL,
+                    user_id BIGINT NOT NULL,
+                    delivered_at TIMESTAMP DEFAULT NOW(),
+                    files_sent TEXT,
+                    FOREIGN KEY (payment_id) REFERENCES payments (payment_id)
+                )
+                """)
+                
+            else:
+                # SQLite версия
+                logger.info("🔧 Создание таблиц для SQLite")
+                
+                # Таблица платежей
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS payments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    payment_id TEXT UNIQUE NOT NULL,
+                    yookassa_id TEXT,
+                    user_id INTEGER NOT NULL,
+                    amount REAL NOT NULL DEFAULT 199.0,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    email TEXT,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    metadata TEXT
+                )
+                """)
+                
+                # Таблица webhook уведомлений
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS yookassa_webhooks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    webhook_id TEXT NOT NULL,
+                    event TEXT NOT NULL,
+                    payment_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    payload TEXT NOT NULL
+                )
+                """)
+                
+                # Таблица доставки
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS deliveries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    payment_id TEXT NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    delivered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    files_sent TEXT,
+                    FOREIGN KEY (payment_id) REFERENCES payments (payment_id)
+                )
+                """)
         
-        # Таблица платежей (основная)
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS payments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            payment_id TEXT UNIQUE NOT NULL,           -- наш внутренний ID
-            yookassa_id TEXT,                          -- ID платежа в ЮKassa
-            user_id INTEGER NOT NULL,                  -- ID пользователя Telegram
-            amount REAL NOT NULL DEFAULT 199.0,
-            status TEXT NOT NULL DEFAULT 'pending',    -- pending, succeeded, canceled, waiting_for_capture
-            email TEXT,
-            description TEXT,
-            created_at TIMESTAMP NOT NULL,
-            updated_at TIMESTAMP,
-            metadata TEXT                              -- Дополнительные данные в JSON
-        )
-        """)
+        logger.info("✅ База данных инициализирована")
         
-        # Таблица уведомлений от ЮKassa
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS yookassa_webhooks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            webhook_id TEXT NOT NULL,
-            event TEXT NOT NULL,
-            payment_id TEXT NOT NULL,
-            status TEXT NOT NULL,
-            received_at TIMESTAMP NOT NULL,
-            payload TEXT NOT NULL                       -- Полный JSON от ЮKassa
-        )
-        """)
-        
-        # Таблица доставленных файлов
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS deliveries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            payment_id TEXT NOT NULL,
-            user_id INTEGER NOT NULL,
-            delivered_at TIMESTAMP NOT NULL,
-            files_sent TEXT,                           -- JSON список отправленных файлов
-            FOREIGN KEY (payment_id) REFERENCES payments (payment_id)
-        )
-        """)
-        
-        conn.commit()
-    
-    logger.info("✅ База данных инициализирована")
+    except Exception as e:
+        logger.error(f"❌ Ошибка инициализации БД: {e}")
+        raise
+
+# ============================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ БД
+# ============================================
 
 def find_payment_by_yookassa_id(yookassa_id: str):
     """Находит платеж по ID из ЮKassa"""
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM payments WHERE yookassa_id = ? OR payment_id = ?", 
-            (yookassa_id, yookassa_id)
-        )
-        result = cursor.fetchone()
-        return dict(result) if result else None
+    try:
+        with db_cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM payments WHERE yookassa_id = %s OR payment_id = %s", 
+                (yookassa_id, yookassa_id)
+            )
+            result = cursor.fetchone()
+            if result:
+                # Преобразуем в dict в зависимости от типа курсора
+                if isinstance(result, dict):
+                    return result
+                elif hasattr(result, '_asdict'):  # Для namedtuple
+                    return result._asdict()
+                else:
+                    # Для SQLite Row или обычного tuple
+                    columns = [desc[0] for desc in cursor.description]
+                    return dict(zip(columns, result))
+            return None
+    except Exception as e:
+        logger.error(f"❌ Ошибка поиска платежа: {e}")
+        return None
+
+def find_payment_by_payment_id(payment_id: str):
+    """Находит платеж по нашему внутреннему ID"""
+    try:
+        with db_cursor() as cursor:
+            cursor.execute("SELECT * FROM payments WHERE payment_id = %s", (payment_id,))
+            result = cursor.fetchone()
+            if result:
+                if isinstance(result, dict):
+                    return result
+                elif hasattr(result, '_asdict'):
+                    return result._asdict()
+                else:
+                    columns = [desc[0] for desc in cursor.description]
+                    return dict(zip(columns, result))
+            return None
+    except Exception as e:
+        logger.error(f"❌ Ошибка поиска платежа: {e}")
+        return None
 
 def update_payment_status(payment_id: str, status: str, yookassa_id: str = None):
     """Обновляет статус платежа"""
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        
-        if yookassa_id:
-            cursor.execute("""
-            UPDATE payments 
-            SET status = ?, updated_at = ?, yookassa_id = ?
-            WHERE payment_id = ?
-            """, (status, datetime.now().isoformat(), yookassa_id, payment_id))
-        else:
-            cursor.execute("""
-            UPDATE payments 
-            SET status = ?, updated_at = ?
-            WHERE payment_id = ?
-            """, (status, datetime.now().isoformat(), payment_id))
-        
-        conn.commit()
-    
-    logger.info(f"📊 Обновлен статус платежа {payment_id}: {status}")
-    return True
+    try:
+        with db_cursor() as cursor:
+            now = datetime.now().isoformat()
+            
+            if yookassa_id:
+                if is_postgresql():
+                    cursor.execute("""
+                    UPDATE payments 
+                    SET status = %s, updated_at = NOW(), yookassa_id = %s
+                    WHERE payment_id = %s
+                    """, (status, yookassa_id, payment_id))
+                else:
+                    cursor.execute("""
+                    UPDATE payments 
+                    SET status = ?, updated_at = ?, yookassa_id = ?
+                    WHERE payment_id = ?
+                    """, (status, now, yookassa_id, payment_id))
+            else:
+                if is_postgresql():
+                    cursor.execute("""
+                    UPDATE payments 
+                    SET status = %s, updated_at = NOW()
+                    WHERE payment_id = %s
+                    """, (status, payment_id))
+                else:
+                    cursor.execute("""
+                    UPDATE payments 
+                    SET status = ?, updated_at = ?
+                    WHERE payment_id = ?
+                    """, (status, now, payment_id))
+            
+        logger.info(f"📊 Обновлен статус платежа {payment_id}: {status}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Ошибка обновления платежа: {e}")
+        return False
 
 def save_webhook_notification(webhook_data: dict):
     """Сохраняет уведомление от ЮKassa в БД"""
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
+    try:
+        with db_cursor() as cursor:
+            event = webhook_data.get('event', 'unknown')
+            payment_id = webhook_data.get('object', {}).get('id', 'unknown')
+            status = webhook_data.get('object', {}).get('status', 'unknown')
+            webhook_id = webhook_data.get('id', f"webhook_{datetime.now().timestamp()}")
+            payload = json.dumps(webhook_data, ensure_ascii=False)
+            
+            if is_postgresql():
+                cursor.execute("""
+                INSERT INTO yookassa_webhooks 
+                (webhook_id, event, payment_id, status, received_at, payload)
+                VALUES (%s, %s, %s, %s, NOW(), %s)
+                """, (webhook_id, event, payment_id, status, payload))
+            else:
+                cursor.execute("""
+                INSERT INTO yookassa_webhooks 
+                (webhook_id, event, payment_id, status, received_at, payload)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, (webhook_id, event, payment_id, status, datetime.now().isoformat(), payload))
         
-        event = webhook_data.get('event', 'unknown')
-        payment_id = webhook_data.get('object', {}).get('id', 'unknown')
-        status = webhook_data.get('object', {}).get('status', 'unknown')
-        webhook_id = webhook_data.get('id', f"webhook_{datetime.now().timestamp()}")
-        
-        cursor.execute("""
-        INSERT INTO yookassa_webhooks 
-        (webhook_id, event, payment_id, status, received_at, payload)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            webhook_id,
-            event,
-            payment_id,
-            status,
-            datetime.now().isoformat(),
-            json.dumps(webhook_data, ensure_ascii=False)
-        ))
-        
-        conn.commit()
-    
-    logger.info(f"📨 Сохранено webhook уведомление: {event} для {payment_id}")
-    return True
+        logger.info(f"📨 Сохранено webhook уведомление: {event} для {payment_id}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Ошибка сохранения webhook: {e}")
+        return False
 
 def create_payment_record(payment_data: dict):
     """Создает новую запись о платеже в БД"""
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            
+        with db_cursor() as cursor:
             payment_id = payment_data.get('payment_id')
             user_id = payment_data.get('user_id')
             amount = payment_data.get('amount', 199.0)
             email = payment_data.get('email', '')
             description = payment_data.get('description', 'Оплата подписки')
             yookassa_id = payment_data.get('yookassa_id')
+            created_at = datetime.now().isoformat()
             
-            cursor.execute("""
-            INSERT INTO payments 
-            (payment_id, user_id, amount, email, description, created_at, status, yookassa_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(payment_id) DO UPDATE SET
-                updated_at = ?,
-                yookassa_id = ?
-            """, (
-                payment_id,
-                user_id,
-                amount,
-                email,
-                description,
-                datetime.now().isoformat(),
-                'pending',
-                yookassa_id,
-                datetime.now().isoformat(),
-                yookassa_id
-            ))
-            
-            conn.commit()
+            if is_postgresql():
+                cursor.execute("""
+                INSERT INTO payments 
+                (payment_id, user_id, amount, email, description, created_at, status, yookassa_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(payment_id) DO UPDATE SET
+                    updated_at = NOW(),
+                    yookassa_id = %s
+                """, (
+                    payment_id, user_id, amount, email, description, 
+                    created_at, 'pending', yookassa_id, yookassa_id
+                ))
+            else:
+                cursor.execute("""
+                INSERT OR REPLACE INTO payments 
+                (payment_id, user_id, amount, email, description, created_at, status, yookassa_id, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    payment_id, user_id, amount, email, description, 
+                    created_at, 'pending', yookassa_id, created_at
+                ))
         
         logger.info(f"📝 Создана запись платежа: {payment_id}")
         return True
@@ -213,40 +359,25 @@ def api_payment_status(payment_id):
     Возвращает статус платежа для Telegram бота
     """
     try:
+        # Сначала ищем по yookassa_id
         payment = find_payment_by_yookassa_id(payment_id)
+        
+        if not payment:
+            # Если не нашли, ищем по нашему payment_id
+            payment = find_payment_by_payment_id(payment_id)
         
         if payment:
             return jsonify({
                 "found": True,
-                "payment_id": payment['payment_id'],
+                "payment_id": payment.get('payment_id'),
                 "yookassa_id": payment.get('yookassa_id'),
-                "user_id": payment['user_id'],
-                "status": payment['status'],
-                "amount": payment['amount'],
+                "user_id": payment.get('user_id'),
+                "status": payment.get('status'),
+                "amount": float(payment.get('amount', 0)) if payment.get('amount') else 0,
                 "email": payment.get('email', ''),
-                "created_at": payment['created_at'],
+                "created_at": payment.get('created_at'),
                 "updated_at": payment.get('updated_at')
             }), 200
-        else:
-            # Пробуем найти по нашему внутреннему payment_id
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT * FROM payments WHERE payment_id = ?", (payment_id,))
-                result = cursor.fetchone()
-                
-                if result:
-                    payment = dict(result)
-                    return jsonify({
-                        "found": True,
-                        "payment_id": payment['payment_id'],
-                        "yookassa_id": payment.get('yookassa_id'),
-                        "user_id": payment['user_id'],
-                        "status": payment['status'],
-                        "amount": payment['amount'],
-                        "email": payment.get('email', ''),
-                        "created_at": payment['created_at'],
-                        "updated_at": payment.get('updated_at')
-                    }), 200
         
         # Если платеж не найден
         return jsonify({
@@ -362,25 +493,45 @@ def api_user_payments(user_id):
     Возвращает все платежи пользователя
     """
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-            SELECT payment_id, yookassa_id, amount, status, created_at, description
-            FROM payments 
-            WHERE user_id = ? 
-            ORDER BY created_at DESC
-            """, (user_id,))
+        with db_cursor() as cursor:
+            if is_postgresql():
+                cursor.execute("""
+                SELECT payment_id, yookassa_id, amount, status, created_at, description
+                FROM payments 
+                WHERE user_id = %s 
+                ORDER BY created_at DESC
+                """, (user_id,))
+            else:
+                cursor.execute("""
+                SELECT payment_id, yookassa_id, amount, status, created_at, description
+                FROM payments 
+                WHERE user_id = ? 
+                ORDER BY created_at DESC
+                """, (user_id,))
             
+            rows = cursor.fetchall()
             payments = []
-            for row in cursor.fetchall():
-                payments.append({
-                    'payment_id': row[0],
-                    'yookassa_id': row[1],
-                    'amount': row[2],
-                    'status': row[3],
-                    'created_at': row[4],
-                    'description': row[5]
-                })
+            for row in rows:
+                if isinstance(row, dict):
+                    payments.append({
+                        'payment_id': row.get('payment_id'),
+                        'yookassa_id': row.get('yookassa_id'),
+                        'amount': float(row.get('amount', 0)) if row.get('amount') else 0,
+                        'status': row.get('status'),
+                        'created_at': row.get('created_at'),
+                        'description': row.get('description')
+                    })
+                else:
+                    columns = [desc[0] for desc in cursor.description]
+                    row_dict = dict(zip(columns, row))
+                    payments.append({
+                        'payment_id': row_dict.get('payment_id'),
+                        'yookassa_id': row_dict.get('yookassa_id'),
+                        'amount': float(row_dict.get('amount', 0)) if row_dict.get('amount') else 0,
+                        'status': row_dict.get('status'),
+                        'created_at': row_dict.get('created_at'),
+                        'description': row_dict.get('description')
+                    })
         
         return jsonify({
             "success": True,
@@ -433,13 +584,10 @@ def yookassa_webhook():
                 update_payment_status(payment['payment_id'], 'succeeded', payment_id)
                 logger.info(f"📊 Обновлен статус: {payment['payment_id']} -> succeeded")
                 
-                # Можно здесь вызвать функцию доставки файлов
-                # deliver_files_to_user(payment['user_id'])
-                
             else:
                 # Пробуем найти в metadata
                 metadata = webhook_data.get('object', {}).get('metadata', {})
-                our_payment_id = metadata.get('our_payment_id')
+                our_payment_id = metadata.get('our_payment_id') or metadata.get('payment_id')
                 
                 if our_payment_id:
                     update_payment_status(our_payment_id, 'succeeded', payment_id)
@@ -537,10 +685,13 @@ def test_api():
 @app.route('/')
 def index():
     """Главная страница - показывает статус сервиса"""
+    db_type = "PostgreSQL" if is_postgresql() else "SQLite"
+    
     return jsonify({
         "service": "Variatica YooKassa Webhook & API Server",
-        "version": "2.0",
+        "version": "3.0",
         "status": "running",
+        "database": db_type,
         "timestamp": datetime.now().isoformat(),
         "endpoints": {
             "webhook": "/yookassa-webhook (POST)",
@@ -556,10 +707,6 @@ def index():
                 "update_yookassa": "/api/update-yookassa-id (POST)",
                 "user_payments": "/api/user-payments/<user_id> (GET)"
             }
-        },
-        "database": {
-            "path": DB_PATH,
-            "initialized": os.path.exists(DB_PATH)
         }
     })
 
@@ -568,9 +715,11 @@ def health_check():
     """Health check для Render и мониторинга"""
     try:
         # Проверяем подключение к БД
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1")
+        with db_cursor() as cursor:
+            if is_postgresql():
+                cursor.execute("SELECT 1")
+            else:
+                cursor.execute("SELECT 1")
             db_ok = cursor.fetchone() is not None
         
         return jsonify({
@@ -592,24 +741,34 @@ def health_check():
 def status_check():
     """Детальный статус сервиса и статистика"""
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            
+        with db_cursor() as cursor:
             # Статистика платежей
             cursor.execute("SELECT status, COUNT(*) FROM payments GROUP BY status")
-            payments_stats = {row[0]: row[1] for row in cursor.fetchall()}
+            rows = cursor.fetchall()
+            
+            payments_stats = {}
+            for row in rows:
+                if isinstance(row, dict):
+                    payments_stats[row['status']] = row['count']
+                else:
+                    payments_stats[row[0]] = row[1]
             
             # Статистика webhook
             cursor.execute("SELECT COUNT(*) FROM yookassa_webhooks")
-            webhooks_count = cursor.fetchone()[0]
+            webhooks_result = cursor.fetchone()
+            webhooks_count = webhooks_result[0] if webhooks_result else 0
             
             # Количество пользователей
             cursor.execute("SELECT COUNT(DISTINCT user_id) FROM payments")
-            users_count = cursor.fetchone()[0]
+            users_result = cursor.fetchone()
+            users_count = users_result[0] if users_result else 0
+        
+        db_type = "PostgreSQL" if is_postgresql() else "SQLite"
         
         return jsonify({
             "status": "operational",
             "timestamp": datetime.now().isoformat(),
+            "database": db_type,
             "statistics": {
                 "payments": payments_stats,
                 "webhooks_total": webhooks_count,
@@ -617,8 +776,7 @@ def status_check():
             },
             "service_info": {
                 "python_version": sys.version,
-                "working_directory": os.getcwd(),
-                "database_path": DB_PATH
+                "working_directory": os.getcwd()
             }
         }), 200
         
@@ -633,30 +791,52 @@ def list_payments():
         limit = min(int(request.args.get('limit', 50)), 100)
         offset = int(request.args.get('offset', 0))
         
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-            SELECT payment_id, yookassa_id, user_id, amount, status, created_at, description 
-            FROM payments 
-            ORDER BY created_at DESC 
-            LIMIT ? OFFSET ?
-            """, (limit, offset))
+        with db_cursor() as cursor:
+            if is_postgresql():
+                cursor.execute("""
+                SELECT payment_id, yookassa_id, user_id, amount, status, created_at, description 
+                FROM payments 
+                ORDER BY created_at DESC 
+                LIMIT %s OFFSET %s
+                """, (limit, offset))
+            else:
+                cursor.execute("""
+                SELECT payment_id, yookassa_id, user_id, amount, status, created_at, description 
+                FROM payments 
+                ORDER BY created_at DESC 
+                LIMIT ? OFFSET ?
+                """, (limit, offset))
             
+            rows = cursor.fetchall()
             payments = []
-            for row in cursor.fetchall():
-                payments.append({
-                    'payment_id': row[0],
-                    'yookassa_id': row[1],
-                    'user_id': row[2],
-                    'amount': row[3],
-                    'status': row[4],
-                    'created_at': row[5],
-                    'description': row[6]
-                })
+            for row in rows:
+                if isinstance(row, dict):
+                    payments.append({
+                        'payment_id': row.get('payment_id'),
+                        'yookassa_id': row.get('yookassa_id'),
+                        'user_id': row.get('user_id'),
+                        'amount': float(row.get('amount', 0)) if row.get('amount') else 0,
+                        'status': row.get('status'),
+                        'created_at': row.get('created_at'),
+                        'description': row.get('description')
+                    })
+                else:
+                    columns = [desc[0] for desc in cursor.description]
+                    row_dict = dict(zip(columns, row))
+                    payments.append({
+                        'payment_id': row_dict.get('payment_id'),
+                        'yookassa_id': row_dict.get('yookassa_id'),
+                        'user_id': row_dict.get('user_id'),
+                        'amount': float(row_dict.get('amount', 0)) if row_dict.get('amount') else 0,
+                        'status': row_dict.get('status'),
+                        'created_at': row_dict.get('created_at'),
+                        'description': row_dict.get('description')
+                    })
             
             # Общее количество
             cursor.execute("SELECT COUNT(*) FROM payments")
-            total = cursor.fetchone()[0]
+            total_result = cursor.fetchone()
+            total = total_result[0] if total_result else 0
         
         return jsonify({
             "success": True,
@@ -679,15 +859,13 @@ if __name__ == '__main__':
     init_database()
     
     # Запуск Flask сервера
-    port = int(os.getenv('PORT', 10001))  # Render использует 10001 для второго сервиса
+    port = int(os.getenv('PORT', 10000))  # Render использует PORT из переменных окружения
     
     logger.info("="*60)
-    logger.info("🚀 ЗАПУСК VARIATICA FLASK SERVER")
+    logger.info("🚀 ЗАПУСК VARIATICA FLASK SERVER (v3.0)")
     logger.info("="*60)
     logger.info(f"Порт: {port}")
-    logger.info(f"База данных: {DB_PATH}")
-    logger.info(f"Webhook URL: https://variatica-webhook-server.onrender.com/yookassa-webhook")
-    logger.info(f"API URL: https://variatica-webhook-server.onrender.com/api/")
+    logger.info(f"База данных: {'PostgreSQL' if is_postgresql() else 'SQLite'}")
     logger.info("="*60)
     logger.info("📡 Доступные endpoints:")
     logger.info("  /                    - Главная страница")
