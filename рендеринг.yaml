@@ -1,22 +1,28 @@
-# Сервис 1: Telegram Bot
-- type: worker  # ← ИЗМЕНИТЬ С web НА worker
-  name: variatica-bot
-  runtime: python
-  buildCommand: |
-    pip install --upgrade pip
-    pip install -r requirements.txt
-  startCommand: python бот_адаптивный.py
-  envVars:
-    - key: TELEGRAM_BOT_TOKEN
-      sync: false
-    - key: YOOKASSA_SHOP_ID
-      sync: false
-    - key: YOOKASSA_SECRET_KEY
-      sync: false
-    - key: FLASK_API_URL
-      value: https://variatica-webhook.onrender.com
-    - key: DATABASE_URL
-      fromDatabase:
-        name: variatica-db
-        property: connectionString
-  # УДАЛИТЬ healthCheckPath для worker
+services:
+  # 1. FLASK API
+  - type: web
+    name: variatica-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: variatica-db
+          property: connectionString
+
+  # 2. TELEGRAM BOT - ПРАВИЛЬНОЕ ИМЯ ФАЙЛА
+  - type: worker
+    name: variatica-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python бот_адаптивный.py  # ← ТОЧНОЕ ИМЯ ВАШЕГО ФАЙЛА
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: API_URL
+        value: https://testing-lichnosti-bot-1.onrender.com
+      - key: YOOKASSA_SHOP_ID
+        sync: false
+      - key: YOOKASSA_SECRET_KEY
+        sync: false
