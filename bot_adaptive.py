@@ -36,7 +36,8 @@ logging.getLogger('telegram').setLevel(logging.WARNING)
 
 # ========== КОНФИГУРАЦИЯ ==========
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
+# 🔴 ИСПРАВЬТЕ ЭТОТ URL! 🔴
+API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-qyra.onrender.com")
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 
@@ -52,34 +53,50 @@ def check_configuration():
     # Проверка токена
     if not TOKEN:
         errors.append("❌ TELEGRAM_BOT_TOKEN не установлен")
+        print("❌ Токен бота: НЕ УСТАНОВЛЕН!")
     else:
-        print(f"✅ Токен бота: установлен")
+        print(f"✅ Токен бота: установлен (первые 10 символов: {TOKEN[:10]}...)")
     
     # Проверка URL API
     if not API_URL:
         errors.append("⚠️ API_URL не установлен, используется по умолчанию")
-    else:
-        print(f"✅ API URL: {API_URL}")
+    print(f"✅ API URL: {API_URL}")
     
     # Проверка ЮKassa
     if not YOOKASSA_SHOP_ID:
         errors.append("❌ YOOKASSA_SHOP_ID не установлен")
+        print("❌ Shop ID: НЕ УСТАНОВЛЕН!")
     else:
-        print(f"✅ Shop ID: {'установлен' if YOOKASSA_SHOP_ID else 'НЕТ!'}")
+        print(f"✅ Shop ID: {YOOKASSA_SHOP_ID[:10]}...")
     
     if not YOOKASSA_SECRET_KEY:
         errors.append("❌ YOOKASSA_SECRET_KEY не установлен")
+        print("❌ Secret Key: НЕ УСТАНОВЛЕН!")
     else:
         key_type = "ТЕСТОВЫЙ" if YOOKASSA_SECRET_KEY.startswith('test_') else "БОЕВОЙ"
-        print(f"✅ Secret Key: {key_type}")
+        print(f"✅ Secret Key: {key_type} ({YOOKASSA_SECRET_KEY[:10]}...)")
+    
+    # Проверка доступности API
+    try:
+        response = requests.get(f"{API_URL}/health", timeout=5)
+        if response.status_code == 200:
+            print(f"✅ API доступен: {response.status_code}")
+        else:
+            errors.append(f"⚠️ API недоступен: код {response.status_code}")
+            print(f"⚠️ API ответ: {response.status_code}")
+    except Exception as e:
+        errors.append(f"❌ API недоступен: {str(e)}")
+        print(f"❌ API недоступен: {e}")
     
     print("=" * 60)
     
     if errors:
+        print("⚠️ Обнаружены ошибки конфигурации:")
         for error in errors:
-            print(error)
+            print(f"  {error}")
         return False
     
+    print("✅ Конфигурация проверена успешно!")
     return True
 
 # ========== ФУНКЦИИ ДЛЯ ЮKASSA ==========
@@ -132,10 +149,18 @@ def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0) 
         if response.status_code == 200:
             data = response.json()
             yookassa_id = data.get('id')
+            confirmation_url = data.get('confirmation', {}).get('confirmation_url')
+            
+            if not confirmation_url:
+                return {
+                    "success": False,
+                    "error": "No confirmation URL in response",
+                    "details": json.dumps(data)[:200]
+                }
             
             # Сохраняем ID ЮKassa в базе
             try:
-                requests.post(
+                save_response = requests.post(
                     f"{API_URL}/api/update-yookassa-id",
                     json={
                         "payment_id": payment_id,
@@ -144,21 +169,26 @@ def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0) 
                     },
                     timeout=10
                 )
-                logger.info(f"ID сохранен в БД: {yookassa_id}")
+                
+                if save_response.status_code == 200:
+                    logger.info(f"✅ ID сохранен в БД: {yookassa_id}")
+                else:
+                    logger.error(f"⚠️ Ошибка сохранения ID: {save_response.status_code} - {save_response.text}")
+                    
             except Exception as e:
-                logger.error(f"Ошибка сохранения ID: {e}")
+                logger.error(f"⚠️ Ошибка сохранения ID: {e}")
             
             return {
                 "success": True,
                 "payment_id": payment_id,
                 "yookassa_id": yookassa_id,
-                "confirmation_url": data.get('confirmation', {}).get('confirmation_url'),
+                "confirmation_url": confirmation_url,
                 "status": data.get('status'),
                 "amount": amount
             }
         else:
             error_text = response.text[:300]
-            logger.error(f"Ошибка ЮKassa {response.status_code}: {error_text}")
+            logger.error(f"❌ Ошибка ЮKassa {response.status_code}: {error_text}")
             
             return {
                 "success": False,
@@ -167,7 +197,7 @@ def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0) 
             }
             
     except Exception as e:
-        logger.error(f"Исключение: {e}")
+        logger.error(f"❌ Исключение: {e}")
         return {
             "success": False,
             "error": str(e)
@@ -197,20 +227,21 @@ def create_payment_in_db(user_id: int, amount: float = 1.0) -> dict:
         )
         
         if response.status_code in [200, 201]:
-            logger.info(f"Платеж создан в БД: {payment_id}")
+            logger.info(f"✅ Платеж создан в БД: {payment_id}")
             return {
                 "success": True,
                 "payment_id": payment_id
             }
         else:
-            logger.error(f"Ошибка БД {response.status_code}: {response.text}")
+            logger.error(f"❌ Ошибка БД {response.status_code}: {response.text}")
             return {
                 "success": False,
-                "error": f"API error: {response.status_code}"
+                "error": f"API error: {response.status_code}",
+                "details": response.text[:200]
             }
             
     except Exception as e:
-        logger.error(f"Ошибка БД: {e}")
+        logger.error(f"❌ Ошибка БД: {e}")
         return {
             "success": False,
             "error": str(e)
@@ -226,16 +257,28 @@ def check_payment_status_db(payment_id: str) -> dict:
         
         if response.status_code == 200:
             data = response.json()
-            status = data.get('status', 'unknown')
+            
+            # Получаем статус из правильного места
+            if 'payment' in data:
+                status = data['payment'].get('status', 'unknown')
+            else:
+                status = data.get('status', 'unknown')
+                
             return {
                 "success": True,
                 "status": status,
                 "data": data
             }
+        elif response.status_code == 404:
+            return {
+                "success": False,
+                "error": "Payment not found"
+            }
         else:
             return {
                 "success": False,
-                "error": f"Status: {response.status_code}"
+                "error": f"Status: {response.status_code}",
+                "details": response.text[:200]
             }
     except Exception as e:
         return {
@@ -256,9 +299,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_text = (
         f"👋 Привет, {user.first_name}!\n\n"
         "*Тестовая платежная система*\n\n"
-        "💰 *Сумма:* 1 рубль\n"
-        "🎯 *Цель:* Проверить работу платежей\n\n"
-        "Нажмите кнопку ниже для создания тестового платежа:"
+        f"💰 *Сумма:* 1 рубль\n"
+        f"🎯 *Цель:* Проверить работу платежей\n\n"
+        f"*API URL:* `{API_URL}`\n\n"
+        f"Нажмите кнопку ниже для создания тестового платежа:"
     )
     
     await update.message.reply_text(
@@ -275,22 +319,33 @@ async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     
     # Шаг 1: Создаем в БД
-    await query.edit_message_text("📦 *Создаю платеж в базе данных...*", parse_mode='Markdown')
+    await query.edit_message_text("📦 *Шаг 1: Создаю платеж в базе данных...*", parse_mode='Markdown')
     
     db_result = create_payment_in_db(user_id)
     if not db_result["success"]:
-        await query.edit_message_text(f"❌ *Ошибка базы:* {db_result.get('error')}", parse_mode='Markdown')
+        error_msg = db_result.get('error', 'Неизвестная ошибка')
+        details = db_result.get('details', '')
+        error_text = f"❌ *Ошибка базы данных:* {error_msg}"
+        if details:
+            error_text += f"\n\n`{details}`"
+        await query.edit_message_text(error_text, parse_mode='Markdown')
         return
     
     payment_id = db_result["payment_id"]
     
     # Шаг 2: Создаем в ЮKassa
-    await query.edit_message_text("💳 *Создаю платеж в ЮKassa...*", parse_mode='Markdown')
+    await query.edit_message_text("💳 *Шаг 2: Создаю платеж в ЮKassa...*", parse_mode='Markdown')
     
     payment_result = create_yookassa_payment(payment_id, user_id)
     if not payment_result["success"]:
         error_msg = payment_result.get('error', 'Неизвестная ошибка')
-        await query.edit_message_text(f"❌ *Ошибка ЮKassa:* {error_msg}", parse_mode='Markdown')
+        details = payment_result.get('details', '')
+        error_text = f"❌ *Ошибка ЮKassa:* {error_msg}"
+        if details:
+            # Экранируем Markdown символы
+            safe_details = details.replace('_', r'\_').replace('*', r'\*')
+            error_text += f"\n\n`{safe_details[:100]}`"
+        await query.edit_message_text(error_text, parse_mode='Markdown')
         return
     
     # Шаг 3: Показываем ссылку
@@ -303,14 +358,16 @@ async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ *Платеж создан!*\n\n"
         f"*ID:* `{payment_id}`\n"
         f"*Сумма:* 1 рубль\n"
-        f"*Статус:* ожидание оплаты\n\n"
-        f"Нажмите кнопку для оплаты:"
+        f"*Статус:* ожидание оплаты\n"
+        f"*Ссылка:* [нажмите для оплаты]({payment_result['confirmation_url']})\n\n"
+        f"Нажмите кнопку ниже для оплаты:"
     )
     
     await query.edit_message_text(
         message_text,
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='Markdown'
+        parse_mode='Markdown',
+        disable_web_page_preview=True
     )
 
 async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -321,22 +378,28 @@ async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith("status_"):
         payment_id = query.data[7:]
         
-        await query.edit_message_text(f"🔍 Проверяю статус `{payment_id}`...", parse_mode='Markdown')
+        await query.edit_message_text(f"🔍 *Проверяю статус:*\n`{payment_id}`", parse_mode='Markdown')
         
         result = check_payment_status_db(payment_id)
         
         if not result["success"]:
-            await query.edit_message_text(f"❌ Не удалось проверить статус", parse_mode='Markdown')
+            error_msg = result.get('error', 'Неизвестная ошибка')
+            await query.edit_message_text(f"❌ *Ошибка:* {error_msg}", parse_mode='Markdown')
             return
         
         status = result.get("status", "unknown")
         
         if status == "succeeded":
-            message = f"🎉 *ОПЛАЧЕНО!*\n\nПлатеж `{payment_id}` успешно завершен!"
+            message = (
+                f"🎉 *ОПЛАЧЕНО!*\n\n"
+                f"✅ Платеж `{payment_id}` успешно завершен!\n\n"
+                f"*🔓 ДОСТУП ОТКРЫТ!*\n"
+                f"Тестовая цепочка работает корректно!"
+            )
         elif status in ["pending", "waiting"]:
             message = f"⏳ *ОЖИДАНИЕ*\n\nПлатеж `{payment_id}` ожидает оплаты"
         else:
-            message = f"📊 Статус: *{status}*"
+            message = f"📊 *Статус:* `{status}`"
         
         await query.edit_message_text(message, parse_mode='Markdown')
 
@@ -371,7 +434,8 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status = result.get("status", "unknown")
         await update.message.reply_text(f"Статус `{payment_id}`: *{status}*", parse_mode='Markdown')
     else:
-        await update.message.reply_text(f"❌ Ошибка проверки `{payment_id}`")
+        error_msg = result.get('error', 'Неизвестная ошибка')
+        await update.message.reply_text(f"❌ Ошибка проверки `{payment_id}`: {error_msg}")
 
 # ========== ОБРАБОТЧИК ОШИБОК ==========
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -384,21 +448,30 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     # Конфликт с другим ботом
     if "Conflict" in error_msg and "getUpdates" in error_msg:
         logger.warning("⚠️ Конфликт с другим ботом!")
-        # Просто логируем, не пытаемся исправить
+        print("🔄 Ожидаю 10 секунд для разрешения конфликта...")
+        await asyncio.sleep(10)
         
     # Уведомляем пользователя только если есть update
     if update and isinstance(update, Update):
         try:
             if update.callback_query:
-                await update.callback_query.message.reply_text("⚠️ Произошла ошибка, попробуйте снова")
+                await update.callback_query.message.reply_text(
+                    "⚠️ Произошла ошибка, попробуйте снова через минуту"
+                )
             elif update.message:
-                await update.message.reply_text("⚠️ Произошла ошибка, попробуйте снова")
+                await update.message.reply_text(
+                    "⚠️ Произошла ошибка, попробуйте снова через минуту"
+                )
         except:
             pass
 
 # ========== ЗАПУСК БОТА ==========
 def main():
     """Основная функция запуска"""
+    print("=" * 70)
+    print("🚀 VARIATICA PAYMENT BOT - УЛУЧШЕННАЯ ВЕРСИЯ")
+    print("=" * 70)
+    
     # Проверяем конфигурацию
     if not check_configuration():
         print("❌ Конфигурация неполная, выход...")
@@ -421,19 +494,29 @@ def main():
         # Обработчик ошибок
         app.add_error_handler(error_handler)
         
-        print("✅ Бот запущен!")
-        print("📱 Используйте /start")
-        print("=" * 60)
+        print("✅ Бот запущен успешно!")
+        print(f"📡 API: {API_URL}")
+        print(f"⏰ Запуск: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("=" * 70)
+        print("📱 Используйте команду /start в Telegram")
+        print("🧪 Нажмите 'ТЕСТОВАЯ ОПЛАТА' для проверки")
+        print("=" * 70)
         
         # Запускаем с защитой от конфликтов
         app.run_polling(
             drop_pending_updates=True,  # ВАЖНО: очищаем очередь обновлений
             allowed_updates=['message', 'callback_query'],
-            close_loop=False
+            close_loop=False,
+            stop_signals=[]
         )
+        
+    except KeyboardInterrupt:
+        print("\n🛑 Бот остановлен пользователем")
         
     except Exception as e:
         logger.critical(f"Критическая ошибка запуска: {e}")
+        import traceback
+        traceback.print_exc()
         
         # Простой перезапуск через 10 секунд
         print(f"🔄 Перезапуск через 10 секунд...")
