@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Telegram Bot для боевого режима ЮKassa
-Версия 5.0 - с правильным receipt для 1 рубля
+Версия 5.1 - исправлена ошибка Markdown
 """
 
 import os
@@ -246,18 +246,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔄 Проверить статус", callback_data="check_status_menu")]
     ]
     
-    await update.message.reply_text(
-        f"🧪 **ТЕСТОВЫЙ РЕЖИМ**\n\n"
+    message_text = (
+        "🧪 *ТЕСТОВЫЙ РЕЖИМ*\n\n"
         f"Привет, {user.first_name}!\n\n"
-        f"🔍 **Цель:** Проверить всю цепочку платежей\n"
-        f"💳 **Сумма:** 1 рубль\n"
-        f"🎯 **Что тестируем:**\n"
-        f"• Создание платежа в ЮKassa\n"
-        f"• Отправку чека (по 54-ФЗ)\n"
-        f"• Получение вебхуков\n"
-        f"• Обновление статуса в БД\n"
-        f"• Предоставление доступа\n\n"
-        f"Нажмите кнопку для теста:",
+        "*🔍 Цель:* Проверить всю цепочку платежей\n"
+        "*💳 Сумма:* 1 рубль\n"
+        "*🎯 Что тестируем:*\n"
+        "• Создание платежа в ЮKassa\n"
+        "• Отправку чека (по 54-ФЗ)\n"
+        "• Получение вебхуков\n"
+        "• Обновление статуса в БД\n"
+        "• Предоставление доступа\n\n"
+        "Нажмите кнопку для теста:"
+    )
+    
+    await update.message.reply_text(
+        message_text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
@@ -270,20 +274,21 @@ async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = query.from_user
     user_id = user.id
     
-    await query.edit_message_text("🧪 **Шаг 1/3:** Создаю тестовый платеж в базе данных...")
+    await query.edit_message_text("🧪 *Шаг 1/3:* Создаю тестовый платеж в базе данных...", parse_mode='Markdown')
     
     # Создаем в БД
     db_result = create_payment_in_db(user_id)
     
     if not db_result["success"]:
         await query.edit_message_text(
-            f"❌ **Ошибка базы данных:**\n{db_result.get('error', 'Неизвестная ошибка')}"
+            f"❌ *Ошибка базы данных:*\n{db_result.get('error', 'Неизвестная ошибка')}",
+            parse_mode='Markdown'
         )
         return
     
     payment_id = db_result["payment_id"]
     
-    await query.edit_message_text("🧪 **Шаг 2/3:** Создаю платеж в ЮKassa (с чеком)...")
+    await query.edit_message_text("🧪 *Шаг 2/3:* Создаю платеж в ЮKassa (с чеком)...", parse_mode='Markdown')
     
     # Создаем в ЮKassa с правильным receipt
     payment_result = create_yookassa_payment_test(payment_id, user_id)
@@ -292,14 +297,16 @@ async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         error_msg = payment_result.get('error', 'Неизвестная ошибка')
         details = payment_result.get('details', '')
         
-        error_text = f"❌ **Ошибка ЮKassa:**\n{error_msg}"
+        error_text = f"❌ *Ошибка ЮKassa:*\n{error_msg}"
         if details:
-            error_text += f"\n\n🔍 **Детали:**\n{details[:200]}"
+            # Экранируем специальные символы в деталях ошибки
+            safe_details = details.replace('_', r'\_').replace('*', r'\*').replace('[', r'\[').replace(']', r'\]')
+            error_text += f"\n\n*Детали:*\n{safe_details[:150]}"
         
-        await query.edit_message_text(error_text)
+        await query.edit_message_text(error_text, parse_mode='Markdown')
         return
     
-    await query.edit_message_text("🧪 **Шаг 3/3:** Формирую ссылку для оплаты...")
+    await query.edit_message_text("🧪 *Шаг 3/3:* Формирую ссылку для оплаты...", parse_mode='Markdown')
     
     # Формируем кнопку
     keyboard = [
@@ -308,16 +315,19 @@ async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📋 Инструкция по оплате", callback_data="payment_instructions")]
     ]
     
+    # Экранируем специальные символы в email
+    safe_email = db_result.get('email', 'user@telegram.org').replace('_', r'\_').replace('@', r'\@')
+    
     message_text = (
-        f"✅ **ТЕСТОВЫЙ ПЛАТЕЖ ГОТОВ!**\n\n"
-        f"📋 **ID платежа:** `{payment_id}`\n"
-        f"👤 **Пользователь:** {user.first_name}\n"
-        f"💰 **Сумма:** 1 рубль\n"
-        f"📧 **Email для чека:** {db_result.get('email', 'user@telegram.org')}\n"
-        f"🎯 **Режим:** Боевой (с чеком по 54-ФЗ)\n\n"
-        f"**Нажмите кнопку для оплаты:**\n"
+        f"✅ *ТЕСТОВЫЙ ПЛАТЕЖ ГОТОВ!*\n\n"
+        f"*📋 ID платежа:* `{payment_id}`\n"
+        f"*👤 Пользователь:* {user.first_name}\n"
+        f"*💰 Сумма:* 1 рубль\n"
+        f"*📧 Email для чека:* {safe_email}\n"
+        f"*🎯 Режим:* Боевой (с чеком по 54-ФЗ)\n\n"
+        f"*Нажмите кнопку для оплаты:*\n"
         f"После оплаты чек придет на указанный email.\n\n"
-        f"⚠️ **ВАЖНО:** Используйте реальную карту, спишется 1 рубль."
+        f"⚠️ *ВАЖНО:* Используйте реальную карту, спишется 1 рубль."
     )
     
     await query.edit_message_text(
@@ -334,31 +344,31 @@ async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith("status_"):
         payment_id = query.data[7:]
         
-        await query.edit_message_text(f"🔍 Проверяю статус платежа `{payment_id}`...")
+        await query.edit_message_text(f"🔍 Проверяю статус платежа `{payment_id}`...", parse_mode='Markdown')
         
         result = check_payment_status_db(payment_id)
         
         if not result["success"]:
-            await query.edit_message_text(f"❌ Не удалось проверить статус")
+            await query.edit_message_text("❌ Не удалось проверить статус")
             return
         
         status = result.get("status", "unknown")
         
         if status == "succeeded":
             message = (
-                f"🎉 **ОПЛАЧЕНО!**\n\n"
+                f"🎉 *ОПЛАЧЕНО!*\n\n"
                 f"✅ Платеж `{payment_id}` успешно завершен!\n"
                 f"💰 Сумма: 1 рубль\n\n"
-                f"**🔓 ДОСТУП ОТКРЫТ!**\n"
+                f"*🔓 ДОСТУП ОТКРЫТ!*\n"
                 f"Тестовая цепочка работает корректно!\n\n"
                 f"📧 Чек отправлен на ваш email."
             )
         elif status in ["pending", "waiting"]:
             message = (
-                f"⏳ **ОЖИДАЕТ ОПЛАТЫ**\n\n"
+                f"⏳ *ОЖИДАЕТ ОПЛАТЫ*\n\n"
                 f"Платеж `{payment_id}` еще не оплачен.\n"
                 f"💰 Сумма: 1 рубль\n\n"
-                f"**Для оплаты нажмите кнопку:**"
+                f"*Для оплаты нажмите кнопку:*"
             )
             keyboard = [[InlineKeyboardButton("💳 Оплатить 1 рубль", callback_data="test_buy")]]
             await query.edit_message_text(
@@ -368,7 +378,7 @@ async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         else:
-            message = f"📊 Статус платежа `{payment_id}`: **{status}**"
+            message = f"📊 Статус платежа `{payment_id}`: *{status}*"
         
         await query.edit_message_text(message, parse_mode='Markdown')
 
@@ -378,30 +388,30 @@ async def payment_instructions(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
     
     instructions = (
-        "💳 **ИНСТРУКЦИЯ ПО ТЕСТОВОЙ ОПЛАТЕ**\n\n"
+        "💳 *ИНСТРУКЦИЯ ПО ТЕСТОВОЙ ОПЛАТЕ*\n\n"
         
-        "**Для теста используйте:**\n"
-        "1. **Реальную банковскую карту**\n"
-        "2. **Сумма:** 1 (один) рубль\n"
-        "3. **Что произойдет:**\n"
+        "*Для теста используйте:*\n"
+        "1. *Реальную банковскую карту*\n"
+        "2. *Сумма:* 1 (один) рубль\n"
+        "3. *Что произойдет:*\n"
         "   - Банк спишет 1 рубль\n"
         "   - ЮKassa отправит нам уведомление\n"
         "   - Мы получим чек по 54-ФЗ\n"
         "   - Статус обновится в базе\n"
         "   - Вам откроется доступ\n\n"
         
-        "**Шаги оплаты:**\n"
+        "*Шаги оплаты:*\n"
         "1. Нажмите 'Оплатить 1 рубль'\n"
         "2. На странице ЮKassa введите данные карты\n"
         "3. Подтвердите платеж\n"
         "4. Вернитесь в бот и нажмите 'Проверить статус'\n\n"
         
-        "**Чек (по закону 54-ФЗ):**\n"
+        "*Чек (по закону 54-ФЗ):*\n"
         "• Чек придет на email, указанный при регистрации\n"
         "• В чеке будет указано: 'Тестовый доступ к курсу ВАРИАТИКА'\n"
         "• Сумма: 1 рубль (включая НДС 20%)\n\n"
         
-        "**После успешной оплаты:**\n"
+        "*После успешной оплаты:*\n"
         "Вы увидите статус 'ОПЛАЧЕНО' и получите доступ."
     )
     
@@ -428,19 +438,34 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if result["success"]:
         status = result.get("status", "unknown")
-        await update.message.reply_text(f"Статус платежа `{payment_id}`: **{status}**", parse_mode='Markdown')
+        await update.message.reply_text(f"Статус платежа `{payment_id}`: *{status}*", parse_mode='Markdown')
     else:
         await update.message.reply_text(f"Не удалось проверить платеж `{payment_id}`")
+
+async def check_status_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Меню проверки статуса"""
+    query = update.callback_query
+    await query.answer()
+    
+    await query.edit_message_text(
+        "📊 *Проверка статуса платежа*\n\n"
+        "Для проверки статуса:\n"
+        "1. Используйте команду `/check ID_платежа`\n"
+        "2. Или создайте новый платеж\n\n"
+        "ID платежа выглядит так: `test_123456789_1234567890`",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧪 Создать тестовый платеж", callback_data="test_buy")]])
+    )
 
 # ========== ГЛАВНАЯ ФУНКЦИЯ ==========
 def main():
     """Запуск тестового бота"""
     print("=" * 70)
-    print("🧪 TELEGRAM БОТ ДЛЯ ТЕСТИРОВАНИЯ ПЛАТЕЖЕЙ")
+    print("🤖 TELEGRAM БОТ ДЛЯ ТЕСТИРОВАНИЯ ПЛАТЕЖЕЙ")
     print("=" * 70)
     print(f"💳 РЕЖИМ: БОЕВОЙ (с чеком 54-ФЗ)")
     print(f"💰 СУММА: 1 рубль для теста")
-    print(f"⏰ Запуск: {datetime.now().strftime('%H:%M:%S')}")
+    print(f"⏰ Запуск: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
     
     # Проверка настроек
@@ -451,6 +476,14 @@ def main():
     print(f"✅ Токен бота: установлен")
     print(f"🔗 API URL: {API_URL}")
     print(f"🏪 Shop ID: {'установлен' if YOOKASSA_SHOP_ID else 'НЕТ!'}")
+    print(f"🔑 Secret Key: {'установлен' if YOOKASSA_SECRET_KEY else 'НЕТ!'}")
+    
+    if not YOOKASSA_SHOP_ID or not YOOKASSA_SECRET_KEY:
+        print("⚠️  ВНИМАНИЕ: Данные ЮKassa неполные!")
+        print("Платежи могут не работать")
+    
+    print("=" * 70)
+    print("🔄 Запуск бота...")
     
     try:
         # Создаем приложение
@@ -465,19 +498,38 @@ def main():
         app.add_handler(CallbackQueryHandler(test_buy_callback, pattern="^test_buy$"))
         app.add_handler(CallbackQueryHandler(status_callback, pattern="^status_"))
         app.add_handler(CallbackQueryHandler(payment_instructions, pattern="^payment_instructions$"))
-        app.add_handler(CallbackQueryHandler(lambda u, c: start(u, c), pattern="^check_status_menu$"))
+        app.add_handler(CallbackQueryHandler(check_status_menu, pattern="^check_status_menu$"))
+        
+        # Обработчик ошибок
+        async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+            """Обработчик ошибок"""
+            logger.error(f"Ошибка при обработке обновления {update}: {context.error}")
+            
+            if update and hasattr(update, 'callback_query') and update.callback_query:
+                try:
+                    await update.callback_query.message.reply_text(
+                        f"❌ Произошла ошибка: {str(context.error)[:100]}"
+                    )
+                except:
+                    pass
+        
+        app.add_error_handler(error_handler)
         
         print("✅ Бот запущен!")
         print("📱 Используйте команду /start")
         print("🧪 Для теста нажмите 'ТЕСТОВАЯ ОПЛАТА'")
         print("=" * 70)
         
-        app.run_polling(drop_pending_updates=True)
+        app.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES
+        )
         
     except Exception as e:
-        print(f"❌ ОШИБКА: {e}")
+        print(f"❌ ОШИБКА ЗАПУСКА: {e}")
         import traceback
         traceback.print_exc()
+        print("Перезапуск через 10 секунд...")
         time.sleep(10)
         main()
 
