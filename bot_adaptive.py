@@ -1,6 +1,5 @@
 """
-УПРОЩЕННЫЙ ТЕСТ ВАРИАТИКА + Flask API платежи
-Минимальная версия с работающей системой оплаты
+ТЕСТОВЫЙ БОТ - Проверка платежной системы
 """
 
 import logging
@@ -9,22 +8,20 @@ import asyncio
 import time
 import requests
 import json
-from datetime import datetime
+import sys
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
-    MessageHandler,
-    filters,
     ContextTypes,
-    ConversationHandler,
 )
 
 # ========== КОНФИГУРАЦИЯ ==========
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TOKEN:
-    raise ValueError("❌ TELEGRAM_BOT_TOKEN не установлен!")
+    print("❌ TELEGRAM_BOT_TOKEN не установлен!")
+    sys.exit(1)
 
 # URL вашего Flask API
 FLASK_API_URL = "https://testing-lichnosti-bot-1.onrender.com"
@@ -36,354 +33,256 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Состояния
-RESULTS, PAYMENT_SCREEN, PAYMENT_SUCCESS = range(3)
-
-# Константы
-BOT_LINK = "https://t.me/testing_lichnosti_bot"
-AUTHOR_LINK = "@meysternlp"
-PAYMENT_AMOUNT = 690
-
-# ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
-
-def make_sync_request(method: str, url: str, data=None, headers=None, timeout=10):
-    """Синхронный HTTP-запрос"""
-    try:
-        kwargs = {}
-        if data:
-            kwargs['json'] = data
-        if headers:
-            kwargs['headers'] = headers
-        if timeout:
-            kwargs['timeout'] = timeout
-            
-        if method.lower() == 'get':
-            response = requests.get(url, **kwargs)
-        elif method.lower() == 'post':
-            response = requests.post(url, **kwargs)
-        else:
-            return {"success": False, "error": f"Unsupported method: {method}"}
-        
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request error: {e}")
-        return {"success": False, "error": str(e)}
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error: {e}")
-        return {"success": False, "error": "Invalid JSON response"}
-
-async def make_async_request(method: str, url: str, data=None, headers=None, timeout=10):
-    """Асинхронная обертка для requests"""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, make_sync_request, method, url, data, headers, timeout)
-
 # ========== ОСНОВНЫЕ КОМАНДЫ ==========
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /start"""
-    welcome_text = (
-        "👋 Добро пожаловать в упрощенный тест ВАРИАТИКА!\n\n"
-        "Это демо-версия с работающей платежной системой.\n\n"
-        "Нажмите кнопку ниже, чтобы начать тест."
-    )
-    
-    keyboard = [[InlineKeyboardButton("🚀 Начать тест", callback_data="start_test")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
-
-async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало теста"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Упрощенный тест - сразу переходим к результатам
-    context.user_data["test_completed"] = True
-    context.user_data["profile_type"] = "SA"  # Пример результата
-    
-    result_text = (
-        "🎉 Тест завершен!\n\n"
-        "🎯 Ваш профиль: SA_4_val\n\n"
-        "• Тип: СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ\n"
-        "• Уровень: 4 (КРИЗИСНЫЙ)\n"
-        "• Точка роста: ЦЕННОСТИ\n\n"
-        "Что дальше?"
-    )
-    
     keyboard = [
-        [InlineKeyboardButton("💎 Полный пакет рекомендаций", callback_data="show_package")],
-        [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
+        [InlineKeyboardButton("🔍 Проверить Flask API", callback_data="check_api")],
+        [InlineKeyboardButton("💰 Тест платежа", callback_data="test_payment")],
+        [InlineKeyboardButton("📊 Проверить статус", callback_data="check_status")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(result_text, reply_markup=reply_markup)
-    return RESULTS
-
-# ========== ФУНКЦИИ ПЛАТЕЖЕЙ ==========
-
-async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Экран полного пакета"""
-    query = update.callback_query
-    await query.answer()
-    
-    package_text = (
-        "💎 ПОЛНЫЙ ПАКЕТ ВАРИАТИКА\n\n"
-        "Что входит:\n"
-        "• Полный разбор вашего профиля (15+ страниц)\n"
-        "• Терапевтическая сказка\n"
-        "• Книга «ВАРИАТИКА» (PDF)\n"
-        "• Персональные рекомендации\n"
-        "• Карта сильных сторон\n\n"
-        "Цена: 690 ₽\n\n"
-        "🔒 Безопасная оплата через ЮKassa"
+    await update.message.reply_text(
+        "🔧 Тестовый бот для проверки платежной системы\n\n"
+        "Выберите действие:",
+        reply_markup=reply_markup
     )
-    
-    keyboard = [
-        [InlineKeyboardButton("💳 Купить за 690 ₽", callback_data="start_payment")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(package_text, reply_markup=reply_markup)
-    return PAYMENT_SCREEN
 
-async def handle_payment_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало процесса оплаты - через Flask API"""
+async def check_api(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверка доступности Flask API"""
     query = update.callback_query
     await query.answer()
-    
-    user_id = update.effective_user.id
-    payment_id = f"pay_{user_id}_{int(time.time())}"
-    
-    logger.info(f"Starting payment for user {user_id}, payment_id: {payment_id}")
     
     try:
-        # Шаг 1: Создаем запись платежа в БД через Flask API
-        create_payload = {
+        # Пытаемся подключиться к Flask API
+        response = requests.get(f"{FLASK_API_URL}/", timeout=5)
+        
+        if response.status_code == 200:
+            message = f"✅ Flask API доступен\nКод: {response.status_code}\nURL: {FLASK_API_URL}"
+        else:
+            message = f"⚠️ Flask API отвечает с кодом: {response.status_code}"
+            
+    except requests.exceptions.Timeout:
+        message = "❌ Таймаут подключения к Flask API"
+    except requests.exceptions.ConnectionError:
+        message = "❌ Ошибка подключения к Flask API"
+    except Exception as e:
+        message = f"❌ Ошибка: {str(e)}"
+    
+    keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_to_start")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(message, reply_markup=reply_markup)
+
+async def test_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Тест создания платежа"""
+    query = update.callback_query
+    await query.answer("⏳ Создаю тестовый платеж...")
+    
+    user_id = query.from_user.id
+    payment_id = f"test_{user_id}_{int(time.time())}"
+    
+    try:
+        # Тест 1: Проверяем доступность API
+        await query.edit_message_text("🔍 Проверяю доступность API...")
+        
+        test_response = requests.get(f"{FLASK_API_URL}/api/test", timeout=5)
+        if test_response.status_code != 200:
+            raise Exception(f"API недоступен. Код: {test_response.status_code}")
+        
+        # Тест 2: Создаем платеж в БД
+        await query.edit_message_text("📝 Создаю запись в БД...")
+        
+        payload = {
             "payment_id": payment_id,
             "user_id": user_id,
-            "amount": PAYMENT_AMOUNT,
-            "email": f"user{user_id}@telegram.org"
+            "amount": 1,  # Минимальная сумма для теста
+            "email": f"test{user_id}@test.com"
         }
         
-        db_result = await make_async_request(
-            method="POST", 
-            url=f"{FLASK_API_URL}/api/create-payment",
-            data=create_payload,
-            headers={"Content-Type": "application/json"},
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(
+            f"{FLASK_API_URL}/api/create-payment",
+            json=payload,
+            headers=headers,
             timeout=10
         )
         
-        if not db_result.get("success", False):
-            error_msg = db_result.get("error", "Неизвестная ошибка")
-            raise Exception(f"Ошибка создания платежа в БД: {error_msg}")
+        logger.info(f"Response status: {response.status_code}")
+        logger.info(f"Response text: {response.text}")
         
-        logger.info(f"Payment created in DB: {db_result}")
+        if response.status_code != 200:
+            raise Exception(f"Ошибка создания платежа: {response.text}")
         
-        # Шаг 2: Создаем платеж в ЮKassa через Flask API
+        result = response.json()
+        
+        if not result.get("success", False):
+            raise Exception(f"Ошибка в ответе: {result.get('error', 'Unknown')}")
+        
+        # Тест 3: Создаем платеж ЮKassa
+        await query.edit_message_text("💳 Создаю платеж ЮKassa...")
+        
         yookassa_payload = {
             "payment_id": payment_id,
-            "amount": PAYMENT_AMOUNT,
-            "description": "Полный пакет ВАРИАТИКА",
-            "return_url": BOT_LINK
+            "amount": 1,
+            "description": "Тестовый платеж",
+            "return_url": "https://t.me/testing_lichnosti_bot"
         }
         
-        yookassa_result = await make_async_request(
-            method="POST",
-            url=f"{FLASK_API_URL}/api/create-yookassa-payment",
-            data=yookassa_payload,
-            headers={"Content-Type": "application/json"},
+        yookassa_response = requests.post(
+            f"{FLASK_API_URL}/api/create-yookassa-payment",
+            json=yookassa_payload,
+            headers=headers,
             timeout=10
         )
         
+        logger.info(f"YooKassa response status: {yookassa_response.status_code}")
+        logger.info(f"YooKassa response text: {yookassa_response.text}")
+        
+        if yookassa_response.status_code != 200:
+            raise Exception(f"Ошибка ЮKassa: {yookassa_response.text}")
+        
+        yookassa_result = yookassa_response.json()
+        
         if not yookassa_result.get("success", True):
-            error_msg = yookassa_result.get("error", "Неизвестная ошибка")
-            raise Exception(f"ЮKassa: {error_msg}")
+            raise Exception(f"ЮKassa ошибка: {yookassa_result.get('error', 'Unknown')}")
         
-        logger.info(f"YooKassa payment created: {yookassa_result}")
+        # Сохраняем ID платежа для проверки
+        context.user_data["test_payment_id"] = payment_id
         
-        # Сохраняем данные платежа
-        context.user_data["current_payment"] = {
-            "payment_id": payment_id,
-            "payment_url": yookassa_result.get("payment_url", ""),
-            "amount": PAYMENT_AMOUNT,
-            "status": yookassa_result.get("status", "pending")
-        }
-        
-        # Показываем экран оплаты
-        payment_text = (
-            f"💎 ПОЛНЫЙ ПАКЕТ ВАРИАТИКА\n\n"
-            f"ID заказа: {payment_id[:8]}...\n"
-            f"Цена: 690 ₽\n\n"
-            f"Инструкция:\n"
-            f"1. Нажмите «Оплатить»\n"
-            f"2. Оплатите в открывшемся окне\n"
-            f"3. Вернитесь и нажмите «Проверить оплату»"
+        # Показываем результат
+        message = (
+            "✅ Тест пройден успешно!\n\n"
+            f"📋 ID платежа: {payment_id}\n"
+            f"🔗 Ссылка для оплаты: {yookassa_result.get('payment_url', 'Не получена')}\n"
+            f"📊 Статус: {yookassa_result.get('status', 'unknown')}\n\n"
+            f"🔄 Для проверки статуса используйте кнопку ниже."
         )
         
         keyboard = [
-            [InlineKeyboardButton("💳 Оплатить 690 ₽", url=yookassa_result.get("payment_url", ""))],
-            [InlineKeyboardButton("🔄 Проверить оплату", callback_data=f"check_payment_{payment_id}")],
-            [InlineKeyboardButton("❌ Отмена", callback_data="cancel_payment")]
+            [InlineKeyboardButton("📊 Проверить статус", callback_data=f"check_payment_{payment_id}")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_start")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await query.edit_message_text(payment_text, reply_markup=reply_markup)
-        return PAYMENT_SCREEN
+        await query.edit_message_text(message, reply_markup=reply_markup)
         
+    except requests.exceptions.Timeout:
+        error_msg = "❌ Таймаут при запросе к API"
+        await show_error(query, error_msg)
+    except requests.exceptions.ConnectionError:
+        error_msg = "❌ Ошибка подключения к API"
+        await show_error(query, error_msg)
+    except json.JSONDecodeError as e:
+        error_msg = f"❌ Ошибка парсинга JSON: {str(e)}"
+        await show_error(query, error_msg)
     except Exception as e:
-        logger.error(f"Payment creation error: {e}", exc_info=True)
-        
-        error_text = f"❌ Ошибка создания платежа: {str(e)}"
-        
-        keyboard = [
-            [InlineKeyboardButton("🔄 Попробовать снова", callback_data="start_payment")],
-            [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.edit_message_text(error_text, reply_markup=reply_markup)
-        return PAYMENT_SCREEN
+        error_msg = f"❌ Ошибка: {str(e)}"
+        await show_error(query, error_msg)
 
 async def check_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Проверка статуса платежа через Flask API"""
+    """Проверка статуса платежа"""
     query = update.callback_query
-    await query.answer("🔍 Проверяем оплату...")
+    await query.answer("🔍 Проверяю статус...")
     
     payment_id = query.data.replace("check_payment_", "")
     if not payment_id:
-        payment_data = context.user_data.get("current_payment", {})
-        payment_id = payment_data.get("payment_id")
+        payment_id = context.user_data.get("test_payment_id")
     
     if not payment_id:
-        await query.answer("❌ ID платежа не найден", show_alert=True)
-        return PAYMENT_SCREEN
-    
-    logger.info(f"Checking payment status for: {payment_id}")
+        await query.edit_message_text("❌ ID платежа не найден")
+        return
     
     try:
-        status_result = await make_async_request(
-            method="GET",
-            url=f"{FLASK_API_URL}/api/payment-status/{payment_id}",
+        response = requests.get(
+            f"{FLASK_API_URL}/api/payment-status/{payment_id}",
             timeout=10
         )
         
-        if not status_result.get("success", False):
-            error_msg = status_result.get("error", "Неизвестная ошибка")
-            raise Exception(f"Ошибка проверки статуса: {error_msg}")
+        logger.info(f"Status check response: {response.status_code} - {response.text}")
         
-        payment_status = status_result.get("status", "unknown")
-        
-        if payment_status == "succeeded":
-            await query.answer("✅ Оплата прошла успешно!", show_alert=True)
+        if response.status_code == 200:
+            result = response.json()
+            status = result.get("status", "unknown")
             
-            # Доставка продукта
-            delivery_text = (
-                "🎉 Оплата прошла успешно!\n\n"
-                "📦 Ваши материалы готовы:\n"
-                "1. Полный разбор профиля\n"
-                "2. Терапевтическая сказка\n"
-                "3. Книга ВАРИАТИКА\n"
-                "4. Рекомендации\n\n"
-                "Ссылка: https://disk.yandex.ru/d/variatica_package\n\n"
-                "Спасибо за покупку! 🎁"
-            )
+            message = f"📊 Статус платежа {payment_id[:8]}...: {status}"
             
-            await query.edit_message_text(delivery_text)
-            
-            if "current_payment" in context.user_data:
-                del context.user_data["current_payment"]
-            
-            return PAYMENT_SUCCESS
-            
-        elif payment_status == "pending":
-            keyboard = [
-                [InlineKeyboardButton("🔄 Проверить еще раз", callback_data=f"check_payment_{payment_id}")],
-                [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
-            ]
-            
-            await query.edit_message_text(
-                f"⏳ Ожидание оплаты\n\nID: {payment_id[:8]}...\n\nЕсли вы уже оплатили, подождите 1-2 минуты.",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-            
+            if status == "succeeded":
+                message += "\n\n✅ Оплата прошла успешно!"
+            elif status == "pending":
+                message += "\n\n⏳ Ожидание оплаты..."
+            elif status == "canceled":
+                message += "\n\n❌ Платеж отменен"
+            else:
+                message += f"\n\nℹ️ Детали: {result}"
         else:
-            keyboard = [
-                [InlineKeyboardButton("🔄 Попробовать снова", callback_data="start_payment")],
-                [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
-            ]
-            
-            await query.edit_message_text(
-                f"❌ Платеж не оплачен\n\nСтатус: {payment_status}",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
+            message = f"❌ Ошибка проверки статуса: {response.text}"
+        
+        keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_to_start")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(message, reply_markup=reply_markup)
         
     except Exception as e:
-        logger.error(f"Payment status check error: {e}")
-        
-        error_text = f"⚠️ Ошибка проверки: {str(e)}"
-        keyboard = [[InlineKeyboardButton("🔄 Попробовать снова", callback_data=f"check_payment_{payment_id}")]]
-        
-        await query.edit_message_text(error_text, reply_markup=InlineKeyboardMarkup(keyboard))
-    
-    return PAYMENT_SCREEN
+        await query.edit_message_text(f"❌ Ошибка при проверке статуса: {str(e)}")
 
-async def cancel_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отмена платежа"""
+async def show_error(query, error_msg):
+    """Показывает сообщение об ошибке"""
+    logger.error(error_msg)
+    
+    keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_to_start")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(error_msg, reply_markup=reply_markup)
+
+async def back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возврат к началу"""
     query = update.callback_query
     await query.answer()
-    
-    if "current_payment" in context.user_data:
-        del context.user_data["current_payment"]
-    
-    return await back_to_results(update, context)
-
-async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат к результатам"""
-    query = update.callback_query
-    await query.answer()
-    
-    result_text = (
-        "🎉 Тест завершен!\n\n"
-        "🎯 Ваш профиль: SA_4_val\n\n"
-        "Что дальше?"
-    )
     
     keyboard = [
-        [InlineKeyboardButton("💎 Полный пакет рекомендаций", callback_data="show_package")],
-        [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
+        [InlineKeyboardButton("🔍 Проверить Flask API", callback_data="check_api")],
+        [InlineKeyboardButton("💰 Тест платежа", callback_data="test_payment")],
+        [InlineKeyboardButton("📊 Проверить статус", callback_data="check_status")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(result_text, reply_markup=reply_markup)
-    return RESULTS
+    await query.edit_message_text(
+        "🔧 Тестовый бот для проверки платежной системы\n\n"
+        "Выберите действие:",
+        reply_markup=reply_markup
+    )
 
-async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Перезапуск теста"""
+async def check_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверка статуса тестового платежа"""
     query = update.callback_query
     await query.answer()
     
-    context.user_data.clear()
+    payment_id = context.user_data.get("test_payment_id")
     
-    start_text = "🚀 Начинаем тест заново!"
-    keyboard = [[InlineKeyboardButton("▶️ Начать", callback_data="start_test")]]
+    if not payment_id:
+        message = "❌ Тестовый платеж не создан. Сначала создайте платеж."
+    else:
+        message = f"📋 ID тестового платежа: {payment_id}\n\nНажмите кнопку ниже для проверки статуса."
     
-    await query.edit_message_text(start_text, reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отмена"""
-    await update.message.reply_text("Тест отменён. /start чтобы начать заново.")
+    keyboard = [
+        [InlineKeyboardButton("📊 Проверить статус", callback_data=f"check_payment_{payment_id}")] if payment_id else [],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_start")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(message, reply_markup=reply_markup)
 
 # ========== ЗАПУСК БОТА ==========
 
 def main():
     """Запуск бота"""
     print("="*50)
-    print("🚀 УПРОЩЕННЫЙ БОТ ВАРИАТИКА")
+    print("🔧 ТЕСТОВЫЙ БОТ - Проверка платежной системы")
     print(f"🔗 Flask API: {FLASK_API_URL}")
     print(f"🤖 Токен: {'Установлен' if TOKEN else '❌ Нет!'}")
-    print("💰 Платежи: Flask API + ЮKassa")
     print("="*50)
     
     # Проверка Flask API
@@ -401,19 +300,29 @@ def main():
     
     # Добавляем обработчики
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("cancel", cancel))
-    
-    # Обработчики callback-ов
-    application.add_handler(CallbackQueryHandler(start_test, pattern="^start_test$"))
-    application.add_handler(CallbackQueryHandler(show_package_screen, pattern="^show_package$"))
-    application.add_handler(CallbackQueryHandler(handle_payment_start, pattern="^start_payment$"))
+    application.add_handler(CallbackQueryHandler(check_api, pattern="^check_api$"))
+    application.add_handler(CallbackQueryHandler(test_payment, pattern="^test_payment$"))
+    application.add_handler(CallbackQueryHandler(check_status, pattern="^check_status$"))
+    application.add_handler(CallbackQueryHandler(back_to_start, pattern="^back_to_start$"))
     application.add_handler(CallbackQueryHandler(check_payment_status, pattern="^check_payment_"))
-    application.add_handler(CallbackQueryHandler(cancel_payment, pattern="^cancel_payment$"))
-    application.add_handler(CallbackQueryHandler(back_to_results, pattern="^back_to_results$"))
-    application.add_handler(CallbackQueryHandler(restart_test, pattern="^restart_test$"))
     
     print("\n🤖 Бот запускается...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    
+    # Запуск с обработкой ошибки Conflict
+    try:
+        application.run_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True  # Важно! Сбрасывает старые обновления
+        )
+    except Conflict:
+        print("⚠️ Обнаружен конфликт: другой экземпляр бота уже запущен")
+        print("✅ Этот экземпляр завершает работу...")
+        sys.exit(0)
+    except KeyboardInterrupt:
+        print("\n🛑 Бот остановлен пользователем")
+    except Exception as e:
+        print(f"❌ Неожиданная ошибка: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
