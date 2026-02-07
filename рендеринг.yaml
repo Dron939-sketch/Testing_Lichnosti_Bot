@@ -1,6 +1,6 @@
 # render.yaml
 services:
-  # Сервис 1: Telegram бот (основное приложение)
+  # Сервис 1: Telegram Bot (главный бот)
   - type: web
     name: variatica-bot
     runtime: python
@@ -24,7 +24,7 @@ services:
     healthCheckPath: /health
     autoDeploy: true
 
-  # Сервис 2: Вебхук сервер для ЮKassa (ваш app.py)
+  # Сервис 2: Webhook Server (ваш app.py)
   - type: web
     name: variatica-webhook
     runtime: python
@@ -39,6 +39,8 @@ services:
         fromDatabase:
           name: variatica-db
           property: connectionString
+      - key: FLASK_DEBUG
+        value: "false"
     healthCheckPath: /health
     autoDeploy: true
 
@@ -48,4 +50,3 @@ databases:
     databaseName: variatica
     user: variatica
     plan: free
-    ipAllowList: []  # Разрешить доступ только с Render
