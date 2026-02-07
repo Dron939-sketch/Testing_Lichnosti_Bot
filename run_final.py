@@ -1,59 +1,38 @@
 #!/usr/bin/env python3
 """
-ФИНАЛЬНЫЙ ИСПРАВЛЕННЫЙ ЗАПУСК БОТА ДЛЯ RENDER
+УПРОЩЕННЫЙ ЗАПУСК БОТА ДЛЯ RENDER
+БЕЗ FLASK, ТОЛЬКО TELEGRAM БОТ
 """
 
 import os
 import sys
 import asyncio
+import logging
+
+# Настройка логирования
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 print("="*50)
-print("🚀 ЗАПУСК RUN_FINAL.PY")
+print("🚀 ЗАПУСК TELEGRAM БОТА ВАРИАТИКА")
 print("="*50)
 
-# === ДИАГНОСТИКА ===
-print("🔍 ДИАГНОСТИКА СИСТЕМЫ:")
-print(f"1. Текущая папка: {os.getcwd()}")
-print(f"2. Путь к файлу: {__file__}")
-print(f"3. Python версия: {sys.version}")
-print(f"4. PYTHONPATH: {sys.path}")
-
-# Показываем файлы
-print("\n📦 ФАЙЛЫ В ПАПКЕ:")
-try:
-    files = os.listdir('.')
-    for file in files:
-        print(f"   - {file}")
-except Exception as e:
-    print(f"   ❌ Ошибка чтения папки: {e}")
-
-# Проверяем наличие файлов
-print("\n✅ ПРОВЕРКА ФАЙЛОВ:")
-required_files = ['requirements.txt', 'bot_adaptive.py']
-for file in required_files:
-    exists = os.path.exists(file)
-    print(f"   - {file}: {'✅ Найден' if exists else '❌ Не найден'}")
-
-# === ОСНОВНОЙ КОД ===
-async def main_fixed():
-    """Исправленная версия бота"""
-    
-    print("\n" + "="*50)
-    print("🤖 ЗАПУСК БОТА")
-    print("="*50)
+async def main():
+    """Основная асинхронная функция"""
     
     # Получаем токен
     TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
     if not TOKEN:
-        print("❌ КРИТИЧЕСКАЯ ОШИБКА: TELEGRAM_BOT_TOKEN не установлен")
-        print("   Установите переменную TELEGRAM_BOT_TOKEN в настройках Render")
+        logger.error("❌ TELEGRAM_BOT_TOKEN не установлен")
         return
     
-    print(f"✅ Токен получен: {TOKEN[:10]}...")
+    logger.info(f"✅ Токен получен: {TOKEN[:10]}...")
     
     try:
         # Импортируем библиотеки
-        print("📦 ИМПОРТ БИБЛИОТЕК...")
         from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
         from telegram.ext import (
             Application,
@@ -63,119 +42,98 @@ async def main_fixed():
             ConversationHandler
         )
         
-        print("✅ Библиотеки загружены")
+        logger.info("📦 Библиотеки загружены")
         
-        # Определяем функцию start_command
+        # === ОПРЕДЕЛЯЕМ ФУНКЦИИ ===
+        
         async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """Команда /start"""
-            print(f"📨 Получена команда /start от {update.effective_user.id}")
+            logger.info(f"📨 Команда /start от {update.effective_user.id}")
+            
+            keyboard = [[InlineKeyboardButton("🚀 Начать тест", callback_data="start_test")]]
             
             await update.message.reply_text(
                 "🎴 <b>Добро пожаловать в ВАРИАТИКА!</b>\n\n"
-                "Это финальная версия бота для Render.\n\n"
                 "Нажмите кнопку чтобы начать тест:",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🚀 Начать тест", callback_data="start_test")]
-                ]),
+                reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="HTML"
             )
-            return "START_MENU"
         
-        async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            """Начало теста"""
+        async def start_test_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """Обработка кнопки начала теста"""
             query = update.callback_query
             await query.answer()
             await query.edit_message_text(
                 "✅ Тест начался!\n\n"
-                "<b>Что будет дальше:</b>\n"
-                "1. 4 этапа тестирования\n"
-                "2. Анализ профиля\n"
-                "3. Персональные рекомендации\n\n"
-                "<i>Это демо-версия. Полный функционал в bot_adaptive.py</i>",
+                "<b>Эта демо-версия показывает:</b>\n"
+                "1. Работа команды /start\n"
+                "2. Работа кнопок\n"
+                "3. Соединение с Telegram\n\n"
+                "Полный тест в bot_adaptive.py",
                 parse_mode="HTML"
             )
-            return "TESTING"
         
-        async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            """Отмена"""
-            await update.message.reply_text("Тест отменен. Используйте /start чтобы начать заново.")
-            return ConversationHandler.END
-        
-        # Создаем приложение
-        print("🤖 СОЗДАНИЕ ПРИЛОЖЕНИЯ...")
-        application = Application.builder().token(TOKEN).build()
-        
-        # Создаем ConversationHandler
-        conv_handler = ConversationHandler(
-            entry_points=[
-                CommandHandler("start", start_command),
-                CallbackQueryHandler(start_test, pattern="^start_test$")
-            ],
-            states={
-                "START_MENU": [
-                    CallbackQueryHandler(start_test, pattern="^start_test$")
-                ],
-                "TESTING": []
-            },
-            fallbacks=[CommandHandler("cancel", cancel)],
-            per_message=True
-        )
-        
-        application.add_handler(conv_handler)
-        
-        # Простые команды для проверки
         async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """Команда /help"""
             await update.message.reply_text(
                 "📋 <b>Доступные команды:</b>\n\n"
                 "/start - Начать тест\n"
                 "/test - Проверка работы\n"
-                "/help - Эта справка\n"
-                "/cancel - Отмена теста",
+                "/help - Эта справка\n\n"
+                "<i>Бот успешно запущен на Render!</i>",
                 parse_mode="HTML"
             )
         
         async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            await update.message.reply_text("✅ Бот работает корректно!")
+            """Команда /test"""
+            await update.message.reply_text("✅ Бот работает корректно на Render!")
         
+        # === СОЗДАЕМ ПРИЛОЖЕНИЕ ===
+        
+        # Важно: создаем новый event loop
+        application = Application.builder().token(TOKEN).build()
+        
+        # Добавляем обработчики команд
+        application.add_handler(CommandHandler("start", start_command))
         application.add_handler(CommandHandler("help", help_command))
         application.add_handler(CommandHandler("test", test_command))
         
-        print("✅ Приложение создано")
-        print("🌐 ПОДКЛЮЧЕНИЕ К TELEGRAM...")
+        # Добавляем обработчик кнопок
+        application.add_handler(CallbackQueryHandler(start_test_callback, pattern="^start_test$"))
         
-        # Запускаем бота
+        logger.info("🤖 Бот запущен и готов к работе")
+        
+        # Запускаем polling с отдельным loop
         await application.run_polling(
             drop_pending_updates=True,
-            close_loop=False,  # Важно для Render
-            timeout=30,
-            read_timeout=30,
-            write_timeout=30,
-            connect_timeout=30,
-            pool_timeout=30
+            close_loop=False,
+            stop_signals=()  # ОТКЛЮЧАЕМ обработку сигналов
         )
         
-    except ImportError as e:
-        print(f"❌ ОШИБКА ИМПОРТА: {e}")
-        print("   Установите зависимости: pip install python-telegram-bot==20.3")
-        return
     except Exception as e:
-        print(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
+        logger.error(f"❌ Ошибка: {e}")
         import traceback
         traceback.print_exc()
-        return
+        raise
 
-# === ЗАПУСК ===
-if __name__ == "__main__":
-    print("\n" + "="*50)
-    print("🎯 ЗАПУСК АСИНХРОННОЙ ФУНКЦИИ")
-    print("="*50)
-    
+def main_sync():
+    """Синхронная обертка для запуска"""
     try:
-        asyncio.run(main_fixed())
+        asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n👋 Бот остановлен")
-    except Exception as e:
-        print(f"\n❌ ФАТАЛЬНАЯ ОШИБКА: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+        logger.info("👋 Бот остановлен")
+    except RuntimeError as e:
+        if "already running" in str(e):
+            logger.error("⚠️ Event loop уже запущен. Используем альтернативный метод...")
+            # Альтернативный запуск
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(main())
+            finally:
+                loop.close()
+        else:
+            raise
+
+if __name__ == "__main__":
+    main_sync()
