@@ -1,11 +1,51 @@
+# render.yaml
 services:
-  # Минимальный бот для теста
+  # Сервис 1: Telegram бот (основное приложение)
   - type: web
-    name: variatica-telegram-bot
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python run_bot.py
+    name: variatica-bot
+    runtime: python
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: python бот_адаптивный.py
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      - key: YOOKASSA_SHOP_ID
+        sync: false
+      - key: YOOKASSA_SECRET_KEY
+        sync: false
+      - key: FLASK_API_URL
+        value: https://variatica-webhook.onrender.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: variatica-db
+          property: connectionString
+    healthCheckPath: /health
     autoDeploy: true
+
+  # Сервис 2: Вебхук сервер для ЮKassa (ваш app.py)
+  - type: web
+    name: variatica-webhook
+    runtime: python
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: variatica-db
+          property: connectionString
+    healthCheckPath: /health
+    autoDeploy: true
+
+# Общая база данных для обоих сервисов
+databases:
+  - name: variatica-db
+    databaseName: variatica
+    user: variatica
+    plan: free
+    ipAllowList: []  # Разрешить доступ только с Render
