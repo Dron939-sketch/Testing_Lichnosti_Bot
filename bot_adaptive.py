@@ -1,133 +1,123 @@
 """
-БОТ ДЛЯ СОЗДАНИЯ ТАБЛИЦЫ И ТЕСТА
-Теперь когда PostgreSQL доступен!
+РАБОЧИЙ БОТ ДЛЯ ПРОДАКШЕНА
+Теперь когда база данных работает!
 """
 
 import os
 import requests
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 API_URL = "https://testing-lichnosti-bot-1.onrender.com"
 
-async def setup_database(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Настройка базы данных - шаг за шагом"""
-    
-    # Шаг 1: Проверяем доступность API
-    await update.message.reply_text("🔍 Проверяю доступность Flask API...")
-    
-    try:
-        r1 = requests.get(API_URL, timeout=5)
-        if r1.status_code != 200:
-            await update.message.reply_text(f"❌ API недоступен: {r1.status_code}")
-            return
-        await update.message.reply_text("✅ Flask API доступен!")
-    except:
-        await update.message.reply_text("❌ Не могу подключиться к Flask API")
-        return
-    
-    # Шаг 2: Создаем таблицу
-    await update.message.reply_text("🛠 Создаю таблицу payments в PostgreSQL...")
-    
-    try:
-        r2 = requests.get(f"{API_URL}/create-table", timeout=10)
-        await update.message.reply_text(f"Создание таблицы:\nСтатус: {r2.status_code}\nОтвет: {r2.text[:300]}")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка создания таблицы: {str(e)}")
-        return
-    
-    # Шаг 3: Проверяем что таблица создана
-    await update.message.reply_text("📊 Проверяю создание таблицы...")
-    
-    try:
-        r3 = requests.get(f"{API_URL}/check-db", timeout=10)
-        response = r3.json()
-        
-        if response.get('success') and response.get('payments_exists'):
-            await update.message.reply_text(
-                "🎉 УСПЕХ! Таблица payments создана!\n\n"
-                f"В базе найдено таблиц: {len(response.get('tables', []))}\n"
-                f"Таблица payments существует: ✅\n\n"
-                "Теперь тестируем создание платежа..."
-            )
-            
-            # Шаг 4: Тестируем платеж
-            await test_payment_creation(update)
-            
-        else:
-            await update.message.reply_text(
-                "⚠️ Проблема с таблицей:\n"
-                f"Ответ: {response}\n\n"
-                "Попробуйте создать таблицу вручную через Render PostgreSQL."
-            )
-            
-    except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка проверки: {str(e)}")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Главное меню - теперь с реальной БД"""
+    await update.message.reply_text(
+        "🎉 **ПЛАТЕЖНАЯ СИСТЕМА РАБОТАЕТ!**\n\n"
+        "✅ PostgreSQL база настроена\n"
+        "✅ Таблица payments создана\n"
+        "✅ API принимает платежи\n\n"
+        "Выберите действие:",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("💰 Купить доступ (690 руб)", callback_data="buy")],
+            [InlineKeyboardButton("🧪 Тестовый платеж (1 руб)", callback_data="test_payment")],
+            [InlineKeyboardButton("📊 Проверить статус", callback_data="check_status")],
+            [InlineKeyboardButton("🔧 Настройки", callback_data="settings")]
+        ])
+    )
 
-async def test_payment_creation(update: Update):
-    """Тест создания платежа после создания таблицы"""
-    await update.message.reply_text("💰 Тестирую создание платежа...")
+async def buy_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Покупка доступа - реальный платеж"""
+    query = update.callback_query
+    await query.answer()
     
+    await query.edit_message_text(
+        "💰 **ПОКУПКА ДОСТУПА К КУРСУ**\n\n"
+        "Стоимость: 690 рублей\n"
+        "Доступ навсегда\n\n"
+        "Следующие шаги:\n"
+        "1. Создать платеж в базе\n"
+        "2. Интегрировать с ЮKassa\n"
+        "3. Получить ссылку для оплаты\n"
+        "4. Открыть доступ после оплаты\n\n"
+        "⚙️ *Интеграция с ЮKassa в разработке*",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🧪 Протестировать создание", callback_data="create_real")],
+            [InlineKeyboardButton("🔙 Назад", callback_data="back")]
+        ])
+    )
+
+async def create_test_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Тестовый платеж - уже работает!"""
+    query = update.callback_query
+    await query.answer("⏳ Создаю тестовый платеж...")
+    
+    # Данные для теста
     test_data = {
-        "payment_id": f"success_test_{update.effective_user.id}",
-        "user_id": update.effective_user.id,
+        "payment_id": f"telegram_test_{query.from_user.id}",
+        "user_id": query.from_user.id,
         "amount": 1.0,
-        "email": f"test{update.effective_user.id}@success.com",
-        "description": "Первый успешный платеж после настройки БД"
+        "email": f"user{query.from_user.id}@telegram.org",
+        "description": "Тест из Telegram бота"
     }
     
     try:
-        r = requests.post(
+        response = requests.post(
             f"{API_URL}/api/create-payment",
             json=test_data,
             timeout=10
         )
         
-        if r.status_code in [200, 201]:
-            await update.message.reply_text(
-                f"🎉🎉🎉 УРА! ВСЁ РАБОТАЕТ!\n\n"
-                f"✅ Платеж успешно создан в PostgreSQL!\n"
-                f"🆔 ID: {test_data['payment_id']}\n"
-                f"👤 Пользователь: {test_data['user_id']}\n"
-                f"💰 Сумма: {test_data['amount']} руб\n"
-                f"📊 Статус: записан в базу данных\n\n"
-                f"Ответ сервера: {r.text[:500]}"
+        if response.status_code == 201:
+            result = response.json()
+            await query.edit_message_text(
+                f"✅ **ТЕСТ УСПЕШЕН!**\n\n"
+                f"Платеж создан в PostgreSQL!\n\n"
+                f"📋 Детали:\n"
+                f"• ID: `{result['payment_id']}`\n"
+                f"• Статус: {result['status']}\n"
+                f"• Время: {result.get('created_at', 'сейчас')}\n\n"
+                f"**Что дальше:**\n"
+                f"1. Добавить интеграцию с ЮKassa\n"
+                f"2. Настроить вебхуки\n"
+                f"3. Создать механизм доступа",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔍 Проверить в базе", 
+                     url=f"{API_URL}/api/payment-status/{result['payment_id']}")],
+                    [InlineKeyboardButton("🔙 Назад", callback_data="back")]
+                ])
             )
         else:
-            await update.message.reply_text(
-                f"⚠️ Ошибка при создании платежа:\n"
-                f"Статус: {r.status_code}\n"
-                f"Ответ: {r.text[:500]}"
-            )
+            await query.edit_message_text(f"❌ Ошибка: {response.status_code}\n{response.text}")
             
     except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка запроса: {str(e)}")
+        await query.edit_message_text(f"❌ Ошибка подключения: {str(e)}")
 
-async def quick_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Быстрый тест"""
-    await update.message.reply_text(
-        "🚀 БЫСТРЫЙ ТЕСТ СИСТЕМЫ\n\n"
-        "1. Создать таблицу: /setup\n"
-        "2. Или проверьте в браузере:\n"
-        f"   • {API_URL}/create-table\n"
-        f"   • {API_URL}/check-db\n\n"
-        "PostgreSQL теперь доступен! 🎉"
-    )
+async def handle_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возврат в главное меню"""
+    query = update.callback_query
+    await query.answer()
+    await start(update, context)
 
 def main():
     print("="*60)
-    print("🚀 БОТ ДЛЯ НАСТРОЙКИ POSTGRESQL")
-    print("База данных теперь ДОСТУПНА на Render!")
+    print("🎉 РАБОЧИЙ БОТ ДЛЯ ПРОДАКШЕНА")
+    print(f"API: {API_URL}")
+    print("База данных: PostgreSQL ✅")
     print("="*60)
     
     app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("setup", setup_database))
-    app.add_handler(CommandHandler("test", quick_test))
-    app.add_handler(CommandHandler("start", setup_database))
     
-    print("✅ Бот запущен!")
-    print("💡 Используйте /setup для создания таблицы и теста")
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(buy_access, pattern="^buy$"))
+    app.add_handler(CallbackQueryHandler(create_test_payment, pattern="^test_payment$"))
+    app.add_handler(CallbackQueryHandler(create_test_payment, pattern="^create_real$"))
+    app.add_handler(CallbackQueryHandler(handle_back, pattern="^back$"))
+    
+    print("✅ Бот запущен! База данных работает.")
+    print("💡 Следующий шаг: интеграция с ЮKassa")
     print("="*60)
     
     app.run_polling(drop_pending_updates=True)
