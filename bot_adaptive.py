@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Telegram Bot для боевого режима ЮKassa
-Версия 5.1 - исправлена ошибка Markdown
+Версия 6.0 - с защитой от конфликтов и автоматическим восстановлением
 """
 
 import os
@@ -11,13 +11,15 @@ import json
 import base64
 import logging
 import requests
+import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
-    ContextTypes
+    ContextTypes,
+    ApplicationBuilder
 )
 
 # ========== НАСТРОЙКА ЛОГГИРОВАНИЯ ==========
@@ -27,11 +29,80 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Уменьшаем логирование библиотек
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('httpcore').setLevel(logging.WARNING)
+
 # ========== КОНФИГУРАЦИЯ ==========
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")  # 1262862
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")  # live_...
+
+# ========== ЗАЩИТА ОТ КОНФЛИКТОВ ==========
+def check_and_resolve_conflict():
+    """
+    Проверяет и автоматически решает конфликт с другим ботом
+    Возвращает True если конфликт решен или его нет
+    """
+    try:
+        print("🔄 Проверяю наличие конфликтов...")
+        
+        # 1. Пробуем получить информацию о боте
+        response = requests.get(
+            f"https://api.telegram.org/bot{TOKEN}/getMe",
+            timeout=10
+        )
+        
+        if response.status_code == 409:
+            # КОНФЛИКТ: другой бот уже запущен
+            print("⚠️ Обнаружен конфликт: другой бот уже запущен")
+            print("🔄 Пытаюсь решить конфликт автоматически...")
+            
+            # Пробуем удалить вебхук (на случай если бот запущен в режиме вебхуков)
+            try:
+                delete_response = requests.post(
+                    f"https://api.telegram.org/bot{TOKEN}/deleteWebhook",
+                    json={"drop_pending_updates": True},
+                    timeout=5
+                )
+                if delete_response.status_code == 200:
+                    print("✅ Вебхук удален")
+                else:
+                    print(f"⚠️ Не удалось удалить вебхук: {delete_response.status_code}")
+            except:
+                pass
+            
+            # Ждем немного и проверяем снова
+            print("⏳ Жду 3 секунды...")
+            time.sleep(3)
+            
+            # Повторная проверка
+            response2 = requests.get(
+                f"https://api.telegram.org/bot{TOKEN}/getMe",
+                timeout=10
+            )
+            
+            if response2.status_code == 200:
+                print("✅ Конфликт решен автоматически!")
+                return True
+            else:
+                print("❌ Не удалось решить конфликт автоматически")
+                print("💡 Решение: Удалите других ботов на Render")
+                return False
+                
+        elif response.status_code == 200:
+            print("✅ Конфликта нет, можно запускать")
+            return True
+            
+        else:
+            print(f"⚠️ Неизвестный статус: {response.status_code}")
+            print(f"📄 Ответ: {response.text[:200]}")
+            return True  # Пробуем запуститься
+            
+    except Exception as e:
+        print(f"❌ Ошибка проверки конфликта: {e}")
+        return True  # Пробуем запуститься несмотря на ошибку
 
 # ========== ФУНКЦИЯ ДЛЯ ЮKASSA API ==========
 def create_yookassa_payment_test(payment_id: str, user_id: int, email: str = None) -> dict:
@@ -411,7 +482,7 @@ async def payment_instructions(update: Update, context: ContextTypes.DEFAULT_TYP
         "• В чеке будет указано: 'Тестовый доступ к курсу ВАРИАТИКА'\n"
         "• Сумма: 1 рубль (включая НДС 20%)\n\n"
         
-        "*После успешной оплаты:*\n"
+        "*После успешной оплата:*\n"
         "Вы увидите статус 'ОПЛАЧЕНО' и получите доступ."
     )
     
@@ -457,11 +528,61 @@ async def check_status_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧪 Создать тестовый платеж", callback_data="test_buy")]])
     )
 
+# ========== ОБРАБОТЧИК ОШИБОК ==========
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Глобальный обработчик ошибок"""
+    try:
+        error_msg = str(context.error)
+        
+        # Обрабатываем конфликт отдельно
+        if "Conflict" in error_msg and "getUpdates" in error_msg:
+            logger.warning("⚠️ Обнаружен конфликт с другим ботом")
+            
+            # Пробуем решить конфликт
+            print("🔄 Пытаюсь решить конфликт автоматически...")
+            if check_and_resolve_conflict():
+                print("✅ Конфликт решен, перезапускаю бота...")
+                # Перезапускаем бота через 5 секунд
+                await asyncio.sleep(5)
+                restart_bot()
+                return
+            
+            # Если не удалось решить, уведомляем пользователя
+            if update and hasattr(update, 'callback_query') and update.callback_query:
+                try:
+                    await update.callback_query.message.reply_text(
+                        "⚠️ *Обнаружен конфликт с другим ботом*\n\n"
+                        "Пожалуйста, подождите 1 минуту и попробуйте снова.",
+                        parse_mode='Markdown'
+                    )
+                except:
+                    pass
+        else:
+            # Другие ошибки
+            logger.error(f"⚠️ Ошибка в обработчике: {context.error}")
+            
+            if update and hasattr(update, 'callback_query') and update.callback_query:
+                try:
+                    await update.callback_query.message.reply_text(
+                        f"❌ *Произошла ошибка:*\n{error_msg[:100]}",
+                        parse_mode='Markdown'
+                    )
+                except:
+                    pass
+                    
+    except Exception as e:
+        logger.critical(f"💥 Ошибка в обработчике ошибок: {e}")
+
+def restart_bot():
+    """Перезапускает бота"""
+    print("🔄 Перезапуск бота...")
+    os.execv(sys.executable, ['python'] + sys.argv)
+
 # ========== ГЛАВНАЯ ФУНКЦИЯ ==========
 def main():
-    """Запуск тестового бота"""
+    """Запуск бота с защитой от конфликтов"""
     print("=" * 70)
-    print("🤖 TELEGRAM БОТ ДЛЯ ТЕСТИРОВАНИЯ ПЛАТЕЖЕЙ")
+    print("🤖 TELEGRAM БОТ С ЗАЩИТОЙ ОТ КОНФЛИКТОВ")
     print("=" * 70)
     print(f"💳 РЕЖИМ: БОЕВОЙ (с чеком 54-ФЗ)")
     print(f"💰 СУММА: 1 рубль для теста")
@@ -482,12 +603,33 @@ def main():
         print("⚠️  ВНИМАНИЕ: Данные ЮKassa неполные!")
         print("Платежи могут не работать")
     
+    # Проверяем конфликты перед запуском
+    print("=" * 70)
+    print("🔍 Проверка конфликтов...")
+    
+    if not check_and_resolve_conflict():
+        print("❌ Не удалось решить конфликт с другим ботом")
+        print("💡 Решение: Удалите других ботов на Render Dashboard")
+        print("⏳ Перезапуск через 30 секунд...")
+        time.sleep(30)
+        main()  # Рекурсивный перезапуск
+        return
+    
     print("=" * 70)
     print("🔄 Запуск бота...")
     
     try:
-        # Создаем приложение
-        app = Application.builder().token(TOKEN).build()
+        # Создаем приложение с увеличенными таймаутами
+        app = (
+            ApplicationBuilder()
+            .token(TOKEN)
+            .connection_pool_size(8)
+            .pool_timeout(30)
+            .read_timeout(30)
+            .write_timeout(30)
+            .connect_timeout(30)
+            .build()
+        )
         
         # Команды
         app.add_handler(CommandHandler("start", start))
@@ -501,18 +643,6 @@ def main():
         app.add_handler(CallbackQueryHandler(check_status_menu, pattern="^check_status_menu$"))
         
         # Обработчик ошибок
-        async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-            """Обработчик ошибок"""
-            logger.error(f"Ошибка при обработке обновления {update}: {context.error}")
-            
-            if update and hasattr(update, 'callback_query') and update.callback_query:
-                try:
-                    await update.callback_query.message.reply_text(
-                        f"❌ Произошла ошибка: {str(context.error)[:100]}"
-                    )
-                except:
-                    pass
-        
         app.add_error_handler(error_handler)
         
         print("✅ Бот запущен!")
@@ -520,16 +650,24 @@ def main():
         print("🧪 Для теста нажмите 'ТЕСТОВАЯ ОПЛАТА'")
         print("=" * 70)
         
+        # Запуск с параметрами для избежания конфликтов
         app.run_polling(
-            drop_pending_updates=True,
-            allowed_updates=Update.ALL_TYPES
+            drop_pending_updates=True,  # ОЧЕНЬ ВАЖНО!
+            allowed_updates=Update.ALL_TYPES,
+            close_loop=False,
+            stop_signals=[]  # Не обрабатываем сигналы завершения
         )
         
+    except KeyboardInterrupt:
+        print("\n🛑 Бот остановлен пользователем")
+        
     except Exception as e:
-        print(f"❌ ОШИБКА ЗАПУСКА: {e}")
+        print(f"❌ КРИТИЧЕСКАЯ ОШИБКА ЗАПУСКА: {e}")
         import traceback
         traceback.print_exc()
-        print("Перезапуск через 10 секунд...")
+        
+        # Автоматический перезапуск с задержкой
+        print(f"🔄 Перезапуск через 10 секунд...")
         time.sleep(10)
         main()
 
