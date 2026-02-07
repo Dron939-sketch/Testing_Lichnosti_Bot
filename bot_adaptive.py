@@ -37,7 +37,7 @@ logging.getLogger('telegram').setLevel(logging.WARNING)
 # ========== КОНФИГУРАЦИЯ ==========
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 # 🔴 ИСПРАВЬТЕ ЭТОТ URL! 🔴
-API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-qyra.onrender.com")
+API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 
