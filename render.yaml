@@ -1,36 +1,48 @@
 services:
-  - type: web
-    name: variatica-bot
+  # Telegram Bot (Background Worker)
+  - type: worker
+    name: variatica-telegram-bot
     env: python
-    runtime: python-3.11.9  # опционально, если хочешь 3.11
+    runtime: python-3.11.9
     
     # Автоматическая сборка
     autoDeploy: true
     
+    # Health check
+    healthCheckPath: /health
+    healthCheckTimeout: 10
+    
     # Сборка
     buildCommand: |
+      pip install --upgrade pip
       pip install -r requirements.txt
       echo "✅ Зависимости установлены"
     
-    # Запуск
+    # Запуск бота
     startCommand: python bot_adaptive.py
     
     # Переменные окружения
     envVars:
-      # Обязательные (заполняются вручную в панели Render)
+      # ОБЯЗАТЕЛЬНЫЕ (заполнить в панели Render)
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      
+      # Для платежей (если нужны)
       - key: YOOKASSA_SHOP_ID
         sync: false
       - key: YOOKASSA_SECRET_KEY
         sync: false
+      - key: WEBHOOK_URL
+        value: https://ваш-webhook-сервер.onrender.com
       
-      # Опциональные
+      # ОПЦИОНАЛЬНЫЕ
       - key: ENVIRONMENT
         value: production
-      - key: WEBHOOK_URL
-        generateValue: true  # Render сам подставит URL
       - key: ADMIN_ID
-        sync: false  # ID администратора для команд
+        sync: false
       - key: LOG_LEVEL
         value: INFO
+      - key: PAYMENT_AMOUNT
+        value: "690"
+      - key: PAYMENT_CURRENCY
+        value: "RUB"
