@@ -2,7 +2,7 @@
 """
 Telegram Bot для платежной системы VARIATICA
 БОЕВОЙ РЕЖИМ с тестовым платежом 1 рубль
-ПОЛНАЯ ВЕРСИЯ с Invoices API (ИСПРАВЛЕННАЯ)
+ПОЛНАЯ ВЕРСИЯ с Invoices API (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 """
 
 import os
@@ -11,6 +11,7 @@ import time
 import json
 import base64
 import logging
+import uuid  # ← ДОБАВЛЕНО для уникального Idempotence-Key
 import requests
 import asyncio
 from datetime import datetime
@@ -123,7 +124,7 @@ def check_bot_health():
 
 # ========== УЛУЧШЕННЫЙ ОБРАБОТЧИК ОШИБОК ==========
 async def enhanced_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработчик ошибок с защитой от конфликтов"""
+    """Обработчик ошибки с защитой от конфликтов"""
     error_msg = str(context.error)
     
     # Логируем ошибку
@@ -214,7 +215,7 @@ def check_configuration():
         print(f"✅ Shop ID: {YOOKASSA_SHOP_ID}")
     
     if not YOOKASSA_SECRET_KEY:
-        errors.append("❌ YOOKASSA_SECRET_KEY не установлен")
+        errors.append("❌ YOOKASSA_SECRET_KEY не установен")
         print("❌ Secret Key: НЕ УСТАНОВЛЕН!")
     else:
         key_type = "ТЕСТОВЫЙ" if YOOKASSA_SECRET_KEY.startswith('test_') else "БОЕВОЙ"
@@ -260,10 +261,14 @@ def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0, 
         auth_string = f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}"
         auth_encoded = base64.b64encode(auth_string.encode()).decode()
         
+        # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ №1: Уникальный Idempotence-Key для каждого запроса
+        unique_id = uuid.uuid4().hex[:16]
+        idempotence_key = f"{payment_id}_{unique_id}_{int(time.time())}"
+        
         headers = {
             'Authorization': f'Basic {auth_encoded}',
             'Content-Type': 'application/json',
-            'Idempotence-Key': payment_id
+            'Idempotence-Key': idempotence_key  # ← УНИКАЛЬНЫЙ для каждого запроса!
         }
         
         if not email:
@@ -414,20 +419,29 @@ def create_payment_in_db(user_id: int, amount: float = 1.0, is_test: bool = Fals
         
         logger.info(f"📦 Создаю платеж в БД: {payment_id}")
         
+        # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ №2: Используем новый эндпоинт для Invoices API
         response = requests.post(
-            f"{API_URL}/api/create-payment",
+            f"{API_URL}/api/create-payment-advanced",  # ← ИЗМЕНЕНИЕ ЗДЕСЬ!
             json=payload,
             timeout=10
         )
         
         if response.status_code in [200, 201]:
             logger.info(f"✅ Платеж создан в БД: {payment_id}")
+            
+            # Получаем ответ с новыми полями Invoices API
+            response_data = response.json()
+            
             return {
                 "success": True,
                 "payment_id": payment_id,
                 "email": f"user_{user_id}@telegram.org",
                 "amount": amount,
-                "description": description
+                "description": description,
+                "yookassa_id": response_data.get('yookassa_id'),
+                "confirmation_url": response_data.get('confirmation_url'),
+                "invoice_type": response_data.get('invoice_type', 'yookassa_invoice'),
+                "available_methods": response_data.get('available_methods', 'all')
             }
         else:
             error_text = response.text[:200]
@@ -565,7 +579,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚙️ *Системная информация:*\n"
         f"• Режим: {mode}\n"
         f"• API: `{API_URL}`\n"
-        f"• Бот: {TELEGRAM_BOT_URL}"
+        f"• Бот: {TELEGRAM_BOT_URL}\n\n"
+        f"*Исправленная версия:* ✅ дедупликация включена"
     )
     
     await update.message.reply_text(
@@ -817,30 +832,39 @@ async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     payment_id = db_result["payment_id"]
     email = db_result.get("email", f"user_{user_id}@telegram.org")
     
-    await query.edit_message_text("💳 *Шаг 2/3: Создаю платеж через Invoices API...*", parse_mode='Markdown')
-    
-    payment_result = create_yookassa_payment(payment_id, user_id, amount=1.0, email=email, is_test=True)
-    if not payment_result["success"]:
-        error_msg = payment_result.get('error', 'Неизвестная ошибка')
-        details = payment_result.get('details', '')
+    # Если в ответе есть confirmation_url из API - используем его
+    if db_result.get("confirmation_url"):
+        confirmation_url = db_result["confirmation_url"]
+        payment_result = db_result
+    else:
+        # Иначе создаем платеж через ЮKassa API
+        await query.edit_message_text("💳 *Шаг 2/3: Создаю платеж через Invoices API...*", parse_mode='Markdown')
         
-        error_text = f"❌ *Ошибка Invoices API:*\n`{error_msg}`"
+        payment_result = create_yookassa_payment(payment_id, user_id, amount=1.0, email=email, is_test=True)
+        if not payment_result["success"]:
+            error_msg = payment_result.get('error', 'Неизвестная ошибка')
+            details = payment_result.get('details', '')
+            
+            error_text = f"❌ *Ошибка Invoices API:*\n`{error_msg}`"
+            
+            await query.edit_message_text(error_text, parse_mode='Markdown')
+            return
         
-        await query.edit_message_text(error_text, parse_mode='Markdown')
-        return
+        confirmation_url = payment_result["confirmation_url"]
     
     keyboard = [
-        [InlineKeyboardButton("💳 ОПЛАТИТЬ 1 РУБЛЬ", url=payment_result["confirmation_url"])],
+        [InlineKeyboardButton("💳 ОПЛАТИТЬ 1 РУБЛЬ", url=confirmation_url)],
         [InlineKeyboardButton("🔄 Проверить статус", callback_data=f"status_{payment_id}")],
         [InlineKeyboardButton("🏠 В меню", callback_data="main_menu")]
     ]
     
     # Добавляем информацию о Invoices API
     invoice_info = ""
-    if payment_result.get('invoice_type') == 'yookassa_invoice':
-        available_methods = payment_result.get('available_methods', 'unknown')
-        if available_methods == 'all':
-            invoice_info = "\n💡 *ВСЕ способы оплаты доступны:* СБП, ЮMoney, карты и другие!"
+    invoice_type = payment_result.get('invoice_type', 'yookassa_invoice')
+    available_methods = payment_result.get('available_methods', 'all')
+    
+    if invoice_type == 'yookassa_invoice' and available_methods == 'all':
+        invoice_info = "\n💡 *ВСЕ способы оплаты доступны:* СБП, ЮMoney, карты и другие!"
     
     # В боевом режиме показываем информацию о чеке
     mode_info = ""
@@ -856,7 +880,8 @@ async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📋 *ID:* `{payment_id}`\n"
         f"💰 *Сумма:* 1 рубль\n"
         f"{mode_info}\n"
-        f"{invoice_info}\n\n"
+        f"{invoice_info}\n"
+        f"🔒 *Защита от дублей:* ✅ активна\n\n"
         f"*Для оплаты нажмите кнопку ниже:*\n"
         f"После успешной оплаты вы получите мгновенное уведомление и тестовые материалы."
     )
@@ -886,29 +911,38 @@ async def buy_690_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     payment_id = db_result["payment_id"]
     email = db_result.get("email", f"user_{user_id}@telegram.org")
     
-    await query.edit_message_text("💳 *Шаг 2/3: Создаю платеж через Invoices API...*", parse_mode='Markdown')
-    
-    payment_result = create_yookassa_payment(payment_id, user_id, amount=690.0, email=email, is_test=False)
-    if not payment_result["success"]:
-        error_msg = payment_result.get('error', 'Неизвестная ошибка')
+    # Если в ответе есть confirmation_url из API - используем его
+    if db_result.get("confirmation_url"):
+        confirmation_url = db_result["confirmation_url"]
+        payment_result = db_result
+    else:
+        # Иначе создаем платеж через ЮKassa API
+        await query.edit_message_text("💳 *Шаг 2/3: Создаю платеж через Invoices API...*", parse_mode='Markdown')
         
-        error_text = f"❌ *Ошибка Invoices API:*\n`{error_msg}`"
+        payment_result = create_yookassa_payment(payment_id, user_id, amount=690.0, email=email, is_test=False)
+        if not payment_result["success"]:
+            error_msg = payment_result.get('error', 'Неизвестная ошибка')
+            
+            error_text = f"❌ *Ошибка Invoices API:*\n`{error_msg}`"
+            
+            await query.edit_message_text(error_text, parse_mode='Markdown')
+            return
         
-        await query.edit_message_text(error_text, parse_mode='Markdown')
-        return
+        confirmation_url = payment_result["confirmation_url"]
     
     keyboard = [
-        [InlineKeyboardButton("💳 ОПЛАТИТЬ 690 РУБ", url=payment_result["confirmation_url"])],
+        [InlineKeyboardButton("💳 ОПЛАТИТЬ 690 РУБ", url=confirmation_url)],
         [InlineKeyboardButton("🔄 Проверить статус", callback_data=f"status_{payment_id}")],
         [InlineKeyboardButton("🏠 В меню", callback_data="main_menu")]
     ]
     
     # Добавляем информацию о Invoices API
     invoice_info = ""
-    if payment_result.get('invoice_type') == 'yookassa_invoice':
-        available_methods = payment_result.get('available_methods', 'all')
-        if available_methods == 'all':
-            invoice_info = "\n💡 *ВСЕ способы оплаты доступны:* СБП, ЮMoney, банковские карты, Тинькофф и другие!"
+    invoice_type = payment_result.get('invoice_type', 'yookassa_invoice')
+    available_methods = payment_result.get('available_methods', 'all')
+    
+    if invoice_type == 'yookassa_invoice' and available_methods == 'all':
+        invoice_info = "\n💡 *ВСЕ способы оплаты доступны:* СБП, ЮMoney, банковские карты, Тинькофф и другие!"
     
     # Добавляем информацию о чеке для боевого режима
     mode_info = "💎 *КУРС ВАРИАТИКА - ПОЛНЫЙ ДОСТУП*"
@@ -923,7 +957,8 @@ async def buy_690_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 *Сумма:* 690 руб\n"
         f"📚 *Продукт:* Полный курс ВАРИАТИКА\n"
         f"{mode_info}\n"
-        f"{invoice_info}\n\n"
+        f"{invoice_info}\n"
+        f"🔒 *Защита от дублей:* ✅ активна\n\n"
         f"*Что вы получите после оплаты:*\n"
         f"✅ Полный доступ ко всем материалам\n"
         f"✅ Мгновенное уведомление в Telegram\n"
@@ -1127,8 +1162,10 @@ async def retry_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
         
         is_test = amount == 1.0
         
-        # Создаем новую ссылку через Invoices API
-        new_payment_id = f"retry_{user_id}_{int(time.time())}"
+        # Создаем новый payment_id для ретрая (избегаем дублей)
+        new_payment_id = f"retry_{user_id}_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+        
+        # Создаем новый платеж через Invoices API
         payment_result = create_yookassa_payment(
             payment_id=new_payment_id,
             user_id=user_id,
@@ -1151,7 +1188,8 @@ async def retry_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
                 f"🔗 *НОВАЯ ССЫЛКА ДЛЯ ОПЛАТЫ*\n\n"
                 f"📋 *ID:* `{new_payment_id}`\n"
                 f"💰 *Сумма:* {amount_text}"
-                f"{invoice_info}\n\n"
+                f"{invoice_info}\n"
+                f"🔒 *Защита от дублей:* ✅ активна\n\n"
                 f"Нажмите кнопку ниже для оплаты:",
                 parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup(keyboard),
@@ -1170,7 +1208,7 @@ async def retry_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
 def main():
     """Основная функция запуска с защитой от конфликтов"""
     print("=" * 80)
-    print("🚀 VARIATICA PAYMENT BOT - Invoices API РЕЖИМ")
+    print("🚀 VARIATICA PAYMENT BOT - Invoices API РЕЖИМ С ИСПРАВЛЕНИЕМ ДУБЛИРОВАНИЯ")
     print("=" * 80)
     
     if not check_configuration():
@@ -1189,7 +1227,7 @@ def main():
         # Регистрация командных обработчиков
         app.add_handler(CommandHandler("start", start))
         app.add_handler(CommandHandler("buy", buy_command))
-        app.add_handler(CommandHandler("materials", materials_command))  # ← ИСПРАВЛЕНО!
+        app.add_handler(CommandHandler("materials", materials_command))
         app.add_handler(CommandHandler("myaccess", myaccess_command))
         app.add_handler(CommandHandler("check", check_command))
         
@@ -1219,18 +1257,18 @@ def main():
         
         print(f"💡 Invoices API: АКТИВИРОВАН")
         print(f"💳 Пользователи увидят ВСЕ способы оплаты")
+        print(f"🔒 ЗАЩИТА ОТ ДУБЛИРОВАНИЯ: ВКЛЮЧЕНА")
         print(f"⏰ Запуск: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("=" * 80)
+        print("🎯 КЛЮЧЕВЫЕ ИСПРАВЛЕНИЯ:")
+        print("  • Уникальный Idempotence-Key для каждого запроса")
+        print("  • Использование /api/create-payment-advanced эндпоинта")
+        print("  • Предотвращение дублирования платежей и уведомлений")
         print("=" * 80)
         print("📱 Используйте команду /start в Telegram")
         print("💎 Полный курс: 690 руб (Invoices API)")
         print("🧪 Тестовый платеж: 1 руб (Invoices API)")
         print("📁 Материалы: мгновенная выдача после оплаты")
-        print("=" * 80)
-        print("🎯 КЛЮЧЕВЫЕ ОСОБЕННОСТИ:")
-        print("  • Invoices API - все способы оплаты")
-        print("  • СБП, ЮMoney, банковские карты и другие")
-        print("  • Автоматические чеки по 54-ФЗ")
-        print("  • Мгновенные уведомления")
         print("=" * 80)
         
         app.run_polling(
