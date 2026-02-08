@@ -2,6 +2,7 @@
 """
 app.py - Полный Flask API для платежной системы с мгновенными уведомлениями
 Версия с системой восстановления при падении и отказоустойчивостью
+ИСПРАВЛЕННАЯ ВЕРСИЯ - устранены ошибки с recovery_attempts
 """
 
 import os
@@ -75,6 +76,56 @@ def get_db_connection():
     
     return psycopg.connect(DATABASE_URL)
 
+def check_and_add_missing_columns():
+    """Проверяет и добавляет отсутствующие колонки в существующую таблицу payments"""
+    if not POSTGRES_AVAILABLE:
+        return False
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Проверяем существование колонок
+        cursor.execute("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'payments'
+        """)
+        
+        existing_columns = [row[0] for row in cursor.fetchall()]
+        
+        # Список необходимых колонок
+        required_columns = [
+            ('recovery_attempts', 'INTEGER DEFAULT 0'),
+            ('last_recovery_attempt', 'TIMESTAMP')
+        ]
+        
+        added_columns = []
+        
+        for column_name, column_type in required_columns:
+            if column_name not in existing_columns:
+                try:
+                    cursor.execute(f"ALTER TABLE payments ADD COLUMN {column_name} {column_type}")
+                    added_columns.append(column_name)
+                    logger.info(f"✅ Добавлена колонка: {column_name}")
+                except Exception as e:
+                    logger.error(f"❌ Ошибка добавления колонки {column_name}: {e}")
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        if added_columns:
+            logger.info(f"✅ Добавлены недостающие колонки: {', '.join(added_columns)}")
+            return True
+        else:
+            logger.info("✅ Все необходимые колонки уже существуют в таблице payments")
+            return True
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка проверки/добавления колонок: {e}")
+        return False
+
 def create_payments_table():
     """Создает таблицу payments с правильной структурой"""
     if not POSTGRES_AVAILABLE:
@@ -85,6 +136,7 @@ def create_payments_table():
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # Сначала создаем таблицу БЕЗ дополнительных колонок
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS payments (
             id SERIAL PRIMARY KEY,
@@ -98,9 +150,7 @@ def create_payments_table():
             metadata TEXT DEFAULT '{}',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            confirmed_at TIMESTAMP,
-            recovery_attempts INTEGER DEFAULT 0,
-            last_recovery_attempt TIMESTAMP
+            confirmed_at TIMESTAMP
         )
         """)
         
@@ -126,7 +176,11 @@ def create_payments_table():
         cursor.close()
         conn.close()
         
-        logger.info("✅ Таблица 'payments' создана/проверена")
+        logger.info("✅ Базовая таблица 'payments' создана/проверена")
+        
+        # Теперь добавляем недостающие колонки
+        check_and_add_missing_columns()
+        
         return True
         
     except Exception as e:
@@ -566,6 +620,33 @@ def check_yookassa_payment_status(yookassa_id):
         logger.error(f"❌ Ошибка проверки платежа в ЮKassa {yookassa_id}: {e}")
         return None
 
+def safe_update_recovery_attempts(payment_id, cursor):
+    """Безопасное обновление recovery_attempts (если колонка существует)"""
+    try:
+        # Проверяем существование колонки
+        cursor.execute("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'payments' AND column_name = 'recovery_attempts'
+        """)
+        
+        if cursor.fetchone():
+            # Колонка существует - обновляем
+            cursor.execute("""
+            UPDATE payments 
+            SET recovery_attempts = COALESCE(recovery_attempts, 0) + 1,
+                last_recovery_attempt = CURRENT_TIMESTAMP
+            WHERE payment_id = %s
+            """, (payment_id,))
+            return True
+        else:
+            # Колонка не существует - пропускаем
+            logger.warning(f"⚠️ Колонка recovery_attempts не существует, пропускаем обновление для {payment_id}")
+            return False
+    except Exception as e:
+        logger.error(f"⚠️ Ошибка при проверке/обновлении recovery_attempts: {e}")
+        return False
+
 def find_and_recover_lost_payments():
     """Находит и восстанавливает потерянные платежи"""
     try:
@@ -574,8 +655,7 @@ def find_and_recover_lost_payments():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Ищем платежи, которые могли быть потеряны
-        # 1. Платежи в pending статусе старше 10 минут
+        # Используем безопасный запрос без recovery_attempts в WHERE
         cursor.execute("""
         SELECT p.payment_id, p.yookassa_id, p.user_id, p.status, p.created_at
         FROM payments p
@@ -584,7 +664,6 @@ def find_and_recover_lost_payments():
         AND p.created_at < NOW() - INTERVAL '10 minutes'
         AND p.created_at > NOW() - INTERVAL '24 hours'
         AND (ua.id IS NULL OR ua.has_access = FALSE)
-        AND (p.recovery_attempts < 3 OR p.recovery_attempts IS NULL)
         ORDER BY p.created_at DESC
         LIMIT 20
         """)
@@ -598,13 +677,8 @@ def find_and_recover_lost_payments():
             payment_id, yookassa_id, user_id, status_before, created_at = payment
             
             try:
-                # Обновляем счетчик попыток
-                cursor.execute("""
-                UPDATE payments 
-                SET recovery_attempts = COALESCE(recovery_attempts, 0) + 1,
-                    last_recovery_attempt = CURRENT_TIMESTAMP
-                WHERE payment_id = %s
-                """, (payment_id,))
+                # Безопасное обновление счетчика попыток
+                safe_update_recovery_attempts(payment_id, cursor)
                 
                 # Проверяем статус в ЮKassa если есть yookassa_id
                 if yookassa_id:
@@ -614,7 +688,7 @@ def find_and_recover_lost_payments():
                         # Платеж оплачен! Восстанавливаем
                         logger.info(f"🎉 Найден оплаченный платеж: {payment_id}")
                         
-                        # Обновляем статус
+                        # Обновляем статус БЕЗ recovery_attempts
                         cursor.execute("""
                         UPDATE payments 
                         SET status = 'succeeded', 
@@ -875,14 +949,33 @@ def api_payment_status(payment_id):
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # Используем безопасный запрос - проверяем существование колонок
         cursor.execute("""
-        SELECT 
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'payments' AND column_name IN ('recovery_attempts', 'last_recovery_attempt')
+        """)
+        
+        existing_columns = [row[0] for row in cursor.fetchall()]
+        has_recovery_attempts = 'recovery_attempts' in existing_columns
+        has_last_recovery_attempt = 'last_recovery_attempt' in existing_columns
+        
+        # Формируем безопасный запрос
+        base_columns = """
             payment_id, yookassa_id, user_id, amount, status, email,
-            description, created_at, updated_at, confirmed_at,
-            recovery_attempts, last_recovery_attempt
-        FROM payments 
-        WHERE payment_id = %s
-        """, (payment_id,))
+            description, created_at, updated_at, confirmed_at
+        """
+        
+        if has_recovery_attempts and has_last_recovery_attempt:
+            query = f"SELECT {base_columns}, recovery_attempts, last_recovery_attempt FROM payments WHERE payment_id = %s"
+        elif has_recovery_attempts:
+            query = f"SELECT {base_columns}, recovery_attempts, NULL as last_recovery_attempt FROM payments WHERE payment_id = %s"
+        elif has_last_recovery_attempt:
+            query = f"SELECT {base_columns}, NULL as recovery_attempts, last_recovery_attempt FROM payments WHERE payment_id = %s"
+        else:
+            query = f"SELECT {base_columns}, NULL as recovery_attempts, NULL as last_recovery_attempt FROM payments WHERE payment_id = %s"
+        
+        cursor.execute(query, (payment_id,))
         
         payment = cursor.fetchone()
         
@@ -895,6 +988,7 @@ def api_payment_status(payment_id):
                 "error": "Payment not found"
             }), 404
         
+        # Формируем словарь с учетом доступности колонок
         payment_dict = {
             "payment_id": payment[0],
             "yookassa_id": payment[1],
@@ -906,13 +1000,21 @@ def api_payment_status(payment_id):
             "created_at": payment[7].isoformat() if payment[7] else None,
             "updated_at": payment[8].isoformat() if payment[8] else None,
             "confirmed_at": payment[9].isoformat() if payment[9] else None,
-            "recovery_attempts": payment[10],
-            "last_recovery_attempt": payment[11].isoformat() if payment[11] else None
         }
+        
+        # Добавляем дополнительные поля если они есть
+        if len(payment) > 10:
+            payment_dict["recovery_attempts"] = payment[10]
+        if len(payment) > 11:
+            payment_dict["last_recovery_attempt"] = payment[11].isoformat() if payment[11] else None
         
         return jsonify({
             "success": True,
-            "payment": payment_dict
+            "payment": payment_dict,
+            "metadata": {
+                "has_recovery_attempts_column": has_recovery_attempts,
+                "has_last_recovery_attempt_column": has_last_recovery_attempt
+            }
         }), 200
         
     except Exception as e:
@@ -1144,7 +1246,7 @@ def api_get_materials(payment_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 # ============================================
-# 3. ВЕБХУК ЮKASSA С ВОССТАНОВЛЕНИЕМ
+# 3. ВЕБХУК ЮKASSA С ВОССТАНОВЛЕНИЕМ (ИСПРАВЛЕННЫЙ)
 # ============================================
 
 @app.route('/yookassa-webhook', methods=['POST'])
@@ -1175,6 +1277,7 @@ def yookassa_webhook():
         cursor = conn.cursor()
         
         try:
+            # Логируем вебхук
             cursor.execute("""
             INSERT INTO yookassa_webhooks (webhook_id, event, payment_id, status, payload)
             VALUES (%s, %s, %s, %s, %s)
@@ -1192,13 +1295,13 @@ def yookassa_webhook():
             if event_type == 'payment.succeeded' and yookassa_id != 'unknown':
                 logger.info(f"🎉 Платеж успешен: {yookassa_id}")
                 
+                # ПРОВЕРЯЕМ: безопасный UPDATE БЕЗ recovery_attempts
                 cursor.execute("""
                 UPDATE payments 
                 SET status = 'succeeded', 
                     confirmed_at = CURRENT_TIMESTAMP,
                     updated_at = CURRENT_TIMESTAMP,
-                    metadata = %s,
-                    recovery_attempts = 0
+                    metadata = %s
                 WHERE yookassa_id = %s OR payment_id = %s
                 RETURNING user_id, payment_id, status as old_status
                 """, (json.dumps(metadata, ensure_ascii=False), yookassa_id, payment_id))
@@ -1466,9 +1569,9 @@ def admin_dashboard():
         cursor.execute("SELECT COUNT(*) FROM recovery_log WHERE recovery_result = 'error' AND recovered_at > NOW() - INTERVAL '24 hours'")
         recovery_errors_24h = cursor.fetchone()[0]
         
-        # Проблемные платежи
+        # Проблемные платежи (безопасный запрос)
         cursor.execute("""
-        SELECT p.payment_id, p.user_id, p.status, p.created_at, p.recovery_attempts
+        SELECT p.payment_id, p.user_id, p.status, p.created_at
         FROM payments p
         LEFT JOIN user_access ua ON p.payment_id = ua.payment_id
         WHERE p.status IN ('pending', 'waiting_for_capture')
@@ -1501,6 +1604,14 @@ def admin_dashboard():
         """)
         notifications_stats = cursor.fetchall()
         
+        # Проверка структуры таблицы
+        cursor.execute("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'payments' AND column_name IN ('recovery_attempts', 'last_recovery_attempt')
+        """)
+        existing_columns = [row[0] for row in cursor.fetchall()]
+        
         cursor.close()
         conn.close()
         
@@ -1521,7 +1632,6 @@ def admin_dashboard():
                     "user_id": p[1],
                     "status": p[2],
                     "created_at": p[3].isoformat() if p[3] else None,
-                    "recovery_attempts": p[4],
                     "needs_recovery": True
                 } for p in problem_payments
             ],
@@ -1545,10 +1655,16 @@ def admin_dashboard():
                     "success_rate": round((n[2] / n[1] * 100) if n[1] > 0 else 0, 1)
                 } for n in notifications_stats
             ],
+            "table_structure": {
+                "has_recovery_attempts": 'recovery_attempts' in existing_columns,
+                "has_last_recovery_attempt": 'last_recovery_attempt' in existing_columns,
+                "status": "complete" if len(existing_columns) == 2 else "missing_columns"
+            },
             "recovery_endpoints": {
                 "find_lost_payments": "/recovery/find-lost-payments (GET)",
                 "force_process": "/recovery/force-process/<payment_id> (POST)",
-                "resend_notifications": "/recovery/resend-notifications/<user_id> (POST)"
+                "resend_notifications": "/recovery/resend-notifications/<user_id> (POST)",
+                "fix_columns": "/fix-missing-columns (GET)"
             },
             "system": {
                 "recovery_worker": "active" if 'recovery_thread' in globals() else "inactive",
@@ -1639,6 +1755,15 @@ def check_db():
         """)
         recent_recoveries = cursor.fetchall()
         
+        # Проверка структуры таблицы payments
+        cursor.execute("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'payments'
+        ORDER BY ordinal_position
+        """)
+        payment_columns = [row[0] for row in cursor.fetchall()]
+        
         cursor.close()
         conn.close()
         
@@ -1650,6 +1775,8 @@ def check_db():
             "data_counts": data_counts,
             "payments_by_status": {status: count for status, count in payments_by_status},
             "recent_recoveries": {result: count for result, count in recent_recoveries},
+            "payments_table_columns": payment_columns,
+            "has_recovery_columns": all(col in payment_columns for col in ['recovery_attempts', 'last_recovery_attempt']),
             "health": "healthy" if all(table_status.values()) else "issues"
         })
         
@@ -1658,6 +1785,31 @@ def check_db():
             "success": False,
             "error": str(e),
             "type": type(e).__name__
+        }), 500
+
+@app.route('/fix-missing-columns', methods=['GET'])
+def fix_missing_columns():
+    """Добавляет недостающие колонки в таблицу payments"""
+    if not POSTGRES_AVAILABLE:
+        return jsonify({"success": False, "error": "psycopg3 не доступен"}), 500
+    
+    try:
+        success = check_and_add_missing_columns()
+        if success:
+            return jsonify({
+                "success": True,
+                "message": "✅ Проверка/добавление колонок выполнена успешно",
+                "columns_added": ["recovery_attempts", "last_recovery_attempt"]
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Не удалось добавить колонки"
+            }), 500
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
         }), 500
 
 @app.route('/test-notification/<int:user_id>', methods=['GET'])
@@ -1699,18 +1851,16 @@ def health_check():
         return jsonify({
             "status": "healthy" if (POSTGRES_AVAILABLE and "connected" in db_status and telegram_token_set) else "degraded",
             "service": "variatica_payment_api",
-            "version": "5.0 (с системой восстановления)",
+            "version": "5.0 (с системой восстановления) - ИСПРАВЛЕННАЯ",
             "database": db_status,
             "telegram_token_configured": telegram_token_set,
             "telegram_bot_url": TELEGRAM_BOT_URL,
             "recovery_system": "active",
             "timestamp": datetime.now().isoformat(),
-            "features": [
-                "Мгновенные уведомления",
-                "Защищенные ссылки",
-                "Автовосстановление при падении",
-                "Панель администратора",
-                "Логирование восстановления"
+            "fixes_applied": [
+                "Исправлен вебхук ЮKassa (удален recovery_attempts = 0)",
+                "Добавлена проверка структуры таблицы",
+                "Безопасные SQL-запросы"
             ]
         }), 200
         
@@ -1757,7 +1907,7 @@ def handle_exception(e):
 
 if __name__ == '__main__':
     print("="*80)
-    print("🚀 VARIATICA PAYMENT API v5.0 - С СИСТЕМОЙ ВОССТАНОВЛЕНИЯ")
+    print("🚀 VARIATICA PAYMENT API v5.0 - ИСПРАВЛЕННАЯ ВЕРСИЯ")
     print("="*80)
     print(f"Python: {sys.version.split()[0]}")
     print(f"psycopg3 доступен: {POSTGRES_AVAILABLE}")
@@ -1770,8 +1920,15 @@ if __name__ == '__main__':
     print("  /admin/dashboard         - Панель администратора")
     print("  /check-db                - Проверка базы данных")
     print("  /create-all-tables       - Создать/проверить таблицы")
+    print("  /fix-missing-columns     - Исправить структуру таблицы")
     print("  /recovery/find-lost-payments - Восстановление платежей")
-    print("  /yookassa-webhook        - Вебхук ЮKassa")
+    print("  /yookassa-webhook        - Вебхук ЮKassa (ИСПРАВЛЕННЫЙ)")
+    print("="*80)
+    print("🛠️  ВНЕСЕННЫЕ ИСПРАВЛЕНИЯ:")
+    print("  • Удален recovery_attempts = 0 из вебхука ЮKassa")
+    print("  • Добавлена безопасная проверка структуры таблицы")
+    print("  • Безопасные SQL-запросы в find_and_recover_lost_payments")
+    print("  • Автоматическое добавление недостающих колонок")
     print("="*80)
     print("🛡️  СИСТЕМА ВОССТАНОВЛЕНИЯ:")
     print("  • Автоматическое восстановление каждые 15 минут")
@@ -1780,7 +1937,7 @@ if __name__ == '__main__':
     print("  • Логирование всех действий восстановления")
     print("="*80)
     print("💡 Инструкция:")
-    print("  1. Замените YANDEX_DISK_BASE_URL на реальную ссылку")
+    print("  1. Сначала запустите /fix-missing-columns")
     print("  2. Используйте /admin/dashboard для мониторинга")
     print("  3. При падении система автоматически восстановит платежи")
     print("="*80)
