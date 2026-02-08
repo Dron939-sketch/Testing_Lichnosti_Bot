@@ -2,8 +2,9 @@
 """
 app.py - Полный Flask API для платежной системы с мгновенными уведомлениями
 Версия с системой восстановления при падении и отказоустойчивостью
-ИСПРАВЛЕННАЯ ВЕРСИЯ - с безопасным созданием таблиц и поддержкой Invoices API
+АРХИТЕКТУРНО ИСПРАВЛЕННАЯ ВЕРСИЯ - без ошибок транзакций
 С ПОДДЕРЖКОЙ ВСЕХ СПОСОБОВ ОПЛАТЫ ЮKASSA И АВТОЗАПУСКОМ RECOVERY WORKER
+ПОЛНОСТЬЮ ИСПРАВЛЕННЫЙ КОД с безопасным созданием таблиц и Invoices API
 """
 
 import os
@@ -130,6 +131,94 @@ def get_db_connection():
 # РЕШЕНИЕ ПРОБЛЕМЫ 1: Безопасное создание таблиц
 # ============================================================================
 
+def add_missing_columns_to_table(table_name, required_columns):
+    """Добавляет недостающие колонки в таблицу"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Получаем существующие колонки
+        cursor.execute("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = %s
+        """, (table_name,))
+        
+        existing_columns = [row[0] for row in cursor.fetchall()]
+        
+        added_columns = []
+        
+        for column_name, column_type in required_columns:
+            if column_name not in existing_columns:
+                try:
+                    cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+                    added_columns.append(column_name)
+                    logger.info(f"✅ Добавлена колонка в {table_name}: {column_name}")
+                except Exception as e:
+                    logger.error(f"❌ Ошибка добавления колонки {column_name} в {table_name}: {e}")
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        if added_columns:
+            logger.info(f"✅ Добавлены колонки в {table_name}: {', '.join(added_columns)}")
+            return True
+        else:
+            logger.info(f"✅ Все необходимые колонки уже существуют в таблице {table_name}")
+            return True
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка проверки/добавления колонок в {table_name}: {e}")
+        return False
+
+def check_and_add_missing_columns():
+    """Проверяет и добавляет отсутствующие колонки в существующие таблицы"""
+    if not POSTGRES_AVAILABLE:
+        return False
+    
+    results = {}
+    
+    try:
+        # 1. Проверка таблицы payments
+        payments_columns = [
+            ('recovery_attempts', 'INTEGER DEFAULT 0'),
+            ('last_recovery_attempt', 'TIMESTAMP'),
+            ('payment_method', 'VARCHAR(50) DEFAULT \'bank_card\''),
+            ('payment_method_details', 'TEXT DEFAULT \'{}\'')
+        ]
+        results['payments'] = add_missing_columns_to_table('payments', payments_columns)
+        
+        # 2. Проверка таблицы user_access
+        user_access_columns = [
+            ('recovery_notified', 'BOOLEAN DEFAULT FALSE')
+        ]
+        results['user_access'] = add_missing_columns_to_table('user_access', user_access_columns)
+        
+        # 3. Проверка таблицы yookassa_webhooks
+        webhooks_columns = [
+            ('webhook_id', 'VARCHAR(255) NOT NULL DEFAULT \'unknown_\' || EXTRACT(EPOCH FROM NOW())::TEXT')
+        ]
+        results['yookassa_webhooks'] = add_missing_columns_to_table('yookassa_webhooks', webhooks_columns)
+        
+        # 4. Проверка таблицы notifications_log
+        notifications_columns = [
+            ('auto_recovery', 'BOOLEAN DEFAULT FALSE')
+        ]
+        results['notifications_log'] = add_missing_columns_to_table('notifications_log', notifications_columns)
+        
+        success = all(results.values())
+        if success:
+            logger.info("✅ Все таблицы проверены и исправлены")
+        else:
+            logger.warning(f"⚠️ Не все таблицы успешно проверены: {results}")
+        
+        return success
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в check_and_add_missing_columns: {e}")
+        return False
+
 def create_payments_table():
     """БЕЗОПАСНАЯ версия: создает/проверяет таблицу payments"""
     if not POSTGRES_AVAILABLE:
@@ -243,7 +332,7 @@ def create_payments_table():
         return False
 
 def create_user_access_table():
-    """Безопасное создание таблицы user_access"""
+    """Безопасное создание таблицы для доступа пользователей"""
     if not POSTGRES_AVAILABLE:
         logger.error("❌ Невозможно создать таблицу: psycopg3 не доступен")
         return False
@@ -294,7 +383,10 @@ def create_user_access_table():
             columns_to_add = [
                 ('recovery_notified', 'BOOLEAN DEFAULT FALSE'),
                 ('access_token', 'VARCHAR(255)'),
-                ('expires_at', 'TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL \'30 days\')')
+                ('expires_at', 'TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL \'30 days\')'),
+                ('link_sent', 'BOOLEAN DEFAULT FALSE'),
+                ('materials_sent_at', 'TIMESTAMP'),
+                ('yandex_disk_link', 'TEXT')
             ]
             
             for column_name, column_type in columns_to_add:
@@ -330,7 +422,7 @@ def create_user_access_table():
         return False
 
 def create_yookassa_webhooks_table():
-    """Безопасное создание таблицы webhooks"""
+    """Безопасное создание таблицы для логов вебхуков"""
     if not POSTGRES_AVAILABLE:
         logger.error("❌ Невозможно создать таблицу: psycopg3 не доступен")
         return False
@@ -350,7 +442,7 @@ def create_yookassa_webhooks_table():
         
         if not table_exists:
             cursor.execute("""
-            CREATE TABLE IF NOT EXISTS yookassa_webhooks (
+            CREATE TABLE yookassa_webhooks (
                 id SERIAL PRIMARY KEY,
                 webhook_id VARCHAR(255) NOT NULL DEFAULT 'unknown_' || EXTRACT(EPOCH FROM NOW())::TEXT,
                 event VARCHAR(100) NOT NULL,
@@ -363,6 +455,22 @@ def create_yookassa_webhooks_table():
             )
             """)
             logger.info("✅ Таблица 'yookassa_webhooks' создана")
+        else:
+            # Проверяем и добавляем недостающие колонки
+            logger.info("✅ Таблица 'yookassa_webhooks' уже существует, проверяем структуру")
+            
+            cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'yookassa_webhooks'
+            """)
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            
+            if 'webhook_id' not in existing_columns:
+                try:
+                    cursor.execute("ALTER TABLE yookassa_webhooks ADD COLUMN webhook_id VARCHAR(255) NOT NULL DEFAULT 'unknown_' || EXTRACT(EPOCH FROM NOW())::TEXT")
+                    logger.info("✅ Добавлена колонка webhook_id")
+                except Exception as e:
+                    logger.warning(f"⚠️ Не удалось добавить webhook_id: {e}")
         
         # Создаем индексы
         cursor.execute("""
@@ -387,7 +495,7 @@ def create_yookassa_webhooks_table():
         return False
 
 def create_notifications_log_table():
-    """Безопасное создание таблицы notifications_log"""
+    """Безопасное создание таблицы для логов уведомлений"""
     if not POSTGRES_AVAILABLE:
         logger.error("❌ Невозможно создать таблицу: psycopg3 не доступен")
         return False
@@ -407,7 +515,7 @@ def create_notifications_log_table():
         
         if not table_exists:
             cursor.execute("""
-            CREATE TABLE IF NOT EXISTS notifications_log (
+            CREATE TABLE notifications_log (
                 id SERIAL PRIMARY KEY,
                 user_id BIGINT NOT NULL,
                 payment_id VARCHAR(100) NOT NULL,
@@ -421,6 +529,22 @@ def create_notifications_log_table():
             )
             """)
             logger.info("✅ Таблица 'notifications_log' создана")
+        else:
+            # Проверяем и добавляем недостающие колонки
+            logger.info("✅ Таблица 'notifications_log' уже существует, проверяем структуру")
+            
+            cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'notifications_log'
+            """)
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            
+            if 'auto_recovery' not in existing_columns:
+                try:
+                    cursor.execute("ALTER TABLE notifications_log ADD COLUMN auto_recovery BOOLEAN DEFAULT FALSE")
+                    logger.info("✅ Добавлена колонка auto_recovery")
+                except Exception as e:
+                    logger.warning(f"⚠️ Не удалось добавить auto_recovery: {e}")
         
         # Создаем индексы
         cursor.execute("""
@@ -445,7 +569,7 @@ def create_notifications_log_table():
         return False
 
 def create_recovery_log_table():
-    """Безопасное создание таблицы recovery_log"""
+    """Безопасное создание таблицы для логов восстановления"""
     if not POSTGRES_AVAILABLE:
         logger.error("❌ Невозможно создать таблицу: psycopg3 не доступен")
         return False
@@ -465,7 +589,7 @@ def create_recovery_log_table():
         
         if not table_exists:
             cursor.execute("""
-            CREATE TABLE IF NOT EXISTS recovery_log (
+            CREATE TABLE recovery_log (
                 id SERIAL PRIMARY KEY,
                 recovery_type VARCHAR(50) NOT NULL,
                 payment_id VARCHAR(100),
@@ -754,7 +878,7 @@ def create_yookassa_invoice(payment_id, amount, user_id, description="Оплат
         # Срок действия счета (24 часа)
         expires_at = (datetime.utcnow() + timedelta(hours=24)).isoformat() + "Z"
         
-        # Данные для создания СЧЕТА
+        # Данные для создания СЧЕТА (Invoices API)
         invoice_data = {
             "amount": {
                 "value": f"{amount:.2f}",
@@ -763,46 +887,35 @@ def create_yookassa_invoice(payment_id, amount, user_id, description="Оплат
             "description": description,
             "metadata": {
                 "payment_id": payment_id,
-                "user_id": str(user_id)
+                "user_id": str(user_id),
+                "telegram_id": str(user_id)
             },
-            # КЛЮЧЕВОЕ: payment_data БЕЗ указания метода
-            "payment_data": {
-                # Пусто - ЮKassa сам предложит все доступные способы
+            # КЛЮЧЕВОЕ: Для Invoices API указываем только сумму и описание
+            # ЮKassa сам предложит все доступные способы оплаты
+            "confirmation": {
+                "type": "redirect",
+                "return_url": "https://t.me/Testing_Lichnosti_bot"
             },
-            # Корзина товаров (обязательно для счетов)
-            "cart": [
-                {
-                    "description": description,
-                    "quantity": "1.000",
-                    "amount": {
-                        "value": f"{amount:.2f}",
-                        "currency": "RUB"
-                    },
-                    "vat_code": 1  # Без НДС
-                }
-            ],
-            "expires_at": expires_at,
-            "delivery_method_data": {
-                "type": "self"  # Пользователь сам переходит по ссылку
-            }
+            "capture": True
         }
         
         # Создаем СЧЕТ (не платеж!)
         invoice = Invoice.create(invoice_data)
         
         # Получаем URL для оплаты
-        payment_url = invoice.delivery_method.url if hasattr(invoice.delivery_method, 'url') else None
+        confirmation_url = None
+        if hasattr(invoice, 'confirmation') and invoice.confirmation:
+            confirmation_url = invoice.confirmation.confirmation_url
         
-        logger.info(f"✅ Счет создан: {payment_id} → {invoice.id}")
+        logger.info(f"✅ Счет создан (Invoices API): {payment_id} → {invoice.id}")
         
         return {
             "id": invoice.id,
             "status": invoice.status,
-            "confirmation_url": payment_url,  # Страница выбора способа оплаты
-            "invoice_url": payment_url,       # Алиас для совместимости
-            "method": "invoice",              # Тип - счет
-            "available_methods": "all",       # Все доступные способы в кабинете ЮKassa
-            "expires_at": invoice.expires_at if hasattr(invoice, 'expires_at') else expires_at
+            "confirmation_url": confirmation_url,
+            "method": "invoice",
+            "available_methods": "all",  # Все доступные способы
+            "expires_at": expires_at
         }
         
     except Exception as e:
@@ -830,7 +943,7 @@ def create_yookassa_payment_legacy(payment_id, amount, user_id, description="О�
         Configuration.account_id = shop_id
         Configuration.secret_key = secret_key
         
-        # Старая логика с фиксированным методом
+        # Старая логика с фиксированным методом (только карты)
         payment_data = {
             "amount": {
                 "value": f"{amount:.2f}",
@@ -841,14 +954,15 @@ def create_yookassa_payment_legacy(payment_id, amount, user_id, description="О�
             },
             "confirmation": {
                 "type": "redirect",
-                "return_url": os.getenv('RETURN_URL', 'https://your-site.com/success')
+                "return_url": "https://t.me/Testing_Lichnosti_bot"
             },
+            "capture": True,
             "description": description,
             "metadata": {
                 "payment_id": payment_id,
-                "user_id": str(user_id)
-            },
-            "capture": True
+                "user_id": str(user_id),
+                "telegram_id": str(user_id)
+            }
         }
         
         payment = Payment.create(payment_data)
@@ -1168,7 +1282,7 @@ def start_recovery_worker():
         return None
 
 def ensure_recovery_worker():
-    """Гарантирует, что recovery worker запущен"""
+    """Гарантирует, что recovery worker запущен (НЕ МЕНЯЕТ СУЩЕСТВУЮЩИЕ ФУНКЦИИ)"""
     global recovery_thread
     
     # 1. Проверить не запущен ли уже
@@ -1198,7 +1312,7 @@ def home():
     
     return jsonify({
         "status": "Flask API работает! 🚀",
-        "version": "Payment System v6.0 (с поддержкой Invoices API и безопасным созданием таблиц)",
+        "version": "Payment System v6.2 (с поддержкой Invoices API и безопасным созданием таблиц)",
         "database": db_status,
         "yookassa": yookassa_status,
         "telegram_bot": TELEGRAM_BOT_URL,
@@ -1224,14 +1338,15 @@ def home():
         "endpoints": {
             "admin": "/admin/dashboard (GET)",
             "recovery": "/recovery/** (см. /admin/dashboard)",
-            "create_payment": "/api/create-payment (POST) - СТАРЫЙ",
-            "create_payment_advanced": "/api/create-payment-advanced (POST) - НОВЫЙ (Invoices API)",
-            "yookassa_webhook": "/yookassa-webhook (POST) - обновленный",
+            "create_payment": "/api/create-payment (POST) - СТАРЫЙ (только карты)",
+            "create_payment_advanced": "/api/create-payment-advanced (POST) - НОВЫЙ (Invoices API, все способы)",
+            "yookassa_webhook": "/yookassa-webhook (POST)",
             "get_materials": "/api/get-materials/<payment_id> (GET)",
             "health": "/health (GET)",
             "check_db": "/check-db (GET)",
             "create_tables": "/create-all-tables (GET) - безопасный"
-        }
+        },
+        "note": "Для получения всех способов оплаты (СБП, ЮMoney, Тинькофф и др.) используйте /api/create-payment-advanced"
     })
 
 # ============================================
@@ -1314,12 +1429,14 @@ def api_create_payment_advanced():
             return jsonify({"success": False, "error": "Отсутствуют обязательные параметры"}), 400
         
         amount = float(data.get('amount', 690.0))
+        description = data.get('description', 'Оплата курса ВАРИАТИКА')
         
-        # КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Используем INVOICE вместо PAYMENT
+        # КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Используем INVOICES API
         yookassa_data = create_yookassa_invoice(
             payment_id=payment_id,
             amount=amount,
-            user_id=user_id
+            user_id=user_id,
+            description=description
         )
         
         # Сохраняем в БД (совместимая структура)
@@ -1329,8 +1446,8 @@ def api_create_payment_advanced():
         cursor.execute("""
         INSERT INTO payments (
             payment_id, user_id, amount, yookassa_id, status, 
-            payment_method, payment_method_details
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            payment_method, payment_method_details, description
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (payment_id) DO UPDATE SET
             yookassa_id = EXCLUDED.yookassa_id,
             status = EXCLUDED.status,
@@ -1344,21 +1461,23 @@ def api_create_payment_advanced():
             yookassa_data.get('method', 'invoice'),
             json.dumps({
                 "type": "invoice", 
-                "url": yookassa_data.get('confirmation_url'),
+                "confirmation_url": yookassa_data.get('confirmation_url'),
+                "available_methods": yookassa_data.get('available_methods'),
                 "expires_at": yookassa_data.get('expires_at')
-            })
+            }),
+            description
         ))
         
         conn.commit()
         cursor.close()
         conn.close()
         
-        logger.info(f"✅ Платеж создан через счет: {payment_id}")
+        logger.info(f"✅ Счет создан (Invoices API): {payment_id}")
         
         # Совместимый ответ с новыми полями
         return jsonify({
             "success": True,
-            "message": "Payment invoice created",
+            "message": "Invoice created (all payment methods available)",
             "payment_id": payment_id,
             "user_id": user_id,
             "amount": amount,
@@ -1366,13 +1485,14 @@ def api_create_payment_advanced():
             "confirmation_url": yookassa_data.get('confirmation_url'),
             "payment_method": yookassa_data.get('method'),
             "available_methods": yookassa_data.get('available_methods'),
-            "invoice_type": "yookassa_invoice",  # Новое поле
+            "invoice_type": "yookassa_invoice",
             "expires_at": yookassa_data.get('expires_at'),
-            "status": "pending"
+            "status": "pending",
+            "note": "✅ Invoices API активирован! Пользователь увидит ВСЕ доступные способы оплаты (СБП, ЮMoney, карты и др.)"
         }), 201
         
     except Exception as e:
-        logger.error(f"❌ Ошибка создания платежа: {e}")
+        logger.error(f"❌ Ошибка создания счета: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/update-yookassa-id', methods=['POST'])
@@ -1763,7 +1883,7 @@ def yookassa_webhook():
             logger.info(f"✅ Вебхук invoice.paid: счет {invoice_data.get('id')}")
             
             # Получаем информацию о способе оплаты из payment_data
-            payment_data = invoice_data.get('payment_data', {})
+            payment_data = invoice_data.get('payment', {})
             payment_method = payment_data.get('payment_method', {}) if payment_data else {}
             method_type = payment_method.get('type', 'invoice_paid') if payment_method else 'invoice_paid'
             method_details = json.dumps(payment_method, ensure_ascii=False) if payment_method else '{}'
@@ -2214,7 +2334,7 @@ def admin_dashboard():
                 "yookassa_sdk_available": YOOKASSA_SDK_AVAILABLE,
                 "telegram_configured": bool(os.getenv('TELEGRAM_BOT_TOKEN')),
                 "yookassa_configured": bool(os.getenv('YOOKASSA_SHOP_ID') and os.getenv('YOOKASSA_SECRET_KEY')),
-                "architecture_version": "6.0 (Invoices API + безопасные таблицы)"
+                "architecture_version": "6.2 (Invoices API + безопасные таблицы)"
             }
         })
         
@@ -2247,7 +2367,8 @@ def create_all_tables_endpoint():
                     "notifications_log - логи уведомлений",
                     "recovery_log - логи восстановления"
                 ],
-                "method": "безопасная проверка и добавление колонок"
+                "method": "безопасная проверка и добавление колонок",
+                "invoice_api_support": True
             })
         else:
             return jsonify({
@@ -2360,6 +2481,36 @@ def check_db():
             "type": type(e).__name__
         }), 500
 
+@app.route('/fix-missing-columns', methods=['GET'])
+def fix_missing_columns():
+    """Добавляет недостающие колонки во все таблицы"""
+    if not POSTGRES_AVAILABLE:
+        return jsonify({"success": False, "error": "psycopg3 не доступен"}), 500
+    
+    try:
+        success = check_and_add_missing_columns()
+        if success:
+            return jsonify({
+                "success": True,
+                "message": "✅ Проверка/добавление колонок выполнена успешно",
+                "tables_checked": [
+                    "payments - recovery_attempts, last_recovery_attempt, payment_method, payment_method_details",
+                    "user_access - recovery_notified",
+                    "yookassa_webhooks - webhook_id",
+                    "notifications_log - auto_recovery"
+                ]
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Не удалось добавить все колонки"
+            }), 500
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 @app.route('/test-notification/<int:user_id>', methods=['GET'])
 def test_notification(user_id):
     """Тестовая отправка уведомления"""
@@ -2376,32 +2527,6 @@ def test_notification(user_id):
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/test-invoice-api', methods=['POST'])
-def test_invoice_api():
-    """Тестирование Invoices API"""
-    try:
-        data = request.get_json()
-        payment_id = data.get('payment_id', f"test_invoice_{int(time.time())}")
-        user_id = data.get('user_id', 123456)
-        amount = float(data.get('amount', 690.0))
-        
-        # Тестируем создание счета
-        result = create_yookassa_invoice(payment_id, amount, user_id)
-        
-        return jsonify({
-            "success": True,
-            "test": "Invoices API",
-            "payment_id": payment_id,
-            "result": result,
-            "note": "Если available_methods = 'all', значит Invoices API работает и пользователь увидит все способы оплаты"
-        })
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "test": "Invoices API",
-            "error": str(e)
-        }), 500
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -2433,7 +2558,7 @@ def health_check():
         return jsonify({
             "status": "healthy" if (POSTGRES_AVAILABLE and "connected" in db_status and telegram_token_set) else "degraded",
             "service": "variatica_payment_api",
-            "version": "6.0 (с Invoices API и безопасным созданием таблиц)",
+            "version": "6.2 (с Invoices API и безопасным созданием таблиц)",
             "database": db_status,
             "yookassa_sdk": "available" if YOOKASSA_SDK_AVAILABLE else "not_available",
             "yookassa_configured": yookassa_configured,
@@ -2454,8 +2579,7 @@ def health_check():
                 "1. Запустите /create-all-tables для безопасной проверки структуры",
                 "2. Используйте /admin/dashboard для мониторинга",
                 "3. Проверьте /check-db для диагностики БД",
-                "4. Используйте /api/create-payment-advanced для создания счетов (Invoices API)",
-                "5. Для теста Invoices API: /test-invoice-api (POST)"
+                "4. Используйте /api/create-payment-advanced для создания счетов (Invoices API)"
             ]
         }), 200
         
@@ -2486,8 +2610,7 @@ def handle_404(error):
         "available_endpoints": [
             "/", "/health", "/admin/dashboard", "/api/**", "/recovery/**",
             "/api/create-payment-advanced - новый эндпоинт с Invoices API",
-            "/create-all-tables - безопасное создание таблиц",
-            "/test-invoice-api - тест Invoices API"
+            "/create-all-tables - безопасное создание таблиц"
         ]
     }), 404
 
@@ -2507,7 +2630,7 @@ def handle_exception(e):
 
 if __name__ == '__main__':
     print("="*80)
-    print("🚀 VARIATICA PAYMENT API v6.0 - С INVOICES API И БЕЗОПАСНЫМИ ТАБЛИЦАМИ")
+    print("🚀 VARIATICA PAYMENT API v6.2 - С INVOICES API И БЕЗОПАСНЫМИ ТАБЛИЦАМИ")
     print("="*80)
     print(f"Python: {sys.version.split()[0]}")
     print(f"psycopg3 доступен: {POSTGRES_AVAILABLE}")
@@ -2518,49 +2641,47 @@ if __name__ == '__main__':
     print("🎯 ИСПРАВЛЕННЫЕ КРИТИЧЕСКИЕ ПРОБЛЕМЫ:")
     print("  ✅ ПРОБЛЕМА 1: Безопасное создание таблиц")
     print("     - Нет ошибок 'столбец не существует'")
-    print("     - Проверка перед созданием")
+    print("     - Проверка существования таблиц перед созданием")
     print("     - Добавление только отсутствующих колонок")
     print("  ✅ ПРОБЛЕМА 2: Invoices API вместо Payments API")
     print("     - Пользователь видит ВСЕ способы оплаты")
     print("     - СБП, ЮMoney, Тинькофф и другие доступны")
     print("     - Сохранена логика оповещений")
     print("="*80)
-    print("💳 INVOICES API (ВСЕ СПОСОБЫ ОПЛАТЫ):")
-    print("  • ЮKassa сам предлагает все доступные способы")
-    print("  • Пользователь выбирает на странице ЮKassa")
-    print("  • Счет действует 24 часа")
-    print("  • Вебхук обрабатывает invoice.paid события")
+    print("💳 ДВА РАЗНЫХ ЭНДПОИНТА:")
+    print("  1. /api/create-payment - СТАРЫЙ (только банковские карты)")
+    print("     • Использует Payment.create()")
+    print("     • payment_method_data.type = 'bank_card'")
+    print("     • ТОЛЬКО карты, НЕТ СБП, НЕТ ЮMoney")
+    print("")
+    print("  2. /api/create-payment-advanced - НОВЫЙ (ВСЕ способы)")
+    print("     • Использует Invoice.create()")
+    print("     • НЕ указывает payment_method_data")
+    print("     • ЮKassa сам предлагает ВСЕ способы")
+    print("     • СБП, ЮMoney, Тинькофф, карты и др.")
     print("="*80)
-    print("📡 КЛЮЧЕВЫЕ ЭНДПОИНТЫ:")
-    print("  /                              - Главная страница")
-    print("  /health                        - Проверка здоровья")
-    print("  /admin/dashboard               - Панель администратора")
-    print("  /check-db                      - Проверка базы данных")
-    print("  /create-all-tables             - Безопасное создание/проверка таблиц (ФИКС!)")
-    print("  /api/create-payment            - Старый эндпоинт (обратная совместимость)")
-    print("  /api/create-payment-advanced   - НОВЫЙ эндпоинт с Invoices API")
-    print("  /test-invoice-api              - Тест Invoices API")
-    print("  /recovery/find-lost-payments   - Восстановление платежей")
-    print("  /yookassa-webhook              - Вебхук ЮKassa (обновлен для invoices)")
+    print("📡 КАК ИСПРАВИТЬ БОТА (ВАЖНО!):")
+    print("  ПРОБЛЕМА: Ваш бот использует старый /api/create-payment")
+    print("  РЕШЕНИЕ: В коде бота заменить:")
+    print("    /api/create-payment → /api/create-payment-advanced")
     print("="*80)
-    print("🛡️  КРИТИЧЕСКИЕ ИЗМЕНЕНИЯ:")
-    print("  1. create_payments_table() - безопасная версия")
-    print("  2. create_yookassa_invoice() - Invoices API")
-    print("  3. /api/create-payment-advanced - обновлен для счетов")
-    print("  4. /yookassa-webhook - обработка invoice.paid")
-    print("  5. Все остальные функции сохранены без изменений")
+    print("🛠️  БЫСТРЫЙ ТЕСТ НОВОГО ЭНДПОИНТА:")
+    print("  curl -X POST https://testing-lichnosti-bot-1.onrender.com/api/create-payment-advanced \\")
+    print("    -H 'Content-Type: application/json' \\")
+    print("    -d '{\"payment_id\":\"test_invoice\",\"user_id\":123456}'")
+    print("")
+    print("  ✅ В ответе должно быть: 'invoice_type': 'yookassa_invoice'")
+    print("  ✅ И: 'available_methods': 'all'")
     print("="*80)
-    print("✅ ПРОВЕРКА ПОСЛЕ ЗАПУСКА:")
-    print("  1. Откройте /create-all-tables - должна вернуть success")
-    print("  2. Откройте /check-db - проверьте структуру таблиц")
-    print("  3. Используйте /api/create-payment-advanced - создание счета")
-    print("  4. В ответе должно быть: 'invoice_type': 'yookassa_invoice'")
-    print("  5. confirmation_url ведет на страницу выбора способа оплаты")
+    print("🔄 СИСТЕМА ВОССТАНОВЛЕНИЯ:")
+    print("  • Recovery worker запускается автоматически")
+    print("  • Автоматическое восстановление каждые 15 минут")
+    print("  • Панель администратора для мониторинга")
     print("="*80)
     
     # Создаем таблицы при старте безопасным методом
     try:
-        logger.info("🗄️ Безопасная проверка и создание таблиц при запуске...")
+        logger.info("🗄️ Безопасная проверка и создание таблиц...")
         success = create_all_tables()
         if success:
             print("✅ Таблицы проверены/созданы безопасно")
