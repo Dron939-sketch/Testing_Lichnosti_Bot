@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Telegram Bot для платежной системы VARIATICA
-Версия с защитой от конфликтов (минимальные изменения)
+БОЕВОЙ РЕЖИМ с тестовым платежом 1 рубль
 """
 
 import os
@@ -34,7 +34,7 @@ logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.getLogger('httpcore').setLevel(logging.WARNING)
 logging.getLogger('telegram').setLevel(logging.WARNING)
 
-# ========== КОНФИГУРАЦИЯ ==========
+# ========== БОЕВАЯ КОНФИГУРАЦИЯ ==========
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
@@ -102,12 +102,15 @@ def check_bot_health():
     except:
         health_issues.append("❌ API недоступен (ошибка соединения)")
     
-    # Проверяем ЮKassa
+    # Проверяем ЮKassa (в боевом режиме ключ должен начинаться с live_)
     if not YOOKASSA_SHOP_ID:
         health_issues.append("❌ YOOKASSA_SHOP_ID не установлен")
     
     if not YOOKASSA_SECRET_KEY:
         health_issues.append("❌ YOOKASSA_SECRET_KEY не установлен")
+    elif not YOOKASSA_SECRET_KEY.startswith('live_'):
+        print("⚠️ Внимание: используется ТЕСТОВЫЙ ключ ЮKassa")
+        print("   Для боевого режима используйте ключ, начинающийся с 'live_'")
     
     if health_issues:
         print("⚠️ Проблемы с конфигурацией:")
@@ -153,11 +156,10 @@ async def enhanced_error_handler(update: object, context: ContextTypes.DEFAULT_T
     else:
         logger.error(f"Ошибка: {error_msg}")
 
-# ========== ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ ==========
-
+# ========== ФУНКЦИИ ДЛЯ БОЕВОГО РЕЖИМА ==========
 def check_configuration():
     print("=" * 70)
-    print("🤖 VARIATICA PAYMENT BOT - ПОЛНАЯ ВЕРСИЯ С МАТЕРИАЛАМИ")
+    print("🤖 VARIATICA PAYMENT BOT - БОЕВОЙ РЕЖИМ С ТЕСТОМ")
     print("=" * 70)
     
     errors = []
@@ -203,12 +205,12 @@ def check_configuration():
         errors.append(f"❌ API недоступен: {str(e)}")
         print(f"❌ API недоступен: {e}")
     
-    # Проверка ЮKassa
+    # Проверка ЮKassa (внимание на боевой режим!)
     if not YOOKASSA_SHOP_ID:
         errors.append("❌ YOOKASSA_SHOP_ID не установлен")
         print("❌ Shop ID: НЕ УСТАНОВЛЕН!")
     else:
-        print(f"✅ Shop ID: {YOOKASSA_SHOP_ID[:10]}...")
+        print(f"✅ Shop ID: {YOOKASSA_SHOP_ID}")
     
     if not YOOKASSA_SECRET_KEY:
         errors.append("❌ YOOKASSA_SECRET_KEY не установлен")
@@ -217,9 +219,11 @@ def check_configuration():
         key_type = "ТЕСТОВЫЙ" if YOOKASSA_SECRET_KEY.startswith('test_') else "БОЕВОЙ"
         print(f"✅ Secret Key: {key_type}")
         if key_type == "БОЕВОЙ":
-            print("💡 Режим: БОЕВОЙ (требуется receipt)")
+            print("💡 Режим: БОЕВОЙ (чек по 54-ФЗ обязателен)")
+            print("💡 Тестовый платеж 1 рубль будет с чеком")
         else:
-            print("💡 Режим: ТЕСТОВЫЙ (receipt не требуется)")
+            print("💡 Режим: ТЕСТОВЫЙ (чек не требуется)")
+            warnings.append("⚠️ Используется тестовый ключ ЮKassa. Для боевых платежей нужен ключ 'live_'")
     
     print("=" * 70)
     
@@ -259,15 +263,12 @@ def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0, 
         if not email:
             email = f"user_{user_id}@telegram.org"
         
-        if is_test:
-            description = f"Тестовый платеж #{payment_id}"
-            item_description = "Тестовый доступ к курсу ВАРИАТИКА"
-            return_url = TELEGRAM_BOT_URL
-        else:
-            description = f"Курс ВАРИАТИКА #{payment_id}"
-            item_description = "Полный курс ВАРИАТИКА с материалами"
-            return_url = TELEGRAM_BOT_URL
+        # В БОЕВОМ РЕЖИМЕ для всех платежей создаем чек
+        description = f"Тестовый платеж 1 рубль #{payment_id}" if is_test else f"Курс ВАРИАТИКА #{payment_id}"
+        item_description = "Тестовый доступ к курсу ВАРИАТИКА" if is_test else "Полный курс ВАРИАТИКА с материалами"
+        return_url = TELEGRAM_BOT_URL
         
+        # ВСЕГДА создаем payload с receipt (54-ФЗ)
         payload = {
             "amount": {
                 "value": f"{amount:.2f}",
@@ -287,11 +288,9 @@ def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0, 
                 "user_id": user_id,
                 "telegram_id": str(user_id),
                 "is_test": str(is_test)
-            }
-        }
-        
-        if YOOKASSA_SECRET_KEY.startswith('live_'):
-            payload["receipt"] = {
+            },
+            # Чек по 54-ФЗ для ВСЕХ платежей
+            "receipt": {
                 "customer": {
                     "email": email
                 },
@@ -303,21 +302,19 @@ def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0, 
                             "value": f"{amount:.2f}",
                             "currency": "RUB"
                         },
-                        "vat_code": "1",
+                        "vat_code": "1",  # НДС 20%
                         "payment_subject": "service",
                         "payment_mode": "full_payment"
                     }
                 ]
             }
-            if is_test:
-                logger.info(f"🛡️ Создаю ТЕСТОВЫЙ платеж С receipt (боевой режим): {payment_id}")
-            else:
-                logger.info(f"🛡️ Создаю БОЕВОЙ платеж С receipt: {payment_id}")
+        }
+        
+        # Логируем в зависимости от типа платежа
+        if is_test:
+            logger.info(f"🧪 Создаю ТЕСТОВЫЙ платеж 1 рубль С receipt: {payment_id}")
         else:
-            if is_test:
-                logger.info(f"🧪 Создаю ТЕСТОВЫЙ платеж БЕЗ receipt: {payment_id}")
-            else:
-                logger.info(f"🧪 Создаю БОЕВОЙ платеж БЕЗ receipt: {payment_id}")
+            logger.info(f"🛡️ Создаю БОЕВОЙ платеж 690 руб С receipt: {payment_id}")
         
         logger.info(f"📤 Отправляю в ЮKassa: {json.dumps(payload, indent=2)[:500]}...")
         
@@ -551,7 +548,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         f"🧪 *Тестовая оплата:* 1 руб\n"
         f"• Проверка платежной системы\n"
-        f"• Тестовые материалы\n\n"
+        f"• Тестовые материалы\n"
+        f"• В боевом режиме: с чеком по 54-ФЗ\n\n"
         
         f"⚙️ *Системная информация:*\n"
         f"• Режим: {mode}\n"
@@ -789,7 +787,7 @@ async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     user_name = query.from_user.first_name
     
-    await query.edit_message_text("📦 *Шаг 1/3: Создаю платеж в базе данных...*", parse_mode='Markdown')
+    await query.edit_message_text("📦 *Шаг 1/3: Создаю тестовый платеж 1 рубль...*", parse_mode='Markdown')
     
     db_result = create_payment_in_db(user_id, amount=1.0, is_test=True)
     if not db_result["success"]:
@@ -810,7 +808,7 @@ async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         error_text = f"❌ *Ошибка ЮKassa:*\n`{error_msg}`"
         
         if "Receipt is missing" in details or "Квитанция отсутствует" in details:
-            error_text += "\n\n💡 *Решение:* Включите тестовый режим в настройках."
+            error_text += "\n\n💡 *Решение:* Проверьте, что ваш секретный ключ начинается с 'live_' для боевого режима."
         
         await query.edit_message_text(error_text, parse_mode='Markdown')
         return
@@ -821,21 +819,22 @@ async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🏠 В меню", callback_data="main_menu")]
     ]
     
+    # В боевом режиме показываем информацию о чеке
     mode_info = ""
     if YOOKASSA_SECRET_KEY and YOOKASSA_SECRET_KEY.startswith('live_'):
         safe_email = email.replace('_', r'\_').replace('@', r'\@')
-        mode_info = f"📧 *Email для чека:* {safe_email}\n🛡️ *Режим:* Боевой (чек по 54-ФЗ)"
+        mode_info = f"📧 *Email для чека:* {safe_email}\n🛡️ *Режим:* БОЕВОЙ (чек по 54-ФЗ)"
     else:
-        mode_info = "🧪 *Режим:* Тестовый"
+        mode_info = "🧪 *Режим:* ТЕСТОВЫЙ"
     
     message_text = (
-        f"✅ *ТЕСТОВЫЙ ПЛАТЕЖ СОЗДАН!*\n\n"
+        f"✅ *ТЕСТОВЫЙ ПЛАТЕЖ 1 РУБЛЬ СОЗДАН!*\n\n"
         f"👤 *Пользователь:* {user_name}\n"
         f"📋 *ID:* `{payment_id}`\n"
         f"💰 *Сумма:* 1 рубль\n"
         f"{mode_info}\n\n"
         f"*Для оплаты нажмите кнопку ниже:*\n"
-        f"После успешной оплаты вы получите мгновенное уведомление."
+        f"После успешной оплаты вы получите мгновенное уведомление и тестовые материалы."
     )
     
     await query.edit_message_text(
@@ -882,6 +881,11 @@ async def buy_690_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     mode_info = "💎 *КУРС ВАРИАТИКА - ПОЛНЫЙ ДОСТУП*"
     
+    # Добавляем информацию о чеке для боевого режима
+    if YOOKASSA_SECRET_KEY and YOOKASSA_SECRET_KEY.startswith('live_'):
+        safe_email = email.replace('_', r'\_').replace('@', r'\@')
+        mode_info += f"\n📧 *Email для чека:* {safe_email}\n🛡️ *Режим:* БОЕВОЙ"
+    
     message_text = (
         f"✅ *ЗАКАЗ СОЗДАН!*\n\n"
         f"👤 *Пользователь:* {user_name}\n"
@@ -893,7 +897,8 @@ async def buy_690_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ Полный доступ ко всем материалам\n"
         f"✅ Мгновенное уведомление в Telegram\n"
         f"✅ Защищенную ссылку на Яндекс.Диск\n"
-        f"✅ Техническую поддержку\n\n"
+        f"✅ Техническую поддержку\n"
+        f"✅ Чек по 54-ФЗ (в боевом режиме)\n\n"
         f"*Для оплаты нажмите кнопку ниже:*\n"
         f"После успешной оплаты вы получите доступ к материалам."
     )
@@ -929,7 +934,7 @@ async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             if is_test:
                 message = (
-                    f"🎉 *ТЕСТОВЫЙ ПЛАТЕЖ ОПЛАЧЕН!*\n\n"
+                    f"🎉 *ТЕСТОВЫЙ ПЛАТЕЖ 1 РУБЛЬ ОПЛАЧЕН!*\n\n"
                     f"✅ Платеж `{payment_id}` успешно завершен!\n"
                     f"💰 Сумма: {amount} руб\n\n"
                     f"*🔓 СИСТЕМА РАБОТАЕТ КОРРЕКТНО!*\n"
@@ -1057,7 +1062,7 @@ async def check_status_menu_callback(update: Update, context: ContextTypes.DEFAU
         "Или выберите действие:",
         parse_mode='Markdown',
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🧪 Новый тестовый платеж", callback_data="test_buy")],
+            [InlineKeyboardButton("🧪 Новый тестовый платеж (1 руб)", callback_data="test_buy")],
             [InlineKeyboardButton("💎 Полный курс (690 руб)", callback_data="buy_690")],
             [InlineKeyboardButton("🏠 В меню", callback_data="main_menu")]
         ])
@@ -1121,7 +1126,7 @@ async def retry_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
 def main():
     """Основная функция запуска с защитой от конфликтов"""
     print("=" * 80)
-    print("🚀 VARIATICA PAYMENT BOT - ЗАЩИЩЕННАЯ ВЕРСИЯ")
+    print("🚀 VARIATICA PAYMENT BOT - БОЕВОЙ РЕЖИМ")
     print("=" * 80)
     
     if not check_configuration():
@@ -1158,31 +1163,29 @@ def main():
         print(f"📡 API: {API_URL}")
         print(f"🤖 Бот: {TELEGRAM_BOT_URL}")
         
+        # Важное сообщение о режиме работы
         if YOOKASSA_SECRET_KEY and YOOKASSA_SECRET_KEY.startswith('live_'):
-            print(f"🛡️ Режим: БОЕВОЙ")
-            print(f"💡 Используется чек по 54-ФЗ")
+            print(f"🛡️ РЕЖИМ: БОЕВОЙ")
+            print(f"💡 Все платежи (включая тестовый 1 рубль) будут с чеком по 54-ФЗ")
         else:
-            print(f"🧪 Режим: ТЕСТОВЫЙ")
+            print(f"🧪 РЕЖИМ: ТЕСТОВЫЙ")
+            print(f"⚠️ Для реальных платежей используйте ключ, начинающийся с 'live_'")
         
         print(f"⏰ Запуск: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 80)
         print("📱 Используйте команду /start в Telegram")
-        print("💎 Полный курс: 690 руб")
-        print("🧪 Тестовый платеж: 1 руб")
+        print("💎 Полный курс: 690 руб (с чеком по 54-ФЗ в боевом режиме)")
+        print("🧪 Тестовый платеж: 1 руб (также с чеком в боевом режиме)")
         print("📁 Материалы: мгновенная выдача после оплаты")
         print("=" * 80)
-        print("🛡️ РЕЖИМ: ЗАЩИТА ОТ КОНФЛИКТОВ ВКЛЮЧЕНА")
+        print("🛡️ БОЕВОЙ РЕЖИМ: ЧЕКИ 54-ФЗ АКТИВНЫ ДЛЯ ВСЕХ ПЛАТЕЖЕЙ")
         print("=" * 80)
         
-        # 🔥 ИСПРАВЛЕННАЯ СЕКЦИЯ: только поддерживаемые параметры
         app.run_polling(
-            drop_pending_updates=True,      # Удаляем ожидающие обновления
-            allowed_updates=Update.ALL_TYPES,  # Разрешаем все типы обновлений
-            poll_interval=1.0,              # Интервал опроса (1 секунда)
-            timeout=30                      # Таймаут запроса (30 секунд)
-            # ⚠️ Параметры bootstrap_retries, retry_interval, close_loop,
-            # read_timeout, write_timeout, connect_timeout НЕ поддерживаются
-            # в python-telegram-bot версии 20.x
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES,
+            poll_interval=1.0,
+            timeout=30
         )
         
     except KeyboardInterrupt:
