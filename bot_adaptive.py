@@ -154,10 +154,8 @@ async def enhanced_error_handler(update: object, context: ContextTypes.DEFAULT_T
         logger.error(f"Ошибка: {error_msg}")
 
 # ========== ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ ==========
-# (Я сохраню ВСЕ ваши функции как есть, только добавлю защиту)
 
 def check_configuration():
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     print("=" * 70)
     print("🤖 VARIATICA PAYMENT BOT - ПОЛНАЯ ВЕРСИЯ С МАТЕРИАЛАМИ")
     print("=" * 70)
@@ -167,7 +165,7 @@ def check_configuration():
     
     # Проверка токена
     if not TOKEN:
-        errors.append("❌ TELEGRAM_BOT_TOKEN не установлен")
+        errors.append("❌ TELEGRAM_BOT_TOKEN не установен")
         print("❌ Токен бота: НЕ УСТАНОВЛЕН!")
     else:
         print(f"✅ Токен бота: установлен")
@@ -186,7 +184,6 @@ def check_configuration():
             print(f"📊 Версия API: {data.get('version', 'unknown')}")
             print(f"📊 Статус: {data.get('status', 'unknown')}")
             
-            # Проверяем есть ли функция уведомлений
             try:
                 check_response = requests.get(f"{API_URL}/check-db", timeout=5)
                 if check_response.status_code == 200:
@@ -249,9 +246,7 @@ def check_configuration():
     return True
 
 def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0, email: str = None, is_test: bool = False) -> dict:
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     try:
-        # Basic Auth для ЮKassa API v3
         auth_string = f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}"
         auth_encoded = base64.b64encode(auth_string.encode()).decode()
         
@@ -261,11 +256,9 @@ def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0, 
             'Idempotence-Key': payment_id
         }
         
-        # Формируем email для чека
         if not email:
             email = f"user_{user_id}@telegram.org"
         
-        # Описание в зависимости от типа платежа
         if is_test:
             description = f"Тестовый платеж #{payment_id}"
             item_description = "Тестовый доступ к курсу ВАРИАТИКА"
@@ -275,7 +268,6 @@ def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0, 
             item_description = "Полный курс ВАРИАТИКА с материалами"
             return_url = TELEGRAM_BOT_URL
         
-        # Базовая структура платежа
         payload = {
             "amount": {
                 "value": f"{amount:.2f}",
@@ -298,7 +290,6 @@ def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0, 
             }
         }
         
-        # Добавляем receipt если режим БОЕВОЙ
         if YOOKASSA_SECRET_KEY.startswith('live_'):
             payload["receipt"] = {
                 "customer": {
@@ -312,7 +303,7 @@ def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0, 
                             "value": f"{amount:.2f}",
                             "currency": "RUB"
                         },
-                        "vat_code": "1",  # НДС 20% (обязательно для РФ)
+                        "vat_code": "1",
                         "payment_subject": "service",
                         "payment_mode": "full_payment"
                     }
@@ -351,7 +342,6 @@ def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0, 
                     "details": json.dumps(data)[:200]
                 }
             
-            # Сохраняем ID ЮKassa в базе
             try:
                 save_response = requests.post(
                     f"{API_URL}/api/update-yookassa-id",
@@ -401,7 +391,6 @@ def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 1.0, 
         }
 
 def create_payment_in_db(user_id: int, amount: float = 1.0, is_test: bool = False) -> dict:
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     try:
         timestamp = int(time.time())
         if is_test:
@@ -453,7 +442,6 @@ def create_payment_in_db(user_id: int, amount: float = 1.0, is_test: bool = Fals
         }
 
 def check_payment_status_db(payment_id: str) -> dict:
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     try:
         response = requests.get(
             f"{API_URL}/api/payment-status/{payment_id}",
@@ -463,7 +451,6 @@ def check_payment_status_db(payment_id: str) -> dict:
         if response.status_code == 200:
             data = response.json()
             
-            # Получаем статус из правильного места
             if 'payment' in data:
                 status = data['payment'].get('status', 'unknown')
                 amount = data['payment'].get('amount', 0)
@@ -498,7 +485,6 @@ def check_payment_status_db(payment_id: str) -> dict:
         }
 
 def get_user_access(user_id: int) -> dict:
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     try:
         response = requests.get(
             f"{API_URL}/api/check-access/{user_id}",
@@ -519,7 +505,6 @@ def get_user_access(user_id: int) -> dict:
         }
 
 def get_materials_link(user_id: int, payment_id: str, token: str = None) -> dict:
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     try:
         url = f"{API_URL}/api/get-materials/{payment_id}"
         params = {"user_id": user_id}
@@ -544,7 +529,6 @@ def get_materials_link(user_id: int, payment_id: str, token: str = None) -> dict
         }
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     user = update.effective_user
     
     keyboard = [
@@ -582,15 +566,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     await start(update, context)
 
 async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     
-    # Проверяем доступ пользователя
     access_data = get_user_access(user_id)
     
     if not access_data.get('success', False):
@@ -602,7 +583,6 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if not access_data.get('has_access', False):
-        # Нет доступа - показываем кнопку покупки
         keyboard = [[InlineKeyboardButton("💎 КУПИТЬ ДОСТУП (690 руб)", callback_data="buy_690")]]
         
         await update.message.reply_text(
@@ -618,7 +598,6 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Есть доступ - показываем материалы
     accesses = access_data.get('accesses', [])
     
     if not accesses:
@@ -629,13 +608,11 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Берем последний активный доступ
     for access in accesses:
         if access.get('has_access', False) and access.get('is_active', False):
             payment_id = access.get('payment_id')
             access_token = access.get('access_token')
             
-            # Получаем ссылку на материалы
             materials_data = get_materials_link(user_id, payment_id, access_token)
             
             if materials_data.get('success', False):
@@ -667,7 +644,6 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
     
-    # Если нет активных доступов
     keyboard = [[InlineKeyboardButton("💎 КУПИТЬ ДОСТУП (690 руб)", callback_data="buy_690")]]
     
     await update.message.reply_text(
@@ -679,11 +655,9 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def myaccess_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     
-    # Проверяем доступ пользователя
     access_data = get_user_access(user_id)
     
     if not access_data.get('success', False):
@@ -716,7 +690,7 @@ async def myaccess_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔓 *Активных доступов:* {active_count}/{total_count}\n\n"
         )
         
-        for i, access in enumerate(accesses[:5], 1):  # Показываем первые 5
+        for i, access in enumerate(accesses[:5], 1):
             status = "✅ АКТИВЕН" if access.get('has_access', False) and access.get('is_active', False) else "❌ НЕ АКТИВЕН"
             expires = access.get('expires_at', '')[:10] if access.get('expires_at') else "не указан"
             
@@ -740,7 +714,6 @@ async def myaccess_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     if not context.args:
         keyboard = [[InlineKeyboardButton("🔍 Проверить статус", callback_data="check_status_menu")]]
         
@@ -810,14 +783,12 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     query = update.callback_query
     await query.answer()
     
     user_id = query.from_user.id
     user_name = query.from_user.first_name
     
-    # Шаг 1: Создаем в БД
     await query.edit_message_text("📦 *Шаг 1/3: Создаю платеж в базе данных...*", parse_mode='Markdown')
     
     db_result = create_payment_in_db(user_id, amount=1.0, is_test=True)
@@ -829,7 +800,6 @@ async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     payment_id = db_result["payment_id"]
     email = db_result.get("email", f"user_{user_id}@telegram.org")
     
-    # Шаг 2: Создаем в ЮKassa
     await query.edit_message_text("💳 *Шаг 2/3: Создаю платеж в ЮKassa...*", parse_mode='Markdown')
     
     payment_result = create_yookassa_payment(payment_id, user_id, amount=1.0, email=email, is_test=True)
@@ -845,7 +815,6 @@ async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(error_text, parse_mode='Markdown')
         return
     
-    # Шаг 3: Показываем ссылку
     keyboard = [
         [InlineKeyboardButton("💳 ОПЛАТИТЬ 1 РУБЛЬ", url=payment_result["confirmation_url"])],
         [InlineKeyboardButton("🔄 Проверить статус", callback_data=f"status_{payment_id}")],
@@ -877,14 +846,12 @@ async def test_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def buy_690_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     query = update.callback_query
     await query.answer()
     
     user_id = query.from_user.id
     user_name = query.from_user.first_name
     
-    # Шаг 1: Создаем в БД
     await query.edit_message_text("📦 *Шаг 1/3: Создаю заказ на полный курс...*", parse_mode='Markdown')
     
     db_result = create_payment_in_db(user_id, amount=690.0, is_test=False)
@@ -896,7 +863,6 @@ async def buy_690_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     payment_id = db_result["payment_id"]
     email = db_result.get("email", f"user_{user_id}@telegram.org")
     
-    # Шаг 2: Создаем в ЮKassa
     await query.edit_message_text("💳 *Шаг 2/3: Создаю платеж в ЮKassa...*", parse_mode='Markdown')
     
     payment_result = create_yookassa_payment(payment_id, user_id, amount=690.0, email=email, is_test=False)
@@ -908,7 +874,6 @@ async def buy_690_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(error_text, parse_mode='Markdown')
         return
     
-    # Шаг 3: Показываем ссылку
     keyboard = [
         [InlineKeyboardButton("💳 ОПЛАТИТЬ 690 РУБ", url=payment_result["confirmation_url"])],
         [InlineKeyboardButton("🔄 Проверить статус", callback_data=f"status_{payment_id}")],
@@ -941,7 +906,6 @@ async def buy_690_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     query = update.callback_query
     await query.answer()
     
@@ -984,7 +948,6 @@ async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"✅ Вы получите мгновенное уведомление с ссылкой."
                 )
                 
-                # Также проверяем доступ
                 user_id = result.get("user_id", query.from_user.id)
                 access_data = get_user_access(user_id)
                 if access_data.get('has_access', False):
@@ -1019,7 +982,6 @@ async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(message, parse_mode='Markdown')
 
 async def get_materials_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     query = update.callback_query
     await query.answer()
     
@@ -1027,7 +989,6 @@ async def get_materials_callback(update: Update, context: ContextTypes.DEFAULT_T
         payment_id = query.data[14:]
         user_id = query.from_user.id
         
-        # Получаем доступы пользователя
         access_data = get_user_access(user_id)
         
         if not access_data.get('success', False):
@@ -1037,7 +998,6 @@ async def get_materials_callback(update: Update, context: ContextTypes.DEFAULT_T
             )
             return
         
-        # Ищем нужный доступ
         access_token = None
         for access in access_data.get('accesses', []):
             if access.get('payment_id') == payment_id and access.get('has_access', False):
@@ -1052,7 +1012,6 @@ async def get_materials_callback(update: Update, context: ContextTypes.DEFAULT_T
             )
             return
         
-        # Получаем ссылку на материалы
         await query.edit_message_text("📁 *Получаю ссылку на материалы...*", parse_mode='Markdown')
         
         materials_data = get_materials_link(user_id, payment_id, access_token)
@@ -1081,16 +1040,13 @@ async def get_materials_callback(update: Update, context: ContextTypes.DEFAULT_T
             )
 
 async def my_materials_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     query = update.callback_query
     await query.answer()
     
-    # Просто вызываем команду материалов
     fake_update = Update(update.update_id + 1, message=query.message)
     await materials_command(fake_update, context)
 
 async def check_status_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     query = update.callback_query
     await query.answer()
     
@@ -1108,23 +1064,19 @@ async def check_status_menu_callback(update: Update, context: ContextTypes.DEFAU
     )
 
 async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     query = update.callback_query
     await query.answer()
     
-    # Создаем fake update для вызова start
     fake_update = Update(update.update_id + 1, message=query.message)
     await start(fake_update, context)
 
 async def retry_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ВАШ СУЩЕСТВУЮЩИЙ КОД БЕЗ ИЗМЕНЕНИЙ
     query = update.callback_query
     await query.answer()
     
     if query.data.startswith("retry_"):
         payment_id = query.data[6:]
         
-        # Получаем информацию о платеже
         result = check_payment_status_db(payment_id)
         
         if not result["success"]:
@@ -1137,10 +1089,8 @@ async def retry_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
         amount = result.get("amount", 1.0)
         user_id = result.get("user_id", query.from_user.id)
         
-        # Определяем тип платежа
         is_test = amount == 1.0
         
-        # Пытаемся создать новую ссылку
         email = f"user_{user_id}@telegram.org"
         payment_result = create_yookassa_payment(payment_id, user_id, amount, email, is_test)
         
@@ -1174,31 +1124,25 @@ def main():
     print("🚀 VARIATICA PAYMENT BOT - ЗАЩИЩЕННАЯ ВЕРСИЯ")
     print("=" * 80)
     
-    # 1. Проверяем конфигурацию (ВАША функция)
     if not check_configuration():
         print("❌ Конфигурация неполная, выход...")
         sys.exit(1)
     
-    # 2. Очищаем возможные конфликты перед запуском
     print("\n🛡️ Проверяю и очищаю возможные конфликты...")
     clear_telegram_conflicts()
     
-    # 3. Ждем немного перед запуском
     print("⏳ Жду 3 секунды перед запуском...")
     time.sleep(3)
     
     try:
-        # 4. Создаем приложение
         app = ApplicationBuilder().token(TOKEN).build()
         
-        # 5. Добавляем обработчики команд (ВАШИ функции)
         app.add_handler(CommandHandler("start", start))
         app.add_handler(CommandHandler("buy", buy_command))
         app.add_handler(CommandHandler("materials", materials_command))
         app.add_handler(CommandHandler("myaccess", myaccess_command))
         app.add_handler(CommandHandler("check", check_command))
         
-        # Callback обработчики (ВАШИ функции)
         app.add_handler(CallbackQueryHandler(test_buy_callback, pattern="^test_buy$"))
         app.add_handler(CallbackQueryHandler(buy_690_callback, pattern="^buy_690$"))
         app.add_handler(CallbackQueryHandler(status_callback, pattern="^status_"))
@@ -1208,14 +1152,12 @@ def main():
         app.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
         app.add_handler(CallbackQueryHandler(retry_payment_callback, pattern="^retry_"))
         
-        # 6. Добавляем улучшенный обработчик ошибок
         app.add_error_handler(enhanced_error_handler)
         
         print("✅ Бот запущен успешно!")
         print(f"📡 API: {API_URL}")
         print(f"🤖 Бот: {TELEGRAM_BOT_URL}")
         
-        # Информация о режиме
         if YOOKASSA_SECRET_KEY and YOOKASSA_SECRET_KEY.startswith('live_'):
             print(f"🛡️ Режим: БОЕВОЙ")
             print(f"💡 Используется чек по 54-ФЗ")
@@ -1232,18 +1174,15 @@ def main():
         print("🛡️ РЕЖИМ: ЗАЩИТА ОТ КОНФЛИКТОВ ВКЛЮЧЕНА")
         print("=" * 80)
         
-        # 7. Запускаем с максимальной защитой
+        # 🔥 ИСПРАВЛЕННАЯ СЕКЦИЯ: только поддерживаемые параметры
         app.run_polling(
             drop_pending_updates=True,      # Удаляем ожидающие обновления
-            allowed_updates=['message', 'callback_query'],
-            poll_interval=1.0,              # Интервал опроса
-            timeout=30,                     # Таймаут
-            bootstrap_retries=3,            # Попытки переподключения
-            retry_interval=2,               # Интервал между ретраями
-            close_loop=False,               # Не закрывать loop при ошибке
-            read_timeout=10,
-            write_timeout=10,
-            connect_timeout=10
+            allowed_updates=Update.ALL_TYPES,  # Разрешаем все типы обновлений
+            poll_interval=1.0,              # Интервал опроса (1 секунда)
+            timeout=30                      # Таймаут запроса (30 секунд)
+            # ⚠️ Параметры bootstrap_retries, retry_interval, close_loop,
+            # read_timeout, write_timeout, connect_timeout НЕ поддерживаются
+            # в python-telegram-bot версии 20.x
         )
         
     except KeyboardInterrupt:
@@ -1254,11 +1193,9 @@ def main():
         import traceback
         traceback.print_exc()
         
-        # Автовосстановление при критической ошибке
         print(f"🔄 Автовосстановление через 10 секунд...")
         time.sleep(10)
         
-        # Перезапускаем процесс
         os.execv(sys.executable, ['python'] + sys.argv)
 
 if __name__ == "__main__":
