@@ -2009,7 +2009,7 @@ def yookassa_webhook():
                             confirmed_at = CURRENT_TIMESTAMP,
                             updated_at = CURRENT_TIMESTAMP
                         WHERE (yookassa_id = %s OR payment_id = %s)
-                        AND status != 'succeeded'  # ← Важно: не перезаписываем успешные
+                        AND status != 'succeeded'  
                         RETURNING user_id, payment_id, payment_method
                         """, (yookassa_id, payment_id))
                         
