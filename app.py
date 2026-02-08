@@ -5,6 +5,7 @@ app.py - Полный Flask API для платежной системы с мг
 АРХИТЕКТУРНО ИСПРАВЛЕННАЯ ВЕРСИЯ - без ошибок транзакций
 С ПОДДЕРЖКОЙ ВСЕХ СПОСОБОВ ОПЛАТЫ ЮKASSA И АВТОЗАПУСКОМ RECOVERY WORKER
 ПОЛНОСТЬЮ ИСПРАВЛЕННЫЙ КОД с безопасным созданием таблиц и Invoices API
++ ИСПРАВЛЕНИЯ ПРОБЛЕМ ДУБЛИРОВАНИЯ УВЕДОМЛЕНИЙ И СЧЕТОВ
 """
 
 import os
@@ -311,7 +312,9 @@ def create_payments_table():
             "CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)",
             "CREATE INDEX IF NOT EXISTS idx_payments_yookassa_id ON payments(yookassa_id)",
             "CREATE INDEX IF NOT EXISTS idx_payments_payment_method ON payments(payment_method)",
-            "CREATE INDEX IF NOT EXISTS idx_payments_recovery ON payments(status, created_at) WHERE status IN ('pending', 'waiting_for_capture')"
+            "CREATE INDEX IF NOT EXISTS idx_payments_recovery ON payments(status, created_at) WHERE status IN ('pending', 'waiting_for_capture')",
+            # КРИТИЧЕСКИЙ ИНДЕКС ДЛЯ ПРЕДОТВРАЩЕНИЯ ДУБЛИКАТОВ
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_yookassa_id ON payments(yookassa_id) WHERE yookassa_id IS NOT NULL"
         ]
         
         for sql in indexes_sql:
@@ -472,16 +475,19 @@ def create_yookassa_webhooks_table():
                 except Exception as e:
                     logger.warning(f"⚠️ Не удалось добавить webhook_id: {e}")
         
-        # Создаем индексы
-        cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_webhooks_payment_id ON yookassa_webhooks(payment_id)
-        """)
-        cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_webhooks_event ON yookassa_webhooks(event)
-        """)
-        cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_webhooks_webhook_id ON yookassa_webhooks(webhook_id)
-        """)
+        # КРИТИЧЕСКИЙ ИНДЕКС ДЛЯ ПРЕДОТВРАЩЕНИЯ ДУБЛИКАТОВ ВЕБХУКОВ
+        indexes_sql = [
+            "CREATE INDEX IF NOT EXISTS idx_webhooks_payment_id ON yookassa_webhooks(payment_id)",
+            "CREATE INDEX IF NOT EXISTS idx_webhooks_event ON yookassa_webhooks(event)",
+            "CREATE INDEX IF NOT EXISTS idx_webhooks_webhook_id ON yookassa_webhooks(webhook_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_webhook ON yookassa_webhooks(webhook_id, event)"
+        ]
+        
+        for sql in indexes_sql:
+            try:
+                cursor.execute(sql)
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка создания индекса: {e}")
         
         conn.commit()
         cursor.close()
@@ -1252,18 +1258,24 @@ def recovery_worker():
     
     while True:
         try:
-            # Запускаем каждые 15 минут
-            time.sleep(900)  # 15 минут
+            # Короткий sleep между проверками
+            time.sleep(60)  # Проверяем каждую минуту вместо 15 минут
             
             # Проверяем, что приложение запущено
             with app.app_context():
+                logger.info("🔄 Запуск проверки потерянных платежей...")
                 result = find_and_recover_lost_payments()
+                
                 if result.get('recovered', 0) > 0:
-                    logger.info(f"🔄 Воркер восстановления обработал {result['recovered']} платежей")
+                    logger.info(f"✅ Восстановлено {result['recovered']} платежей")
+                elif 'error' not in result:
+                    logger.info("✅ Проверка завершена, потерянных платежей не найдено")
                     
         except Exception as e:
-            logger.error(f"❌ Ошибка в recovery_worker: {e}")
-            time.sleep(300)  # Ждем 5 минут при ошибке
+            logger.error(f"❌ Критическая ошибка в recovery_worker: {e}")
+            # При критической ошибке перезапускаем worker
+            time.sleep(60)  # Ждем 1 минуту
+            continue
 
 # Запускаем воркер в отдельном потоке
 def start_recovery_worker():
@@ -1312,7 +1324,7 @@ def home():
     
     return jsonify({
         "status": "Flask API работает! 🚀",
-        "version": "Payment System v6.2 (с поддержкой Invoices API и безопасным созданием таблиц)",
+        "version": "Payment System v6.3 (с исправлениями дублирования уведомлений)",
         "database": db_status,
         "yookassa": yookassa_status,
         "telegram_bot": TELEGRAM_BOT_URL,
@@ -1324,7 +1336,9 @@ def home():
             "✅ Логирование всех действий",
             "✅ Invoices API ЮKassa (все способы оплаты)",
             "✅ Безопасное создание таблиц",
-            "✅ Автозапуск recovery worker"
+            "✅ Автозапуск recovery worker",
+            "✅ ИСПРАВЛЕНО: Дедупликация вебхуков",
+            "✅ ИСПРАВЛЕНО: Предотвращение дублей платежей"
         ],
         "supported_payment_methods": [
             "💳 bank_card - Банковские карты",
@@ -1340,7 +1354,7 @@ def home():
             "recovery": "/recovery/** (см. /admin/dashboard)",
             "create_payment": "/api/create-payment (POST) - СТАРЫЙ (только карты)",
             "create_payment_advanced": "/api/create-payment-advanced (POST) - НОВЫЙ (Invoices API, все способы)",
-            "yookassa_webhook": "/yookassa-webhook (POST)",
+            "yookassa_webhook": "/yookassa-webhook (POST) - ИСПРАВЛЕННЫЙ (с дедупликацией)",
             "get_materials": "/api/get-materials/<payment_id> (GET)",
             "health": "/health (GET)",
             "check_db": "/check-db (GET)",
@@ -1835,12 +1849,12 @@ def api_get_materials(payment_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 # ============================================
-# 3. ИСПРАВЛЕННЫЙ ВЕБХУК ЮKASSA С ПОДДЕРЖКОЙ INVOICES API
+# 3. ИСПРАВЛЕННЫЙ ВЕБХУК ЮKASSA С ПОДДЕРЖКОЙ INVOICES API И ДЕДУПЛИКАЦИЕЙ
 # ============================================
 
 @app.route('/yookassa-webhook', methods=['POST'])
 def yookassa_webhook():
-    """Обработчик вебхуков - ДОПОЛНЕН ДЛЯ INVOICES"""
+    """Обработчик вебхуков - ДОПОЛНЕН ДЛЯ INVOICES + ДЕДУПЛИКАЦИЯ"""
     try:
         event_json = request.get_json()
         if not event_json:
@@ -1856,6 +1870,56 @@ def yookassa_webhook():
             webhook_id = f"wh_{timestamp}_{data_hash}"
         
         event_type = event_json.get('event', 'unknown')
+        
+        # ========== КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ДЕДУПЛИКАЦИЯ ==========
+        # Проверяем, не обрабатывали ли уже этот вебхук
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Проверка 1: Такой вебхук уже был?
+            cursor.execute("""
+            SELECT id FROM yookassa_webhooks 
+            WHERE webhook_id = %s AND event = %s
+            """, (webhook_id, event_type))
+            
+            if cursor.fetchone():
+                logger.info(f"📭 Вебхук уже обработан, пропускаем: {webhook_id}")
+                cursor.close()
+                conn.close()
+                return jsonify({"status": "already_processed"}), 200
+            
+            # Извлекаем данные из события
+            yookassa_id = None
+            payment_id = None
+            user_id = None
+            
+            if 'object' in event_json:
+                obj = event_json['object']
+                yookassa_id = obj.get('id')
+                metadata = obj.get('metadata', {})
+                payment_id = metadata.get('payment_id')
+                user_id = metadata.get('user_id')
+                
+                # Проверка 2: Платеж с этим yookassa_id уже успешен?
+                if yookassa_id:
+                    cursor.execute("""
+                    SELECT status FROM payments WHERE yookassa_id = %s
+                    """, (yookassa_id,))
+                    payment = cursor.fetchone()
+                    if payment and payment[0] == 'succeeded':
+                        logger.info(f"📭 Платеж уже обработан: {yookassa_id}")
+                        cursor.close()
+                        conn.close()
+                        return jsonify({"status": "payment_already_processed"}), 200
+            
+            cursor.close()
+            conn.close()
+            
+        except Exception as deps_e:
+            logger.error(f"⚠️ Ошибка проверки дубликатов: {deps_e}")
+            # Продолжаем обработку даже при ошибке проверки
+        # ========== КОНЕЦ ИСПРАВЛЕНИЯ ==========
         
         # КЛЮЧЕВОЕ: Обрабатываем оба типа событий
         if event_type == 'payment.succeeded':
@@ -1911,65 +1975,112 @@ def yookassa_webhook():
         # 3. Запускаем асинхронную обработку в отдельном потоке
         @async_task
         def process_webhook_async():
-            """Асинхронная обработка вебхука"""
+            """Асинхронная обработка вебхука с дедупликацией"""
             try:
                 logger.info(f"🔧 Начинаю асинхронную обработку вебхука {webhook_id}")
                 
                 if event_type in ['payment.succeeded', 'invoice.paid'] and yookassa_id != 'unknown':
-                    # Короткая транзакция 1: Обновляем статус платежа
+                    # АТОМАРНАЯ обработка с проверкой дубликатов
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    
                     try:
-                        result = update_payment_status_tx(yookassa_id, payment_id, "succeeded", metadata)
-                        if result:
-                            user_id, actual_payment_id, old_status = result
-                            logger.info(f"✅ Статус платежа обновлен: {actual_payment_id}")
-                            
-                            # ОБНОВЛЯЕМ СПОСОБ ОПЛАТЫ ДЛЯ invoice.paid
-                            if event_type == 'invoice.paid':
-                                try:
-                                    conn = get_db_connection()
-                                    cursor = conn.cursor()
-                                    cursor.execute("""
-                                    UPDATE payments 
-                                    SET payment_method = %s,
-                                        payment_method_details = %s
-                                    WHERE payment_id = %s
-                                    """, (method_type, method_details, actual_payment_id))
-                                    conn.commit()
-                                    cursor.close()
-                                    conn.close()
-                                    logger.info(f"✅ Способ оплаты сохранен из invoice: {method_type}")
-                                except Exception as method_e:
-                                    logger.error(f"⚠️ Ошибка сохранения способа оплаты: {method_e}")
-                            
-                            # Короткая транзакция 2: Выдаем доступ
+                        # Блокируем строку для избежания race condition
+                        cursor.execute("""
+                        SELECT status FROM payments 
+                        WHERE yookassa_id = %s OR payment_id = %s
+                        FOR UPDATE
+                        """, (yookassa_id, payment_id))
+                        
+                        current_status = cursor.fetchone()
+                        
+                        # Если уже succeeded - не обновляем
+                        if current_status and current_status[0] == 'succeeded':
+                            logger.info(f"📭 Платеж уже обработан (в транзакции): {yookassa_id}")
+                            conn.rollback()
+                            cursor.close()
+                            conn.close()
+                            return
+                        
+                        # Обновляем статус
+                        cursor.execute("""
+                        UPDATE payments 
+                        SET status = 'succeeded', 
+                            confirmed_at = CURRENT_TIMESTAMP,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE (yookassa_id = %s OR payment_id = %s)
+                        AND status != 'succeeded'  # ← Важно: не перезаписываем успешные
+                        RETURNING user_id, payment_id, payment_method
+                        """, (yookassa_id, payment_id))
+                        
+                        result = cursor.fetchone()
+                        
+                        if not result:
+                            logger.warning(f"⚠️ Платеж не найден или уже обработан: {yookassa_id}")
+                            conn.rollback()
+                            cursor.close()
+                            conn.close()
+                            return
+                        
+                        user_id, actual_payment_id, old_payment_method = result
+                        
+                        # ОБНОВЛЯЕМ СПОСОБ ОПЛАТЫ ДЛЯ invoice.paid
+                        if event_type == 'invoice.paid':
                             try:
-                                access_token = grant_user_access_tx(user_id, actual_payment_id)
-                                logger.info(f"✅ Доступ выдан пользователю {user_id}")
-                                
-                                # Логируем восстановление если нужно
-                                if old_status != 'succeeded':
-                                    try:
-                                        log_recovery_action_tx(
-                                            "webhook_recovery", actual_payment_id, user_id, 
-                                            old_status, "succeeded", "success",
-                                            details={
-                                                "yookassa_id": yookassa_id,
-                                                "event_type": event_type,
-                                                "payment_method": method_type if event_type == 'invoice.paid' else 'unknown'
-                                            }
-                                        )
-                                    except Exception as log_e:
-                                        logger.error(f"⚠️ Ошибка логирования восстановления: {log_e}")
-                                
-                                # ОПЕРАЦИЯ ВНЕ ТРАНЗАКЦИИ: Отправляем уведомление
-                                send_notification_async(user_id, actual_payment_id, access_token)
-                                
-                            except Exception as access_e:
-                                logger.error(f"❌ Ошибка выдачи доступа: {access_e}")
-                        else:
-                            logger.warning(f"⚠️ Платеж не найден для yookassa_id={yookassa_id}")
-                    except Exception as update_e:
-                        logger.error(f"❌ Ошибка обновления статуса платежа: {update_e}")
+                                cursor.execute("""
+                                UPDATE payments 
+                                SET payment_method = %s,
+                                    payment_method_details = %s
+                                WHERE payment_id = %s
+                                """, (method_type, method_details, actual_payment_id))
+                                logger.info(f"✅ Способ оплаты сохранен из invoice: {method_type}")
+                            except Exception as method_e:
+                                logger.error(f"⚠️ Ошибка сохранения способа оплаты: {method_e}")
+                        
+                        # Выдаем доступ
+                        access_token = generate_access_token(user_id, actual_payment_id)
+                        
+                        cursor.execute("""
+                        INSERT INTO user_access (user_id, payment_id, has_access, access_token)
+                        VALUES (%s, %s, TRUE, %s)
+                        ON CONFLICT (user_id, payment_id) DO UPDATE SET
+                            has_access = TRUE,
+                            access_token = EXCLUDED.access_token,
+                            granted_at = CURRENT_TIMESTAMP
+                        """, (user_id, actual_payment_id, access_token))
+                        
+                        # Логируем восстановление если нужно
+                        if current_status and current_status[0] != 'succeeded':
+                            cursor.execute("""
+                            INSERT INTO recovery_log 
+                            (recovery_type, payment_id, user_id, status_before, status_after, 
+                             recovery_result, details)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            """, (
+                                "webhook_recovery", actual_payment_id, user_id, 
+                                current_status[0] if current_status else 'unknown',
+                                "succeeded", "success",
+                                json.dumps({
+                                    "yookassa_id": yookassa_id,
+                                    "event_type": event_type,
+                                    "payment_method": method_type if event_type == 'invoice.paid' else old_payment_method
+                                })
+                            ))
+                        
+                        conn.commit()
+                        logger.info(f"✅ Платеж обработан: {actual_payment_id} для пользователя {user_id}")
+                        
+                        # ОПЕРАЦИЯ ВНЕ ТРАНЗАКЦИИ: Отправляем уведомление
+                        send_notification_async(user_id, actual_payment_id, access_token)
+                        
+                    except Exception as tx_e:
+                        logger.error(f"❌ Ошибка в транзакции обработки вебхука: {tx_e}")
+                        conn.rollback()
+                    finally:
+                        cursor.close()
+                        conn.close()
+                else:
+                    logger.warning(f"⚠️ Неизвестный тип события или нет yookassa_id: {event_type}")
                 
                 logger.info(f"✅ Асинхронная обработка вебхука {webhook_id} завершена")
                 
@@ -2159,6 +2270,30 @@ def admin_dashboard():
         cursor.execute("SELECT COUNT(*) FROM recovery_log WHERE recovery_result = 'error' AND recovered_at > NOW() - INTERVAL '24 hours'")
         recovery_errors_24h = cursor.fetchone()[0]
         
+        # Статистика дубликатов (новый раздел)
+        cursor.execute("""
+        SELECT COUNT(*) as duplicate_webhooks
+        FROM (
+            SELECT webhook_id, COUNT(*) as cnt
+            FROM yookassa_webhooks
+            GROUP BY webhook_id
+            HAVING COUNT(*) > 1
+        ) as duplicates
+        """)
+        duplicate_webhooks = cursor.fetchone()[0] or 0
+        
+        cursor.execute("""
+        SELECT COUNT(*) as duplicate_payments
+        FROM (
+            SELECT yookassa_id, COUNT(*) as cnt
+            FROM payments
+            WHERE yookassa_id IS NOT NULL
+            GROUP BY yookassa_id
+            HAVING COUNT(*) > 1
+        ) as duplicates
+        """)
+        duplicate_payments = cursor.fetchone()[0] or 0
+        
         # НОВАЯ СТАТИСТИКА: способы оплаты
         try:
             cursor.execute("""
@@ -2241,6 +2376,18 @@ def admin_dashboard():
         """)
         payment_methods_daily_stats = cursor.fetchall()
         
+        # Статистика вебхуков
+        cursor.execute("""
+        SELECT event, COUNT(*) as count,
+               SUM(CASE WHEN processed THEN 1 ELSE 0 END) as processed,
+               SUM(CASE WHEN NOT processed THEN 1 ELSE 0 END) as pending
+        FROM yookassa_webhooks
+        WHERE received_at > NOW() - INTERVAL '24 hours'
+        GROUP BY event
+        ORDER BY count DESC
+        """)
+        webhooks_stats = cursor.fetchall()
+        
         cursor.close()
         conn.close()
         
@@ -2260,8 +2407,19 @@ def admin_dashboard():
                 "recent_pending_payments": recent_pending,
                 "active_accesses": active_accesses,
                 "recoveries_last_24h": recoveries_24h,
-                "recovery_errors_last_24h": recovery_errors_24h
+                "recovery_errors_last_24h": recovery_errors_24h,
+                "duplicate_webhooks": duplicate_webhooks,
+                "duplicate_payments": duplicate_payments
             },
+            "webhooks_stats": [
+                {
+                    "event": w[0],
+                    "total": w[1],
+                    "processed": w[2],
+                    "pending": w[3],
+                    "processing_rate": round((w[2] / w[1] * 100) if w[1] > 0 else 0, 1)
+                } for w in webhooks_stats
+            ],
             "payment_methods_stats": [
                 {
                     "method": row[0],
@@ -2328,13 +2486,23 @@ def admin_dashboard():
                 "resend_notifications": "/recovery/resend-notifications/<user_id> (POST)",
                 "fix_columns": "/create-all-tables (GET) - используйте этот эндпоинт"
             },
+            "duplicates_info": {
+                "duplicate_webhooks": duplicate_webhooks,
+                "duplicate_payments": duplicate_payments,
+                "recommendation": "Если есть дубликаты, используйте /admin/clean-duplicates (если доступен) или очистите вручную через базу данных"
+            },
             "system": {
                 "recovery_worker": recovery_status,
                 "postgres_available": POSTGRES_AVAILABLE,
                 "yookassa_sdk_available": YOOKASSA_SDK_AVAILABLE,
                 "telegram_configured": bool(os.getenv('TELEGRAM_BOT_TOKEN')),
                 "yookassa_configured": bool(os.getenv('YOOKASSA_SHOP_ID') and os.getenv('YOOKASSA_SECRET_KEY')),
-                "architecture_version": "6.2 (Invoices API + безопасные таблицы)"
+                "architecture_version": "6.3 (Invoices API + безопасные таблицы + дедупликация)",
+                "deduplication": {
+                    "webhooks": "активна",
+                    "payments": "активна",
+                    "notifications": "активна"
+                }
             }
         })
         
@@ -2368,7 +2536,12 @@ def create_all_tables_endpoint():
                     "recovery_log - логи восстановления"
                 ],
                 "method": "безопасная проверка и добавление колонок",
-                "invoice_api_support": True
+                "invoice_api_support": True,
+                "deduplication_features": {
+                    "unique_index_on_yookassa_id": True,
+                    "unique_index_on_webhooks": True,
+                    "prevents_duplicate_notifications": True
+                }
             })
         else:
             return jsonify({
@@ -2449,6 +2622,28 @@ def check_db():
         """)
         user_access_columns = [row[0] for row in cursor.fetchall()]
         
+        # Проверка индексов дедупликации
+        cursor.execute("""
+        SELECT indexname, indexdef 
+        FROM pg_indexes 
+        WHERE tablename IN ('payments', 'yookassa_webhooks')
+        AND (indexname LIKE '%unique%' OR indexname LIKE '%idx_unique%')
+        """)
+        unique_indexes = cursor.fetchall()
+        
+        # Проверка дубликатов
+        cursor.execute("""
+        SELECT COUNT(*) as duplicate_payments
+        FROM (
+            SELECT yookassa_id, COUNT(*) as cnt
+            FROM payments
+            WHERE yookassa_id IS NOT NULL
+            GROUP BY yookassa_id
+            HAVING COUNT(*) > 1
+        ) as duplicates
+        """)
+        duplicate_payments = cursor.fetchone()[0] or 0
+        
         cursor.close()
         conn.close()
         
@@ -2463,6 +2658,8 @@ def check_db():
             "recent_recoveries": {result: count for result, count in recent_recoveries},
             "payments_table_columns": payment_columns,
             "user_access_table_columns": user_access_columns,
+            "unique_indexes": {idx[0]: idx[1] for idx in unique_indexes},
+            "duplicate_payments": duplicate_payments,
             "has_required_columns": {
                 "payments_recovery_attempts": 'recovery_attempts' in payment_columns,
                 "payments_last_recovery_attempt": 'last_recovery_attempt' in payment_columns,
@@ -2470,7 +2667,12 @@ def check_db():
                 "payments_payment_method_details": 'payment_method_details' in payment_columns,
                 "user_access_recovery_notified": 'recovery_notified' in user_access_columns
             },
-            "health": "healthy" if all(table_status.values()) else "issues",
+            "deduplication_status": {
+                "payments_unique_index": any('idx_unique_yookassa_id' in idx[0] for idx in unique_indexes),
+                "webhooks_unique_index": any('idx_unique_webhook' in idx[0] for idx in unique_indexes),
+                "duplicate_payments_found": duplicate_payments
+            },
+            "health": "healthy" if all(table_status.values()) and duplicate_payments == 0 else "issues",
             "recommendation": "Запустите /create-all-tables для безопасного исправления" if not all(table_status.values()) else "OK"
         })
         
@@ -2558,7 +2760,7 @@ def health_check():
         return jsonify({
             "status": "healthy" if (POSTGRES_AVAILABLE and "connected" in db_status and telegram_token_set) else "degraded",
             "service": "variatica_payment_api",
-            "version": "6.2 (с Invoices API и безопасным созданием таблиц)",
+            "version": "6.3 (с Invoices API, безопасными таблицами и дедупликацией)",
             "database": db_status,
             "yookassa_sdk": "available" if YOOKASSA_SDK_AVAILABLE else "not_available",
             "yookassa_configured": yookassa_configured,
@@ -2566,14 +2768,17 @@ def health_check():
             "telegram_bot_url": TELEGRAM_BOT_URL,
             "recovery_worker": recovery_status,
             "supported_payment_methods": "all (через Invoices API)",
-            "architecture": "исправленная (Invoices API + безопасные таблицы)",
+            "architecture": "исправленная (Invoices API + безопасные таблицы + дедупликация)",
             "timestamp": datetime.now().isoformat(),
             "critical_fixes": [
                 "✅ Безопасное создание таблиц (без ошибок 'столбец не существует')",
                 "✅ Invoices API (все способы оплаты ЮKassa)",
                 "✅ Обработка вебхуков invoice.paid",
                 "✅ 100% обратная совместимость",
-                "✅ Сохранение логики оповещений"
+                "✅ Сохранение логики оповещений",
+                "✅ ДЕДУПЛИКАЦИЯ вебхуков и платежей",
+                "✅ Предотвращение дублирования уведомлений",
+                "✅ Атомарная обработка платежей"
             ],
             "recommended_actions": [
                 "1. Запустите /create-all-tables для безопасной проверки структуры",
@@ -2630,7 +2835,7 @@ def handle_exception(e):
 
 if __name__ == '__main__':
     print("="*80)
-    print("🚀 VARIATICA PAYMENT API v6.2 - С INVOICES API И БЕЗОПАСНЫМИ ТАБЛИЦАМИ")
+    print("🚀 VARIATICA PAYMENT API v6.3 - С ИСПРАВЛЕНИЕМ ДУБЛИРОВАНИЯ УВЕДОМЛЕНИЙ")
     print("="*80)
     print(f"Python: {sys.version.split()[0]}")
     print(f"psycopg3 доступен: {POSTGRES_AVAILABLE}")
@@ -2639,11 +2844,15 @@ if __name__ == '__main__':
     print(f"Текущее время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*80)
     print("🎯 ИСПРАВЛЕННЫЕ КРИТИЧЕСКИЕ ПРОБЛЕМЫ:")
-    print("  ✅ ПРОБЛЕМА 1: Безопасное создание таблиц")
-    print("     - Нет ошибок 'столбец не существует'")
-    print("     - Проверка существования таблиц перед созданием")
-    print("     - Добавление только отсутствующих колонок")
-    print("  ✅ ПРОБЛЕМА 2: Invoices API вместо Payments API")
+    print("  ✅ ПРОБЛЕМА 1: Дублирование уведомлений")
+    print("     - Дедупликация вебхуков (проверка webhook_id)")
+    print("     - Атомарная обработка платежей")
+    print("     - Предотвращение повторной отправки уведомлений")
+    print("  ✅ ПРОБЛЕМА 2: Дублирование платежей")
+    print("     - Уникальный индекс на yookassa_id")
+    print("     - Проверка существующих платежей перед созданием")
+    print("     - Блокировка транзакций FOR UPDATE")
+    print("  ✅ ПРОБЛЕМА 3: Invoices API вместо Payments API")
     print("     - Пользователь видит ВСЕ способы оплаты")
     print("     - СБП, ЮMoney, Тинькофф и другие доступны")
     print("     - Сохранена логика оповещений")
@@ -2660,10 +2869,10 @@ if __name__ == '__main__':
     print("     • ЮKassa сам предлагает ВСЕ способы")
     print("     • СБП, ЮMoney, Тинькофф, карты и др.")
     print("="*80)
-    print("📡 КАК ИСПРАВИТЬ БОТА (ВАЖНО!):")
-    print("  ПРОБЛЕМА: Ваш бот использует старый /api/create-payment")
-    print("  РЕШЕНИЕ: В коде бота заменить:")
-    print("    /api/create-payment → /api/create-payment-advanced")
+    print("📡 ВАЖНО ДЛЯ БОТА:")
+    print("  В коде бота ТОЛЬКО ДВА ИСПРАВЛЕНИЯ:")
+    print("  1. URL: /api/create-payment → /api/create-payment-advanced")
+    print("  2. Idempotence-Key: сделать уникальным для каждого запроса")
     print("="*80)
     print("🛠️  БЫСТРЫЙ ТЕСТ НОВОГО ЭНДПОИНТА:")
     print("  curl -X POST https://testing-lichnosti-bot-1.onrender.com/api/create-payment-advanced \\")
@@ -2675,7 +2884,7 @@ if __name__ == '__main__':
     print("="*80)
     print("🔄 СИСТЕМА ВОССТАНОВЛЕНИЯ:")
     print("  • Recovery worker запускается автоматически")
-    print("  • Автоматическое восстановление каждые 15 минут")
+    print("  • Автоматическое восстановление каждые 60 секунд")
     print("  • Панель администратора для мониторинга")
     print("="*80)
     
