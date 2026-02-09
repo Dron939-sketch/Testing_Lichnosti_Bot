@@ -1,6 +1,6 @@
 """
 Загрузчик профилей из файловой системы
-ПОЛНАЯ ВЕРСИЯ С УПРОЩЕННЫМ ПОИСКОМ
+ПОЛНАЯ ВЕРСИЯ С ИСПРАВЛЕННЫМ ПОИСКОМ
 """
 
 import os
@@ -297,10 +297,21 @@ class ProfileLoader:
                                 self.profiles[ip_with_dash] = profile
                                 self.profiles[ip_with_dash.lower()] = profile
                             
-                            # Сохраняем БАЗОВЫЙ ключ (тип_уровень) для быстрого поиска
-                            base_key = '_'.join(normalized_key.split('_')[:2])  # SA_1, SP_2, etc
-                            self.profiles[base_key] = profile
-                            self.profiles[base_key.lower()] = profile
+                            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Сохраняем БАЗОВЫЙ ключ (тип_уровень)
+                            # Дважды проверяем формат ключа
+                            parts = normalized_key.split('_')
+                            if len(parts) >= 2:
+                                # Создаем базовый ключ
+                                base_key = f"{parts[0]}_{parts[1]}"
+                                base_key_lower = base_key.lower()
+                                
+                                print(f"    📍 СОЗДАЮ базовые ключи: '{base_key}' и '{base_key_lower}'")
+                                
+                                # Сохраняем в ВЕРХНЕМ регистре
+                                self.profiles[base_key] = profile
+                                
+                                # Сохраняем в НИЖНЕМ регистре
+                                self.profiles[base_key_lower] = profile
                             
                             successful_loads += 1
                         else:
@@ -328,29 +339,35 @@ class ProfileLoader:
             traceback.print_exc()
     
     def print_statistics(self):
-        """Выводит статистику по загруженным профилям"""
+        """Выводим статистику по загруженным профилям с БАЗОВЫМИ ключами"""
         type_counts = {'SA': 0, 'IA': 0, 'SP': 0, 'IP': 0}
         unique_keys = set()
+        base_keys = set()
         
         for key in self.profiles.keys():
-            # Пропускаем ключи в нижнем регистре и с дефисами
-            if key.islower() or '-' in key:
-                continue
+            # Отделяем базовые ключи от полных
+            if isinstance(key, str):
+                parts = key.split('_')
+                if len(parts) == 2 and parts[1].isdigit():
+                    # Это базовый ключ (тип_уровень)
+                    base_keys.add(key)
                 
-            unique_keys.add(key)
-            
-            if key.startswith('SA_'):
-                type_counts['SA'] += 1
-            elif key.startswith('IA_'):
-                type_counts['IA'] += 1
-            elif key.startswith('SP_'):
-                type_counts['SP'] += 1
-            elif key.startswith('IP_'):
-                type_counts['IP'] += 1
+                # Считаем только нормализованные полные ключи
+                if len(parts) >= 3 and not key.islower() and '-' not in key:
+                    unique_keys.add(key)
+                    
+                    if key.startswith('SA_'):
+                        type_counts['SA'] += 1
+                    elif key.startswith('IA_'):
+                        type_counts['IA'] += 1
+                    elif key.startswith('SP_'):
+                        type_counts['SP'] += 1
+                    elif key.startswith('IP_'):
+                        type_counts['IP'] += 1
         
-        print("\n" + "="*40)
+        print("\n" + "="*50)
         print("📊 СТАТИСТИКА ПРОФИЛЕЙ")
-        print("="*40)
+        print("="*50)
         
         total_unique = len(unique_keys)
         for type_code, count in type_counts.items():
@@ -358,8 +375,16 @@ class ProfileLoader:
             print(f"  {type_code}: {count} профилей ({percentage:.1f}%)")
         
         print(f"\n  Всего уникальных профилей: {total_unique}")
+        print(f"  Всего базовых ключей: {len(base_keys)}")
         
-        # Выводим все ключи
+        # Выводим все базовые ключи
+        if base_keys:
+            print(f"\n🔑 Базовые ключи (тип_уровень):")
+            sorted_base_keys = sorted(list(base_keys))
+            for key in sorted_base_keys:
+                print(f"  - {key}")
+        
+        # Выводим все полные ключи
         if unique_keys:
             print(f"\n🔑 Все загруженные профили:")
             sorted_keys = sorted(list(unique_keys))
@@ -371,7 +396,7 @@ class ProfileLoader:
                 else:
                     print(f"  - {key:15} → БЕЗ ЗАГОЛОВКА")
         
-        print("="*40)
+        print("="*50)
     
     def _generate_profile_key(self, profile: VariaticaProfile) -> str:
         """
@@ -509,14 +534,14 @@ class ProfileLoader:
                 prefix = parts[0].upper()
                 similar_keys = []
                 for key in self.profiles.keys():
-                    if key.upper().startswith(prefix):
+                    if isinstance(key, str) and key.upper().startswith(prefix):
                         similar_keys.append(key)
                 
                 if similar_keys:
                     print(f"   📋 Доступные ключи начинающиеся с '{prefix}':")
                     unique_similar = sorted(set(similar_keys))
                     for key in unique_similar[:15]:  # Показываем первые 15
-                        print(f"   - {key}")
+                        print(f"   - '{key}'")
                     if len(unique_similar) > 15:
                         print(f"   ... и ещё {len(unique_similar) - 15} ключей")
         
@@ -541,29 +566,36 @@ class ProfileLoader:
         print(f"     🤔 Ищем: тип={type_part}, уровень={level_part}")
         
         # Шаг 1: Ищем БАЗОВЫЙ ключ (тип_уровень)
-        base_key = f"{type_part}_{level_part}"  # sp_4
-        base_key_upper = f"{type_part.upper()}_{level_part}"  # SP_4
+        # Проверяем ВСЕ возможные варианты регистра
+        base_variants = [
+            f"{type_part}_{level_part}",           # sa_3
+            f"{type_part.upper()}_{level_part}",   # SA_3
+            f"{type_part}_{level_part.upper()}",   # sa_3 (если level_part уже в верхнем)
+            f"{type_part.upper()}_{level_part.upper()}",  # SA_3
+        ]
         
-        if base_key in self.profiles:
-            print(f"     ✅ Найден базовый профиль: {base_key}")
-            return self.profiles[base_key]
+        print(f"     🔍 Ищу базовые ключи: {base_variants}")
         
-        if base_key_upper in self.profiles:
-            print(f"     ✅ Найден базовый профиль: {base_key_upper}")
-            return self.profiles[base_key_upper]
+        for base_key in base_variants:
+            if base_key in self.profiles:
+                print(f"     ✅ Найден базовый профиль: {base_key}")
+                return self.profiles[base_key]
         
         # Шаг 2: Ищем любой профиль этого типа и уровня с любым суффиксом
         for suffix in self.all_suffixes:
-            test_key = f"{type_part}_{level_part}_{suffix}"  # sp_4_exp
-            test_key_upper = f"{type_part.upper()}_{level_part}_{suffix}"  # SP_4_exp
+            # Проверяем разные варианты регистра
+            test_variants = [
+                f"{type_part}_{level_part}_{suffix}",           # sa_3_con
+                f"{type_part.upper()}_{level_part}_{suffix}",   # SA_3_con
+                f"{type_part}_{level_part.upper()}_{suffix}",   # sa_3_con (если level_part в верхнем)
+                f"{type_part.upper()}_{level_part.upper()}_{suffix}",  # SA_3_CON
+                f"{type_part.upper()}_{level_part}_{suffix.upper()}",  # SA_3_CON (только суффикс верхний)
+            ]
             
-            if test_key in self.profiles:
-                print(f"     ✅ УМНЫЙ ПОИСК: найден {test_key} вместо {profile_key}")
-                return self.profiles[test_key]
-            
-            if test_key_upper in self.profiles:
-                print(f"     ✅ УМНЫЙ ПОИСК: найден {test_key_upper} вместо {profile_key}")
-                return self.profiles[test_key_upper]
+            for test_key in test_variants:
+                if test_key in self.profiles:
+                    print(f"     ✅ УМНЫЙ ПОИСК: найден {test_key} вместо {profile_key}")
+                    return self.profiles[test_key]
         
         # Шаг 3: Если не нашли, пробуем ближайшие уровни (только для этого типа)
         print(f"     🔍 {type_part.upper()}_{level_part} не найден, ищу ближайшие уровни...")
@@ -573,7 +605,7 @@ class ProfileLoader:
             target_level = int(level_part)
             level_order = []
             
-            # Создаем порядок поиска: 3, 5, 2, 6, 1, 7, 8, 9
+            # Создаем порядок поиска
             if target_level > 1:
                 level_order.append(str(target_level - 1))  # уровень ниже
             if target_level < 9:
@@ -587,24 +619,25 @@ class ProfileLoader:
             
             for search_level in level_order:
                 for suffix in self.all_suffixes:
-                    test_key = f"{type_part}_{search_level}_{suffix}"
-                    test_key_upper = f"{type_part.upper()}_{search_level}_{suffix}"
+                    # Проверяем разные варианты регистра
+                    test_variants = [
+                        f"{type_part}_{search_level}_{suffix}",
+                        f"{type_part.upper()}_{search_level}_{suffix}",
+                        f"{type_part.upper()}_{search_level.upper()}_{suffix}",
+                        f"{type_part.upper()}_{search_level}_{suffix.upper()}",
+                    ]
                     
-                    if test_key in self.profiles:
-                        print(f"     🔄 Использую {test_key} (уровень {search_level}) вместо {profile_key}")
-                        return self.profiles[test_key]
-                    
-                    if test_key_upper in self.profiles:
-                        print(f"     🔄 Использую {test_key_upper} (уровень {search_level}) вместо {profile_key}")
-                        return self.profiles[test_key_upper]
+                    for test_key in test_variants:
+                        if test_key in self.profiles:
+                            print(f"     🔄 Использую {test_key} (уровень {search_level}) вместо {profile_key}")
+                            return self.profiles[test_key]
         except ValueError:
             pass
         
         # Шаг 4: Ищем любой профиль этого типа
         print(f"     🔍 Ищу любой профиль типа {type_part.upper()}...")
         for key in self.profiles.keys():
-            key_lower = key.lower()
-            if key_lower.startswith(f"{type_part}_"):
+            if isinstance(key, str) and key.lower().startswith(f"{type_part}_"):
                 print(f"     🔄 Использую {key} вместо {profile_key}")
                 return self.profiles[key]
         
@@ -627,8 +660,10 @@ class ProfileLoader:
         unique_keys = set()
         for key in self.profiles.keys():
             # Берем только нормализованные ключи (в верхнем регистре, без дефисов)
-            if not key.islower() and '-' not in key:
-                unique_keys.add(key)
+            if isinstance(key, str) and not key.islower() and '-' not in key and '_' in key:
+                parts = key.split('_')
+                if len(parts) >= 3:  # Полные ключи (тип_уровень_суффикс)
+                    unique_keys.add(key)
         
         return sorted(list(unique_keys))
     
@@ -646,7 +681,7 @@ class ProfileLoader:
         result = {}
         
         for key, profile in self.profiles.items():
-            if key.startswith(normalized_type + '_'):
+            if isinstance(key, str) and key.startswith(normalized_type + '_'):
                 result[key] = profile
         
         return result
@@ -675,7 +710,7 @@ class ProfileLoader:
             for level in expected_levels:
                 for suffix in expected_suffixes:
                     profile_key = f"{type_code}_{level}_{suffix}"
-                    if profile_key not in self.profiles and profile_key.lower() not in self.profiles:
+                    if profile_key not in self.profiles:
                         missing_profiles.append(profile_key)
         
         if missing_profiles:
@@ -688,6 +723,12 @@ class ProfileLoader:
             return False
         
         print(f"\n✅ Все 36 профилей загружены!")
+        
+        # Дополнительно проверяем базовые ключи
+        base_keys_count = sum(1 for key in self.profiles.keys() 
+                            if isinstance(key, str) and len(key.split('_')) == 2 and key.split('_')[1].isdigit())
+        print(f"✅ Базовых ключей (тип_уровень): {base_keys_count}")
+        
         return True
 
 # Создаём глобальный экземпляр загрузчика
@@ -745,26 +786,27 @@ def debug_profile_loading():
     print("\n🔍 ТЕСТИРУЕМ ПОИСК ПРОФИЛЕЙ:")
     
     test_cases = [
-        # Проблемные случаи из логов
+        # Критические случаи из логов
+        ("sa_3_con", "SA_3_con"),
+        ("SA_3_con", "SA_3_con"),
+        ("sa_3_con", "SA_3_con"),
+        
+        # Проблемные случаи
         ("sp_3_aut", "SP_3_con"),
         ("sp_3_val", "SP_3_con"),
         ("sp_3_tra", "SP_3_con"),
         ("sp_3_ide", "SP_3_con"),
-        ("sp_4_def", "SP_4_exp"),
-        ("sp_4_sit", "SP_4_exp"),
-        ("sp_4_con", "SP_4_exp"),
-        ("sp_4_exp", "SP_4_exp"),  # Должен найти напрямую
-        ("sp_4_int", "SP_4_exp"),
-        ("sp_4_aut", "SP_4_exp"),
-        ("sp_4_val", "SP_4_exp"),
-        ("sp_4_tra", "SP_4_exp"),
-        ("sp_4_ide", "SP_4_exp"),
         
         # Стандартные профили
         ("sa_1_def", "SA_1_def"),
         ("sp_2_sit", "SP_2_sit"),
         ("ia_3_con", "IA_3_con"),
         ("ip_4_exp", "IP_4_exp"),
+        
+        # Проверка базовых ключей
+        ("SA_3", "SA_3_con"),
+        ("sp_4", "SP_4_exp"),
+        ("ia_2", "IA_2_sit"),
     ]
     
     for search_key, expected_key in test_cases:
@@ -781,6 +823,18 @@ def debug_profile_loading():
             print(f"  {status} {search_key:20} → {actual_key}: {title}...")
         else:
             print(f"  ❌ {search_key:20} → НЕ НАЙДЕН")
+    
+    # Проверяем базовые ключи
+    print("\n🔍 ПРОВЕРКА БАЗОВЫХ КЛЮЧЕЙ:")
+    test_base_keys = ["SA_3", "sa_3", "SP_4", "sp_4", "IA_2", "ia_2"]
+    
+    for base_key in test_base_keys:
+        profile = get_profile(base_key)
+        if profile:
+            actual_key = getattr(profile, 'key', 'unknown')
+            print(f"  ✅ {base_key:10} → {actual_key}")
+        else:
+            print(f"  ❌ {base_key:10} → НЕ НАЙДЕН")
     
     print("="*60)
 
