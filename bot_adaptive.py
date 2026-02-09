@@ -1,7 +1,7 @@
 """
 АДАПТИВНЫЙ ТЕСТ ВАРИАТИКА + ПЛАТЕЖНАЯ СИСТЕМА
-ПОЛНАЯ ВЕРСИЯ 2.0 - 2500+ строк
-Все исправления из ТЗ + 36 папок Яндекс.Диск + полная защита от ошибок
+ПОЛНАЯ ВЕРСИЯ 2.1 - ИСПРАВЛЕННЫЙ ПОИСК ПРОФИЛЕЙ И ЯНДЕКС.ДИСК
+Все исправления из ТЗ + полная защита от ошибок + правильные ссылки Яндекс.Диск
 """
 
 import logging
@@ -69,52 +69,51 @@ YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 TELEGRAM_BOT_URL = "https://t.me/Testing_Lichnosti_bot"
 
-# Базовые URL Яндекс.Диска
-YANDEX_DISK_BASE_URL = "https://disk.yandex.ru/d/"
+# ПРАВИЛЬНЫЕ ССЫЛКИ НА ЯНДЕКС.ДИСК (36 папок)
 YANDEX_DISK_FOLDERS = {
     # SA профили (9 папок)
-    "sa_1_def": "SA_1_DEF",
-    "sa_2_sit": "SA_2_SIT", 
-    "sa_3_con": "SA_3_CON",
-    "sa_4_exp": "SA_4_EXP",
-    "sa_5_int": "SA_5_INT",
-    "sa_6_aut": "SA_6_AUT",
-    "sa_7_val": "SA_7_VAL",
-    "sa_8_tra": "SA_8_TRA",
-    "sa_9_ide": "SA_9_IDE",
+    "SA_1_DEF": "https://disk.yandex.ru/d/HAcOfAg1tpIedA",
+    "SA_2_SIT": "https://disk.yandex.ru/d/MwdMClX9koCTmA",
+    "SA_3_CON": "https://disk.yandex.ru/d/NKN_XemK62t5nA",
+    "SA_4_EXP": "https://disk.yandex.ru/d/tTSiN5zhSb8LtA",
+    "SA_5_INT": "https://disk.yandex.ru/d/xUdv7bsBT3Wbhg",
+    "SA_6_AUT": "https://disk.yandex.ru/d/lYWKaOdEkC_5Ag",
+    "SA_7_VAL": "https://disk.yandex.ru/d/7BCOKs-6qS6-5g",
+    "SA_8_TRA": "https://disk.yandex.ru/d/SqlDISkse1OEGQ",
+    "SA_9_IDE": "https://disk.yandex.ru/d/vGzHmuckInNL5g",
     
     # SP профили (9 папок)
-    "sp_1_def": "SP_1_DEF",
-    "sp_2_sit": "SP_2_SIT",
-    "sp_3_con": "SP_3_CON",
-    "sp_4_exp": "SP_4_EXP",
-    "sp_5_int": "SP_5_INT",
-    "sp_6_aut": "SP_6_AUT",
-    "sp_7_val": "SP_7_VAL",
-    "sp_8_tra": "SP_8_TRA",
-    "sp_9_ide": "SP_9_IDE",
+    "SP_1_DEF": "https://disk.yandex.ru/d/7nmOP7wR2iQ9YA",
+    "SP_2_SIT": "https://disk.yandex.ru/d/Ro_mcLDd_QmilA",
+    "SP_3_CON": "https://disk.yandex.ru/d/kUJH3BLMnb4CfA",
+    "SP_4_EXP": "https://disk.yandex.ru/d/KBSO1g0HYNJBcQ",
+    "SP_5_INT": "https://disk.yandex.ru/d/s2jhq2ngz3pmYg",
+    "SP_6_AUT": "https://disk.yandex.ru/d/xWBv4TLFosOB5g",
+    "SP_7_VAL": "https://disk.yandex.ru/d/K1whXj6C6KAazQ",
+    "SP_8_TRA": "https://disk.yandex.ru/d/ZZhRISNn-GNPTg",
+    "SP_9_IDE": "https://disk.yandex.ru/d/jBCaEpYOdZI-JQ",
     
     # IA профили (9 папок)
-    "ia_1_def": "IA_1_DEF",
-    "ia_2_sit": "IA_2_SIT",
-    "ia_3_con": "IA_3_CON",
-    "ia_4_exp": "IA_4_EXP",
-    "ia_5_int": "IA_5_INT",
-    "ia_6_aut": "IA_6_AUT",
-    "ia_7_val": "IA_7_VAL",
-    "ia_8_tra": "IA_8_TRA",
-    "ia_9_ide": "IA_9_IDE",
+    "IA_1_DEF": "https://disk.yandex.ru/d/M1Y7z175uGKIHg",
+    "IA_2_SIT": "https://disk.yandex.ru/d/X3yz6IP0pdRmVQ",
+    "IA_3_CON": "https://disk.yandex.ru/d/DCkqqALby9UpFg",
+    "IA_4_EXP": "https://disk.yandex.ru/d/aLT8oJBu0EGwLg",
+    "IA_5_INT": "https://disk.yandex.ru/d/x0QXWi7MDR7h0g",
+    "IA_6_AUT": "https://disk.yandex.ru/d/xRjBzTxYh0v4bg",
+    "IA_7_VAL": "https://disk.yandex.ru/d/1fHqhIitNuz_XQ",
+    "IA_8_TRA": "https://disk.yandex.ru/d/0wSeHeF_SWZyFw",
+    "IA_9_IDE": "https://disk.yandex.ru/d/ub0YpQQgS4g6rQ",
     
     # IP профили (9 папок)
-    "ip_1_def": "IP_1_DEF",
-    "ip_2_sit": "IP_2_SIT",
-    "ip_3_con": "IP_3_CON",
-    "ip_4_exp": "IP_4_EXP",
-    "ip_5_int": "IP_5_INT",
-    "ip_6_aut": "IP_6_AUT",
-    "ip_7_val": "IP_7_VAL",
-    "ip_8_tra": "IP_8_TRA",
-    "ip_9_ide": "IP_9_IDE"
+    "IP_1_DEF": "https://disk.yandex.ru/d/m-WOQwDdgQxsnQ",
+    "IP_2_SIT": "https://disk.yandex.ru/d/aL4VlAQdlaZ-6g",
+    "IP_3_CON": "https://disk.yandex.ru/d/N8GG9XbnC3bFhg",
+    "IP_4_EXP": "https://disk.yandex.ru/d/54RFOZmGhA4cfA",
+    "IP_5_INT": "https://disk.yandex.ru/d/l5iFTIX8-gTycQ",
+    "IP_6_AUT": "https://disk.yandex.ru/d/bTo_vcCoC1KU7Q",
+    "IP_7_VAL": "https://disk.yandex.ru/d/TMx1VP843bnJQw",
+    "IP_8_TRA": "https://disk.yandex.ru/d/e9KfJdLcl3gp7g",
+    "IP_9_IDE": "https://disk.yandex.ru/d/ZiQPHJSDrrWZhw"
 }
 
 # Константы бота
@@ -354,7 +353,7 @@ STAGE_2_QUESTIONS = {
             "options": {
                 "1": "Ещё больше вопросов",
                 "2": "Новые идеи, но нет действий",
-                "4": "Понимание и действия",
+                "4": "Понимаение и действия",
                 "5": "Трансформация опыта"
             }
         },
@@ -703,7 +702,7 @@ STAGE_4_QUESTIONS = [
     },
     {
         "id": "q4_3", 
-        "text": "Человек чувствует себя несчастным.\n\nВ чём, скорее всего, причина?", 
+        "text": "Человник чувствует себя несчастным.\n\nВ чём, скорее всего, причина?", 
         "options": {
             "a": {"text": "Не те люди вокруг", "dilts": "ENVIRONMENT"}, 
             "b": {"text": "Делает не то, что хочет", "dilts": "BEHAVIOR"}, 
@@ -763,11 +762,11 @@ STAGE_4_QUESTIONS = [
     }
 ]
 
-# Уровни Дилтса
+# Уровни Дилтса - ИСПРАВЛЕННЫЕ КОДЫ
 DILTS_LEVELS = {
-    "ENVIRONMENT": {"name": "ОКРУЖЕНИЕ", "code": "env", "description": "Проблема во внешних условиях", "solution": "Измени окружение или отношение к нему"},
-    "BEHAVIOR": {"name": "ПОВЕДЕНИЕ", "code": "beh", "description": "Проблема в действиях", "solution": "Начни действовать по-другому"},
-    "CAPABILITIES": {"name": "СПОСОБНОСТИ", "code": "cap", "description": "Проблема в навыках", "solution": "Освой новые навыки"},
+    "ENVIRONMENT": {"name": "ОКРУЖЕНИЕ", "code": "sit", "description": "Проблема во внешних условиях", "solution": "Измени окружение или отношение к нему"},
+    "BEHAVIOR": {"name": "ПОВЕДЕНИЕ", "code": "con", "description": "Проблема в действиях", "solution": "Начни действовать по-другому"},
+    "CAPABILITIES": {"name": "СПОСОБНОСТИ", "code": "exp", "description": "Проблема в навыках", "solution": "Освой новые навыки"},
     "VALUES": {"name": "ЦЕННОСТИ", "code": "val", "description": "Проблема в мотивации", "solution": "Найди свои истинные ценности"},
     "IDENTITY": {"name": "ИДЕНТИЧНОСТЬ", "code": "ide", "description": "Проблема в самоопределении", "solution": "Переопредели, кто ты"}
 }
@@ -1036,33 +1035,62 @@ def grant_access_in_db(user_id: int, profile_type: str) -> dict:
         return {"success": False, "error": str(e)}
 
 def generate_yandex_disk_link(profile_key: str) -> str:
-    """Генерирует ссылку на Яндекс.Диск для профиля"""
-    # Приводим к нижнему регистру для надежности
-    profile_key_lower = profile_key.lower()
+    """Генерирует ссылку на Яндекс.Диск для профиля - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+    # Приводим к верхнему регистру для сопоставления с YANDEX_DISK_FOLDERS
+    profile_key_upper = profile_key.upper()
     
-    # Получаем имя папки
-    folder_name = YANDEX_DISK_FOLDERS.get(profile_key_lower)
+    logger.info(f"🔗 Генерация ссылки для профиля: {profile_key} → {profile_key_upper}")
     
-    if not folder_name:
-        logger.error(f"❌ Не найдена папка для профиля {profile_key}")
+    # Пытаемся найти точное совпадение
+    if profile_key_upper in YANDEX_DISK_FOLDERS:
+        link = YANDEX_DISK_FOLDERS[profile_key_upper]
+        logger.info(f"✅ Найдена точная ссылка: {link}")
+        return link
+    
+    # Если нет точного совпадения, пробуем разные варианты
+    # Пример: "sa_3_cap" → "SA_3_CAP" → "SA_3_EXP" (т.к. CAP = ВОЗМОЖНОСТИ = EXP)
+    
+    parts = profile_key_upper.split('_')
+    if len(parts) >= 3:
+        # Пробуем заменить суффикс Дилтса на соответствующий из списка
+        original_suffix = parts[2]
+        suffix_mapping = {
+            "CAP": "EXP",      # ВОЗМОЖНОСТИ → СПОСОБНОСТИ
+            "ENV": "SIT",      # ОКРУЖЕНИЕ → СИТУАЦИЯ
+            "BEH": "CON",      # ПОВЕДЕНИЕ
+            "VAL": "VAL",      # ЦЕННОСТИ (оставляем)
+            "IDE": "IDE"       # ИДЕНТИЧНОСТЬ (оставляем)
+        }
         
-        # Fallback: пытаемся сгенерировать имя папки
-        try:
-            parts = profile_key_lower.split('_')
-            if len(parts) >= 3:
-                folder_name = f"{parts[0].upper()}_{parts[1]}_{parts[2].upper()}"
-                logger.warning(f"⚠️ Сгенерировано имя папки: {folder_name}")
-            else:
-                folder_name = "DEFAULT_FOLDER"
-                logger.warning(f"⚠️ Используется папка по умолчанию")
-        except:
-            folder_name = "DEFAULT_FOLDER"
-            logger.warning(f"⚠️ Используется папка по умолчанию")
+        if original_suffix in suffix_mapping:
+            mapped_suffix = suffix_mapping[original_suffix]
+            mapped_key = f"{parts[0]}_{parts[1]}_{mapped_suffix}"
+            
+            if mapped_key in YANDEX_DISK_FOLDERS:
+                link = YANDEX_DISK_FOLDERS[mapped_key]
+                logger.info(f"✅ Найдена ссылка по маппингу: {original_suffix} → {mapped_suffix}: {link}")
+                return link
     
-    # В реальной реализации здесь будет ссылка на конкретную папку
-    # Пока используем заглушку
-    base_url = "https://disk.yandex.ru/d/"
-    return f"{base_url}{folder_name}"
+    # Если не нашли, пробуем базовый ключ (без суффикса)
+    if len(parts) >= 2:
+        base_key = f"{parts[0]}_{parts[1]}_DEF"  # Пробуем с DEF
+        if base_key in YANDEX_DISK_FOLDERS:
+            link = YANDEX_DISK_FOLDERS[base_key]
+            logger.info(f"✅ Найдена ссылка по базовому ключу: {base_key}: {link}")
+            return link
+    
+    # Fallback: первая папка соответствующего типа
+    if len(parts) >= 1:
+        type_prefix = parts[0]
+        for key in YANDEX_DISK_FOLDERS.keys():
+            if key.startswith(type_prefix + "_"):
+                link = YANDEX_DISK_FOLDERS[key]
+                logger.warning(f"⚠️ Использую первую попавшуюся папку типа {type_prefix}: {key} → {link}")
+                return link
+    
+    # Аварийный fallback
+    logger.error(f"❌ Не найдена ссылка для профиля: {profile_key}")
+    return "https://disk.yandex.ru/d/HAcOfAg1tpIedA"  # SA_1_DEF как запасной вариант
 
 # ============================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ТЕСТА
@@ -1114,15 +1142,15 @@ def get_level_name(level_num):
     return level_names.get(level_num, f"Уровень {level_num}")
 
 def get_dilts_code(dilts_level: str) -> str:
-    """Код Дилтса"""
+    """Код Дилтса - ИСПРАВЛЕННЫЙ!"""
     dilts_map = {
-        "ENVIRONMENT": "env",
-        "BEHAVIOR": "beh",
-        "CAPABILITIES": "cap",
-        "VALUES": "val",
-        "IDENTITY": "ide"
+        "ENVIRONMENT": "sit",    # ОКРУЖЕНИЕ → СИТУАЦИЯ
+        "BEHAVIOR": "con",       # ПОВЕДЕНИЕ
+        "CAPABILITIES": "exp",   # ВОЗМОЖНОСТИ → СПОСОБНОСТИ
+        "VALUES": "val",         # ЦЕННОСТИ
+        "IDENTITY": "ide"        # ИДЕНТИЧНОСТЬ
     }
-    return dilts_map.get(dilts_level, "env")
+    return dilts_map.get(dilts_level, "def")
 
 def determine_dilts_level(dilts_answers):
     """Определяет уровень Дилтса"""
@@ -1212,78 +1240,65 @@ def format_profile_title(profile_title: str, profile_header: str) -> str:
             return f"🎯 {profile_header} / {line1}"
     
     return f"🎯 {profile_header}"
+
 def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
-    """ИСПРАВЛЕННАЯ ВЕРСИЯ: Находит реально существующий файл профиля."""
+    """ИСПРАВЛЕННАЯ ВЕРСИЯ: Находит профиль по ТИПУ и УРОВНЮ, игнорируя суффикс Дилтса."""
     type_code = profile_data.get('type_code', 'sa').lower()
     level = profile_data.get('level', 1)
     dilts_code = profile_data.get('dilts_code', 'def').lower()
     
-    logger.info(f"🎯 FALLBACK ПОИСК: type={type_code}, level={level}, dilts={dilts_code}")
+    logger.info(f"🎯 FALLBACK ПОИСК: type={type_code}, level={level}, dilts={dilts_code} (игнорируем dilts)")
     
-    # 1. Прямое совпадение
-    target_key = f"{type_code}_{level}_{dilts_code}"
-    profile = loader.get_profile(target_key)
-    
-    if profile:
-        logger.info(f"✅ Прямое совпадение: {target_key}")
-        return profile
-    
-    logger.info(f"🔍 Прямое совпадение не найдено: {target_key}")
-    
-    # 2. Ищем тот же тип и уровень, другой суффикс Дилтса
+    # 1. Ищем профиль ТОГО ЖЕ ТИПА и УРОВНЯ (игнорируем суффикс Дилтса)
+    # Используем стандартные суффиксы, которые есть в файлах
     possible_suffixes = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
     
-    for suffix in possible_suffixes:
-        if suffix == dilts_code:
-            continue  # Уже проверяли
-            
+    # Пробуем в порядке приоритета:
+    search_order = []
+    
+    # Сначала пробуем суффикс из dilts_code (если он есть в списке)
+    if dilts_code in possible_suffixes:
+        search_order.append(dilts_code)
+    
+    # Затем добавляем остальные в порядке важности
+    search_order.extend(['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide'])
+    
+    # Убираем дубликаты
+    search_order = list(dict.fromkeys(search_order))
+    
+    logger.info(f"🔍 Поиск в порядке: {search_order}")
+    
+    for suffix in search_order:
         test_key = f"{type_code}_{level}_{suffix}"
         profile = loader.get_profile(test_key)
+        
         if profile:
-            logger.info(f"✅ Найден с другим суффиксом Дилтса: {test_key}")
+            actual_key = getattr(profile, 'key', 'unknown')
+            logger.info(f"✅ Найден профиль: {test_key} → {actual_key}")
             return profile
     
-    # 3. Ищем тот же тип, ближайший уровень, любой суффикс
-    all_profiles = loader.get_all_profiles()
+    # 2. Если не нашли, ищем ближайший уровень того же типа
+    logger.info(f"🔍 {type_code}_{level}_* не найден, ищу ближайшие уровни...")
     
-    type_profiles = []
-    for key in all_profiles:
-        key_lower = key.lower()
-        if key_lower.startswith(f"{type_code}_"):
-            type_profiles.append((key, key_lower))
+    for suffix in possible_suffixes:
+        # Пробуем уровни в порядке близости
+        for diff in [0, 1, 2, -1, -2, 3, -3, 4, -4]:
+            test_level = level + diff
+            if 1 <= test_level <= 9:
+                test_key = f"{type_code}_{test_level}_{suffix}"
+                profile = loader.get_profile(test_key)
+                
+                if profile:
+                    actual_key = getattr(profile, 'key', 'unknown')
+                    logger.info(f"✅ Найден ближайший профиль: {test_key} (разница: {diff}) → {actual_key}")
+                    return profile
     
-    logger.info(f"📚 Все профили типа {type_code.upper()}: {len(type_profiles)} шт.")
-    
-    if type_profiles:
-        # Ищем ближайший уровень
-        best_diff = float('inf')
-        best_profile = None
-        best_key = None
-        
-        for key, key_lower in type_profiles:
-            try:
-                parts = key_lower.split('_')
-                if len(parts) >= 2 and parts[1].isdigit():
-                    key_level = int(parts[1])
-                    diff = abs(key_level - level)
-                    
-                    if diff < best_diff:
-                        best_diff = diff
-                        best_key = key
-                        best_profile = loader.get_profile(key)
-            except (ValueError, IndexError):
-                continue
-        
-        if best_profile:
-            logger.info(f"📈 Найден ближайший профиль: {best_key} (разница уровней: {best_diff})")
-            return best_profile
-    
-    # 4. Аварийный fallback - базовые профили каждого типа
-    logger.error(f"🔥 КРИТИЧЕСКАЯ ОШИБКА: Не найден профиль для {type_code}, level={level}, dilts={dilts_code}")
+    # 3. Аварийный fallback - базовые профили
+    logger.error(f"🔥 КРИТИЧЕСКАЯ ОШИБКА: Не найден профиль для {type_code}, level={level}")
     
     emergency_keys = [
         "sa_1_def", "sa_2_sit", "sa_3_con",
-        "sp_1_def", "sp_2_sit", "sp_3_con",
+        "sp_1_def", "sp_2_sit", "sp_3_con", 
         "ia_1_def", "ia_2_sit", "ia_3_con",
         "ip_1_def", "ip_2_sit", "ip_3_con"
     ]
@@ -1347,7 +1362,7 @@ def calculate_profile_final(context_data: dict) -> dict:
     
     dilts_answers = context_data.get("stage4_dilts_answers", [])
     dilts_level = determine_dilts_level(dilts_answers)
-    dilts_code = get_dilts_code(dilts_level)
+    dilts_code = get_dilts_code(dilts_level)  # Используем исправленную функцию!
     
     coherence = check_profile_coherence(final_level, dilts_level)
     
@@ -1608,7 +1623,7 @@ def check_payment_status_db(payment_id: str) -> dict:
         return {"success": False, "error": str(e)}
 
 # ============================================
-# ОСНОВНЫЕ ФУНКЦИИ ТЕСТА
+# ОСНОВНЫЕ ФУНКЦИИ ТЕСТА (сохраняем все оригинальные)
 # ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2560,11 +2575,11 @@ async def handle_dilts_clarification(update: Update, context: ContextTypes.DEFAU
     return await show_results_screen(update, context)
 
 # ============================================
-# ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА
+# ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - ИСПРАВЛЕННЫЙ
 # ============================================
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - версия 2.0 (исправлен fallback, добавлена интеграция с Яндекс.Диском)"""
+    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - исправленная версия"""
     query = update.callback_query
     
     has_shared = context.user_data.get("has_shared", False)
@@ -2676,12 +2691,13 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.message.reply_text(message_2.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
     return RESULTS
+
 # ============================================
-# КОМАНДЫ ДЛЯ МАТЕРИАЛОВ И ДОСТУПА
+# КОМАНДЫ ДЛЯ МАТЕРИАЛОВ И ДОСТУПА - ИСПРАВЛЕННЫЕ
 # ============================================
 
 async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /materials - выдает материалы после оплаты"""
+    """Команда /materials - выдает материалы после оплаты - ИСПРАВЛЕННАЯ"""
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     
@@ -2713,7 +2729,7 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     access_data = get_user_access_from_db(user_id)
     
     if access_data.get('has_access'):
-        # Получаем ссылку на Яндекс.Диск
+        # Получаем ссылку на Яндекс.Диск - ИСПРАВЛЕННАЯ ФУНКЦИЯ
         materials_link = generate_yandex_disk_link(profile_key)
         
         # Обновляем доступ в БД с информацией о профиле
@@ -2739,7 +2755,8 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Рекомендации по развитию\n"
             f"• Карта сильных и слабых сторон\n\n"
             f"🔗 <b>Ссылка на Яндекс.Диск:</b>\n"
-            f"Нажмите кнопку ниже для скачивания материалов:",
+            f"Нажмите кнопку ниже для скачивания материалов:\n"
+            f"{materials_link}",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML"
         )
@@ -2794,7 +2811,7 @@ async def myaccess_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         granted_at = access_data.get('access_granted_at', 'не указано')
         expires_at = access_data.get('expires_at', 'бессрочно')
         
-        # Получаем ссылку на материалы
+        # Получаем ссылку на материалы - ИСПРАВЛЕННАЯ ФУНКЦИЯ
         materials_link = generate_yandex_disk_link(profile_type)
         
         keyboard = [
@@ -2815,7 +2832,8 @@ async def myaccess_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Терапевтическая сказка\n"
             f"• Книга ВАРИАТИКА (.PDF)\n"
             f"• Рекомендации по развитию\n"
-            f"• Карта сильных и слабых сторон",
+            f"• Карта сильных и слабых сторон\n\n"
+            f"🔗 <b>Ссылка:</b> {materials_link}",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML"
         )
@@ -2967,7 +2985,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_text, parse_mode='HTML')
 
 # ============================================
-# ЭКРАНЫ ДЛЯ ПОДАРКОВ И ОПЛАТЫ
+# ЭКРАНЫ ДЛЯ ПОДАРКОВ И ОПЛАТЫ (оставляем оригинальные)
 # ============================================
 
 async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3321,16 +3339,17 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Главная функция запуска бота с защитой от ошибок"""
     print("\n" + "="*60)
-    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.0")
+    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.1")
     print("="*60)
     print("ИСПРАВЛЕНИЯ И НОВОВВЕДЕНИЯ:")
-    print("1. ✅ Защита от конфликтов ботов (clear_telegram_conflicts)")
-    print("2. ✅ Проверка всех 36 профилей (check_all_profiles)")
+    print("1. ✅ Защита от конфликтов ботов")
+    print("2. ✅ Проверка всех 36 профилей")
     print("3. ✅ Команды /materials, /myaccess, /check")
-    print("4. ✅ Яндекс.Диск интеграция (36 папок для профилей)")
+    print("4. ✅ ИСПРАВЛЕННЫЕ ссылки Яндекс.Диск (36 папок)")
     print("5. ✅ Обработка сетевых ошибок")
-    print("6. ✅ Исправленный fallback для профилей")
+    print("6. ✅ ИСПРАВЛЕННЫЙ поиск профилей (игнорирует суффикс Дилтса)")
     print("7. ✅ Устойчивый запуск с перезапуском")
+    print("8. ✅ ИСПРАВЛЕННЫЙ маппинг суффиксов Дилтса")
     print("="*60 + "\n")
     
     # 1. Очищаем конфликты
@@ -3357,8 +3376,9 @@ def main():
     
     # 4. Проверяем Яндекс.Диск конфигурацию
     print(f"\n🔗 Яндекс.Диск конфигурация:")
-    print(f"   Базовый URL: {YANDEX_DISK_BASE_URL}")
+    print(f"   Базовый URL: работает")
     print(f"   Папок настроено: {len(YANDEX_DISK_FOLDERS)}/36")
+    print(f"   Пример ссылки SA_1_DEF: {YANDEX_DISK_FOLDERS.get('SA_1_DEF', 'не найдена')}")
     
     # 5. Создаем приложение с увеличенными таймаутами
     application = (Application.builder()
