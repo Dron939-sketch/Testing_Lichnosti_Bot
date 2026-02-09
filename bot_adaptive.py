@@ -616,7 +616,7 @@ STAGE_3_QUESTIONS = [
 
 STAGE_4_QUESTIONS = [
     {"id": "q4_1", "text": "Как часто ты чувствуешь, что «что-то не так» в жизни?", "options": {"a": {"text": "Постоянно", "dilts": "IDENTITY"}, "b": {"text": "Часто", "dilts": "VALUES"}, "c": {"text": "Иногда", "dilts": "CAPABILITIES"}, "d": {"text": "Редко или никогда", "dilts": "ENVIRONMENT"}}},
-    {"id": "q4_2", "text": "Что именно «не так»?\n\nВыбери то, что ближе всего:", "options": {"a": {"text": "Не то окружение (место, люди, условия)", "dilts": "ENVIRONMENT"}, "b": {"text": "Делаю не то, что хочу", "dilts": "BEHAVIOR"}, "c": {"text": "Не умею делать то, что хочу", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимаю, чего хочу", "dilts": "VALUES"}}},
+    {"id": "q4_2", "text": "Что именно «не так»?\n\nВыбери то, что ближе всего:", "options": {"a": {"text": "Не то окружение (место, людей)", "dilts": "ENVIRONMENT"}, "b": {"text": "Делаю не то, что хочу", "dilts": "BEHAVIOR"}, "c": {"text": "Не умею делать то, что хочу", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимаю, чего хочу", "dilts": "VALUES"}}},
     {"id": "q4_3", "text": "Человек чувствует себя несчастным.\n\nВ чём, скорее всего, причина?", "options": {"a": {"text": "Не те люди вокруг", "dilts": "ENVIRONMENT"}, "b": {"text": "Делает не то, что хочет", "dilts": "BEHAVIOR"}, "c": {"text": "Не умеет делать то, что хочет", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимает, чего хочет", "dilts": "VALUES"}}},
     {"id": "q4_4", "text": "Если бы ты мог изменить что-то одно, что бы это было?", "options": {"a": {"text": "Своё окружение", "dilts": "ENVIRONMENT"}, "b": {"text": "Своё поведение", "dilts": "BEHAVIOR"}, "c": {"text": "Свои способности", "dilts": "CAPABILITIES"}, "d": {"text": "Своё понимание целей", "dilts": "VALUES"}}},
     {"id": "q4_5", "text": "Что для тебя сложнее всего?", "options": {"a": {"text": "Изменить внешние условия", "dilts": "ENVIRONMENT"}, "b": {"text": "Начать действовать", "dilts": "BEHAVIOR"}, "c": {"text": "Научиться новому", "dilts": "CAPABILITIES"}, "d": {"text": "Понять, чего я хочу", "dilts": "VALUES"}}},
@@ -661,6 +661,46 @@ CLARIFICATION_QUESTIONS = {
         {"id": "c4_2", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nГде находится твоя главная проблема?", "options": {"a": {"text": "В обстоятельствах", "dilts": "ENVIRONMENT"}, "b": {"text": "В моих действиях", "dilts": "BEHAVIOR"}, "c": {"text": "В моих навыках", "dilts": "CAPABILITIES"}, "d": {"text": "В моих целях", "dilts": "VALUES"}, "e": {"text": "В моём самоопределении", "dilts": "IDENTITY"}}}
     ]
 }
+
+# ============================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ПОИСКА ПРОФИЛЯ
+# ============================================
+
+def get_profile_fallback_simple(profile_data: dict) -> dict:
+    """
+    Упрощенная версия поиска профиля для совместимости
+    Возвращает гарантированно существующий профиль
+    """
+    type_code = profile_data.get('type_code', 'sa').lower()
+    level = profile_data.get('level', 1)
+    dilts_code = profile_data.get('dilts_code', 'def').lower()
+    
+    profile_key = f"{type_code}_{level}_{dilts_code}"
+    
+    # Пробуем разные варианты в порядке приоритета:
+    variations = [
+        profile_key,                    # 1. Точный профиль (SA_3_CON)
+        f"{type_code}_{level}_def",     # 2. Тот же тип и уровень, но DEF (SA_3_DEF)
+        f"{type_code}_{1}_def",         # 3. Первый уровень типа (SA_1_DEF)
+        "sa_1_def"                      # 4. Аварийный fallback
+    ]
+    
+    for var in variations:
+        test_key = var.upper().replace("-", "_")
+        if test_key in YANDEX_DISK_FOLDERS:
+            found_via = "exact" if var == profile_key else "fallback"
+            return {
+                "profile_key": var,
+                "materials_link": YANDEX_DISK_FOLDERS[test_key],
+                "found_via": found_via
+            }
+    
+    # Аварийный fallback
+    return {
+        "profile_key": "sa_1_def",
+        "materials_link": YANDEX_DISK_FOLDERS["SA_1_DEF"],
+        "found_via": "emergency"
+    }
 
 # ============================================
 # ПЛАТЕЖНАЯ СИСТЕМА - ОСНОВНЫЕ ФУНКЦИИ
@@ -731,7 +771,8 @@ def check_payment_status_db(payment_id: str) -> dict:
 def create_payment_in_db(user_id: int, amount: float = 690.0, 
                          is_test: bool = False, profile_data: dict = None) -> dict:
     """
-    Создает запись о платеже в БД с передачей профиля
+    Создает запись о платеже в БД с передачей НАЙДЕННОГО профиля
+    Ключевое изменение: передаем profile_code (строку) вместо profile_data (объекта)
     """
     try:
         timestamp = int(time.time())
@@ -745,20 +786,32 @@ def create_payment_in_db(user_id: int, amount: float = 690.0,
             "email": f"user_{user_id}@telegram.org"
         }
         
-        # Передаем профиль если есть
+        # ПЕРЕДАЕМ ПРОФИЛЬ В ПРАВИЛЬНОМ ФОРМАТЕ
         if profile_data:
-            simplified_profile = {
-                "profile_key": profile_data.get("display_name", ""),
-                "type_code": profile_data.get("type_code", ""),
-                "level": profile_data.get("level", 1),
-                "dilts_code": profile_data.get("dilts_code", "")
-            }
-            payload["profile_data"] = simplified_profile
+            # 1. Ищем ближайший существующий профиль в локальной базе бота
+            profile_info = get_profile_fallback_simple(profile_data)
+            found_profile = profile_info["profile_key"]  # например: "SA_3_DEF"
+            found_via = profile_info["found_via"]        # "exact", "fallback", "emergency"
+            
+            # 2. Передаем ТОЛЬКО найденный профиль в app.py (КЛЮЧЕВОЕ ИЗМЕНЕНИЕ!)
+            # format: "SA_3_DEF" (строка, верхний регистр)
+            payload["profile_code"] = found_profile.upper()
+            
+            # 3. Формируем описание ТОЛЬКО с найденным профилем
+            if not is_test:
+                payload["description"] = f"Полный пакет ВАРИАТИКА (профиль: {found_profile})"
+            
+            # 4. Логируем для отладки
+            logger.info(f"🔍 ПОИСК ПРОФИЛЯ ДЛЯ ОПЛАТЫ:")
+            logger.info(f"   • User ID: {user_id}")
+            logger.info(f"   • Найденный профиль: {found_profile}")
+            logger.info(f"   • Метод поиска: {found_via}")
+            logger.info(f"   • Передаю в app.py: profile_code={found_profile}")
         
         # Отправляем в API
         response = requests.post(
             f"{API_URL}/api/create-payment-advanced",
-            json=payload,
+            json=payload,  # Теперь содержит "profile_code": "SA_3_DEF"
             timeout=10
         )
         
@@ -774,6 +827,7 @@ def create_payment_in_db(user_id: int, amount: float = 690.0,
             return {"success": False, "error": f"API error: {response.status_code}"}
             
     except Exception as e:
+        logger.error(f"Error in create_payment_in_db: {e}")
         return {"success": False, "error": str(e)}
 
 def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 690.0, 
@@ -1171,39 +1225,22 @@ EMERGENCY_PROFILES = [
     "ip_1_def", "ip_2_sit", "ip_3_con"
 ]
 
-def get_profile_fallback_simple(profile_data: dict) -> dict:
-    """
-    Упрощенная версия поиска профиля для совместимости
-    """
-    type_code = profile_data.get('type_code', 'sa').lower()
-    level = profile_data.get('level', 1)
-    dilts_code = profile_data.get('dilts_code', 'def').lower()
+def determine_perception_type(scores):
+    """Определяет тип восприятия по результатам теста"""
+    external_score = scores.get("EXTERNAL", 0)
+    internal_score = scores.get("INTERNAL", 0)
+    symbolic_score = scores.get("SYMBOLIC", 0)
+    material_score = scores.get("MATERIAL", 0)
     
-    profile_key = f"{type_code}_{level}_{dilts_code}"
+    # Определяем оси
+    attention_axis = "EXTERNAL" if external_score >= internal_score else "INTERNAL"
+    anxiety_axis = "SYMBOLIC" if symbolic_score >= material_score else "MATERIAL"
     
-    # Пробуем разные варианты
-    variations = [
-        profile_key,
-        f"{type_code}_{level}_def",
-        f"{type_code}_{1}_def",
-        "sa_1_def"
-    ]
+    # Определяем тип
+    type_key = (attention_axis, anxiety_axis)
+    perception_info = PERCEPTION_TYPES.get(type_key, PERCEPTION_TYPES[("EXTERNAL", "SYMBOLIC")])
     
-    for var in variations:
-        test_key = var.upper().replace("-", "_")
-        if test_key in YANDEX_DISK_FOLDERS:
-            return {
-                "profile_key": var,
-                "materials_link": YANDEX_DISK_FOLDERS[test_key],
-                "found_via": "fallback"
-            }
-    
-    # Аварийный fallback
-    return {
-        "profile_key": "sa_1_def",
-        "materials_link": YANDEX_DISK_FOLDERS["SA_1_DEF"],
-        "found_via": "emergency"
-    }
+    return perception_info["name"]
 
 # ============================================
 # КОМАНДЫ ДЛЯ ПОЛУЧЕНИЯ МАТЕРИАЛОВ И ПРОВЕРКИ
