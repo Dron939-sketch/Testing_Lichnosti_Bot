@@ -1,6 +1,6 @@
 """
-Загрузчик профилей из файловой системы - ИСПРАВЛЕННАЯ ВЕРСИЯ
-Проблема: импорт from ..base import VariaticaProfile ломается при exec()
+Загрузчик профилей из файловой системы
+ПОЛНАЯ ВЕРСИЯ С УПРОЩЕННЫМ ПОИСКОМ
 """
 
 import os
@@ -22,34 +22,6 @@ class ProfileLoader:
         self.profiles_dir = profiles_dir
         self.profiles = {}  # Словарь профилей: {profile_key: VariaticaProfile}
         self.all_suffixes = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
-        
-        print(f"\n{'='*60}")
-        print("🚀 ИНИЦИАЛИЗАЦИЯ ЗАГРУЗЧИКА ПРОФИЛЕЙ")
-        print(f"Директория профилей: {os.path.abspath(profiles_dir)}")
-        print(f"Директория существует: {os.path.exists(profiles_dir)}")
-        print(f"{'='*60}\n")
-        
-        if os.path.exists(profiles_dir):
-            print(f"📁 Содержимое директории {profiles_dir}:")
-            for item in os.listdir(profiles_dir):
-                item_path = os.path.join(profiles_dir, item)
-                if os.path.isdir(item_path):
-                    print(f"  📂 {item}/")
-                    # Показываем содержимое подпапок
-                    try:
-                        sub_items = os.listdir(item_path)
-                        py_files = [f for f in sub_items if f.endswith('.py') and f != '__init__.py']
-                        print(f"    📄 Файлы: {len(py_files)}")
-                        for py_file in py_files[:5]:  # Показываем первые 5
-                            print(f"      - {py_file}")
-                        if len(py_files) > 5:
-                            print(f"      ... и ещё {len(py_files) - 5} файлов")
-                    except:
-                        pass
-        else:
-            print(f"❌ Директория {profiles_dir} не существует!")
-            print(f"📌 Текущая рабочая директория: {os.getcwd()}")
-        
         self.load_all_profiles()
     
     def find_profile_files(self) -> list:
@@ -80,14 +52,13 @@ class ProfileLoader:
             for file in py_files:
                 filepath = os.path.join(root, file)
                 profile_files.append(filepath)
-                print(f"    📄 Найден: {os.path.relpath(filepath, self.profiles_dir)}")
         
         print(f"✅ Всего найдено файлов: {len(profile_files)}")
         return profile_files
     
     def load_profile_from_file(self, filepath: str) -> VariaticaProfile:
         """
-        Загружает профиль из файла Python - ИСПРАВЛЕННАЯ ВЕРСИЯ
+        Загружает профиль из файла Python
         
         Args:
             filepath: Путь к файлу профиля
@@ -98,7 +69,6 @@ class ProfileLoader:
         try:
             file_name = os.path.basename(filepath)
             print(f"\n  📖 Загрузка файла: {file_name}")
-            print(f"    📍 Путь: {os.path.relpath(filepath, self.profiles_dir)}")
             
             # Читаем содержимое файла
             with open(filepath, 'r', encoding='utf-8') as f:
@@ -106,21 +76,30 @@ class ProfileLoader:
             
             print(f"    📄 Размер файла: {len(content)} символов")
             
-            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Удаляем ВСЕ импорты VariaticaProfile ПЕРЕД выполнением
+            # Исправляем относительные импорты
+            if 'from ..base import VariaticaProfile' in content:
+                content = content.replace(
+                    'from ..base import VariaticaProfile',
+                    '# Импорт исправлен загрузчиком'
+                )
+                print(f"    🔧 Исправлен импорт 'from ..base import' в {file_name}")
+            
+            # Также исправляем другие возможные варианты
+            if 'from .base import VariaticaProfile' in content:
+                content = content.replace(
+                    'from .base import VariaticaProfile',
+                    '# Импорт исправлен загрузчиком'
+                )
+                print(f"    🔧 Исправлен импорт 'from .base import' в {file_name}")
+            
+            # Удаляем все импорты с VariaticaProfile
             lines = content.split('\n')
             cleaned_lines = []
-            imports_removed = 0
-            
             for line in lines:
-                # Удаляем ЛЮБЫЕ строки с VariaticaProfile в импорте
                 if 'VariaticaProfile' in line and ('import' in line or 'from' in line):
-                    print(f"    🗑 Удален импорт: {line.strip()[:50]}...")
-                    imports_removed += 1
-                    continue  # Полностью удаляем эту строку
+                    print(f"    🗑 Удален импорт: {line.strip()}")
+                    continue
                 cleaned_lines.append(line)
-            
-            if imports_removed > 0:
-                print(f"    🔧 Удалено импортов: {imports_removed}")
             
             content = '\n'.join(cleaned_lines)
             
@@ -141,8 +120,7 @@ class ProfileLoader:
             # Создаем модуль
             module = importlib.util.module_from_spec(spec)
             
-            # КРИТИЧЕСКИ ВАЖНО: Добавляем VariaticaProfile в глобальное пространство модуля
-            module.VariaticaProfile = VariaticaProfile
+            # КРИТИЧЕСКИ ВАЖНО: Добавляем VariaticaProfile в глобальное пространство
             module.__dict__['VariaticaProfile'] = VariaticaProfile
             module.__dict__['__name__'] = module_name
             module.__dict__['__file__'] = filepath
@@ -151,52 +129,27 @@ class ProfileLoader:
             module.__dict__['sys'] = sys
             module.__dict__['os'] = os
             
+            # Выполняем код модуля
             print(f"    ⚙️ Выполняем код модуля...")
+            exec(content, module.__dict__)
             
-            try:
-                # Выполняем код модуля
-                exec(content, module.__dict__)
-                print(f"    ✅ Код выполнен успешно")
-            except Exception as e:
-                print(f"    ❌ Ошибка выполнения кода: {type(e).__name__}: {e}")
-                
-                # Покажем проблемные строки для отладки
-                print(f"    🔍 Отладка проблемного кода (первые 10 строк):")
-                for i, line in enumerate(cleaned_lines[:10], 1):
-                    print(f"      {i:2}: {line}")
-                
-                return None
+            # ОТЛАДОЧНЫЙ ВЫВОД: что есть в модуле?
+            print(f"    🔍 Переменные в модуле после exec:")
+            profile_vars = []
+            for var_name, var_value in module.__dict__.items():
+                if not var_name.startswith('__') and not var_name in ['sys', 'os', 'VariaticaProfile']:
+                    var_type = type(var_value).__name__
+                    print(f"      - {var_name}: {var_type}")
+                    if isinstance(var_value, VariaticaProfile):
+                        profile_vars.append((var_name, var_value))
             
             # Ищем объект VariaticaProfile в модуле
             profile = None
-            profile_vars = []
-            
-            # Сначала ищем по имени переменной (по шаблону)
-            expected_var_name = file_name.replace('.py', '').upper()  # Например: SA_8_tra
-            print(f"    🔍 Ищем переменную: {expected_var_name}")
-            
-            if hasattr(module, expected_var_name):
-                var_value = getattr(module, expected_var_name)
-                if isinstance(var_value, VariaticaProfile):
-                    profile = var_value
-                    print(f"    ✅ Найден профиль в переменной {expected_var_name}")
-                    profile_vars.append((expected_var_name, var_value))
-            
-            # Если не нашли по ожидаемому имени, ищем любую переменную с профилем
-            if not profile:
-                print(f"    🔍 Поиск всех объектов VariaticaProfile в модуле...")
-                for var_name in dir(module):
-                    if not var_name.startswith('_') and var_name not in ['sys', 'os', 'VariaticaProfile']:
-                        try:
-                            var_value = getattr(module, var_name)
-                            if isinstance(var_value, VariaticaProfile):
-                                profile_vars.append((var_name, var_value))
-                                print(f"      📍 Найден: {var_name} ({type(var_value).__name__})")
-                        except:
-                            pass
             
             if profile_vars:
                 print(f"    ✅ Найдены {len(profile_vars)} объектов VariaticaProfile")
+                for var_name, var_value in profile_vars:
+                    print(f"      - {var_name}: {var_value}")
                 
                 # Берем первый найденный профиль
                 profile = profile_vars[0][1]
@@ -208,27 +161,30 @@ class ProfileLoader:
                     profile.key = key_from_file
                     print(f"    🔧 Установлен ключ профиля: {key_from_file}")
             
+            # Если не нашли профиль в явных переменных, ищем в значениях
+            if not profile:
+                print(f"    🔍 Поиск профиля в значениях объектов...")
+                for var_name, var_value in module.__dict__.items():
+                    if isinstance(var_value, VariaticaProfile):
+                        profile = var_value
+                        print(f"    ✅ Найден профиль в переменной {var_name}")
+                        break
+            
             if not profile:
                 print(f"    ❌ Не найден объект VariaticaProfile в {file_name}")
-                print(f"    🔍 Доступные переменные в модуле:")
-                for var_name in dir(module):
-                    if not var_name.startswith('_'):
-                        print(f"      - {var_name}")
-                
-                return None
-            
-            # Дополнительная информация о профиле
-            print(f"    📋 Информация о профиле:")
-            print(f"      Ключ: {getattr(profile, 'key', 'Нет')}")
-            print(f"      Тип: {getattr(profile, 'type_code', 'Нет')}")
-            print(f"      Уровень: {getattr(profile, 'level', 'Нет')}")
-            print(f"      Заголовок: {getattr(profile, 'title', 'Нет')[:50]}...")
+                # Посмотрим первые 20 строк файла для отладки
+                print(f"    Первые 20 строк файла:")
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    for i, line in enumerate(f, 1):
+                        if i <= 20:
+                            print(f"      {i:2}: {line.rstrip()}")
+                        else:
+                            break
             
             return profile
             
         except SyntaxError as e:
             print(f"    ❌ Синтаксическая ошибка в {os.path.basename(filepath)}: {e}")
-            print(f"    📍 Позиция ошибки: {e.lineno}:{e.offset}")
             traceback.print_exc()
             return None
         except Exception as e:
@@ -312,13 +268,6 @@ class ProfileLoader:
             successful_loads = 0
             failed_loads = 0
             
-            # ДЛЯ ОТЛАДКИ: покажем все файлы которые будем загружать
-            print(f"\n📋 СПИСОК ФАЙЛОВ ДЛЯ ЗАГРУЗКИ:")
-            for i, filepath in enumerate(profile_files, 1):
-                filename = os.path.basename(filepath)
-                rel_path = os.path.relpath(filepath, self.profiles_dir)
-                print(f"  {i:2d}. {filename} ({rel_path})")
-            
             for filepath in profile_files:
                 try:
                     profile = self.load_profile_from_file(filepath)
@@ -342,16 +291,16 @@ class ProfileLoader:
                             # Также сохраняем версию в нижнем регистре для поиска
                             self.profiles[normalized_key.lower()] = profile
                             
-                            # Сохраняем версию с дефисами
-                            self.profiles[normalized_key.replace('_', '-')] = profile
+                            # Сохраняем версию с дефисом для ip-адрес
+                            if normalized_key.startswith("IP_"):
+                                ip_with_dash = normalized_key.replace("IP_", "IP-АДРЕС_", 1)
+                                self.profiles[ip_with_dash] = profile
+                                self.profiles[ip_with_dash.lower()] = profile
                             
-                            # Для SA типа также сохраняем SA_3_con как sa_3_con
-                            if normalized_key.startswith("SA_"):
-                                self.profiles[normalized_key.lower()] = profile
-                                # Сохраняем версию без суффикса для быстрого поиска
-                                base_key = '_'.join(normalized_key.split('_')[:2])  # SA_3
-                                self.profiles[base_key] = profile
-                                self.profiles[base_key.lower()] = profile
+                            # Сохраняем БАЗОВЫЙ ключ (тип_уровень) для быстрого поиска
+                            base_key = '_'.join(normalized_key.split('_')[:2])  # SA_1, SP_2, etc
+                            self.profiles[base_key] = profile
+                            self.profiles[base_key.lower()] = profile
                             
                             successful_loads += 1
                         else:
@@ -433,29 +382,41 @@ class ProfileLoader:
         Пример: SP_1_def, SA_3_sit и т.д.
         """
         try:
+            print(f"    🔧 Генерация ключа для профиля...")
+            
             # Для нового формата
             if hasattr(profile, 'type_code') and hasattr(profile, 'level'):
                 type_code = profile.type_code
                 level = profile.level
                 
+                print(f"      type_code={type_code}, level={level}")
+                
                 # Извлекаем суффикс из ключа или имени файла
                 suffix = "def"  # По умолчанию
                 
                 if hasattr(profile, 'key'):
+                    print(f"      profile.key = {profile.key}")
                     # Пример: SP_1_def → def
                     parts = profile.key.split('_')
                     if len(parts) >= 3:
                         suffix = parts[-1]
                     elif len(parts) == 2:
                         suffix = parts[-1]
+                    else:
+                        # Пробуем получить из названия файла
+                        suffix = "def"
+                else:
+                    print(f"      profile не имеет атрибута 'key'")
                 
                 result = f"{type_code}_{level}_{suffix}"
+                print(f"      Сгенерированный ключ: {result}")
                 return result
             
             # Для старого формата (если есть profile_name)
             elif hasattr(profile, 'profile_name'):
                 # Парсим название профиля
                 name = profile.profile_name
+                print(f"      profile_name = {name}")
                 
                 # Определяем тип
                 if "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ" in name or "SA" in name:
@@ -478,13 +439,16 @@ class ProfileLoader:
                 suffix = "def"
                 
                 result = f"{type_code}_{level}_{suffix}"
+                print(f"      Сгенерированный ключ: {result}")
                 return result
             
             # Если не удалось определить формат
+            print(f"    ⚠️ Не удалось сгенерировать ключ для профиля")
             return None
             
         except Exception as e:
             print(f"⚠️ Ошибка генерации ключа для профиля: {e}")
+            traceback.print_exc()
             return None
     
     def get_profile(self, profile_key: str) -> VariaticaProfile:
@@ -529,8 +493,8 @@ class ProfileLoader:
                 print(f"   ✅ Найден после замены дефисов: {normalized}")
                 return self.profiles[normalized]
         
-        # 5. УМНЫЙ ПОИСК - если не нашли по точному ключу, ищем любой профиль этого типа и уровня
-        print(f"   🔍 УМНЫЙ ПОИСК: ищем любой профиль типа и уровня...")
+        # 5. УМНЫЙ ПОИСК - ищем профиль того же типа и уровня
+        print(f"   🔍 УМНЫЙ ПОИСК: ищем профиль того же типа и уровня...")
         profile = self._smart_profile_search(profile_key)
         if profile:
             return profile
@@ -560,12 +524,8 @@ class ProfileLoader:
     
     def _smart_profile_search(self, profile_key: str) -> VariaticaProfile:
         """
-        Умный поиск профиля - если не находит по точному ключу,
-        ищет профиль того же типа и уровня (игнорируя суффикс Дилтса)
-        
-        Примеры:
-            sa_1_val → найдёт sa_1_def (любой профиль SA уровня 1)
-            sp_3_tra → найдёт sp_3_con (любой профиль SP уровня 3)
+        УМНЫЙ ПОИСК: Находит профиль того же типа и уровня
+        Игнорирует суффикс Дилтса, ищет по типу и уровню
         """
         # Анализируем ключ
         clean_key = profile_key.lower().replace('-', '_')
@@ -578,56 +538,74 @@ class ProfileLoader:
         type_part = parts[0]  # sa, sp, ia, ip
         level_part = parts[1]  # 1, 2, 3...
         
-        print(f"     🤔 Анализируем: тип={type_part}, уровень={level_part}")
+        print(f"     🤔 Ищем: тип={type_part}, уровень={level_part}")
         
-        # Шаг 1: Ищем базовый ключ типа SA_3 (без суффикса)
-        base_key = f"{type_part}_{level_part}"
+        # Шаг 1: Ищем БАЗОВЫЙ ключ (тип_уровень)
+        base_key = f"{type_part}_{level_part}"  # sp_4
+        base_key_upper = f"{type_part.upper()}_{level_part}"  # SP_4
+        
         if base_key in self.profiles:
             print(f"     ✅ Найден базовый профиль: {base_key}")
             return self.profiles[base_key]
         
-        # Шаг 2: Ищем с верхним регистром типа
-        base_key_upper = f"{type_part.upper()}_{level_part}"
         if base_key_upper in self.profiles:
             print(f"     ✅ Найден базовый профиль: {base_key_upper}")
             return self.profiles[base_key_upper]
         
-        # Шаг 3: Ищем любой профиль этого типа и уровня с любым суффиксом
+        # Шаг 2: Ищем любой профиль этого типа и уровня с любым суффиксом
         for suffix in self.all_suffixes:
-            test_key = f"{type_part}_{level_part}_{suffix}"
+            test_key = f"{type_part}_{level_part}_{suffix}"  # sp_4_exp
+            test_key_upper = f"{type_part.upper()}_{level_part}_{suffix}"  # SP_4_exp
+            
             if test_key in self.profiles:
                 print(f"     ✅ УМНЫЙ ПОИСК: найден {test_key} вместо {profile_key}")
                 return self.profiles[test_key]
-        
-        # Шаг 4: Ищем с верхним регистром
-        for suffix in self.all_suffixes:
-            test_key = f"{type_part.upper()}_{level_part}_{suffix}"
-            if test_key in self.profiles:
-                print(f"     ✅ УМНЫЙ ПОИСК: найден {test_key} вместо {profile_key}")
-                return self.profiles[test_key]
-        
-        # Шаг 5: Если не нашли SA_3, пробуем ближайшие уровни
-        if type_part == "sa" and level_part == "3":
-            print(f"     🔄 SA_3 не найден, ищу SA_2 или SA_4...")
             
-            # Пробуем уровень 2
-            for suffix in self.all_suffixes:
-                test_key = f"{type_part}_2_{suffix}"
-                if test_key in self.profiles:
-                    print(f"     🔄 Использую {test_key} вместо SA_3")
-                    return self.profiles[test_key]
-            
-            # Пробуем уровень 4
-            for suffix in self.all_suffixes:
-                test_key = f"{type_part}_4_{suffix}"
-                if test_key in self.profiles:
-                    print(f"     🔄 Использую {test_key} вместо SA_3")
-                    return self.profiles[test_key]
+            if test_key_upper in self.profiles:
+                print(f"     ✅ УМНЫЙ ПОИСК: найден {test_key_upper} вместо {profile_key}")
+                return self.profiles[test_key_upper]
         
-        # Шаг 6: Ищем любой профиль этого типа
+        # Шаг 3: Если не нашли, пробуем ближайшие уровни (только для этого типа)
+        print(f"     🔍 {type_part.upper()}_{level_part} не найден, ищу ближайшие уровни...")
+        
+        # Пробуем уровни в порядке близости
+        try:
+            target_level = int(level_part)
+            level_order = []
+            
+            # Создаем порядок поиска: 3, 5, 2, 6, 1, 7, 8, 9
+            if target_level > 1:
+                level_order.append(str(target_level - 1))  # уровень ниже
+            if target_level < 9:
+                level_order.append(str(target_level + 1))  # уровень выше
+            
+            # Добавляем остальные уровни
+            for i in range(1, 10):
+                level_str = str(i)
+                if level_str not in level_order and level_str != level_part:
+                    level_order.append(level_str)
+            
+            for search_level in level_order:
+                for suffix in self.all_suffixes:
+                    test_key = f"{type_part}_{search_level}_{suffix}"
+                    test_key_upper = f"{type_part.upper()}_{search_level}_{suffix}"
+                    
+                    if test_key in self.profiles:
+                        print(f"     🔄 Использую {test_key} (уровень {search_level}) вместо {profile_key}")
+                        return self.profiles[test_key]
+                    
+                    if test_key_upper in self.profiles:
+                        print(f"     🔄 Использую {test_key_upper} (уровень {search_level}) вместо {profile_key}")
+                        return self.profiles[test_key_upper]
+        except ValueError:
+            pass
+        
+        # Шаг 4: Ищем любой профиль этого типа
+        print(f"     🔍 Ищу любой профиль типа {type_part.upper()}...")
         for key in self.profiles.keys():
-            if key.lower().startswith(f"{type_part}_"):
-                print(f"     🔄 Найден ближайший {key} вместо {profile_key}")
+            key_lower = key.lower()
+            if key_lower.startswith(f"{type_part}_"):
+                print(f"     🔄 Использую {key} вместо {profile_key}")
                 return self.profiles[key]
         
         return None
@@ -707,14 +685,6 @@ class ProfileLoader:
             if len(missing_profiles) > 10:
                 print(f"   ... и ещё {len(missing_profiles) - 10} профилей")
             
-            # Проверим конкретно SA_3
-            print(f"\n🔍 Проверка SA_3 профилей:")
-            for suffix in expected_suffixes:
-                key = f"SA_3_{suffix}"
-                exists = key in self.profiles or key.lower() in self.profiles
-                status = "✅" if exists else "❌"
-                print(f"   {status} {key}")
-            
             return False
         
         print(f"\n✅ Все 36 профилей загружены!")
@@ -771,69 +741,46 @@ def debug_profile_loading():
             for i, key in enumerate(sorted(profiles), 1):
                 print(f"  {i:2d}. {key}")
     
-    # Тестируем поиск - ВАЖНО: тестируем проблемные случаи из логов
-    print("\n🔍 ТЕСТИРУЕМ ПОИСК ПРОФИЛЕЙ (проблемные случаи из логов):")
+    # Тестируем поиск
+    print("\n🔍 ТЕСТИРУЕМ ПОИСК ПРОФИЛЕЙ:")
     
-    # Эти профили бот искал в логах и не находил
-    problematic_keys = [
-        "sa_1_val",     # Бот искал этот профиль
-        "sa_1_tra",     # Бот искал этот профиль
-        "sa_1_ide",     # Бот искал этот профиль
-        "sa_2_def",     # Бот искал этот профиль
-        "sa_2_con",     # Бот искал этот профиль
-        "sa_2_exp",     # Бот искал этот профиль
-        "sa_2_int",     # Бот искал этот профиль
-        "sa_2_aut",     # Бот искал этот профиль
-        "sa_2_val",     # Бот искал этот профиль
-        "sa_2_tra",     # Бот искал этот профиль
-        "sa_3_sit",     # Бот искал этот профиль
-        "sa_3_con",     # Бот искал этот профиль
-        "sa_3_exp",     # Бот искал этот профиль
-        "sa_3_int",     # Бот искал этот профиль
-        "sa_3_aut",     # Бот искал этот профиль
-        "sa_3_val",     # Бот искал этот профиль
-        "sa_3_tra",     # Бот искал этот профиль
-        "sa_3_ide",     # Бот искал этот профиль
-        "sp_2_con",     # Бот искал этот профиль
-        "ip_7_aut",     # Бот искал этот профиль
+    test_cases = [
+        # Проблемные случаи из логов
+        ("sp_3_aut", "SP_3_con"),
+        ("sp_3_val", "SP_3_con"),
+        ("sp_3_tra", "SP_3_con"),
+        ("sp_3_ide", "SP_3_con"),
+        ("sp_4_def", "SP_4_exp"),
+        ("sp_4_sit", "SP_4_exp"),
+        ("sp_4_con", "SP_4_exp"),
+        ("sp_4_exp", "SP_4_exp"),  # Должен найти напрямую
+        ("sp_4_int", "SP_4_exp"),
+        ("sp_4_aut", "SP_4_exp"),
+        ("sp_4_val", "SP_4_exp"),
+        ("sp_4_tra", "SP_4_exp"),
+        ("sp_4_ide", "SP_4_exp"),
+        
+        # Стандартные профили
+        ("sa_1_def", "SA_1_def"),
+        ("sp_2_sit", "SP_2_sit"),
+        ("ia_3_con", "IA_3_con"),
+        ("ip_4_exp", "IP_4_exp"),
     ]
     
-    for key in problematic_keys:
-        # Пробуем обычный поиск
-        profile = get_profile(key)
+    for search_key, expected_key in test_cases:
+        profile = get_profile(search_key)
         if profile:
-            title = getattr(profile, 'title', 'Без названия')[:30]
             actual_key = getattr(profile, 'key', 'unknown')
-            print(f"  ✅ {key:20} → НАЙДЕН ({actual_key}): {title}...")
-        else:
-            # Пробуем умный поиск
-            smart_profile = get_profile_smart(key)
-            if smart_profile:
-                title = getattr(smart_profile, 'title', 'Без названия')[:30]
-                actual_key = getattr(smart_profile, 'key', 'unknown')
-                print(f"  🧠 {key:20} → УМНЫЙ ПОИСК ({actual_key}): {title}...")
+            title = getattr(profile, 'title', 'Без названия')[:30]
+            
+            if expected_key.lower() in actual_key.lower():
+                status = "✅"
             else:
-                print(f"  ❌ {key:20} → НЕ НАЙДЕН")
-    
-    # Тестируем стандартные профили
-    print("\n🔍 Тестируем стандартные профили:")
-    standard_keys = [
-        "sa_1_def",
-        "sp_2_sit", 
-        "ia_3_con",
-        "ip_4_exp",
-        "SA_1_DEF",
-        "SP_2_SIT",
-    ]
-    
-    for key in standard_keys:
-        profile = get_profile(key)
-        status = "✅ НАЙДЕН" if profile else "❌ НЕ НАЙДЕН"
-        title = ""
-        if profile and hasattr(profile, 'title'):
-            title = profile.title[:30] + "..." if len(profile.title) > 30 else profile.title
-            status = f"{status}: {title}"
-        print(f"  {key:20} → {status}")
+                status = "⚠️"
+            
+            print(f"  {status} {search_key:20} → {actual_key}: {title}...")
+        else:
+            print(f"  ❌ {search_key:20} → НЕ НАЙДЕН")
     
     print("="*60)
 
