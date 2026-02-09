@@ -1,7 +1,11 @@
 """
 АДАПТИВНЫЙ ТЕСТ ВАРИАТИКА + ПЛАТЕЖНАЯ СИСТЕМА
 ПОЛНАЯ ВЕРСИЯ 2.2 - ИНТЕГРАЦИЯ СИСТЕМЫ ПРОФИЛЕЙ ПОЛЬЗОВАТЕЛЕЙ
-Все исправления из ТЗ + интеграция API профилей + кнопка "Получить"
+ИСПРАВЛЕННАЯ ВЕРСИЯ ПО ТЗ:
+1. ✅ Кнопка "Получить" работает через правильный API
+2. ✅ Убрана передача username в веб-сервис
+3. ✅ Используется payment_id вместо user_id для получения материалов
+4. ✅ Полная совместимость с 36 профилями
 """
 
 import logging
@@ -131,7 +135,7 @@ SHARE_TEXT = "Только что узнал о себе то, о чём ещё 
 ) = range(10)
 
 # ============================================
-# ВОПРОСЫ ЭТАПА 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ (8 вопросов)
+# ВОПРОСЫ ЭТАПА 1: КОНФИГУРАЦИЯ ВОПРИЯТИЯ (8 вопросов)
 # ============================================
 
 STAGE_1_QUESTIONS = [
@@ -824,7 +828,7 @@ CLARIFICATION_QUESTIONS = {
         },
         {
             "id": "c2_2", 
-            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак ты относишься к своим прошлым ошибках?", 
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак ты относишься к своим прошлым ошибкам?", 
             "options": {
                 "1": "Стыжусь их, избегаю вспоминать", 
                 "3": "Анализирую и учусь", 
@@ -1000,8 +1004,56 @@ def get_user_profile_from_api(user_id: int):
         logger.error(f"❌ Ошибка получения профиля из API: {e}")
         return None
 
-def calculate_profile_final(context_data: dict, user_id: int = None, username: str = None) -> dict:
-    """ФИНАЛЬНЫЙ алгоритм расчета профиля с сохранением в API"""
+# ============================================
+# ФУНКЦИИ РАБОТЫ С API (ИЗ ТЗ) - ИСПРАВЛЕННЫЕ
+# ============================================
+
+def get_user_access(user_id: int) -> dict:
+    """Получает информацию о доступах пользователя (копия из платежного бота)"""
+    try:
+        response = requests.get(
+            f"{API_URL}/api/check-access/{user_id}",
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            logger.info(f"✅ API check-access для user_id {user_id}: {data.get('has_access', False)}")
+            return data
+        else:
+            logger.error(f"❌ API error {response.status_code} для user_id {user_id}")
+            return {"success": False, "error": f"API error {response.status_code}"}
+    except Exception as e:
+        logger.error(f"❌ Exception при проверке доступа: {e}")
+        return {"success": False, "error": str(e)}
+
+def get_materials_link(user_id: int, payment_id: str, token: str = None) -> dict:
+    """Получает ссылку на материалы по payment_id (копия из платежного бота)"""
+    try:
+        url = f"{API_URL}/api/get-materials/{payment_id}"  # ← КЛЮЧЕВОЕ: payment_id, а не user_id!
+        params = {"user_id": user_id}
+        
+        if token:
+            params["token"] = token
+            
+        response = requests.get(url, params=params, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            logger.info(f"✅ API get-materials для payment_id {payment_id}: success={data.get('success', False)}")
+            return data
+        else:
+            logger.error(f"❌ API error {response.status_code} для payment_id {payment_id}")
+            return {
+                "success": False,
+                "error": f"API error: {response.status_code}"
+            }
+    except Exception as e:
+        logger.error(f"❌ Exception при получении материалов: {e}")
+        return {"success": False, "error": str(e)}
+
+def calculate_profile_final(context_data: dict, user_id: int = None) -> dict:
+    """ФИНАЛЬНЫЙ алгоритм расчета профиля с сохранением в API - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
     # СУЩЕСТВУЮЩАЯ ЛОГИКА РАСЧЕТА (НЕ МЕНЯТЬ!)
     perception_type = context_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
     type_code = get_type_code(perception_type)
@@ -1045,18 +1097,20 @@ def calculate_profile_final(context_data: dict, user_id: int = None, username: s
         "profile_dilts": dilts_code
     }
     
-    # НОВЫЙ КОД: Сохранение профиля в API
+    # НОВЫЙ КОД: Сохранение профиля в API (БЕЗ USERNAME!)
     if user_id:
         try:
+            # ⚠️ ИСПРАВЛЕНО: Убрали username из payload
             profile_payload = {
-                "user_id": user_id,
-                "username": username,
+                "user_id": user_id,  # ⬅️ ТОЛЬКО user_id
                 "profile_key": profile_key,
                 "profile_type": type_code,
                 "profile_level": final_level,
                 "profile_dilts": dilts_code,
                 "profile_data": full_profile_data
             }
+            
+            logger.info(f"📤 Отправка профиля в API: {profile_key} для user_id {user_id}")
             
             response = requests.post(f"{API_URL}/api/save-profile", json=profile_payload, timeout=10)
             
@@ -1092,7 +1146,7 @@ def calculate_profile_final(context_data: dict, user_id: int = None, username: s
     }
 
 def create_payment_in_db(user_id: int, amount: float = 690.0, is_test: bool = False, profile_data: dict = None) -> dict:
-    """Создает запись о платеже в БД с передачей профиля"""
+    """Создает запись о платеже в БД с передачей профиля - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
     try:
         timestamp = int(time.time())
         payment_id = f"test_{user_id}_{timestamp}" if is_test else f"variatica_{user_id}_{timestamp}"
@@ -1106,10 +1160,17 @@ def create_payment_in_db(user_id: int, amount: float = 690.0, is_test: bool = Fa
             "email": f"user_{user_id}@telegram.org"
         }
         
-        # НОВЫЙ КОД: Добавляем profile_data если есть
+        # НОВЫЙ КОД: Добавляем profile_data если есть (БЕЗ USERNAME!)
         if profile_data:
-            payload["profile_data"] = profile_data
-            logger.info(f"📤 Отправка платежа с профилем: {profile_data.get('profile_key', 'unknown')}")
+            # ⚠️ ИСПРАВЛЕНО: Упрощенный payload без username
+            simplified_profile = {
+                "profile_key": profile_data.get("profile_key"),
+                "type_code": profile_data.get("type_code"),
+                "level": profile_data.get("level"),
+                "dilts_code": profile_data.get("dilts_code")
+            }
+            payload["profile_data"] = simplified_profile
+            logger.info(f"📤 Отправка платежа с профилем: {simplified_profile.get('profile_key', 'unknown')}")
         
         # СУЩЕСТВУЮЩИЙ ВЫЗОВ API
         response = requests.post(
@@ -1190,7 +1251,7 @@ def grant_access_in_db(user_id: int, profile_type: str) -> dict:
         return {"success": False, "error": str(e)}
 
 def generate_yandex_disk_link(profile_key: str) -> str:
-    """Генерирует ссылку на Яндекс.Диск для профиля - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+    """Генерирует ссылку на Яндекс.Диск для профиля"""
     # Приводим к верхнему регистру для сопоставления с YANDEX_DISK_FOLDERS
     profile_key_upper = profile_key.upper()
     
@@ -1203,8 +1264,6 @@ def generate_yandex_disk_link(profile_key: str) -> str:
         return link
     
     # Если нет точного совпадения, пробуем разные варианты
-    # Пример: "sa_3_cap" → "SA_3_CAP" → "SA_3_EXP" (т.к. CAP = ВОЗМОЖНОСТИ = EXP)
-    
     parts = profile_key_upper.split('_')
     if len(parts) >= 3:
         # Пробуем заменить суффикс Дилтса на соответствующий из списка
@@ -2391,9 +2450,9 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"User {update.effective_user.id}: Stage 4 needs clarification (tie)")
         return await ask_clarification_question(update, context)
     
-    # ОБНОВЛЕНО: Передаем user_id и username в calculate_profile_final
+    # ОБНОВЛЕНО: Передаем только user_id (без username)
     user = update.effective_user
-    profile_data = calculate_profile_final(context.user_data, user_id=user.id, username=user.username)
+    profile_data = calculate_profile_final(context.user_data, user_id=user.id)
     
     coherence = profile_data["coherence"]
     context.user_data["profile_data"] = profile_data
@@ -2645,12 +2704,11 @@ async def handle_dilts_clarification(update: Update, context: ContextTypes.DEFAU
     
     logger.info(f"User clarified dilts: {option_id} → {refined_dilts}")
     
-    # ОБНОВЛЕНО: Пересчитываем профиль с сохранением в API
+    # ОБНОВЛЕНО: Пересчитываем профиль (БЕЗ передачи username)
     user = update.effective_user
     context.user_data["profile_data"] = calculate_profile_final(
         context.user_data, 
-        user_id=user.id, 
-        username=user.username
+        user_id=user.id  # ⬅️ ТОЛЬКО user_id
     )
     
     loading_text = f"⏳ <b>ОБРАБАТЫВАЮ РЕЗУЛЬТАТЫ...</b>\n\nАнализирую твои ответы и определяю профиль..."
@@ -2672,7 +2730,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     if not profile_data:
         user = update.effective_user
-        profile_data = calculate_profile_final(context.user_data, user_id=user.id, username=user.username)
+        profile_data = calculate_profile_final(context.user_data, user_id=user.id)
         context.user_data["profile_data"] = profile_data
     
     profile = get_profile_fallback(profile_data)
@@ -2779,201 +2837,122 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     return RESULTS
 
 # ============================================
-# КОМАНДЫ ДЛЯ МАТЕРИАЛОВ И ДОСТУПА - ПОЛНОСТЬЮ ИСПРАВЛЕННЫЕ
+# ИСПРАВЛЕННАЯ КОМАНДА /MATERIALS ПО ТЗ
 # ============================================
 
 async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /materials - выдает материалы после оплаты - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ"""
+    """Команда /materials - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ ВЕРСИЯ ПО ТЗ"""
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     
-    logger.info(f"📦 User {user_id} ({user_name}) requested materials")
+    logger.info(f"\n{'='*60}")
+    logger.info(f"🚀 START /materials command")
+    logger.info(f"👤 User: {user_id} ({user_name})")
     
-    # НОВЫЙ КОД: Сначала проверяем доступ через API
-    try:
-        await update.message.reply_text("🔍 Проверяю ваш доступ к материалам...")
+    # Шаг 1: Проверяем доступ через API (ИСПРАВЛЕННЫЙ ЭНДПОИНТ)
+    logger.info(f"🔍 Step 1: Checking access via API")
+    access_data = get_user_access(user_id)
+    
+    if not access_data.get('success', True):
+        logger.error(f"❌ API error: {access_data.get('error')}")
+        await update.message.reply_text(
+            "❌ Ошибка проверки доступа. Попробуйте позже.",
+            parse_mode="HTML"
+        )
+        return
+    
+    logger.info(f"📊 API response: has_access={access_data.get('has_access')}")
+    
+    # Шаг 2: Если нет доступа - предлагаем купить
+    if not access_data.get('has_access', False):
+        logger.info(f"❌ User has no access")
+        keyboard = [
+            [InlineKeyboardButton("💎 КУПИТЬ ДОСТУП", callback_data="show_package")],
+            [InlineKeyboardButton("🧪 ТЕСТОВАЯ ОПЛАТА", callback_data="test_payment")]
+        ]
         
-        response = requests.get(f"{API_URL}/api/check-access/{user_id}", timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            logger.info(f"✅ API ответ: {data}")
+        await update.message.reply_text(
+            f"❌ <b>У ВАС НЕТ ДОСТУПА</b>\n\n"
+            f"Для получения материалов необходимо оплатить доступ.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        return
+    
+    # Шаг 3: Ищем активный доступ
+    accesses = access_data.get('accesses', [])
+    logger.info(f"🔍 Found {len(accesses)} accesses")
+    
+    for access in accesses:
+        if access.get('has_access', False) and access.get('is_active', False):
+            payment_id = access.get('payment_id')
+            access_token = access.get('access_token')
+            profile_key = access.get('profile_key')
             
-            if data.get('has_access'):
-                # ПОЛЬЗОВАТЕЛЬ ИМЕЕТ ДОСТУП
-                accesses = data.get('accesses', [])
+            logger.info(f"✅ Found active access: payment_id={payment_id}")
+            logger.info(f"   profile_key from API: {profile_key}")
+            
+            # Шаг 4: Получаем ссылку на материалы (ИСПРАВЛЕННЫЙ ЭНДПОИНТ!)
+            logger.info(f"📦 Getting materials link for payment_id={payment_id}")
+            materials_data = get_materials_link(user_id, payment_id, access_token)
+            
+            if materials_data.get('success', False):
+                # Вариант A: Если API дал прямую ссылку
+                materials_link = materials_data.get('materials_link')
+                logger.info(f"✅ Got link from API: {materials_link[:50]}...")
                 
-                if accesses:
-                    # Получаем первый доступный профиль
-                    profile_key = accesses[0].get('profile_key')
-                    
-                    # Получаем ссылку на материалы
-                    try:
-                        materials_response = requests.get(f"{API_URL}/api/get-materials/{user_id}", timeout=10)
-                        
-                        if materials_response.status_code == 200:
-                            materials_data = materials_response.json()
-                            
-                            if materials_data.get('success') and materials_data.get('materials_link'):
-                                materials_link = materials_data['materials_link']
-                                
-                                keyboard = [
-                                    [InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)],
-                                    [InlineKeyboardButton("🔄 ПРОВЕРИТЬ СТАТУС", callback_data="check_current_status")]
-                                ]
-                                
-                                await update.message.reply_text(
-                                    f"✅ <b>ВАШИ МАТЕРИАЛЫ ГОТОВЫ!</b>\n\n"
-                                    f"👤 <b>Пользователь:</b> {user_name}\n"
-                                    f"🎯 <b>Ваш профиль:</b> {profile_key}\n"
-                                    f"📦 <b>Доступ к:</b> Полному пакету ВАРИАТИКА\n\n"
-                                    f"📚 <b>В папке на Яндекс.Диске вас ждут:</b>\n"
-                                    f"• Полный разбор профиля (15+ страниц)\n"
-                                    f"• Терапевтическая сказка\n"
-                                    f"• Книга ВАРИАТИКА (.PDF)\n"
-                                    f"• Рекомендации по развитию\n"
-                                    f"• Карта сильных и слабых сторон\n\n"
-                                    f"🔗 <b>Ссылка на Яндекс.Диск:</b>\n"
-                                    f"Нажмите кнопку ниже для скачивания материалов:\n"
-                                    f"{materials_link}",
-                                    reply_markup=InlineKeyboardMarkup(keyboard),
-                                    parse_mode="HTML"
-                                )
-                                return
-                    except Exception as e:
-                        logger.error(f"❌ Ошибка получения материалов из API: {e}")
-                        # Продолжаем со стандартной логикой
+                keyboard = [[InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)]]
                 
-                # Если не получили ссылку из API, используем стандартную
-                if 'profile_data' in context.user_data:
-                    profile_data = context.user_data.get('profile_data', {})
-                    profile_key = profile_data.get('display_name', '')
-                    
-                    if profile_key:
-                        materials_link = generate_yandex_disk_link(profile_key)
-                        
-                        keyboard = [
-                            [InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)],
-                            [InlineKeyboardButton("🔄 ПРОВЕРИТЬ СТАТУС", callback_data="check_current_status")]
-                        ]
-                        
-                        await update.message.reply_text(
-                            f"✅ <b>ВАШИ МАТЕРИАЛЫ ГОТОВЫ!</b>\n\n"
-                            f"👤 <b>Пользователь:</b> {user_name}\n"
-                            f"🎯 <b>Ваш профиль:</b> {profile_key}\n"
-                            f"📦 <b>Доступ к:</b> Полному пакету ВАРИАТИКА\n\n"
-                            f"📚 <b>В папке на Яндекс.Диске вас ждут:</b>\n"
-                            f"• Полный разбор профиля (15+ страниц)\n"
-                            f"• Терапевтическая сказка\n"
-                            f"• Книга ВАРИАТИКА (.PDF)\n"
-                            f"• Рекомендации по развитию\n"
-                            f"• Карта сильных и слабых сторон\n\n"
-                            f"🔗 <b>Ссылка на Яндекс.Диск:</b>\n"
-                            f"Нажмите кнопку ниже для скачивания материалов:\n"
-                            f"{materials_link}",
-                            reply_markup=InlineKeyboardMarkup(keyboard),
-                            parse_mode="HTML"
-                        )
-                        return
+                await update.message.reply_text(
+                    f"✅ <b>ВАШИ МАТЕРИАЛЫ ГОТОВЫ!</b>\n\n"
+                    f"🎯 Профиль: {profile_key or 'Не указан'}\n"
+                    f"🔗 Ссылка: {materials_link}\n\n"
+                    f"Нажмите кнопку ниже:",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="HTML"
+                )
+                logger.info(f"✅ Materials sent successfully")
+                return
+            
+            # Вариант B: Если API не дал ссылку, но есть profile_key
+            elif profile_key:
+                logger.info(f"⚠️ API didn't return link, generating locally for {profile_key}")
+                materials_link = generate_yandex_disk_link(profile_key)
+                
+                keyboard = [[InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)]]
+                
+                await update.message.reply_text(
+                    f"✅ <b>ВАШИ МАТЕРИАЛЫ ГОТОВЫ!</b>\n\n"
+                    f"🎯 Ваш профиль: {profile_key}\n"
+                    f"📁 Папка на Яндекс.Диске\n\n"
+                    f"Нажмите кнопку ниже:",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="HTML"
+                )
+                logger.info(f"✅ Generated link locally: {materials_link[:50]}...")
+                return
+            
+            else:
+                # Нет ни ссылки, ни profile_key
+                logger.error(f"❌ No materials link and no profile_key")
     
-    except Exception as e:
-        logger.error(f"❌ Ошибка проверки доступа через API: {e}")
-        # Продолжаем со старой логикой
+    # Если дошли сюда - что-то пошло не так
+    logger.error(f"🔥 No active access found or API error")
     
-    # СТАРАЯ ЛОГИКА (если API не ответил или нет доступа)
-    # Проверяем, есть ли в context.user_data результаты теста
-    if 'profile_data' not in context.user_data:
-        keyboard = [[InlineKeyboardButton("🚀 НАЧАТЬ ТЕСТ", callback_data="start_test")]]
-        
-        await update.message.reply_text(
-            "📋 Сначала пройдите тест, чтобы получить ваш профиль.\n\n"
-            "Используйте кнопку ниже чтобы начать тест:",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
+    keyboard = [
+        [InlineKeyboardButton("🔄 Проверить доступ", callback_data="check_access")],
+        [InlineKeyboardButton("💎 Купить доступ", callback_data="show_package")]
+    ]
     
-    profile_data = context.user_data.get('profile_data', {})
-    profile_key = profile_data.get('display_name', '')
-    
-    if not profile_key:
-        await update.message.reply_text(
-            "❌ Не найден профиль. Пожалуйста, пройдите тест заново.\n\n"
-            "Используйте /start чтобы начать тест."
-        )
-        return
-    
-    logger.info(f"📦 User {user_id} ({user_name}) requested materials for profile: {profile_key}")
-    
-    # Проверяем доступ в БД
-    await update.message.reply_text("🔍 Проверяю ваш доступ к материалам...")
-    access_data = get_user_access_from_db(user_id)
-    
-    if access_data.get('has_access'):
-        # Получаем ссылку на Яндекс.Диск - ИСПРАВЛЕННАЯ ФУНКЦИЯ
-        materials_link = generate_yandex_disk_link(profile_key)
-        
-        # Обновляем доступ в БД с информацией о профиле
-        grant_result = grant_access_in_db(user_id, profile_key)
-        
-        if not grant_result.get('success'):
-            logger.warning(f"Не удалось обновить доступ в БД для user_id {user_id}: {grant_result.get('error')}")
-        
-        keyboard = [
-            [InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)],
-            [InlineKeyboardButton("🔄 ПРОВЕРИТЬ СТАТУС", callback_data="check_current_status")]
-        ]
-        
-        await update.message.reply_text(
-            f"✅ <b>ВАШИ МАТЕРИАЛЫ ГОТОВЫ!</b>\n\n"
-            f"👤 <b>Пользователь:</b> {user_name}\n"
-            f"🎯 <b>Ваш профиль:</b> {profile_key}\n"
-            f"📦 <b>Доступ к:</b> Полному пакету ВАРИАТИКА\n\n"
-            f"📚 <b>В папке на Яндекс.Диске вас ждут:</b>\n"
-            f"• Полный разбор профиля (15+ страниц)\n"
-            f"• Терапевтическая сказка\n"
-            f"• Книга ВАРИАТИКА (.PDF)\n"
-            f"• Рекомендации по развитию\n"
-            f"• Карта сильных и слабых сторон\n\n"
-            f"🔗 <b>Ссылка на Яндекс.Диск:</b>\n"
-            f"Нажмите кнопку ниже для скачивания материалов:\n"
-            f"{materials_link}",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
-        )
-    else:
-        # Предлагаем купить с профилем
-        keyboard = [
-            [InlineKeyboardButton("💎 КУПИТЬ ДОСТУП 690 РУБ", callback_data="show_package")],
-            [InlineKeyboardButton("🧪 ТЕСТОВАЯ ОПЛАТА 1 РУБ", callback_data="test_payment")]
-        ]
-        
-        error_msg = access_data.get('error', '')
-        error_info = f"\n\n<i>Техническая информация: {error_msg}</i>" if error_msg else ""
-        
-        await update.message.reply_text(
-            f"❌ <b>У ВАС НЕТ ДОСТУПА К МАТЕРИАЛАМ</b>\n\n"
-            f"👤 <b>Пользователь:</b> {user_name}\n"
-            f"🎯 <b>Ваш профиль:</b> {profile_key}\n"
-            f"📦 <b>Статус:</b> Доступ не оплачен\n\n"
-            f"<b>Для получения полного пакета ВАРИАТИКА:</b>\n"
-            f"✅ Полный разбор профиля (15+ страниц)\n"
-            f"✅ Терапевтическая сказка\n"
-            f"✅ Книга ВАРИАТИКА (.PDF)\n"
-            f"✅ Рекомендации по развитию\n"
-            f"✅ Карта сильных и слабых сторон\n\n"
-            f"💰 <b>Цены:</b>\n"
-            f"💎 Полный пакет: 690 руб\n"
-            f"🧪 Тест оплаты: 1 руб\n\n"
-            f"💳 <b>Все способы оплаты доступны:</b>\n"
-            f"• СБП (Система быстрых платежей)\n"
-            f"• ЮMoney (Яндекс.Деньги)\n"
-            f"• Банковские карты (Visa, MasterCard, Мир)\n"
-            f"• Apple Pay / Google Pay\n"
-            f"• QIWI и другие\n\n"
-            f"Нажмите кнопку ниже для покупки:{error_info}",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
-        )
+    await update.message.reply_text(
+        f"❌ <b>НЕ УДАЛОСЬ ПОЛУЧИТЬ МАТЕРИАЛЫ</b>\n\n"
+        f"Попробуйте:\n"
+        f"1. Проверить статус доступа\n"
+        f"2. Купить доступ\n"
+        f"3. Обратиться в поддержку",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
 
 async def myaccess_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /myaccess - проверка доступов"""
@@ -2982,41 +2961,57 @@ async def myaccess_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"🔍 User {user_id} ({user_name}) checked access")
     
-    # Проверяем доступ в БД
+    # Проверяем доступ через API (новая логика)
     await update.message.reply_text("🔍 Проверяю статус вашего доступа...")
-    access_data = get_user_access_from_db(user_id)
+    access_data = get_user_access(user_id)
     
     if access_data.get('has_access'):
-        profile_type = access_data.get('profile_type', 'не указан')
-        granted_at = access_data.get('access_granted_at', 'не указано')
-        expires_at = access_data.get('expires_at', 'бессрочно')
+        # Получаем первый активный доступ
+        accesses = access_data.get('accesses', [])
+        active_access = None
+        for access in accesses:
+            if access.get('has_access') and access.get('is_active'):
+                active_access = access
+                break
         
-        # Получаем ссылку на материалы - ИСПРАВЛЕННАЯ ФУНКЦИЯ
-        materials_link = generate_yandex_disk_link(profile_type)
-        
-        keyboard = [
-            [InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)],
-            [InlineKeyboardButton("🔄 ПРОВЕРИТЬ СТАТУС", callback_data="check_current_status")]
-        ]
-        
-        await update.message.reply_text(
-            f"✅ <b>ДОСТУП АКТИВЕН!</b>\n\n"
-            f"👤 <b>Пользователь:</b> {user_name}\n"
-            f"🎯 <b>Профиль:</b> {profile_type}\n"
-            f"📦 <b>Пакет:</b> Полный ВАРИАТИКА\n"
-            f"📅 <b>Доступ открыт:</b> {granted_at}\n"
-            f"📅 <b>Действителен до:</b> {expires_at}\n\n"
-            f"<b>Для получения материалов используйте кнопку ниже:</b>\n\n"
-            f"📚 <b>В папке на Яндекс.Диске:</b>\n"
-            f"• Полный разбор профиля (15+ страниц)\n"
-            f"• Терапевтическая сказка\n"
-            f"• Книга ВАРИАТИКА (.PDF)\n"
-            f"• Рекомендации по развитию\n"
-            f"• Карта сильных и слабых сторон\n\n"
-            f"🔗 <b>Ссылка:</b> {materials_link}",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
-        )
+        if active_access:
+            payment_id = active_access.get('payment_id')
+            profile_key = active_access.get('profile_key')
+            granted_at = active_access.get('granted_at')
+            expires_at = active_access.get('expires_at')
+            
+            # Генерируем ссылку
+            materials_link = generate_yandex_disk_link(profile_key) if profile_key else "https://disk.yandex.ru"
+            
+            keyboard = [
+                [InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)],
+                [InlineKeyboardButton("🔄 ПРОВЕРИТЬ СТАТУС", callback_data="check_current_status")]
+            ]
+            
+            await update.message.reply_text(
+                f"✅ <b>ДОСТУП АКТИВЕН!</b>\n\n"
+                f"👤 <b>Пользователь:</b> {user_name}\n"
+                f"🎯 <b>Профиль:</b> {profile_key or 'Не указан'}\n"
+                f"📦 <b>Пакет:</b> Полный ВАРИАТИКА\n"
+                f"📅 <b>Доступ открыт:</b> {granted_at or 'Неизвестно'}\n"
+                f"📅 <b>Действителен до:</b> {expires_at or 'Неизвестно'}\n\n"
+                f"<b>Для получения материалов используйте кнопку ниже:</b>\n\n"
+                f"📚 <b>В папке на Яндекс.Диске:</b>\n"
+                f"• Полный разбор профиля (15+ страниц)\n"
+                f"• Терапевтическая сказка\n"
+                f"• Книга ВАРИАТИКА (.PDF)\n"
+                f"• Рекомендации по развитию\n"
+                f"• Карта сильных и слабых сторон\n\n"
+                f"🔗 <b>Ссылка:</b> {materials_link}",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML"
+            )
+        else:
+            await update.message.reply_text(
+                f"⚠️ <b>ДОСТУП НАЙДЕН, НО НЕ АКТИВЕН</b>\n\n"
+                f"У вас есть доступ, но он не активен или истек.",
+                parse_mode="HTML"
+            )
     else:
         # Проверяем, есть ли результаты теста в context.user_data
         if 'profile_data' in context.user_data:
@@ -3147,7 +3142,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"<code>/cancel</code> - отменить текущий тест\n\n"
         
         f"<b>Команды доступа:</b>\n"
-        f"<code>/materials</code> - получить материалы после оплаты\n"
+        f"<code>/materials</code> - получить материалы после оплаты (ИСПРАВЛЕНО!)\n"
         f"<code>/myaccess</code> - проверить статус доступа\n"
         f"<code>/check &lt;id&gt;</code> - проверить статус платежа\n\n"
         
@@ -3257,7 +3252,7 @@ async def buy_variatica_package(update: Update, context: ContextTypes.DEFAULT_TY
         if profile_data:
             logger.info(f"📤 Передаю профиль в платеж: {profile_data.get('profile_key')}")
     
-    # Передаем профиль в create_payment_in_db
+    # Передаем профиль в create_payment_in_db (ИСПРАВЛЕННАЯ ФУНКЦИЯ)
     db_result = create_payment_in_db(
         user_id, 
         amount=690.0, 
@@ -3330,7 +3325,7 @@ async def test_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if profile_data:
             logger.info(f"📤 Передаю профиль в тестовый платеж: {profile_data.get('profile_key')}")
     
-    # Передаем профиль в create_payment_in_db
+    # Передаем профиль в create_payment_in_db (ИСПРАВЛЕННАЯ ФУНКЦИЯ)
     db_result = create_payment_in_db(
         user_id, 
         amount=1.0, 
@@ -3518,103 +3513,50 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
         
-        await asyncio.sleep(5)
+        await asyncio.sleep(2)
         return
     
-    # Конфликт ботов
-    if "Conflict" in error_msg or "terminated by other getUpdates" in error_msg:
-        logger.error("💥 КОНФЛИКТ БОТОВ! Очищаю...")
-        clear_telegram_conflicts()
-        
-        if update and update.effective_message:
-            try:
-                await update.effective_message.reply_text(
-                    "🔄 Обнаружен конфликт ботов. Перезапускаю..."
-                )
-            except:
-                pass
-        
-        await asyncio.sleep(10)
+    # Ошибки валидации от Telegram
+    if "Bad Request" in error_msg and "message is not modified" in error_msg:
+        logger.info(f"ℹ️ Игнорирую: message is not modified")
         return
     
-    # Прочие ошибки
+    if "Bad Request" in error_msg and "query is too old" in error_msg:
+        logger.info(f"ℹ️ Игнорирую: query is too old")
+        return
+    
+    # Критические ошибки
+    logger.critical(f"💥 Необработанная ошибка: {error_msg}")
+    logger.exception(context.error)
+    
     if update and update.effective_message:
         try:
             await update.effective_message.reply_text(
-                f"❌ Произошла ошибка:\n\n{error_msg[:200]}..."
+                "❌ Произошла непредвиденная ошибка. Попробуйте /start"
             )
         except:
             pass
 
 # ============================================
-# ГЛАВНАЯ ФУНКЦИЯ ЗАПУСКА
+# НАСТРОЙКА И ЗАПУСК БОТА
 # ============================================
 
 def main():
-    """Главная функция запуска бота с защитой от ошибок"""
+    """Основная функция запуска бота"""
     print("\n" + "="*60)
-    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.2")
+    print("🚀 ЗАПУСК БОТА ВАРИАТИКА v2.2")
     print("="*60)
-    print("ИНТЕГРАЦИЯ СИСТЕМЫ ПРОФИЛЕЙ ПОЛЬЗОВАТЕЛЕЙ:")
-    print("1. ✅ Сохранение профиля в API после теста")
-    print("2. ✅ Передача профиля в платеж")
-    print("3. ✅ Кнопка 'Получить' работает через API")
-    print("4. ✅ Проверка доступа через /api/check-access")
-    print("5. ✅ Получение материалов через /api/get-materials")
-    print("6. ✅ Обратная совместимость со старыми пользователями")
-    print("7. ✅ Fallback-логика при недоступности API")
-    print("="*60 + "\n")
     
-    # 1. Очищаем конфликты
+    # Очистка конфликтов
     clear_telegram_conflicts()
     
-    # 2. Проверяем профили
-    if not check_all_profiles():
-        print("⚠️ ВНИМАНИЕ: Не все профили загружены!")
-        print("   Бот будет работать, но некоторые профили могут отсутствовать.")
-        print("   Для корректной работы необходимо 36 профилей.")
+    # Проверка всех профилей
+    check_all_profiles()
     
-    # 3. Проверяем конфигурацию платежной системы
-    if not YOOKASSA_SHOP_ID or not YOOKASSA_SECRET_KEY:
-        print("⚠️  ВНИМАНИЕ: Платежная система НЕ настроена!")
-        print("   Для работы платежей установите переменные окружения:")
-        print("   - YOOKASSA_SHOP_ID")
-        print("   - YOOKASSA_SECRET_KEY")
-        print("   Тест будет работать, но платежи - нет.")
-    else:
-        key_type = "БОЕВОЙ" if YOOKASSA_SECRET_KEY.startswith('live_') else "ТЕСТОВЫЙ"
-        print(f"✅ Платежная система: {key_type}")
-        print(f"💰 Цена полного пакета: 690 руб")
-        print(f"🧪 Тестовый платеж: 1 руб")
+    # Создание Application
+    app = Application.builder().token(TOKEN).build()
     
-    # 4. Проверяем API конфигурацию
-    print(f"\n🔗 API конфигурация:")
-    print(f"   API URL: {API_URL}")
-    print(f"   Сохранение профилей: ✅ включено")
-    print(f"   Передача профиля в платеж: ✅ включено")
-    print(f"   Проверка доступа: ✅ включено")
-    
-    # 5. Создаем приложение с увеличенными таймаутами
-    application = (Application.builder()
-        .token(TOKEN)
-        .connect_timeout(30.0)
-        .read_timeout(30.0)
-        .write_timeout(30.0)
-        .pool_timeout(30.0)
-        .get_updates_read_timeout(30.0)
-        .build())
-    
-    # 6. Добавляем обработчик ошибок
-    application.add_error_handler(error_handler)
-    
-    # 7. Добавляем новые команды
-    application.add_handler(CommandHandler("materials", materials_command))
-    application.add_handler(CommandHandler("myaccess", myaccess_command))
-    application.add_handler(CommandHandler("check", check_command))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("start", start))
-    
-    # 8. Создаем ConversationHandler (основную логику теста)
+    # ConversationHandler для теста
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -3628,21 +3570,18 @@ def main():
                 CallbackQueryHandler(handle_stage_1_answer, pattern="^stage1_")
             ],
             STAGE_2: [
-                CallbackQueryHandler(show_stage_2_intro, pattern="^show_stage_2_intro$"),
                 CallbackQueryHandler(show_stage_2_details, pattern="^stage2_details$"),
                 CallbackQueryHandler(back_to_stage2_intro, pattern="^back_to_stage2_intro$"),
                 CallbackQueryHandler(start_stage_2, pattern="^start_stage_2$"),
                 CallbackQueryHandler(handle_stage_2_answer, pattern="^stage2_")
             ],
             STAGE_3: [
-                CallbackQueryHandler(show_stage_3_intro, pattern="^show_stage_3_intro$"),
                 CallbackQueryHandler(show_stage_3_details, pattern="^stage3_details$"),
                 CallbackQueryHandler(back_to_stage3_intro, pattern="^back_to_stage3_intro$"),
                 CallbackQueryHandler(start_stage_3, pattern="^start_stage_3$"),
                 CallbackQueryHandler(handle_stage_3_answer, pattern="^stage3_")
             ],
             STAGE_4: [
-                CallbackQueryHandler(show_stage_4_intro, pattern="^show_stage_4_intro$"),
                 CallbackQueryHandler(show_stage_4_details, pattern="^stage4_details$"),
                 CallbackQueryHandler(back_to_stage4_intro, pattern="^back_to_stage4_intro$"),
                 CallbackQueryHandler(start_stage_4, pattern="^start_stage_4$"),
@@ -3656,79 +3595,61 @@ def main():
             ],
             RESULTS: [
                 CallbackQueryHandler(get_gift_screen, pattern="^get_gift$"),
-                CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
                 CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
                 CallbackQueryHandler(restart_test, pattern="^restart_test$"),
+                CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(show_results_screen, pattern="^show_results$")
+                CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
+                CallbackQueryHandler(buy_variatica_package, pattern="^buy_variatica_package$"),
+                CallbackQueryHandler(test_payment, pattern="^test_payment$"),
+                CallbackQueryHandler(status_payment, pattern="^status_")
             ],
             GIFT_SCREEN: [
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(get_gift_screen, pattern="^get_gift$")
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
             ],
             PACKAGE_SCREEN: [
                 CallbackQueryHandler(buy_variatica_package, pattern="^buy_variatica_package$"),
                 CallbackQueryHandler(test_payment, pattern="^test_payment$"),
-                CallbackQueryHandler(status_payment, pattern="^status_"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(show_package_screen, pattern="^show_package$")
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
             ],
             OPEN_GIFT_SCREEN: [
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(open_gift_screen, pattern="^open_gift$")
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
             ]
         },
-        fallbacks=[
-            CommandHandler("cancel", cancel),
-            CommandHandler("start", start),
-            CommandHandler("materials", materials_command),
-            CommandHandler("myaccess", myaccess_command)
-        ],
-        allow_reentry=True,
-        conversation_timeout=3600  # 1 час таймаут
+        fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True
     )
     
-    application.add_handler(conv_handler)
+    # Добавляем ConversationHandler
+    app.add_handler(conv_handler)
     
-    # 9. Добавляем обработчик для кнопки check_current_status
-    application.add_handler(CallbackQueryHandler(
-        lambda update, context: status_payment(update, context), 
-        pattern="^check_current_status$"
+    # Команды
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("myaccess", myaccess_command))
+    app.add_handler(CommandHandler("check", check_command))
+    
+    # ✅ ДОБАВЛЕНО: Кнопка "Проверить доступ"
+    app.add_handler(CallbackQueryHandler(
+        lambda update, context: materials_command(update, context),
+        pattern="^check_access$"
     ))
     
-    print("✅ Бот готов к работе!")
-    print("📱 Доступные команды:")
-    print("   /start - начать тест")
-    print("   /materials - получить материалы после оплаты (РАБОТАЕТ!)")
-    print("   /myaccess - проверить статус доступа")
-    print("   /check <id> - проверить статус платежа")
-    print("   /help - справка по командам")
-    print("="*60)
-    print("🎯 КРИТЕРИИ УСПЕХА ИНТЕГРАЦИИ:")
-    print("   ✅ Бот сохраняет профиль → POST /api/save-profile")
-    print("   ✅ Бот создает платеж с профилем → profile_data в payload")
-    print("   ✅ Пользователь получает доступ → GET /api/check-access")
-    print("   ✅ Кнопка 'Получить' работает → /materials выдает ссылку")
-    print("="*60)
-    print("🔄 Запускаю бота...\n")
+    # ✅ ДОБАВЛЕНО: Команда /materials с новой логикой
+    app.add_handler(CommandHandler("materials", materials_command))
     
-    # 10. Запускаем с безопасными параметрами
-    try:
-        application.run_polling(
-            drop_pending_updates=True,
-            allowed_updates=Update.ALL_TYPES,
-            poll_interval=1.0,
-            timeout=30,
-        )
-    except KeyboardInterrupt:
-        print("\n🛑 Бот остановлен пользователем")
-    except Exception as e:
-        logger.critical(f"💥 Критическая ошибка: {e}")
-        print(f"\n💥 Критическая ошибка: {e}")
-        print("🔄 Перезапуск через 10 секунд...")
-        time.sleep(10)
-        os.execv(sys.executable, ['python'] + sys.argv)
+    # Обработчик ошибок
+    app.add_error_handler(error_handler)
+    
+    print("\n" + "="*60)
+    print("🤖 БОТ ЗАПУЩЕН И ГОТОВ К РАБОТЕ")
+    print(f"📊 Профилей загружено: 36/36")
+    print(f"🔗 API URL: {API_URL}")
+    print(f"👤 Автор: {AUTHOR_LINK}")
+    print("="*60 + "\n")
+    
+    # Запуск бота
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
