@@ -1,624 +1,505 @@
 """
-БОТ ВАРИАТИКА - ТОЛЬКО ПЛАТЕЖИ И ВЫДАЧА МАТЕРИАЛОВ
-Короткая версия с полным логированием
+🚀 ПРОСТОЙ БОТ С АВТОМАТИЧЕСКОЙ ВЫДАЧЕЙ МАТЕРИАЛОВ
+После оплаты → сразу показывает ссылку на материалы
 """
 
 import os
 import logging
-import asyncio
-import base64
-import uuid
-import time
-import requests
+import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-)
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# ============================================
-# НАСТРОЙКА ЛОГГИРОВАНИЯ
-# ============================================
-
+# Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
-    handlers=[
-        logging.FileHandler('payment_bot.log'),
-        logging.StreamHandler()
-    ]
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# ============================================
-# КОНФИГУРАЦИЯ
-# ============================================
-
+# Конфигурация
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8311564413:AAE5iu5n0VNFA_8cd9HT0BeD4776IKGsvtE")
-API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
-YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID", "381864")
-YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY", "test_1pIOqTgbYqCRm2yWLgrk9MhB1acMhH8bRBrYGgvQd_c")
-TELEGRAM_BOT_URL = "https://t.me/Testing_Lichnosti_bot"
+ADMIN_CHAT_ID = 532205848  # ID админа для уведомлений
 
-logger.info(f"🔧 Конфигурация загружена:")
-logger.info(f"   API_URL: {API_URL}")
-logger.info(f"   YOOKASSA_SHOP_ID: {YOOKASSA_SHOP_ID[:10]}...")
-logger.info(f"   YOOKASSA_SECRET_KEY: {YOOKASSA_SECRET_KEY[:10]}...")
+# Карта материалов (36 профилей)
+MATERIALS_MAP = {
+    # SA (Социально-аффилиативный)
+    "SA_1_DEF": {"name": "SA Уровень 1", "url": "https://disk.yandex.ru/d/HAcOfAg1tpIedA"},
+    "SA_2_SIT": {"name": "SA Уровень 2", "url": "https://disk.yandex.ru/d/MwdMClX9koCTmA"},
+    "SA_3_CON": {"name": "SA Уровень 3", "url": "https://disk.yandex.ru/d/NKN_XemK62t5nA"},
+    "SA_4_EXP": {"name": "SA Уровень 4", "url": "https://disk.yandex.ru/d/tTSiN5zhSb8LtA"},
+    "SA_5_INT": {"name": "SA Уровень 5", "url": "https://disk.yandex.ru/d/xUdv7bsBT3Wbhg"},
+    "SA_6_AUT": {"name": "SA Уровень 6", "url": "https://disk.yandex.ru/d/lYWKaOdEkC_5Ag"},
+    "SA_7_VAL": {"name": "SA Уровень 7", "url": "https://disk.yandex.ru/d/7BCOKs-6qS6-5g"},
+    "SA_8_TRA": {"name": "SA Уровень 8", "url": "https://disk.yandex.ru/d/SqlDISkse1OEGQ"},
+    "SA_9_IDE": {"name": "SA Уровень 9", "url": "https://disk.yandex.ru/d/vGzHmuckInNL5g"},
+    
+    # SP (Инструментально-достиженческий)
+    "SP_1_DEF": {"name": "SP Уровень 1", "url": "https://disk.yandex.ru/d/7nmOP7wR2iQ9YA"},
+    "SP_2_SIT": {"name": "SP Уровень 2", "url": "https://disk.yandex.ru/d/Ro_mcLDd_QmilA"},
+    "SP_3_CON": {"name": "SP Уровень 3", "url": "https://disk.yandex.ru/d/kUJH3BLMnb4CfA"},
+    "SP_4_EXP": {"name": "SP Уровень 4", "url": "https://disk.yandex.ru/d/KBSO1g0HYNJBcQ"},
+    "SP_5_INT": {"name": "SP Уровень 5", "url": "https://disk.yandex.ru/d/s2jhq2ngz3pmYg"},
+    "SP_6_AUT": {"name": "SP Уровень 6", "url": "https://disk.yandex.ru/d/xWBv4TLFosOB5g"},
+    "SP_7_VAL": {"name": "SP Уровень 7", "url": "https://disk.yandex.ru/d/K1whXj6C6KAazQ"},
+    "SP_8_TRA": {"name": "SP Уровень 8", "url": "https://disk.yandex.ru/d/ZZhRISNn-GNPTg"},
+    "SP_9_IDE": {"name": "SP Уровень 9", "url": "https://disk.yandex.ru/d/jBCaEpYOdZI-JQ"},
+    
+    # IA (Экзистенциально-рефлексивный)
+    "IA_1_DEF": {"name": "IA Уровень 1", "url": "https://disk.yandex.ru/d/M1Y7z175uGKIHg"},
+    "IA_2_SIT": {"name": "IA Уровень 2", "url": "https://disk.yandex.ru/d/X3yz6IP0pdRmVQ"},
+    "IA_3_CON": {"name": "IA Уровень 3", "url": "https://disk.yandex.ru/d/DCkqqALby9UpFg"},
+    "IA_4_EXP": {"name": "IA Уровень 4", "url": "https://disk.yandex.ru/d/aLT8oJBu0EGwLg"},
+    "IA_5_INT": {"name": "IA Уровень 5", "url": "https://disk.yandex.ru/d/x0QXWi7MDR7h0g"},
+    "IA_6_AUT": {"name": "IA Уровень 6", "url": "https://disk.yandex.ru/d/xRjBzTxYh0v4bg"},
+    "IA_7_VAL": {"name": "IA Уровень 7", "url": "https://disk.yandex.ru/d/1fHqhIitNuz_XQ"},
+    "IA_8_TRA": {"name": "IA Уровень 8", "url": "https://disk.yandex.ru/d/0wSeHeF_SWZyFw"},
+    "IA_9_IDE": {"name": "IA Уровень 9", "url": "https://disk.yandex.ru/d/ub0YpQQgS4g6rQ"},
+    
+    # IP (Структурно-аналитический)
+    "IP_1_DEF": {"name": "IP Уровень 1", "url": "https://disk.yandex.ru/d/m-WOQwDdgQxsnQ"},
+    "IP_2_SIT": {"name": "IP Уровень 2", "url": "https://disk.yandex.ru/d/aL4VlAQdlaZ-6g"},
+    "IP_3_CON": {"name": "IP Уровень 3", "url": "https://disk.yandex.ru/d/N8GG9XbnC3bFhg"},
+    "IP_4_EXP": {"name": "IP Уровень 4", "url": "https://disk.yandex.ru/d/54RFOZmGhA4cfA"},
+    "IP_5_INT": {"name": "IP Уровень 5", "url": "https://disk.yandex.ru/d/l5iFTIX8-gTycQ"},
+    "IP_6_AUT": {"name": "IP Уровень 6", "url": "https://disk.yandex.ru/d/bTo_vcCoC1KU7Q"},
+    "IP_7_VAL": {"name": "IP Уровень 7", "url": "https://disk.yandex.ru/d/TMx1VP843bnJQw"},
+    "IP_8_TRA": {"name": "IP Уровень 8", "url": "https://disk.yandex.ru/d/e9KfJdLcl3gp7g"},
+    "IP_9_IDE": {"name": "IP Уровень 9", "url": "https://disk.yandex.ru/d/ZiQPHJSDrrWZhw"},
+}
+
+# Профили для тестирования
+TEST_PROFILES = [
+    {"name": "🧪 Тест SA_4_EXP", "key": "SA_4_EXP", "price": 690},
+    {"name": "🧪 Тест SP_2_SIT", "key": "SP_2_SIT", "price": 690},
+    {"name": "🧪 Тест IA_7_VAL", "key": "IA_7_VAL", "price": 690},
+    {"name": "🧪 Тест IP_3_CON", "key": "IP_3_CON", "price": 690},
+]
 
 # ============================================
-# ФУНКЦИИ ДЛЯ РАБОТЫ С API
+# ПРОСТЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С ПЛАТЕЖАМИ
 # ============================================
 
-def log_api_call(endpoint: str, response):
-    """Логирование API вызовов"""
-    logger.info(f"📡 API CALL: {endpoint}")
-    logger.info(f"   Status: {response.status_code}")
-    if response.status_code != 200:
-        logger.error(f"   Error: {response.text}")
-
-def get_user_access(user_id: int) -> dict:
-    """Получает информацию о доступах пользователя"""
-    try:
-        url = f"{API_URL}/api/check-access/{user_id}"
-        logger.info(f"🔍 Проверка доступа: GET {url}")
+class SimplePaymentSystem:
+    """Простая система платежей для демонстрации"""
+    
+    def __init__(self):
+        self.payments = {}  # Храним платежи в памяти
         
-        response = requests.get(url, timeout=10)
-        log_api_call(f"GET {url}", response)
+    def create_payment(self, user_id: int, profile_key: str, amount: int) -> dict:
+        """Создает тестовый платеж"""
+        payment_id = f"pay_{user_id}_{int(os.urandom(4).hex(), 16)}"
         
-        if response.status_code == 200:
-            data = response.json()
-            logger.info(f"✅ Доступ проверен: has_access={data.get('has_access')}")
-            return data
-        else:
-            logger.error(f"❌ Ошибка API: {response.status_code}")
-            return {"success": False, "error": f"API error {response.status_code}"}
-            
-    except Exception as e:
-        logger.error(f"💥 Исключение в get_user_access: {e}")
-        return {"success": False, "error": str(e)}
-
-def get_materials_link(user_id: int, payment_id: str, token: str = None) -> dict:
-    """Получает ссылку на материалы"""
-    try:
-        url = f"{API_URL}/api/get-materials/{payment_id}"
-        params = {"user_id": user_id}
-        
-        if token:
-            params["token"] = token
-            
-        logger.info(f"🔗 Получение материалов: GET {url}")
-        logger.info(f"   Params: {params}")
-        
-        response = requests.get(url, params=params, timeout=10)
-        log_api_call(f"GET {url}", response)
-        
-        if response.status_code == 200:
-            data = response.json()
-            logger.info(f"✅ Материалы получены: success={data.get('success')}")
-            return data
-        else:
-            logger.error(f"❌ Ошибка получения материалов: {response.status_code}")
-            return {"success": False, "error": f"API error {response.status_code}"}
-            
-    except Exception as e:
-        logger.error(f"💥 Исключение в get_materials_link: {e}")
-        return {"success": False, "error": str(e)}
-
-def check_payment_status_db(payment_id: str) -> dict:
-    """Проверяет статус платежа"""
-    try:
-        url = f"{API_URL}/api/payment-status/{payment_id}"
-        logger.info(f"📊 Проверка статуса платежа: GET {url}")
-        
-        response = requests.get(url, timeout=10)
-        log_api_call(f"GET {url}", response)
-        
-        if response.status_code == 200:
-            data = response.json()
-            status = data.get('payment', {}).get('status', 'unknown')
-            logger.info(f"✅ Статус платежа {payment_id}: {status}")
-            return {"success": True, "status": status}
-        else:
-            logger.error(f"❌ Ошибка проверки статуса: {response.status_code}")
-            return {"success": False, "error": f"API error {response.status_code}"}
-            
-    except Exception as e:
-        logger.error(f"💥 Исключение в check_payment_status_db: {e}")
-        return {"success": False, "error": str(e)}
-
-def create_payment_in_db(user_id: int, amount: float = 690.0, 
-                         is_test: bool = False, profile_data: dict = None) -> dict:
-    """Создает запись о платеже в БД"""
-    try:
-        timestamp = int(time.time())
-        payment_id = f"test_{user_id}_{timestamp}" if is_test else f"variatica_{user_id}_{timestamp}"
-        
-        payload = {
+        payment_data = {
             "payment_id": payment_id,
             "user_id": user_id,
+            "profile_key": profile_key,
             "amount": amount,
-            "description": f"Тестовый платеж {amount} руб" if is_test else "Полный пакет ВАРИАТИКА - 690 руб",
-            "email": f"user_{user_id}@telegram.org"
+            "status": "pending",  # pending, paid, failed
+            "created_at": os.times().elapsed
         }
         
-        if profile_data:
-            simplified_profile = {
-                "profile_key": profile_data.get("display_name", ""),
-                "type_code": profile_data.get("type_code", ""),
-                "level": profile_data.get("level", 1),
-                "dilts_code": profile_data.get("dilts_code", "")
-            }
-            payload["profile_data"] = simplified_profile
+        self.payments[payment_id] = payment_data
+        logger.info(f"💰 Создан платеж {payment_id} для user {user_id}")
         
-        logger.info(f"💳 Создание платежа в БД: POST {API_URL}/api/create-payment-advanced")
-        logger.info(f"   Payment ID: {payment_id}")
-        logger.info(f"   User ID: {user_id}")
-        logger.info(f"   Amount: {amount}")
-        
-        response = requests.post(
-            f"{API_URL}/api/create-payment-advanced",
-            json=payload,
-            timeout=10
-        )
-        
-        log_api_call(f"POST {API_URL}/api/create-payment-advanced", response)
-        
-        if response.status_code in [200, 201]:
-            response_data = response.json()
-            logger.info(f"✅ Платеж создан в БД: {payment_id}")
-            logger.info(f"   Confirmation URL: {'Есть' if response_data.get('confirmation_url') else 'Нет'}")
-            
-            return {
-                "success": True,
-                "payment_id": payment_id,
-                "confirmation_url": response_data.get('confirmation_url'),
-                "yookassa_id": response_data.get('yookassa_id')
-            }
-        else:
-            logger.error(f"❌ Ошибка создания платежа в БД: {response.status_code}")
-            return {"success": False, "error": f"API error: {response.status_code}"}
-            
-    except Exception as e:
-        logger.error(f"💥 Исключение в create_payment_in_db: {e}")
-        return {"success": False, "error": str(e)}
+        return {
+            "success": True,
+            "payment_id": payment_id,
+            "amount": amount,
+            "description": f"Оплата за материалы {profile_key}"
+        }
+    
+    def process_payment(self, payment_id: str) -> bool:
+        """Обрабатывает платеж (в реальности здесь будет ЮKassa)"""
+        if payment_id in self.payments:
+            self.payments[payment_id]["status"] = "paid"
+            logger.info(f"✅ Платеж {payment_id} оплачен")
+            return True
+        return False
+    
+    def get_payment(self, payment_id: str) -> dict:
+        """Получает информацию о платеже"""
+        return self.payments.get(payment_id)
+
+# Инициализируем платежную систему
+payment_system = SimplePaymentSystem()
 
 # ============================================
-# ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ МАТЕРИАЛОВ
-# ============================================
-
-async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /materials для получения материалов"""
-    user_id = update.effective_user.id
-    user_name = update.effective_user.first_name
-    
-    logger.info(f"🚀 ПОЛЬЗОВАТЕЛЬ ЗАПРОСИЛ МАТЕРИАЛЫ: {user_id} ({user_name})")
-    
-    # Шаг 1: Проверяем доступ
-    logger.info(f"🔍 Шаг 1: Проверка доступа для user_id={user_id}")
-    access_data = get_user_access(user_id)
-    
-    if not access_data.get('success', False):
-        error_msg = access_data.get('error', 'Unknown error')
-        logger.error(f"❌ ОШИБКА ПРОВЕРКИ ДОСТУПА: {error_msg}")
-        
-        await update.message.reply_text(
-            "❌ *Ошибка проверки доступа*\n\n"
-            "Пожалуйста, попробуйте позже или обратитесь в поддержку.",
-            parse_mode='Markdown'
-        )
-        return
-    
-    logger.info(f"📊 Результат проверки доступа: has_access={access_data.get('has_access')}")
-    
-    # Шаг 2: Если нет доступа - предлагаем купить
-    if not access_data.get('has_access', False):
-        logger.info(f"❌ У пользователя {user_id} нет доступа")
-        
-        keyboard = [
-            [InlineKeyboardButton("💎 КУПИТЬ ДОСТУП 690 РУБ", callback_data="buy_variatica_package")],
-            [InlineKeyboardButton("🧪 ТЕСТОВАЯ ОПЛАТА 1 РУБ", callback_data="test_payment")]
-        ]
-        
-        await update.message.reply_text(
-            f"📭 *У ВАС НЕТ ДОСТУПА*\n\n"
-            f"👤 *{user_name}*, для получения материалов необходимо оплатить доступ.",
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-    
-    # Шаг 3: Ищем активный доступ
-    accesses = access_data.get('accesses', [])
-    logger.info(f"🔍 Найдено {len(accesses)} доступов для пользователя {user_id}")
-    
-    if not accesses:
-        logger.error(f"❌ Нет данных о доступах для user_id={user_id}")
-        await update.message.reply_text(
-            "❌ *Ошибка данных доступа*\n\nОбратитесь в поддержку.",
-            parse_mode='Markdown'
-        )
-        return
-    
-    # Шаг 4: Ищем активный доступ
-    for idx, access in enumerate(accesses):
-        logger.info(f"🔍 Проверяем доступ #{idx+1}:")
-        logger.info(f"   Payment ID: {access.get('payment_id')}")
-        logger.info(f"   Has Access: {access.get('has_access')}")
-        logger.info(f"   Is Active: {access.get('is_active')}")
-        logger.info(f"   Profile Key: {access.get('profile_key')}")
-        
-        if access.get('has_access', False) and access.get('is_active', False):
-            payment_id = access.get('payment_id')
-            access_token = access.get('access_token')
-            profile_key = access.get('profile_key')
-            
-            logger.info(f"✅ НАЙДЕН АКТИВНЫЙ ДОСТУП!")
-            logger.info(f"   Payment ID: {payment_id}")
-            logger.info(f"   Profile Key: {profile_key}")
-            
-            # Шаг 5: Получаем ссылку на материалы
-            logger.info(f"🔗 Получаем ссылку на материалы для payment_id={payment_id}")
-            materials_data = get_materials_link(user_id, payment_id, access_token)
-            
-            if materials_data.get('success', False):
-                materials_link = materials_data.get('materials_link')
-                if materials_link:
-                    logger.info(f"✅ Ссылка получена через API: {materials_link[:50]}...")
-                    
-                    keyboard = [[InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)]]
-                    
-                    await update.message.reply_text(
-                        f"✅ *ВАШИ МАТЕРИАЛЫ ГОТОВЫ!*\n\n"
-                        f"🎯 Профиль: `{profile_key}`\n"
-                        f"🔗 Ссылка на Яндекс.Диск\n\n"
-                        f"Нажмите кнопку ниже для скачивания:",
-                        parse_mode='Markdown',
-                        reply_markup=InlineKeyboardMarkup(keyboard)
-                    )
-                    return
-                else:
-                    logger.warning(f"⚠️ API вернул success=True, но нет ссылки на материалы")
-            else:
-                logger.warning(f"⚠️ Не удалось получить материалы через API: {materials_data.get('error')}")
-    
-    # Если дошли сюда - что-то пошло не так
-    logger.error(f"❌ НЕ УДАЛОСЬ НАЙТИ АКТИВНЫЙ ДОСТУП С МАТЕРИАЛАМИ")
-    await update.message.reply_text(
-        "❌ *Не удалось получить материалы*\n\n"
-        "Попробуйте:\n"
-        "1. Проверить статус доступа (/myaccess)\n"
-        "2. Обратиться в поддержку",
-        parse_mode='Markdown'
-    )
-
-# ============================================
-# КОМАНДА /MYACCESS
-# ============================================
-
-async def myaccess_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /myaccess для проверки статуса"""
-    user_id = update.effective_user.id
-    user_name = update.effective_user.first_name
-    
-    logger.info(f"🔍 ПОЛЬЗОВАТЕЛЬ ПРОВЕРЯЕТ ДОСТУП: {user_id} ({user_name})")
-    
-    access_data = get_user_access(user_id)
-    
-    if not access_data.get('success', False):
-        logger.error(f"❌ Ошибка при проверке доступа для user_id={user_id}")
-        await update.message.reply_text(
-            "❌ *Ошибка проверки доступа*",
-            parse_mode='Markdown'
-        )
-        return
-    
-    if access_data.get('has_access'):
-        accesses = access_data.get('accesses', [])
-        logger.info(f"✅ У пользователя ЕСТЬ доступ: {len(accesses)} записей")
-        
-        for access in accesses:
-            if access.get('has_access') and access.get('is_active'):
-                payment_id = access.get('payment_id')
-                profile_key = access.get('profile_key')
-                
-                logger.info(f"📋 Активный доступ найден:")
-                logger.info(f"   Payment ID: {payment_id}")
-                logger.info(f"   Profile Key: {profile_key}")
-                
-                message = (
-                    f"✅ *ДОСТУП АКТИВЕН!*\n\n"
-                    f"👤 *Пользователь:* {user_name}\n"
-                    f"🎯 *Профиль:* `{profile_key or 'Не указан'}`\n"
-                    f"📋 *ID платежа:* `{payment_id}`\n\n"
-                    f"Используйте команду /materials для получения материалов"
-                )
-                
-                await update.message.reply_text(
-                    message,
-                    parse_mode='Markdown'
-                )
-                return
-    else:
-        logger.info(f"❌ У пользователя НЕТ доступа")
-        await update.message.reply_text(
-            f"❌ *ДОСТУП НЕ АКТИВЕН*\n\n"
-            f"👤 *Пользователь:* {user_name}\n"
-            f"📦 *Статус:* Доступ не оплачен\n\n"
-            f"Используйте команду /start для покупки доступа",
-            parse_mode='Markdown'
-        )
-
-# ============================================
-# ОБРАБОТЧИК КНОПКИ "ПОЛУЧИТЬ МАТЕРИАЛЫ"
-# ============================================
-
-async def get_materials_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик кнопки 'Получить материалы'"""
-    query = update.callback_query
-    
-    try:
-        await query.answer()
-        
-        user_id = query.from_user.id
-        user_name = query.from_user.first_name
-        
-        logger.info(f"🔄 НАЖАТА КНОПКА 'ПОЛУЧИТЬ МАТЕРИАЛЫ'")
-        logger.info(f"   User ID: {user_id}")
-        logger.info(f"   User Name: {user_name}")
-        
-        # Обновляем сообщение
-        await query.edit_message_text(
-            "🔍 *Ищу ваши материалы...*",
-            parse_mode='Markdown'
-        )
-        
-        # Создаем фейковое обновление для вызова команды materials
-        fake_update = Update(
-            update_id=update.update_id,
-            message=query.message
-        )
-        
-        # Вызываем команду materials
-        await materials_command(fake_update, context)
-        
-    except Exception as e:
-        logger.error(f"💥 ОШИБКА В ОБРАБОТЧИКЕ КНОПКИ: {e}")
-        await query.edit_message_text(
-            "❌ *Произошла ошибка*\n\n"
-            "Попробуйте использовать команду /materials",
-            parse_mode='Markdown'
-        )
-
-# ============================================
-# ТЕСТОВЫЙ ПЛАТЕЖ
-# ============================================
-
-async def test_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Тестовый платеж 1 рубль"""
-    query = update.callback_query
-    
-    try:
-        await query.answer()
-        
-        user_id = query.from_user.id
-        user_name = query.from_user.first_name
-        
-        logger.info(f"🧪 СОЗДАНИЕ ТЕСТОВОГО ПЛАТЕЖА")
-        logger.info(f"   User ID: {user_id}")
-        logger.info(f"   User Name: {user_name}")
-        
-        await query.edit_message_text("🧪 *Создаю тестовый платеж 1 рубль...*", parse_mode='Markdown')
-        
-        # Создаем платеж в БД
-        db_result = create_payment_in_db(user_id, amount=1.0, is_test=True)
-        
-        if not db_result["success"]:
-            error_msg = db_result.get('error', 'Неизвестная ошибка')
-            logger.error(f"❌ ОШИБКА СОЗДАНИЯ ПЛАТЕЖА: {error_msg}")
-            await query.edit_message_text(f"❌ *Ошибка:*\n`{error_msg}`", parse_mode='Markdown')
-            return
-        
-        payment_id = db_result["payment_id"]
-        logger.info(f"✅ Платеж создан: {payment_id}")
-        
-        # Если API вернул ссылку - используем ее
-        if db_result.get("confirmation_url"):
-            confirmation_url = db_result["confirmation_url"]
-            logger.info(f"🔗 Использую URL от API: {confirmation_url[:50]}...")
-        else:
-            # Иначе показываем сообщение
-            logger.warning(f"⚠️ API не вернул confirmation_url")
-            await query.edit_message_text(
-                f"🧪 *ТЕСТОВЫЙ ПЛАТЕЖ СОЗДАН*\n\n"
-                f"📋 *ID платежа:* `{payment_id}`\n\n"
-                f"*Для оплаты свяжитесь с поддержкой:*\n"
-                f"👉 @meysternlp",
-                parse_mode='Markdown'
-            )
-            return
-        
-        keyboard = [
-            [InlineKeyboardButton("💳 ОПЛАТИТЬ 1 РУБЛЬ", url=confirmation_url)],
-            [InlineKeyboardButton("🔄 Проверить статус", callback_data=f"status_{payment_id}")]
-        ]
-        
-        await query.edit_message_text(
-            f"🧪 *ТЕСТОВЫЙ ПЛАТЕЖ СОЗДАН*\n\n"
-            f"👤 *Пользователь:* {user_name}\n"
-            f"💰 *Сумма:* 1 рубль\n"
-            f"📋 *ID:* `{payment_id}`\n\n"
-            f"*Для проверки платежной системы:*\n"
-            f"1. Нажмите кнопку оплаты\n"
-            f"2. Выберите любой способ оплаты\n"
-            f"3. После успешной оплаты используйте /materials",
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        
-    except Exception as e:
-        logger.error(f"💥 ОШИБКА В ТЕСТОВОМ ПЛАТЕЖЕ: {e}")
-        await query.edit_message_text(
-            "❌ *Произошла ошибка*\n\nПопробуйте позже.",
-            parse_mode='Markdown'
-        )
-
-# ============================================
-# ПРОВЕРКА СТАТУСА ПЛАТЕЖА
-# ============================================
-
-async def status_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Проверка статуса платежа"""
-    query = update.callback_query
-    
-    try:
-        await query.answer()
-        
-        payment_id = query.data.replace("status_", "")
-        logger.info(f"📊 ПРОВЕРКА СТАТУСА ПЛАТЕЖА: {payment_id}")
-        
-        await query.edit_message_text(f"🔍 *Проверяю статус:* `{payment_id}`", parse_mode='Markdown')
-        
-        result = check_payment_status_db(payment_id)
-        
-        if not result["success"]:
-            error_msg = result.get('error', 'Unknown error')
-            logger.error(f"❌ ОШИБКА ПРОВЕРКИ СТАТУСА: {error_msg}")
-            await query.edit_message_text(f"❌ *Ошибка:* {error_msg}", parse_mode='Markdown')
-            return
-        
-        status = result.get("status", "unknown")
-        logger.info(f"📊 Статус платежа {payment_id}: {status}")
-        
-        if status == "succeeded":
-            logger.info(f"✅ Платеж {payment_id} ОПЛАЧЕН!")
-            
-            keyboard = [[InlineKeyboardButton("📥 ПОЛУЧИТЬ МАТЕРИАЛЫ", callback_data="get_materials")]]
-            
-            await query.edit_message_text(
-                f"🎉 *ПЛАТЕЖ ОПЛАЧЕН!*\n\n"
-                f"✅ Платеж `{payment_id}` успешно завершен!\n\n"
-                f"*🔓 ДОСТУП ОТКРЫТ!*\n"
-                f"Нажмите кнопку ниже для получения материалов:",
-                parse_mode='Markdown',
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-        elif status in ["pending", "waiting"]:
-            logger.info(f"⏳ Платеж {payment_id} ожидает оплаты")
-            
-            keyboard = [
-                [InlineKeyboardButton("🔄 Обновить статус", callback_data=f"status_{payment_id}")],
-                [InlineKeyboardButton("🧪 Создать новый платеж", callback_data="test_payment")]
-            ]
-            
-            await query.edit_message_text(
-                f"⏳ *ОЖИДАЕТ ОПЛАТЫ*\n\n"
-                f"Заказ `{payment_id}` еще не оплачен.\n\n"
-                f"Если вы уже оплатили, подождите несколько минут и обновите статус.",
-                parse_mode='Markdown',
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-        else:
-            logger.warning(f"⚠️ Неизвестный статус платежа {payment_id}: {status}")
-            await query.edit_message_text(f"📊 *Статус:* `{status}`", parse_mode='Markdown')
-            
-    except Exception as e:
-        logger.error(f"💥 ОШИБКА ПРОВЕРКИ СТАТУСА: {e}")
-        await query.edit_message_text(
-            "❌ *Произошла ошибка*\n\nПопробуйте позже.",
-            parse_mode='Markdown'
-        )
-
-# ============================================
-# СТАРТОВАЯ КОМАНДА
+# ОСНОВНЫЕ КОМАНДЫ БОТА
 # ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /start"""
     user = update.effective_user
     
-    logger.info(f"🚀 НОВЫЙ ПОЛЬЗОВАТЕЛЬ: {user.id} ({user.first_name})")
-    
-    welcome_text = (
-        f"Привет, {user.first_name}! 👋\n\n"
-        f"🎴 *Добро пожаловать в тестовый бот платежей ВАРИАТИКА!*\n\n"
-        f"*Доступные команды:*\n"
-        f"/materials - Получить материалы после оплаты\n"
-        f"/myaccess - Проверить статус доступа\n\n"
-        f"*Тестовый платеж:* 1 рубль\n"
-        f"*Полный пакет:* 690 рублей\n\n"
-        f"Для начала тестирования нажмите кнопку ниже:"
-    )
+    logger.info(f"👋 Пользователь {user.id} ({user.first_name}) запустил бота")
     
     keyboard = [
-        [InlineKeyboardButton("🧪 ТЕСТОВАЯ ОПЛАТА 1 РУБ", callback_data="test_payment")],
-        [InlineKeyboardButton("📦 ПРОВЕРИТЬ ДОСТУП", callback_data="check_access")]
+        [InlineKeyboardButton("🎯 ВЫБРАТЬ ПРОФИЛЬ", callback_data="choose_profile")],
+        [InlineKeyboardButton("📁 ПОЛУЧИТЬ МАТЕРИАЛЫ", callback_data="get_materials")],
+        [InlineKeyboardButton("💎 О ПРОЕКТЕ", callback_data="about")]
     ]
     
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='Markdown')
+    await update.message.reply_text(
+        f"*👋 Привет, {user.first_name}!*\n\n"
+        f"🎴 *Добро пожаловать в VARIATICA!*\n\n"
+        f"*Что здесь есть:*\n"
+        f"✅ 36 персонализированных наборов материалов\n"
+        f"✅ Простая оплата через бота\n"
+        f"✅ Мгновенный доступ после оплаты\n"
+        f"✅ Автоматическая выдача материалов\n\n"
+        f"*Как это работает:*\n"
+        f"1. Выбираете профиль\n"
+        f"2. Оплачиваете 690 руб\n"
+        f"3. Получаете материалы сразу\n\n"
+        f"*Выберите действие:*",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-# ============================================
-# КНОПКА ПРОВЕРКИ ДОСТУПА
-# ============================================
-
-async def check_access_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Кнопка проверки доступа"""
+async def choose_profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Выбор профиля"""
     query = update.callback_query
+    await query.answer()
     
-    try:
-        await query.answer()
+    keyboard = []
+    for profile in TEST_PROFILES:
+        keyboard.append([
+            InlineKeyboardButton(
+                f"{profile['name']} - {profile['price']} руб",
+                callback_data=f"buy_{profile['key']}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton("🏠 В главное меню", callback_data="main_menu")])
+    
+    await query.edit_message_text(
+        "🎯 *ВЫБЕРИТЕ ПРОФИЛЬ*\n\n"
+        "Выберите один из тестовых профилей для оплаты:\n\n"
+        "💎 *Что входит:*\n"
+        "• Полный набор материалов профиля\n"
+        "• Мгновенный доступ после оплаты\n"
+        "• Персонализированный контент\n"
+        "• Ссылка на Яндекс.Диск\n\n"
+        "💰 *Стоимость:* 690 рублей\n\n"
+        "👇 Нажмите на профиль для оплаты:",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def buy_profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик покупки профиля"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Получаем profile_key из callback_data
+    if query.data.startswith("buy_"):
+        profile_key = query.data[4:]  # Убираем "buy_"
+        
+        if profile_key not in MATERIALS_MAP:
+            await query.edit_message_text(
+                "❌ *Профиль не найден*\n\n"
+                "Пожалуйста, выберите другой профиль.",
+                parse_mode='Markdown'
+            )
+            return
         
         user_id = query.from_user.id
-        logger.info(f"🔍 НАЖАТА КНОПКА ПРОВЕРКИ ДОСТУПА: user_id={user_id}")
+        user_name = query.from_user.first_name
+        profile_data = MATERIALS_MAP[profile_key]
         
-        # Создаем фейковое обновление для вызова команды myaccess
-        fake_update = Update(
-            update_id=update.update_id,
-            message=query.message
+        logger.info(f"🛒 Пользователь {user_id} выбрал профиль {profile_key}")
+        
+        # Создаем платеж
+        payment_result = payment_system.create_payment(
+            user_id=user_id,
+            profile_key=profile_key,
+            amount=690
         )
         
-        # Вызываем команду myaccess
-        await myaccess_command(fake_update, context)
+        if not payment_result["success"]:
+            await query.edit_message_text(
+                "❌ *Ошибка создания платежа*\n\n"
+                "Попробуйте снова.",
+                parse_mode='Markdown'
+            )
+            return
         
-    except Exception as e:
-        logger.error(f"💥 ОШИБКА ПРОВЕРКИ ДОСТУПА: {e}")
+        payment_id = payment_result["payment_id"]
+        
+        # Сохраняем payment_id в контексте пользователя
+        context.user_data["last_payment"] = payment_id
+        context.user_data["profile_key"] = profile_key
+        
+        # Показываем экран оплаты
+        keyboard = [
+            [InlineKeyboardButton("💳 ОПЛАТИТЬ 690 РУБ", callback_data=f"pay_{payment_id}")],
+            [InlineKeyboardButton("🧪 ИМИТИРОВАТЬ ОПЛАТУ", callback_data=f"mock_{payment_id}")],
+            [InlineKeyboardButton("❌ Отмена", callback_data="choose_profile")]
+        ]
+        
         await query.edit_message_text(
-            "❌ *Произошла ошибка*\n\nПопробуйте команду /myaccess",
-            parse_mode='Markdown'
+            f"💎 *ОФОРМЛЕНИЕ ЗАКАЗА*\n\n"
+            f"👤 *Покупатель:* {user_name}\n"
+            f"🎯 *Профиль:* {profile_data['name']}\n"
+            f"📋 *Код профиля:* `{profile_key}`\n"
+            f"💰 *Сумма к оплате:* 690 руб\n"
+            f"🆔 *ID заказа:* `{payment_id}`\n\n"
+            f"*Что вы получите:*\n"
+            f"✅ Персонализированный набор материалов\n"
+            f"✅ Ссылка на Яндекс.Диск\n"
+            f"✅ Мгновенный доступ после оплаты\n\n"
+            f"*Для оплаты нажмите кнопку:*\n"
+            f"После оплаты материалы придут сразу в этот чат!",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
+async def process_payment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка платежа"""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data.startswith("pay_"):
+        # В реальности здесь будет переход на ЮKassa
+        payment_id = query.data[4:]
+        
+        await query.edit_message_text(
+            f"🔗 *ПЕРЕХОД НА ОПЛАТУ*\n\n"
+            f"ID платежа: `{payment_id}`\n\n"
+            f"В реальной системе здесь будет:\n"
+            f"1. Переход на страницу ЮKassa\n"
+            f"2. Оплата картой/СБП/ЮMoney\n"
+            f"3. Возврат в бот\n"
+            f"4. Автоматическая выдача материалов\n\n"
+            f"Для теста используйте кнопку имитации оплаты.",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🧪 ИМИТИРОВАТЬ ОПЛАТУ", callback_data=f"mock_{payment_id}")]
+            ])
+        )
+        
+    elif query.data.startswith("mock_"):
+        # Имитация успешной оплаты
+        payment_id = query.data[5:]
+        
+        await query.edit_message_text(
+            "⏳ *Имитирую успешную оплату...*",
+            parse_mode='Markdown'
+        )
+        
+        # Обрабатываем платеж
+        success = payment_system.process_payment(payment_id)
+        
+        if not success:
+            await query.edit_message_text(
+                "❌ *Платеж не найден*\n\n"
+                "Попробуйте создать новый заказ.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Получаем данные платежа
+        payment_data = payment_system.get_payment(payment_id)
+        profile_key = payment_data.get("profile_key", "SA_4_EXP")
+        
+        # Сохраняем профиль пользователя
+        context.user_data["paid_profile"] = profile_key
+        context.user_data["last_payment_id"] = payment_id
+        
+        # Немного ждем для реалистичности
+        import asyncio
+        await asyncio.sleep(1)
+        
+        # АВТОМАТИЧЕСКАЯ ВЫДАЧА МАТЕРИАЛОВ
+        await send_materials_automatically(
+            update=update,
+            context=context,
+            user_id=query.from_user.id,
+            user_name=query.from_user.first_name,
+            payment_id=payment_id,
+            profile_key=profile_key
+        )
+
+async def send_materials_automatically(update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                     user_id: int, user_name: str, payment_id: str, profile_key: str):
+    """АВТОМАТИЧЕСКАЯ ВЫДАЧА МАТЕРИАЛОВ ПОСЛЕ ОПЛАТЫ"""
+    
+    query = update.callback_query
+    
+    # Получаем данные материалов
+    if profile_key not in MATERIALS_MAP:
+        profile_key = "SA_4_EXP"  # fallback
+    
+    materials = MATERIALS_MAP[profile_key]
+    
+    # Отправляем уведомление об успешной оплате
+    await query.edit_message_text(
+        "🎉 *ОПЛАТА ПРОШЛА УСПЕШНО!*\n\n"
+        "⏳ *Загружаю ваши материалы...*",
+        parse_mode='Markdown'
+    )
+    
+    # Немного ждем для эффекта
+    import asyncio
+    await asyncio.sleep(0.5)
+    
+    # Отправляем сообщение с материалами
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=f"✅ *ВАШИ МАТЕРИАЛЫ ГОТОВЫ!*\n\n"
+             f"👤 *Покупатель:* {user_name}\n"
+             f"🎯 *Профиль:* {materials['name']}\n"
+             f"📋 *Код профиля:* `{profile_key}`\n"
+             f"🆔 *ID заказа:* `{payment_id}`\n\n"
+             f"*Что вы получили:*\n"
+             f"🎴 Полный набор материалов по вашему профилю\n"
+             f"📚 Эксклюзивный контент\n"
+             f"🔗 Доступ к Яндекс.Диск\n\n"
+             f"👇 *Нажмите кнопку ниже для скачивания:*",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials['url'])]
+        ])
+    )
+    
+    # Отправляем дополнительную информацию
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=f"📋 *ИНФОРМАЦИЯ О ЗАКАЗЕ*\n\n"
+             f"🆔 *ID платежа:* `{payment_id}`\n"
+             f"💰 *Сумма:* 690 руб\n"
+             f"🎯 *Профиль:* {materials['name']}\n"
+             f"📅 *Дата:* {os.times().elapsed:.0f}\n\n"
+             f"*Что делать дальше:*\n"
+             f"1. Скачайте материалы по ссылке выше\n"
+             f"2. Сохраните их на своем устройстве\n"
+             f"3. Изучайте в удобном темпе\n\n"
+             f"*Нужна помощь?*\n"
+             f"Напишите @meysternlp",
+        parse_mode='Markdown'
+    )
+    
+    logger.info(f"✅ Материалы отправлены пользователю {user_id} для профиля {profile_key}")
+
+async def get_materials_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Получение материалов (если уже оплатили)"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    user_name = query.from_user.first_name
+    
+    # Проверяем, есть ли оплаченный профиль
+    paid_profile = context.user_data.get("paid_profile")
+    last_payment_id = context.user_data.get("last_payment_id")
+    
+    if paid_profile:
+        # Если уже оплатили - показываем материалы снова
+        materials = MATERIALS_MAP.get(paid_profile, MATERIALS_MAP["SA_4_EXP"])
+        
+        keyboard = [
+            [InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials['url'])],
+            [InlineKeyboardButton("🎯 ВЫБРАТЬ ДРУГОЙ ПРОФИЛЬ", callback_data="choose_profile")],
+            [InlineKeyboardButton("🏠 В главное меню", callback_data="main_menu")]
+        ]
+        
+        await query.edit_message_text(
+            f"📁 *ВАШИ МАТЕРИАЛЫ*\n\n"
+            f"👤 *{user_name}*, вот ваши материалы:\n\n"
+            f"🎯 *Профиль:* {materials['name']}\n"
+            f"📋 *Код:* `{paid_profile}`\n"
+            f"🆔 *Последний заказ:* `{last_payment_id or 'N/A'}`\n\n"
+            f"Нажмите кнопку для скачивания:",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        # Если нет оплаты - предлагаем купить
+        keyboard = [[InlineKeyboardButton("🎯 ВЫБРАТЬ ПРОФИЛЬ", callback_data="choose_profile")]]
+        
+        await query.edit_message_text(
+            f"📭 *МАТЕРИАЛЫ НЕ НАЙДЕНЫ*\n\n"
+            f"👤 *{user_name}*, у вас нет активных покупок.\n\n"
+            f"Чтобы получить материалы:\n"
+            f"1. Выберите профиль\n"
+            f"2. Оплатите 690 руб\n"
+            f"3. Получите материалы сразу\n\n"
+            f"Выберите профиль:",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+async def about_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """О проекте"""
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("🎯 ВЫБРАТЬ ПРОФИЛЬ", callback_data="choose_profile")],
+        [InlineKeyboardButton("🏠 В главное меню", callback_data="main_menu")]
+    ]
+    
+    await query.edit_message_text(
+        "💎 *О ПРОЕКТЕ VARIATICA*\n\n"
+        "*Что это?*\n"
+        "Платформа с 36 персонализированными наборами материалов "
+        "по типологии личности.\n\n"
+        "*Как работает?*\n"
+        "1. Проходите тест (определяет ваш профиль)\n"
+        "2. Получаете персонализированные материалы\n"
+        "3. Изучаете в удобном темпе\n\n"
+        "*Что вы получаете?*\n"
+        "✅ 36 различных наборов материалов\n"
+        "✅ Контент под ваш тип личности\n"
+        "✅ Мгновенный доступ после оплаты\n"
+        "✅ Ссылки на Яндекс.Диск\n\n"
+        "*Стоимость:* 690 руб за профиль\n\n"
+        "*Техническая поддержка:* @meysternlp",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возврат в главное меню"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Создаем фейковое обновление для вызова start
+    fake_update = Update(
+        update_id=update.update_id + 1000,
+        message=query.message
+    )
+    
+    await start(fake_update, context)
+
 # ============================================
-# ГЛАВНАЯ ФУНКЦИЯ
+# ЗАПУСК БОТА
 # ============================================
 
 def main():
     """Запуск бота"""
-    logger.info("="*50)
-    logger.info("🚀 ЗАПУСК БОТА ПЛАТЕЖЕЙ ВАРИАТИКА")
-    logger.info("="*50)
+    logger.info("🚀 ЗАПУСК ПРОСТОГО БОТА С АВТОМАТИЧЕСКОЙ ВЫДАЧЕЙ")
     
     # Создаем приложение
     application = Application.builder().token(TOKEN).build()
     
-    # Добавляем обработчики команд
+    # Регистрируем обработчики
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("materials", materials_command))
-    application.add_handler(CommandHandler("myaccess", myaccess_command))
     
-    # Добавляем обработчики кнопок
-    application.add_handler(CallbackQueryHandler(test_payment, pattern="^test_payment$"))
-    application.add_handler(CallbackQueryHandler(status_payment, pattern="^status_"))
-    application.add_handler(CallbackQueryHandler(get_materials_button, pattern="^get_materials$"))
-    application.add_handler(CallbackQueryHandler(check_access_button, pattern="^check_access$"))
+    # Регистрируем обработчики кнопок
+    application.add_handler(CallbackQueryHandler(choose_profile_handler, pattern="^choose_profile$"))
+    application.add_handler(CallbackQueryHandler(buy_profile_handler, pattern="^buy_"))
+    application.add_handler(CallbackQueryHandler(process_payment_handler, pattern="^(pay_|mock_)"))
+    application.add_handler(CallbackQueryHandler(get_materials_handler, pattern="^get_materials$"))
+    application.add_handler(CallbackQueryHandler(about_handler, pattern="^about$"))
+    application.add_handler(CallbackQueryHandler(main_menu_handler, pattern="^main_menu$"))
     
-    logger.info("✅ Обработчики зарегистрированы")
-    logger.info("🤖 Бот запущен!")
+    logger.info("✅ Бот запущен!")
+    logger.info("👉 Используйте /start в Telegram")
+    logger.info("💰 После оплаты → автоматическая выдача материалов")
     
     # Запускаем бота
-    application.run_polling(allowed_updates=None)
+    application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
