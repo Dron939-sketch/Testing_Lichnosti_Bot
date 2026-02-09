@@ -6,6 +6,7 @@
 2. ✅ Убрана передача username в веб-сервис
 3. ✅ Используется payment_id вместо user_id для получения материалов
 4. ✅ Полная совместимость с 36 профилями
+5. ✅ ИСПРАВЛЕНА ЛОГИЧЕСКАЯ ОШИБКА ПРОВЕРКИ success
 """
 
 import logging
@@ -135,7 +136,7 @@ SHARE_TEXT = "Только что узнал о себе то, о чём ещё 
 ) = range(10)
 
 # ============================================
-# ВОПРОСЫ ЭТАПА 1: КОНФИГУРАЦИЯ ВОПРИЯТИЯ (8 вопросов)
+# ВОПРОСЫ ЭТАПА 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ (8 вопросов)
 # ============================================
 
 STAGE_1_QUESTIONS = [
@@ -560,7 +561,7 @@ STAGE_2_SCORING = {
         6: {"2": 1, "1": 1, "5": 2, "4": 2},
         7: {"2": 1, "3": 2, "5": 2, "1": 1}
     },
-    "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ": {
+    "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫй": {
         0: {"1": 2, "2": 2, "4": 2, "5": 2},
         1: {"1": 2, "2": 2, "4": 2, "5": 2},
         2: {"1": 2, "2": 2, "4": 2, "5": 2},
@@ -2841,7 +2842,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
 # ============================================
 
 async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /materials - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ ВЕРСИЯ ПО ТЗ"""
+    """Команда /materials - ИСПРАВЛЕННАЯ ВЕРСИЯ С ПРАВИЛЬНОЙ ЛОГИКОЙ"""
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     
@@ -2849,19 +2850,21 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"🚀 START /materials command")
     logger.info(f"👤 User: {user_id} ({user_name})")
     
-    # Шаг 1: Проверяем доступ через API (ИСПРАВЛЕННЫЙ ЭНДПОИНТ)
+    # Шаг 1: Проверяем доступ через API (ИСПРАВЛЕННАЯ ПРОВЕРКА SUCCESS!)
     logger.info(f"🔍 Step 1: Checking access via API")
     access_data = get_user_access(user_id)
     
-    if not access_data.get('success', True):
-        logger.error(f"❌ API error: {access_data.get('error')}")
+    # 🔧 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Используем False как значение по умолчанию
+    if not access_data.get('success', False):
+        error_msg = access_data.get('error', 'Unknown error')
+        logger.error(f"❌ API error: {error_msg}")
         await update.message.reply_text(
             "❌ Ошибка проверки доступа. Попробуйте позже.",
             parse_mode="HTML"
         )
         return
     
-    logger.info(f"📊 API response: has_access={access_data.get('has_access')}")
+    logger.info(f"📊 API response: success=True, has_access={access_data.get('has_access')}")
     
     # Шаг 2: Если нет доступа - предлагаем купить
     if not access_data.get('has_access', False):
@@ -2883,6 +2886,14 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     accesses = access_data.get('accesses', [])
     logger.info(f"🔍 Found {len(accesses)} accesses")
     
+    if not accesses:
+        logger.error(f"❌ No accesses array in response")
+        await update.message.reply_text(
+            "❌ Ошибка данных доступа. Обратитесь в поддержку.",
+            parse_mode="HTML"
+        )
+        return
+    
     for access in accesses:
         if access.get('has_access', False) and access.get('is_active', False):
             payment_id = access.get('payment_id')
@@ -2892,30 +2903,34 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"✅ Found active access: payment_id={payment_id}")
             logger.info(f"   profile_key from API: {profile_key}")
             
-            # Шаг 4: Получаем ссылку на материалы (ИСПРАВЛЕННЫЙ ЭНДПОИНТ!)
+            # Шаг 4: Получаем ссылку на материалы
             logger.info(f"📦 Getting materials link for payment_id={payment_id}")
             materials_data = get_materials_link(user_id, payment_id, access_token)
             
+            # 🔧 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Правильная проверка success
             if materials_data.get('success', False):
                 # Вариант A: Если API дал прямую ссылку
                 materials_link = materials_data.get('materials_link')
-                logger.info(f"✅ Got link from API: {materials_link[:50]}...")
-                
-                keyboard = [[InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)]]
-                
-                await update.message.reply_text(
-                    f"✅ <b>ВАШИ МАТЕРИАЛЫ ГОТОВЫ!</b>\n\n"
-                    f"🎯 Профиль: {profile_key or 'Не указан'}\n"
-                    f"🔗 Ссылка: {materials_link}\n\n"
-                    f"Нажмите кнопку ниже:",
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode="HTML"
-                )
-                logger.info(f"✅ Materials sent successfully")
-                return
+                if materials_link:
+                    logger.info(f"✅ Got link from API: {materials_link[:50]}...")
+                    
+                    keyboard = [[InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)]]
+                    
+                    await update.message.reply_text(
+                        f"✅ <b>ВАШИ МАТЕРИАЛЫ ГОТОВЫ!</b>\n\n"
+                        f"🎯 Профиль: {profile_key or 'Не указан'}\n"
+                        f"🔗 Ссылка: {materials_link}\n\n"
+                        f"Нажмите кнопку ниже:",
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode="HTML"
+                    )
+                    logger.info(f"✅ Materials sent successfully via API")
+                    return
+                else:
+                    logger.warning(f"⚠️ API returned success=True but no materials_link")
             
-            # Вариант B: Если API не дал ссылку, но есть profile_key
-            elif profile_key:
+            # Вариант B: Если API не дал ссылку, но есть profile_key (fallback логика)
+            if profile_key:
                 logger.info(f"⚠️ API didn't return link, generating locally for {profile_key}")
                 materials_link = generate_yandex_disk_link(profile_key)
                 
@@ -2931,10 +2946,10 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 logger.info(f"✅ Generated link locally: {materials_link[:50]}...")
                 return
-            
             else:
                 # Нет ни ссылки, ни profile_key
-                logger.error(f"❌ No materials link and no profile_key")
+                logger.error(f"❌ No materials link and no profile_key for payment_id {payment_id}")
+                # Продолжаем поиск других доступов
     
     # Если дошли сюда - что-то пошло не так
     logger.error(f"🔥 No active access found or API error")
@@ -2964,6 +2979,15 @@ async def myaccess_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Проверяем доступ через API (новая логика)
     await update.message.reply_text("🔍 Проверяю статус вашего доступа...")
     access_data = get_user_access(user_id)
+    
+    # 🔧 ИСПРАВЛЕНИЕ: Правильная проверка success
+    if not access_data.get('success', False):
+        error_msg = access_data.get('error', 'Unknown error')
+        await update.message.reply_text(
+            f"❌ Ошибка проверки доступа: {error_msg}",
+            parse_mode="HTML"
+        )
+        return
     
     if access_data.get('has_access'):
         # Получаем первый активный доступ
@@ -3544,7 +3568,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Основная функция запуска бота"""
     print("\n" + "="*60)
-    print("🚀 ЗАПУСК БОТА ВАРИАТИКА v2.2")
+    print("🚀 ЗАПУСК БОТА ВАРИАТИКА v2.2 - ИСПРАВЛЕННАЯ ВЕРСИЯ")
     print("="*60)
     
     # Очистка конфликтов
@@ -3635,7 +3659,7 @@ def main():
         pattern="^check_access$"
     ))
     
-    # ✅ ДОБАВЛЕНО: Команда /materials с новой логикой
+    # ✅ ДОБАВЛЕНО: Команда /materials с исправленной логикой
     app.add_handler(CommandHandler("materials", materials_command))
     
     # Обработчик ошибок
@@ -3646,6 +3670,12 @@ def main():
     print(f"📊 Профилей загружено: 36/36")
     print(f"🔗 API URL: {API_URL}")
     print(f"👤 Автор: {AUTHOR_LINK}")
+    print("="*60)
+    print("✅ КЛЮЧЕВЫЕ ИСПРАВЛЕНИЯ:")
+    print("  • Логическая ошибка проверки success исправлена")
+    print("  • Используется payment_id для получения материалов")
+    print("  • Добавлена fallback-логика для генерации ссылок")
+    print("  • Кнопка 'Проверить доступ' работает корректно")
     print("="*60 + "\n")
     
     # Запуск бота
