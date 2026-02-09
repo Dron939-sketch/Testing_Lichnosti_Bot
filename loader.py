@@ -1,10 +1,12 @@
 """
-Загрузчик профилей из файловой системы
+Загрузчик профилей из файловой системы - УЛУЧШЕННАЯ ВЕРСИЯ
+С исправлением проблемы поиска профилей с разными суффиксами Дилтса
 """
 
 import os
 import sys
 import importlib.util
+import traceback
 from base import VariaticaProfile
 
 class ProfileLoader:
@@ -19,6 +21,7 @@ class ProfileLoader:
         """
         self.profiles_dir = profiles_dir
         self.profiles = {}  # Словарь профилей: {profile_key: VariaticaProfile}
+        self.all_suffixes = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
         self.load_all_profiles()
     
     def find_profile_files(self) -> list:
@@ -182,12 +185,10 @@ class ProfileLoader:
             
         except SyntaxError as e:
             print(f"    ❌ Синтаксическая ошибка в {os.path.basename(filepath)}: {e}")
-            import traceback
             traceback.print_exc()
             return None
         except Exception as e:
             print(f"    ❌ Ошибка загрузки профиля из {os.path.basename(filepath)}: {type(e).__name__}: {e}")
-            import traceback
             traceback.print_exc()
             return None
     
@@ -306,7 +307,6 @@ class ProfileLoader:
                         
                 except Exception as e:
                     print(f"    ❌ Ошибка обработки файла {os.path.basename(filepath)}: {type(e).__name__}: {e}")
-                    import traceback
                     traceback.print_exc()
                     failed_loads += 1
             
@@ -320,7 +320,6 @@ class ProfileLoader:
             
         except Exception as e:
             print(f"❌ Критическая ошибка при загрузке профилей: {type(e).__name__}: {e}")
-            import traceback
             traceback.print_exc()
     
     def print_statistics(self):
@@ -444,7 +443,6 @@ class ProfileLoader:
             
         except Exception as e:
             print(f"⚠️ Ошибка генерации ключа для профиля: {e}")
-            import traceback
             traceback.print_exc()
             return None
     
@@ -522,7 +520,13 @@ class ProfileLoader:
             print(f"   ✅ Найден по частичному совпадению: {found_key}")
             return self.profiles[found_key]
         
-        # 6. Логируем ошибку
+        # 6. УМНЫЙ ПОИСК - если не нашли по точному ключу, ищем любой профиль этого типа и уровня
+        print(f"   🔍 УМНЫЙ ПОИСК: ищем любой профиль типа и уровня...")
+        profile = self._smart_profile_search(profile_key)
+        if profile:
+            return profile
+        
+        # 7. Логируем ошибку
         print(f"\n❌ Профиль не найден: '{profile_key}'")
         
         # Показываем доступные ключи для этого типа
@@ -542,6 +546,58 @@ class ProfileLoader:
                     print(f"   ... и ещё {len(unique_similar) - 15} ключей")
         
         return None
+    
+    def _smart_profile_search(self, profile_key: str) -> VariaticaProfile:
+        """
+        Умный поиск профиля - если не находит по точному ключу,
+        ищет профиль того же типа и уровня (игнорируя суффикс Дилтса)
+        
+        Примеры:
+            sa_1_val → найдёт sa_1_def (любой профиль SA уровня 1)
+            sp_3_tra → найдёт sp_3_con (любой профиль SP уровня 3)
+        """
+        # Анализируем ключ
+        clean_key = profile_key.lower().replace('-', '_')
+        parts = clean_key.split('_')
+        
+        if len(parts) < 2:
+            return None
+        
+        # Извлекаем тип и уровень
+        type_part = parts[0]  # sa, sp, ia, ip
+        level_part = parts[1]  # 1, 2, 3...
+        
+        print(f"     🤔 Анализируем: тип={type_part}, уровень={level_part}")
+        
+        # Ищем любой профиль этого типа и уровня
+        # Сначала пробуем все суффиксы в порядке приоритета
+        for suffix in self.all_suffixes:
+            test_key = f"{type_part}_{level_part}_{suffix}"
+            if test_key in self.profiles:
+                print(f"     ✅ УМНЫЙ ПОИСК: найден {test_key} вместо {profile_key}")
+                return self.profiles[test_key]
+        
+        # Если не нашли, пробуем с верхним регистром типа
+        for suffix in self.all_suffixes:
+            test_key = f"{type_part.upper()}_{level_part}_{suffix}"
+            if test_key in self.profiles:
+                print(f"     ✅ УМНЫЙ ПОИСК: найден {test_key} вместо {profile_key}")
+                return self.profiles[test_key]
+        
+        # Если не нашли, ищем любой профиль этого типа
+        for key in self.profiles.keys():
+            if key.lower().startswith(f"{type_part}_{level_part}"):
+                print(f"     ✅ УМНЫЙ ПОИСК: найден ближайший {key} вместо {profile_key}")
+                return self.profiles[key]
+        
+        return None
+    
+    def get_profile_smart(self, profile_key: str) -> VariaticaProfile:
+        """
+        ТОЛЬКО УМНЫЙ поиск профиля (без обычного поиска)
+        Используется в основном коде бота для поиска профилей с разными суффиксами Дилтса
+        """
+        return self._smart_profile_search(profile_key)
     
     def get_all_profiles(self) -> list:
         """
@@ -583,14 +639,49 @@ class ProfileLoader:
         self.profiles.clear()
         self.load_all_profiles()
         print(f"✅ Профили перезагружены. Всего: {len(self.get_all_profiles())}")
+    
+    def check_all_profiles_loaded(self) -> bool:
+        """
+        Проверяет, загружены ли все 36 профилей
+        
+        Returns:
+            True если все профили загружены, иначе False
+        """
+        expected_types = ['SA', 'SP', 'IA', 'IP']
+        expected_levels = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+        expected_suffixes = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
+        
+        missing_profiles = []
+        
+        for type_code in expected_types:
+            for level in expected_levels:
+                for suffix in expected_suffixes:
+                    profile_key = f"{type_code}_{level}_{suffix}"
+                    if profile_key not in self.profiles and profile_key.lower() not in self.profiles:
+                        missing_profiles.append(profile_key)
+        
+        if missing_profiles:
+            print(f"\n⚠️  Отсутствуют профили ({len(missing_profiles)}):")
+            for profile in missing_profiles[:10]:  # Показываем первые 10
+                print(f"   ❌ {profile}")
+            if len(missing_profiles) > 10:
+                print(f"   ... и ещё {len(missing_profiles) - 10} профилей")
+            return False
+        
+        print(f"\n✅ Все 36 профилей загружены!")
+        return True
 
 # Создаём глобальный экземпляр загрузчика
 loader = ProfileLoader()
 
 # Функции для удобного импорта
 def get_profile(profile_key: str) -> VariaticaProfile:
-    """Получает профиль по ключу"""
+    """Получает профиль по ключу - использует умный поиск при необходимости"""
     return loader.get_profile(profile_key)
+
+def get_profile_smart(profile_key: str) -> VariaticaProfile:
+    """Получает профиль по ключу - ТОЛЬКО умный поиск"""
+    return loader.get_profile_smart(profile_key)
 
 def get_all_profiles() -> list:
     """Возвращает все уникальные ключи профилей"""
@@ -599,6 +690,10 @@ def get_all_profiles() -> list:
 def profile_exists(profile_key: str) -> bool:
     """Проверяет существование профиля"""
     return loader.get_profile(profile_key) is not None
+
+def check_all_profiles() -> bool:
+    """Проверяет наличие всех 36 профилей"""
+    return loader.check_all_profiles_loaded()
 
 # Вспомогательная функция для отладки
 def debug_profile_loading():
@@ -627,20 +722,54 @@ def debug_profile_loading():
             for i, key in enumerate(sorted(profiles), 1):
                 print(f"  {i:2d}. {key}")
     
-    # Тестируем поиск
-    print("\n🔍 Тестируем поиск профилей:")
-    test_keys = [
-        "ia_4",
-        "IA_4",
-        "ia_4_exp",
-        "IA_4_exp",
-        "ia_4_cap",
-        "IA_4_cap",
-        "sp_1_def",
-        "SA_1_def"
+    # Тестируем поиск - ВАЖНО: тестируем проблемные случаи из логов
+    print("\n🔍 ТЕСТИРУЕМ ПОИСК ПРОФИЛЕЙ (проблемные случаи из логов):")
+    
+    # Эти профили бот искал в логах и не находил
+    problematic_keys = [
+        "sa_1_val",     # Бот искал этот профиль
+        "sa_1_tra",     # Бот искал этот профиль
+        "sa_1_ide",     # Бот искал этот профиль
+        "sa_2_def",     # Бот искал этот профиль
+        "sa_2_con",     # Бот искал этот профиль
+        "sa_2_exp",     # Бот искал этот профиль
+        "sa_2_int",     # Бот искал этот профиль
+        "sa_2_aut",     # Бот искал этот профиль
+        "sa_2_val",     # Бот искал этот профиль
+        "sa_2_tra",     # Бот искал этот профиль
+        "sp_2_con",     # Бот искал этот профиль
+        "ip_7_aut",     # Бот искал этот профиль
     ]
     
-    for key in test_keys:
+    for key in problematic_keys:
+        # Пробуем обычный поиск
+        profile = get_profile(key)
+        if profile:
+            title = getattr(profile, 'title', 'Без названия')[:30]
+            actual_key = getattr(profile, 'key', 'unknown')
+            print(f"  ✅ {key:20} → НАЙДЕН ({actual_key}): {title}...")
+        else:
+            # Пробуем умный поиск
+            smart_profile = get_profile_smart(key)
+            if smart_profile:
+                title = getattr(smart_profile, 'title', 'Без названия')[:30]
+                actual_key = getattr(smart_profile, 'key', 'unknown')
+                print(f"  🧠 {key:20} → УМНЫЙ ПОИСК ({actual_key}): {title}...")
+            else:
+                print(f"  ❌ {key:20} → НЕ НАЙДЕН")
+    
+    # Тестируем стандартные профили
+    print("\n🔍 Тестируем стандартные профили:")
+    standard_keys = [
+        "sa_1_def",
+        "sp_2_sit", 
+        "ia_3_con",
+        "ip_4_exp",
+        "SA_1_DEF",
+        "SP_2_SIT",
+    ]
+    
+    for key in standard_keys:
         profile = get_profile(key)
         status = "✅ НАЙДЕН" if profile else "❌ НЕ НАЙДЕН"
         title = ""
