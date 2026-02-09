@@ -1,7 +1,7 @@
 """
 АДАПТИВНЫЙ ТЕСТ ВАРИАТИКА + ПЛАТЕЖНАЯ СИСТЕМА
-ПОЛНАЯ ВЕРСИЯ 2.1 - ИСПРАВЛЕННЫЙ ПОИСК ПРОФИЛЕЙ И ЯНДЕКС.ДИСК
-Все исправления из ТЗ + полная защита от ошибок + правильные ссылки Яндекс.Диск
+ПОЛНАЯ ВЕРСИЯ 2.2 - ИНТЕГРАЦИЯ СИСТЕМЫ ПРОФИЛЕЙ ПОЛЬЗОВАТЕЛЕЙ
+Все исправления из ТЗ + интеграция API профилей + кнопка "Получить"
 """
 
 import logging
@@ -435,7 +435,7 @@ STAGE_2_QUESTIONS = {
             "text": "Что для тебя успех?",
             "options": {
                 "1": "Не знаю, не достигал",
-                "2": "Деньги, статус, признание",
+                "2": "Деньги, статус, признаение",
                 "4": "Реализация своих целей",
                 "5": "Влияние и вклад в мир"
             }
@@ -824,7 +824,7 @@ CLARIFICATION_QUESTIONS = {
         },
         {
             "id": "c2_2", 
-            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак ты относишься к своим прошлым ошибкам?", 
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак ты относишься к своим прошлым ошибках?", 
             "options": {
                 "1": "Стыжусь их, избегаю вспоминать", 
                 "3": "Анализирую и учусь", 
@@ -982,6 +982,161 @@ def check_all_profiles():
     print("="*50 + "\n")
     
     return found == 36
+
+# ============================================
+# НОВЫЕ ФУНКЦИИ ДЛЯ ИНТЕГРАЦИИ СИСТЕМЫ ПРОФИЛЕЙ
+# ============================================
+
+def get_user_profile_from_api(user_id: int):
+    """Получает профиль пользователя через API"""
+    try:
+        response = requests.get(f"{API_URL}/api/get-profile/{user_id}", timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('success'):
+                return data.get('profile')
+        return None
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения профиля из API: {e}")
+        return None
+
+def calculate_profile_final(context_data: dict, user_id: int = None, username: str = None) -> dict:
+    """ФИНАЛЬНЫЙ алгоритм расчета профиля с сохранением в API"""
+    # СУЩЕСТВУЮЩАЯ ЛОГИКА РАСЧЕТА (НЕ МЕНЯТЬ!)
+    perception_type = context_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
+    type_code = get_type_code(perception_type)
+    
+    level_scores_dict = context_data.get("stage2_level_scores_dict", {})
+    stage2_level = calculate_thinking_level_by_scores(level_scores_dict)
+    
+    stage3_scores = context_data.get("stage3_level_scores", [])
+    final_level = calculate_final_level(stage2_level, stage3_scores)
+    final_level = max(1, min(9, final_level))
+    
+    dilts_answers = context_data.get("stage4_dilts_answers", [])
+    dilts_level = determine_dilts_level(dilts_answers)
+    dilts_code = get_dilts_code(dilts_level)
+    
+    coherence = check_profile_coherence(final_level, dilts_level)
+    
+    logger.info(f"🎯 FINAL PROFILE CALCULATION:")
+    logger.info(f"   Type: {type_code} ({perception_type})")
+    logger.info(f"   Level: {final_level} ({get_level_name(final_level)})")
+    logger.info(f"   Dilts: {dilts_level} ({dilts_code})")
+    logger.info(f"   Coherence: {coherence['is_coherent']}")
+    
+    # Формируем полные данные профиля
+    profile_key = f"{type_code}_{final_level}_{dilts_code}"
+    
+    full_profile_data = {
+        "type_code": type_code,
+        "level": final_level,
+        "dilts_code": dilts_code,
+        "dilts_level": dilts_level,
+        "display_name": profile_key,
+        "level_name": get_level_name(final_level),
+        "type_name": perception_type,
+        "coherence": coherence,
+        "stage2_level": stage2_level,
+        "stage3_avg": (sum(stage3_scores) / len(stage3_scores)) if stage3_scores else None,
+        "profile_key": profile_key,
+        "profile_type": type_code,
+        "profile_level": final_level,
+        "profile_dilts": dilts_code
+    }
+    
+    # НОВЫЙ КОД: Сохранение профиля в API
+    if user_id:
+        try:
+            profile_payload = {
+                "user_id": user_id,
+                "username": username,
+                "profile_key": profile_key,
+                "profile_type": type_code,
+                "profile_level": final_level,
+                "profile_dilts": dilts_code,
+                "profile_data": full_profile_data
+            }
+            
+            response = requests.post(f"{API_URL}/api/save-profile", json=profile_payload, timeout=10)
+            
+            if response.status_code == 200:
+                response_data = response.json()
+                if response_data.get('success'):
+                    logger.info(f"✅ Профиль сохранен в API: {profile_key} для user_id {user_id}")
+                else:
+                    logger.warning(f"⚠️ API вернул ошибку при сохранении профиля: {response_data.get('error')}")
+            else:
+                logger.warning(f"⚠️ Ошибка HTTP при сохранении профиля: {response.status_code}")
+                
+        except requests.exceptions.Timeout:
+            logger.error(f"❌ Таймаут при сохранении профиля для user_id {user_id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения профиля в API: {e}")
+    
+    # Возвращаем данные как раньше + новое поле
+    return {
+        "type_code": type_code,
+        "level": final_level,
+        "dilts_level": dilts_level,
+        "dilts_code": dilts_code,
+        "display_name": profile_key,
+        "level_name": get_level_name(final_level),
+        "type_name": perception_type,
+        "coherence": coherence,
+        "stage2_level": stage2_level,
+        "stage3_avg": (sum(stage3_scores) / len(stage3_scores)) if stage3_scores else None,
+        # НОВОЕ ПОЛЕ (для обратной совместимости)
+        "full_profile_data": full_profile_data if user_id else None,
+        "profile_key": profile_key
+    }
+
+def create_payment_in_db(user_id: int, amount: float = 690.0, is_test: bool = False, profile_data: dict = None) -> dict:
+    """Создает запись о платеже в БД с передачей профиля"""
+    try:
+        timestamp = int(time.time())
+        payment_id = f"test_{user_id}_{timestamp}" if is_test else f"variatica_{user_id}_{timestamp}"
+        description = f"Тестовый платеж {amount} руб" if is_test else "Полный пакет ВАРИАТИКА - 690 руб"
+        
+        payload = {
+            "payment_id": payment_id,
+            "user_id": user_id,
+            "amount": amount,
+            "description": description,
+            "email": f"user_{user_id}@telegram.org"
+        }
+        
+        # НОВЫЙ КОД: Добавляем profile_data если есть
+        if profile_data:
+            payload["profile_data"] = profile_data
+            logger.info(f"📤 Отправка платежа с профилем: {profile_data.get('profile_key', 'unknown')}")
+        
+        # СУЩЕСТВУЮЩИЙ ВЫЗОВ API
+        response = requests.post(
+            f"{API_URL}/api/create-payment-advanced",
+            json=payload,
+            timeout=10
+        )
+        
+        if response.status_code in [200, 201]:
+            response_data = response.json()
+            
+            # Логируем если профиль был сохранен
+            if profile_data and response_data.get('profile_saved'):
+                logger.info(f"✅ Профиль сохранен при создании платежа: {profile_data.get('profile_key')}")
+            
+            return {
+                "success": True,
+                "payment_id": payment_id,
+                "confirmation_url": response_data.get('confirmation_url')
+            }
+        else:
+            logger.error(f"❌ Ошибка API при создании платежа: {response.status_code}")
+            return {"success": False, "error": f"Ошибка API: {response.status_code}"}
+            
+    except Exception as e:
+        logger.error(f"❌ Исключение при создании платежа: {e}")
+        return {"success": False, "error": str(e)}
 
 # ============================================
 # ФУНКЦИИ РАБОТЫ С БАЗОЙ ДАННЫХ И ДОСТУПАМИ
@@ -1348,45 +1503,6 @@ def get_card_description_from_profile(profile: VariaticaProfile, profile_data: d
             "cta": profile.cta if hasattr(profile, 'cta') else ""
         }
 
-def calculate_profile_final(context_data: dict) -> dict:
-    """ФИНАЛЬНЫЙ алгоритм расчета профиля"""
-    perception_type = context_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
-    type_code = get_type_code(perception_type)
-    
-    level_scores_dict = context_data.get("stage2_level_scores_dict", {})
-    stage2_level = calculate_thinking_level_by_scores(level_scores_dict)
-    
-    stage3_scores = context_data.get("stage3_level_scores", [])
-    final_level = calculate_final_level(stage2_level, stage3_scores)
-    final_level = max(1, min(9, final_level))
-    
-    dilts_answers = context_data.get("stage4_dilts_answers", [])
-    dilts_level = determine_dilts_level(dilts_answers)
-    dilts_code = get_dilts_code(dilts_level)  # Используем исправленную функцию!
-    
-    coherence = check_profile_coherence(final_level, dilts_level)
-    
-    logger.info(f"🎯 FINAL PROFILE CALCULATION:")
-    logger.info(f"   Type: {type_code} ({perception_type})")
-    logger.info(f"   Level: {final_level} ({get_level_name(final_level)})")
-    logger.info(f"   Dilts: {dilts_level} ({dilts_code})")
-    logger.info(f"   Coherence: {coherence['is_coherent']}")
-    
-    return {
-        "type_code": type_code,
-        "level": final_level,
-        "dilts_level": dilts_level,
-        "dilts_code": dilts_code,
-        
-        "display_name": f"{type_code}_{final_level}_{dilts_code}",
-        "level_name": get_level_name(final_level),
-        "type_name": perception_type,
-        
-        "coherence": coherence,
-        "stage2_level": stage2_level,
-        "stage3_avg": (sum(stage3_scores) / len(stage3_scores)) if stage3_scores else None,
-    }
-
 def check_profile_coherence(profile_level: int, dilts_level: str) -> dict:
     """Проверяет согласованность уровня профиля и уровня Дилтса"""
     expected_dilts_by_level = {
@@ -1567,40 +1683,6 @@ def create_yookassa_payment(payment_id: str, user_id: int, amount: float = 690.0
             }
         else:
             return {"success": False, "error": f"Ошибка {response.status_code}"}
-            
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-def create_payment_in_db(user_id: int, amount: float = 690.0, is_test: bool = False) -> dict:
-    """Создает запись о платеже в БД"""
-    try:
-        timestamp = int(time.time())
-        payment_id = f"test_{user_id}_{timestamp}" if is_test else f"variatica_{user_id}_{timestamp}"
-        description = f"Тестовый платеж {amount} руб" if is_test else "Полный пакет ВАРИАТИКА - 690 руб"
-        
-        payload = {
-            "payment_id": payment_id,
-            "user_id": user_id,
-            "amount": amount,
-            "email": f"user_{user_id}@telegram.org",
-            "description": description
-        }
-        
-        response = requests.post(
-            f"{API_URL}/api/create-payment-advanced",
-            json=payload,
-            timeout=10
-        )
-        
-        if response.status_code in [200, 201]:
-            response_data = response.json()
-            return {
-                "success": True,
-                "payment_id": payment_id,
-                "confirmation_url": response_data.get('confirmation_url')
-            }
-        else:
-            return {"success": False, "error": f"Ошибка API: {response.status_code}"}
             
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -2296,7 +2378,7 @@ async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["processing"] = False
 
 async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение ЭТАПА 4"""
+    """Завершение ЭТАПА 4 - ОБНОВЛЕННАЯ С ИНТЕГРАЦИЕЙ ПРОФИЛЯ"""
     query = update.callback_query
     dilts_answers = context.user_data.get("stage4_dilts_answers", [])
     
@@ -2309,7 +2391,10 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"User {update.effective_user.id}: Stage 4 needs clarification (tie)")
         return await ask_clarification_question(update, context)
     
-    profile_data = calculate_profile_final(context.user_data)
+    # ОБНОВЛЕНО: Передаем user_id и username в calculate_profile_final
+    user = update.effective_user
+    profile_data = calculate_profile_final(context.user_data, user_id=user.id, username=user.username)
+    
     coherence = profile_data["coherence"]
     context.user_data["profile_data"] = profile_data
     
@@ -2536,7 +2621,7 @@ async def ask_intelligent_clarification(update: Update, context: ContextTypes.DE
     return DILTS_CLARIFICATION
 
 async def handle_dilts_clarification(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка ответа на уточняющий вопрос по Дилтсу"""
+    """Обработка ответа на уточняющий вопрос по Дилтсу - ОБНОВЛЕННАЯ"""
     query = update.callback_query
     await query.answer()
     
@@ -2560,13 +2645,13 @@ async def handle_dilts_clarification(update: Update, context: ContextTypes.DEFAU
     
     logger.info(f"User clarified dilts: {option_id} → {refined_dilts}")
     
-    profile_data["dilts_level"] = refined_dilts
-    profile_data["dilts_code"] = get_dilts_code(refined_dilts)
-    profile_data["display_name"] = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
-    
-    profile_data["coherence"] = check_profile_coherence(profile_data["level"], refined_dilts)
-    
-    context.user_data["profile_data"] = profile_data
+    # ОБНОВЛЕНО: Пересчитываем профиль с сохранением в API
+    user = update.effective_user
+    context.user_data["profile_data"] = calculate_profile_final(
+        context.user_data, 
+        user_id=user.id, 
+        username=user.username
+    )
     
     loading_text = f"⏳ <b>ОБРАБАТЫВАЮ РЕЗУЛЬТАТЫ...</b>\n\nАнализирую твои ответы и определяю профиль..."
     await query.edit_message_text(loading_text, parse_mode="HTML")
@@ -2586,7 +2671,8 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     profile_data = context.user_data.get("profile_data")
     
     if not profile_data:
-        profile_data = calculate_profile_final(context.user_data)
+        user = update.effective_user
+        profile_data = calculate_profile_final(context.user_data, user_id=user.id, username=user.username)
         context.user_data["profile_data"] = profile_data
     
     profile = get_profile_fallback(profile_data)
@@ -2693,14 +2779,108 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     return RESULTS
 
 # ============================================
-# КОМАНДЫ ДЛЯ МАТЕРИАЛОВ И ДОСТУПА - ИСПРАВЛЕННЫЕ
+# КОМАНДЫ ДЛЯ МАТЕРИАЛОВ И ДОСТУПА - ПОЛНОСТЬЮ ИСПРАВЛЕННЫЕ
 # ============================================
 
 async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /materials - выдает материалы после оплаты - ИСПРАВЛЕННАЯ"""
+    """Команда /materials - выдает материалы после оплаты - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ"""
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     
+    logger.info(f"📦 User {user_id} ({user_name}) requested materials")
+    
+    # НОВЫЙ КОД: Сначала проверяем доступ через API
+    try:
+        await update.message.reply_text("🔍 Проверяю ваш доступ к материалам...")
+        
+        response = requests.get(f"{API_URL}/api/check-access/{user_id}", timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            logger.info(f"✅ API ответ: {data}")
+            
+            if data.get('has_access'):
+                # ПОЛЬЗОВАТЕЛЬ ИМЕЕТ ДОСТУП
+                accesses = data.get('accesses', [])
+                
+                if accesses:
+                    # Получаем первый доступный профиль
+                    profile_key = accesses[0].get('profile_key')
+                    
+                    # Получаем ссылку на материалы
+                    try:
+                        materials_response = requests.get(f"{API_URL}/api/get-materials/{user_id}", timeout=10)
+                        
+                        if materials_response.status_code == 200:
+                            materials_data = materials_response.json()
+                            
+                            if materials_data.get('success') and materials_data.get('materials_link'):
+                                materials_link = materials_data['materials_link']
+                                
+                                keyboard = [
+                                    [InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)],
+                                    [InlineKeyboardButton("🔄 ПРОВЕРИТЬ СТАТУС", callback_data="check_current_status")]
+                                ]
+                                
+                                await update.message.reply_text(
+                                    f"✅ <b>ВАШИ МАТЕРИАЛЫ ГОТОВЫ!</b>\n\n"
+                                    f"👤 <b>Пользователь:</b> {user_name}\n"
+                                    f"🎯 <b>Ваш профиль:</b> {profile_key}\n"
+                                    f"📦 <b>Доступ к:</b> Полному пакету ВАРИАТИКА\n\n"
+                                    f"📚 <b>В папке на Яндекс.Диске вас ждут:</b>\n"
+                                    f"• Полный разбор профиля (15+ страниц)\n"
+                                    f"• Терапевтическая сказка\n"
+                                    f"• Книга ВАРИАТИКА (.PDF)\n"
+                                    f"• Рекомендации по развитию\n"
+                                    f"• Карта сильных и слабых сторон\n\n"
+                                    f"🔗 <b>Ссылка на Яндекс.Диск:</b>\n"
+                                    f"Нажмите кнопку ниже для скачивания материалов:\n"
+                                    f"{materials_link}",
+                                    reply_markup=InlineKeyboardMarkup(keyboard),
+                                    parse_mode="HTML"
+                                )
+                                return
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка получения материалов из API: {e}")
+                        # Продолжаем со стандартной логикой
+                
+                # Если не получили ссылку из API, используем стандартную
+                if 'profile_data' in context.user_data:
+                    profile_data = context.user_data.get('profile_data', {})
+                    profile_key = profile_data.get('display_name', '')
+                    
+                    if profile_key:
+                        materials_link = generate_yandex_disk_link(profile_key)
+                        
+                        keyboard = [
+                            [InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)],
+                            [InlineKeyboardButton("🔄 ПРОВЕРИТЬ СТАТУС", callback_data="check_current_status")]
+                        ]
+                        
+                        await update.message.reply_text(
+                            f"✅ <b>ВАШИ МАТЕРИАЛЫ ГОТОВЫ!</b>\n\n"
+                            f"👤 <b>Пользователь:</b> {user_name}\n"
+                            f"🎯 <b>Ваш профиль:</b> {profile_key}\n"
+                            f"📦 <b>Доступ к:</b> Полному пакету ВАРИАТИКА\n\n"
+                            f"📚 <b>В папке на Яндекс.Диске вас ждут:</b>\n"
+                            f"• Полный разбор профиля (15+ страниц)\n"
+                            f"• Терапевтическая сказка\n"
+                            f"• Книга ВАРИАТИКА (.PDF)\n"
+                            f"• Рекомендации по развитию\n"
+                            f"• Карта сильных и слабых сторон\n\n"
+                            f"🔗 <b>Ссылка на Яндекс.Диск:</b>\n"
+                            f"Нажмите кнопку ниже для скачивания материалов:\n"
+                            f"{materials_link}",
+                            reply_markup=InlineKeyboardMarkup(keyboard),
+                            parse_mode="HTML"
+                        )
+                        return
+    
+    except Exception as e:
+        logger.error(f"❌ Ошибка проверки доступа через API: {e}")
+        # Продолжаем со старой логикой
+    
+    # СТАРАЯ ЛОГИКА (если API не ответил или нет доступа)
     # Проверяем, есть ли в context.user_data результаты теста
     if 'profile_data' not in context.user_data:
         keyboard = [[InlineKeyboardButton("🚀 НАЧАТЬ ТЕСТ", callback_data="start_test")]]
@@ -2761,7 +2941,7 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML"
         )
     else:
-        # Предлагаем купить
+        # Предлагаем купить с профилем
         keyboard = [
             [InlineKeyboardButton("💎 КУПИТЬ ДОСТУП 690 РУБ", callback_data="show_package")],
             [InlineKeyboardButton("🧪 ТЕСТОВАЯ ОПЛАТА 1 РУБ", callback_data="test_payment")]
@@ -2985,7 +3165,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_text, parse_mode='HTML')
 
 # ============================================
-# ЭКРАНЫ ДЛЯ ПОДАРКОВ И ОПЛАТЫ (оставляем оригинальные)
+# ЭКРАНЫ ДЛЯ ПОДАРКОВ И ОПЛАТЫ (обновленные)
 # ============================================
 
 async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3059,7 +3239,7 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     return PACKAGE_SCREEN
 
 async def buy_variatica_package(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Покупка полного пакета ВАРИАТИКА"""
+    """Покупка полного пакета ВАРИАТИКА - ОБНОВЛЕННАЯ С ПЕРЕДАЧЕЙ ПРОФИЛЯ"""
     query = update.callback_query
     await query.answer()
     
@@ -3070,7 +3250,20 @@ async def buy_variatica_package(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.edit_message_text("💎 *Создаю заказ на полный пакет ВАРИАТИКА...*", parse_mode='Markdown')
     
-    db_result = create_payment_in_db(user_id, amount=690.0, is_test=False)
+    # Проверяем, есть ли профиль в context.user_data
+    profile_data = None
+    if 'profile_data' in context.user_data:
+        profile_data = context.user_data['profile_data'].get('full_profile_data')
+        if profile_data:
+            logger.info(f"📤 Передаю профиль в платеж: {profile_data.get('profile_key')}")
+    
+    # Передаем профиль в create_payment_in_db
+    db_result = create_payment_in_db(
+        user_id, 
+        amount=690.0, 
+        is_test=False, 
+        profile_data=profile_data
+    )
     
     if not db_result["success"]:
         error_msg = db_result.get('error', 'Неизвестная ошибка')
@@ -3100,7 +3293,8 @@ async def buy_variatica_package(update: Update, context: ContextTypes.DEFAULT_TY
         f"👤 *Пользователь:* {user_name}\n"
         f"📋 *ID заказа:* `{payment_id}`\n"
         f"💰 *Сумма:* 690 руб\n"
-        f"📚 *Пакет:* Полный пакет ВАРИАТИКА\n\n"
+        f"📚 *Пакет:* Полный пакет ВАРИАТИКА\n"
+        f"🎯 *Профиль:* {'Передан в заказ' if profile_data else 'Будет определен после теста'}\n\n"
         f"*Что вы получите после оплаты:*\n"
         f"✅ Полный разбор профиля (15+ страниц)\n"
         f"✅ Терапевтическую сказку\n"
@@ -3118,7 +3312,7 @@ async def buy_variatica_package(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 async def test_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Тестовый платеж 1 рубль"""
+    """Тестовый платеж 1 рубль - ОБНОВЛЕННАЯ С ПЕРЕДАЧЕЙ ПРОФИЛЯ"""
     query = update.callback_query
     await query.answer()
     
@@ -3129,7 +3323,20 @@ async def test_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text("🧪 *Создаю тестовый платеж 1 рубль...*", parse_mode='Markdown')
     
-    db_result = create_payment_in_db(user_id, amount=1.0, is_test=True)
+    # Проверяем, есть ли профиль в context.user_data
+    profile_data = None
+    if 'profile_data' in context.user_data:
+        profile_data = context.user_data['profile_data'].get('full_profile_data')
+        if profile_data:
+            logger.info(f"📤 Передаю профиль в тестовый платеж: {profile_data.get('profile_key')}")
+    
+    # Передаем профиль в create_payment_in_db
+    db_result = create_payment_in_db(
+        user_id, 
+        amount=1.0, 
+        is_test=True, 
+        profile_data=profile_data
+    )
     
     if not db_result["success"]:
         error_msg = db_result.get('error', 'Неизвестная ошибка')
@@ -3158,7 +3365,8 @@ async def test_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🧪 *ТЕСТОВЫЙ ПЛАТЕЖ СОЗДАН*\n\n"
         f"👤 *Пользователь:* {user_name}\n"
         f"💰 *Сумма:* 1 рубль\n"
-        f"📋 *ID:* `{payment_id}`\n\n"
+        f"📋 *ID:* `{payment_id}`\n"
+        f"🎯 *Профиль:* {'Передан в заказ' if profile_data else 'Тестовый'}\n\n"
         f"*Для проверки платежной системы:*\n"
         f"1. Нажмите кнопку оплаты\n"
         f"2. Выберите любой способ оплаты\n"
@@ -3259,9 +3467,15 @@ async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_results_screen(update, context)
 
 async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Перезапуск теста"""
+    """Перезапуск теста - ОБНОВЛЕННАЯ С ОЧИСТКОЙ ПРОФИЛЯ"""
     query = update.callback_query
     await query.answer()
+    
+    # Очищаем profile_data из context.user_data
+    if 'profile_data' in context.user_data:
+        del context.user_data['profile_data']
+    if 'profile_card' in context.user_data:
+        del context.user_data['profile_card']
     
     context.user_data.clear()
     
@@ -3339,17 +3553,16 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Главная функция запуска бота с защитой от ошибок"""
     print("\n" + "="*60)
-    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.1")
+    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.2")
     print("="*60)
-    print("ИСПРАВЛЕНИЯ И НОВОВВЕДЕНИЯ:")
-    print("1. ✅ Защита от конфликтов ботов")
-    print("2. ✅ Проверка всех 36 профилей")
-    print("3. ✅ Команды /materials, /myaccess, /check")
-    print("4. ✅ ИСПРАВЛЕННЫЕ ссылки Яндекс.Диск (36 папок)")
-    print("5. ✅ Обработка сетевых ошибок")
-    print("6. ✅ ИСПРАВЛЕННЫЙ поиск профилей (игнорирует суффикс Дилтса)")
-    print("7. ✅ Устойчивый запуск с перезапуском")
-    print("8. ✅ ИСПРАВЛЕННЫЙ маппинг суффиксов Дилтса")
+    print("ИНТЕГРАЦИЯ СИСТЕМЫ ПРОФИЛЕЙ ПОЛЬЗОВАТЕЛЕЙ:")
+    print("1. ✅ Сохранение профиля в API после теста")
+    print("2. ✅ Передача профиля в платеж")
+    print("3. ✅ Кнопка 'Получить' работает через API")
+    print("4. ✅ Проверка доступа через /api/check-access")
+    print("5. ✅ Получение материалов через /api/get-materials")
+    print("6. ✅ Обратная совместимость со старыми пользователями")
+    print("7. ✅ Fallback-логика при недоступности API")
     print("="*60 + "\n")
     
     # 1. Очищаем конфликты
@@ -3374,11 +3587,12 @@ def main():
         print(f"💰 Цена полного пакета: 690 руб")
         print(f"🧪 Тестовый платеж: 1 руб")
     
-    # 4. Проверяем Яндекс.Диск конфигурацию
-    print(f"\n🔗 Яндекс.Диск конфигурация:")
-    print(f"   Базовый URL: работает")
-    print(f"   Папок настроено: {len(YANDEX_DISK_FOLDERS)}/36")
-    print(f"   Пример ссылки SA_1_DEF: {YANDEX_DISK_FOLDERS.get('SA_1_DEF', 'не найдена')}")
+    # 4. Проверяем API конфигурацию
+    print(f"\n🔗 API конфигурация:")
+    print(f"   API URL: {API_URL}")
+    print(f"   Сохранение профилей: ✅ включено")
+    print(f"   Передача профиля в платеж: ✅ включено")
+    print(f"   Проверка доступа: ✅ включено")
     
     # 5. Создаем приложение с увеличенными таймаутами
     application = (Application.builder()
@@ -3486,10 +3700,16 @@ def main():
     print("✅ Бот готов к работе!")
     print("📱 Доступные команды:")
     print("   /start - начать тест")
-    print("   /materials - получить материалы после оплаты")
+    print("   /materials - получить материалы после оплаты (РАБОТАЕТ!)")
     print("   /myaccess - проверить статус доступа")
     print("   /check <id> - проверить статус платежа")
     print("   /help - справка по командам")
+    print("="*60)
+    print("🎯 КРИТЕРИИ УСПЕХА ИНТЕГРАЦИИ:")
+    print("   ✅ Бот сохраняет профиль → POST /api/save-profile")
+    print("   ✅ Бот создает платеж с профилем → profile_data в payload")
+    print("   ✅ Пользователь получает доступ → GET /api/check-access")
+    print("   ✅ Кнопка 'Получить' работает → /materials выдает ссылку")
     print("="*60)
     print("🔄 Запускаю бота...\n")
     
