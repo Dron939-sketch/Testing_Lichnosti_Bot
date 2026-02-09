@@ -1,11 +1,12 @@
 """
-АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА + ПЛАТЕЖНАЯ СИСТЕМА
-4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
-ВЕРСИЯ 1.9: Исправлен fallback для всех типов профилей + платежная система
+АДАПТИВНЫЙ ТЕСТ ВАРИАТИКА + ПЛАТЕЖНАЯ СИСТЕМА
+ПОЛНАЯ ВЕРСИЯ 2.0 - 2500+ строк
+Все исправления из ТЗ + 36 папок Яндекс.Диск + полная защита от ошибок
 """
 
 import logging
 import os
+import sys
 import asyncio
 import urllib.parse
 import math
@@ -15,7 +16,11 @@ import json
 import base64
 import uuid
 import requests
+from datetime import datetime, timedelta
 from collections import Counter
+from typing import Dict, List, Optional, Tuple, Any
+
+# Telegram Bot API
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -31,17 +36,32 @@ from telegram.ext import (
 from loader import loader
 from base import VariaticaProfile
 
+# ============================================
+# НАСТРОЙКА ЛОГИРОВАНИЯ
+# ============================================
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('bot_variatica.log', encoding='utf-8')
+    ]
+)
+
+# Отключаем шумные логи
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('httpcore').setLevel(logging.WARNING)
+logger = logging.getLogger(__name__)
+
+# ============================================
+# КОНСТАНТЫ И КОНФИГУРАЦИЯ
+# ============================================
+
 # Получение токена
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TOKEN:
     raise ValueError("❌ ОШИБКА: Переменная TELEGRAM_BOT_TOKEN не установлена!")
-
-# Настройка логирования
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
 
 # Конфигурация платежной системы
 API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
@@ -49,17 +69,70 @@ YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 TELEGRAM_BOT_URL = "https://t.me/Testing_Lichnosti_bot"
 
-# Состояния ConversationHandler
-STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS, GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, DILTS_CLARIFICATION = range(10)
+# Базовые URL Яндекс.Диска
+YANDEX_DISK_BASE_URL = "https://disk.yandex.ru/d/"
+YANDEX_DISK_FOLDERS = {
+    # SA профили (9 папок)
+    "sa_1_def": "SA_1_DEF",
+    "sa_2_sit": "SA_2_SIT", 
+    "sa_3_con": "SA_3_CON",
+    "sa_4_exp": "SA_4_EXP",
+    "sa_5_int": "SA_5_INT",
+    "sa_6_aut": "SA_6_AUT",
+    "sa_7_val": "SA_7_VAL",
+    "sa_8_tra": "SA_8_TRA",
+    "sa_9_ide": "SA_9_IDE",
+    
+    # SP профили (9 папок)
+    "sp_1_def": "SP_1_DEF",
+    "sp_2_sit": "SP_2_SIT",
+    "sp_3_con": "SP_3_CON",
+    "sp_4_exp": "SP_4_EXP",
+    "sp_5_int": "SP_5_INT",
+    "sp_6_aut": "SP_6_AUT",
+    "sp_7_val": "SP_7_VAL",
+    "sp_8_tra": "SP_8_TRA",
+    "sp_9_ide": "SP_9_IDE",
+    
+    # IA профили (9 папок)
+    "ia_1_def": "IA_1_DEF",
+    "ia_2_sit": "IA_2_SIT",
+    "ia_3_con": "IA_3_CON",
+    "ia_4_exp": "IA_4_EXP",
+    "ia_5_int": "IA_5_INT",
+    "ia_6_aut": "IA_6_AUT",
+    "ia_7_val": "IA_7_VAL",
+    "ia_8_tra": "IA_8_TRA",
+    "ia_9_ide": "IA_9_IDE",
+    
+    # IP профили (9 папок)
+    "ip_1_def": "IP_1_DEF",
+    "ip_2_sit": "IP_2_SIT",
+    "ip_3_con": "IP_3_CON",
+    "ip_4_exp": "IP_4_EXP",
+    "ip_5_int": "IP_5_INT",
+    "ip_6_aut": "IP_6_AUT",
+    "ip_7_val": "IP_7_VAL",
+    "ip_8_tra": "IP_8_TRA",
+    "ip_9_ide": "IP_9_IDE"
+}
 
-# Константы
+# Константы бота
 BOT_LINK = "t.me/Testing_Lichnosti_bot"
 GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"
 AUTHOR_LINK = "@meysternlp"
 SHARE_TEXT = "Только что узнал о себе то, о чём ещё не знал... Тест показывает скрытые паттерны. КатеГОрически рекомендую.."
 
+# Состояния ConversationHandler
+(
+    STAGE_1, STAGE_2, STAGE_3, STAGE_4, 
+    CLARIFICATION, RESULTS, GIFT_SCREEN, 
+    PACKAGE_SCREEN, OPEN_GIFT_SCREEN, 
+    DILTS_CLARIFICATION
+) = range(10)
+
 # ============================================
-# ВОПРОСЫ ЭТАПА 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
+# ВОПРОСЫ ЭТАПА 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ (8 вопросов)
 # ============================================
 
 STAGE_1_QUESTIONS = [
@@ -170,7 +243,7 @@ PERCEPTION_TYPES = {
 }
 
 # ============================================
-# ВОПРОСЫ ЭТАПА 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+# ВОПРОСЫ ЭТАПА 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ (8 вопросов для каждого типа)
 # ============================================
 
 STAGE_2_QUESTIONS = {
@@ -517,33 +590,177 @@ STAGE_2_SCORING = {
 }
 
 # ============================================
-# ВОПРОСЫ ЭТАПА 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ
+# ВОПРОСЫ ЭТАПА 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ (8 вопросов)
 # ============================================
 
 STAGE_3_QUESTIONS = [
-    {"id": "q3_1", "text": "Вспомни последнюю неделю.\n\nСколько раз ты сделал что-то, что потом пожалел?", "options": {"a": {"text": "Ни разу", "level": 5}, "b": {"text": "1-2 раза", "level": 3}, "c": {"text": "3-5 раз", "level": 2}, "d": {"text": "Больше 5 раз", "level": 1}}},
-    {"id": "q3_2", "text": "Последний конфликт.\n\nЧто ты сделал?", "options": {"a": {"text": "Избежал", "level": 1}, "b": {"text": "Уступил", "level": 1}, "c": {"text": "Отстоял позицию", "level": 3}, "d": {"text": "Нашёл компромисс", "level": 5}}},
-    {"id": "q3_3", "text": "Как ты принимаешь важные решения?", "options": {"a": {"text": "Долго мучаюсь", "level": 1}, "b": {"text": "Взвешиваю варианты", "level": 3}, "c": {"text": "Быстро, по интуиции", "level": 5}, "d": {"text": "Жду, когда решение придёт само", "level": 4}}},
-    {"id": "q3_4", "text": "Как часто ты делаешь то, что не хочешь, но «надо»?", "options": {"a": {"text": "Постоянно (вся жизнь — «надо»)", "level": 1}, "b": {"text": "Часто", "level": 2}, "c": {"text": "Иногда", "level": 3}, "d": {"text": "Редко (делаю то, что хочу)", "level": 5}}},
-    {"id": "q3_5", "text": "Вспомни последнюю сильную эмоцию.\n\nЧто ты с ней сделал?", "options": {"a": {"text": "Подавил", "level": 1}, "b": {"text": "Проанализировал", "level": 3}, "c": {"text": "Выразил (слова/действия/творчество)", "level": 5}, "d": {"text": "Наблюдал за ней", "level": 4}}},
-    {"id": "q3_6", "text": "Как ты относишься к своим слабостям?", "options": {"a": {"text": "Стыжусь их", "level": 1}, "b": {"text": "Пытаюсь исправить", "level": 2}, "c": {"text": "Принимаю их", "level": 4}, "d": {"text": "Вижу в них силу", "level": 6}}},
-    {"id": "q3_7", "text": "Как часто ты чувствуешь, что живёшь не своей жизнью?", "options": {"a": {"text": "Постоянно", "level": 1}, "b": {"text": "Часто", "level": 2}, "c": {"text": "Иногда", "level": 3}, "d": {"text": "Редко или никогда", "level": 5}}},
-    {"id": "q3_8", "text": "Что ты делаешь, когда не знаешь, что делать?", "options": {"a": {"text": "Паникую", "level": 1}, "b": {"text": "Ищу информацию", "level": 2}, "c": {"text": "Действую методом проб", "level": 3}, "d": {"text": "Жду ясности", "level": 4}}}
+    {
+        "id": "q3_1", 
+        "text": "Вспомни последнюю неделю.\n\nСколько раз ты сделал что-то, что потом пожалел?", 
+        "options": {
+            "a": {"text": "Ни разу", "level": 5}, 
+            "b": {"text": "1-2 раза", "level": 3}, 
+            "c": {"text": "3-5 раз", "level": 2}, 
+            "d": {"text": "Больше 5 раз", "level": 1}
+        }
+    },
+    {
+        "id": "q3_2", 
+        "text": "Последний конфликт.\n\nЧто ты сделал?", 
+        "options": {
+            "a": {"text": "Избежал", "level": 1}, 
+            "b": {"text": "Уступил", "level": 1}, 
+            "c": {"text": "Отстоял позицию", "level": 3}, 
+            "d": {"text": "Нашёл компромисс", "level": 5}
+        }
+    },
+    {
+        "id": "q3_3", 
+        "text": "Как ты принимаешь важные решения?", 
+        "options": {
+            "a": {"text": "Долго мучаюсь", "level": 1}, 
+            "b": {"text": "Взвешиваю варианты", "level": 3}, 
+            "c": {"text": "Быстро, по интуиции", "level": 5}, 
+            "d": {"text": "Жду, когда решение придёт само", "level": 4}
+        }
+    },
+    {
+        "id": "q3_4", 
+        "text": "Как часто ты делаешь то, что не хочешь, но «надо»?", 
+        "options": {
+            "a": {"text": "Постоянно (вся жизнь — «надо»)", "level": 1}, 
+            "b": {"text": "Часто", "level": 2}, 
+            "c": {"text": "Иногда", "level": 3}, 
+            "d": {"text": "Редко (делаю то, что хочу)", "level": 5}
+        }
+    },
+    {
+        "id": "q3_5", 
+        "text": "Вспомни последнюю сильную эмоцию.\n\nЧто ты с ней сделал?", 
+        "options": {
+            "a": {"text": "Подавил", "level": 1}, 
+            "b": {"text": "Проанализировал", "level": 3}, 
+            "c": {"text": "Выразил (слова/действия/творчество)", "level": 5}, 
+            "d": {"text": "Наблюдал за ней", "level": 4}
+        }
+    },
+    {
+        "id": "q3_6", 
+        "text": "Как ты относишься к своим слабостям?", 
+        "options": {
+            "a": {"text": "Стыжусь их", "level": 1}, 
+            "b": {"text": "Пытаюсь исправить", "level": 2}, 
+            "c": {"text": "Принимаю их", "level": 4}, 
+            "d": {"text": "Вижу в них силу", "level": 6}
+        }
+    },
+    {
+        "id": "q3_7", 
+        "text": "Как часто ты чувствуешь, что живёшь не своей жизнью?", 
+        "options": {
+            "a": {"text": "Постоянно", "level": 1}, 
+            "b": {"text": "Часто", "level": 2}, 
+            "c": {"text": "Иногда", "level": 3}, 
+            "d": {"text": "Редко или никогда", "level": 5}
+        }
+    },
+    {
+        "id": "q3_8", 
+        "text": "Что ты делаешь, когда не знаешь, что делать?", 
+        "options": {
+            "a": {"text": "Паникую", "level": 1}, 
+            "b": {"text": "Ищу информацию", "level": 2}, 
+            "c": {"text": "Действую методом проб", "level": 3}, 
+            "d": {"text": "Жду ясности", "level": 4}
+        }
+    }
 ]
 
 # ============================================
-# ВОПРОСЫ ЭТАПА 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
+# ВОПРОСЫ ЭТАПА 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ (8 вопросов)
 # ============================================
 
 STAGE_4_QUESTIONS = [
-    {"id": "q4_1", "text": "Как часто ты чувствуешь, что «что-то не так» в жизни?", "options": {"a": {"text": "Постоянно", "dilts": "IDENTITY"}, "b": {"text": "Часто", "dilts": "VALUES"}, "c": {"text": "Иногда", "dilts": "CAPABILITIES"}, "d": {"text": "Редко или никогда", "dilts": "ENVIRONMENT"}}},
-    {"id": "q4_2", "text": "Что именно «не так»?\n\nВыбери то, что ближе всего:", "options": {"a": {"text": "Не то окружение (место, люди, условия)", "dilts": "ENVIRONMENT"}, "b": {"text": "Делаю не то, что хочу", "dilts": "BEHAVIOR"}, "c": {"text": "Не умею делать то, что хочу", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимаю, чего хочу", "dilts": "VALUES"}}},
-    {"id": "q4_3", "text": "Человек чувствует себя несчастным.\n\nВ чём, скорее всего, причина?", "options": {"a": {"text": "Не те люди вокруг", "dilts": "ENVIRONMENT"}, "b": {"text": "Делает не то, что хочет", "dilts": "BEHAVIOR"}, "c": {"text": "Не умеет делать то, что хочет", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимает, чего хочет", "dilts": "VALUES"}}},
-    {"id": "q4_4", "text": "Если бы ты мог изменить что-то одно, что бы это было?", "options": {"a": {"text": "Своё окружение", "dilts": "ENVIRONMENT"}, "b": {"text": "Своё поведение", "dilts": "BEHAVIOR"}, "c": {"text": "Свои способности", "dilts": "CAPABILITIES"}, "d": {"text": "Своё понимание целей", "dilts": "VALUES"}}},
-    {"id": "q4_5", "text": "Что для тебя сложнее всего?", "options": {"a": {"text": "Изменить внешние условия", "dilts": "ENVIRONMENT"}, "b": {"text": "Начать действовать", "dilts": "BEHAVIOR"}, "c": {"text": "Научиться новому", "dilts": "CAPABILITIES"}, "d": {"text": "Понять, чего я хочу", "dilts": "VALUES"}}},
-    {"id": "q4_6", "text": "Когда ты застреваешь в проблеме, что обычно не хватает?", "options": {"a": {"text": "Ресурсов (время, деньги, связи)", "dilts": "ENVIRONMENT"}, "b": {"text": "Действий (не начинаю)", "dilts": "BEHAVIOR"}, "c": {"text": "Навыков (не умею)", "dilts": "CAPABILITIES"}, "d": {"text": "Понимания (не знаю зачем)", "dilts": "VALUES"}}},
-    {"id": "q4_7", "text": "Что мешает тебе быть счастливым?", "options": {"a": {"text": "Обстоятельства", "dilts": "ENVIRONMENT"}, "b": {"text": "Мои действия", "dilts": "BEHAVIOR"}, "c": {"text": "Мои ограничения", "dilts": "CAPABILITIES"}, "d": {"text": "Я не знаю, что такое счастье", "dilts": "VALUES"}}},
-    {"id": "q4_8", "text": "Если бы у тебя была волшебная палочка, что бы ты изменил?", "options": {"a": {"text": "Своё окружение", "dilts": "ENVIRONMENT"}, "b": {"text": "Своё поведение", "dilts": "BEHAVIOR"}, "c": {"text": "Свои способности", "dilts": "CAPABILITIES"}, "d": {"text": "Себя (кто я)", "dilts": "IDENTITY"}}}
+    {
+        "id": "q4_1", 
+        "text": "Как часто ты чувствуешь, что «что-то не так» в жизни?", 
+        "options": {
+            "a": {"text": "Постоянно", "dilts": "IDENTITY"}, 
+            "b": {"text": "Часто", "dilts": "VALUES"}, 
+            "c": {"text": "Иногда", "dilts": "CAPABILITIES"}, 
+            "d": {"text": "Редко или никогда", "dilts": "ENVIRONMENT"}
+        }
+    },
+    {
+        "id": "q4_2", 
+        "text": "Что именно «не так»?\n\nВыбери то, что ближе всего:", 
+        "options": {
+            "a": {"text": "Не то окружение (место, люди, условия)", "dilts": "ENVIRONMENT"}, 
+            "b": {"text": "Делаю не то, что хочу", "dilts": "BEHAVIOR"}, 
+            "c": {"text": "Не умею делать то, что хочу", "dilts": "CAPABILITIES"}, 
+            "d": {"text": "Не понимаю, чего хочу", "dilts": "VALUES"}
+        }
+    },
+    {
+        "id": "q4_3", 
+        "text": "Человек чувствует себя несчастным.\n\nВ чём, скорее всего, причина?", 
+        "options": {
+            "a": {"text": "Не те люди вокруг", "dilts": "ENVIRONMENT"}, 
+            "b": {"text": "Делает не то, что хочет", "dilts": "BEHAVIOR"}, 
+            "c": {"text": "Не умеет делать то, что хочет", "dilts": "CAPABILITIES"}, 
+            "d": {"text": "Не понимает, чего хочет", "dilts": "VALUES"}
+        }
+    },
+    {
+        "id": "q4_4", 
+        "text": "Если бы ты мог изменить что-то одно, что бы это было?", 
+        "options": {
+            "a": {"text": "Своё окружение", "dilts": "ENVIRONMENT"}, 
+            "b": {"text": "Своё поведение", "dilts": "BEHAVIOR"}, 
+            "c": {"text": "Свои способности", "dilts": "CAPABILITIES"}, 
+            "d": {"text": "Своё понимание целей", "dilts": "VALUES"}
+        }
+    },
+    {
+        "id": "q4_5", 
+        "text": "Что для тебя сложнее всего?", 
+        "options": {
+            "a": {"text": "Изменить внешние условия", "dilts": "ENVIRONMENT"}, 
+            "b": {"text": "Начать действовать", "dilts": "BEHAVIOR"}, 
+            "c": {"text": "Научиться новому", "dilts": "CAPABILITIES"}, 
+            "d": {"text": "Понять, чего я хочу", "dilts": "VALUES"}
+        }
+    },
+    {
+        "id": "q4_6", 
+        "text": "Когда ты застреваешь в проблеме, что обычно не хватает?", 
+        "options": {
+            "a": {"text": "Ресурсов (время, деньги, связи)", "dilts": "ENVIRONMENT"}, 
+            "b": {"text": "Действий (не начинаю)", "dilts": "BEHAVIOR"}, 
+            "c": {"text": "Навыков (не умею)", "dilts": "CAPABILITIES"}, 
+            "d": {"text": "Понимания (не знаю зачем)", "dilts": "VALUES"}
+        }
+    },
+    {
+        "id": "q4_7", 
+        "text": "Что мешает тебе быть счастливым?", 
+        "options": {
+            "a": {"text": "Обстоятельства", "dilts": "ENVIRONMENT"}, 
+            "b": {"text": "Мои действия", "dilts": "BEHAVIOR"}, 
+            "c": {"text": "Мои ограничения", "dilts": "CAPABILITIES"}, 
+            "d": {"text": "Я не знаю, что такое счастье", "dilts": "VALUES"}
+        }
+    },
+    {
+        "id": "q4_8", 
+        "text": "Если бы у тебя была волшебная палочка, что бы ты изменил?", 
+        "options": {
+            "a": {"text": "Своё окружение", "dilts": "ENVIRONMENT"}, 
+            "b": {"text": "Своё поведение", "dilts": "BEHAVIOR"}, 
+            "c": {"text": "Свои способности", "dilts": "CAPABILITIES"}, 
+            "d": {"text": "Себя (кто я)", "dilts": "IDENTITY"}
+        }
+    }
 ]
 
 # Уровни Дилтса
@@ -561,27 +778,291 @@ DILTS_LEVELS = {
 
 CLARIFICATION_QUESTIONS = {
     "stage1_external_internal": [
-        {"id": "c1_1", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nПосле напряжённого дня что тебе нужнее?", "options": {"a": {"text": "Встретиться с людьми", "scores": {"EXTERNAL": 2}}, "b": {"text": "Побыть в одиночестве", "scores": {"INTERNAL": 2}}}},
-        {"id": "c1_2", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКогда ты думаешь о выходных, что первое приходит в голову?", "options": {"a": {"text": "Куда пойти, с кем встретиться", "scores": {"EXTERNAL": 2}}, "b": {"text": "Чем заняться дома, о чём подумать", "scores": {"INTERNAL": 2}}}}
+        {
+            "id": "c1_1", 
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nПосле напряжённого дня что тебе нужнее?", 
+            "options": {
+                "a": {"text": "Встретиться с людьми", "scores": {"EXTERNAL": 2}}, 
+                "b": {"text": "Побыть в одиночестве", "scores": {"INTERNAL": 2}}
+            }
+        },
+        {
+            "id": "c1_2", 
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКогда ты думаешь о выходных, что первое приходит в голову?", 
+            "options": {
+                "a": {"text": "Куда пойти, с кем встретиться", "scores": {"EXTERNAL": 2}}, 
+                "b": {"text": "Чем заняться дома, о чём подумать", "scores": {"INTERNAL": 2}}
+            }
+        }
     ],
     "stage1_symbolic_material": [
-        {"id": "c1_3", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nЧто хуже: потерять деньги или потерять доверие близких?", "options": {"a": {"text": "Потерять доверие", "scores": {"SYMBOLIC": 2}}, "b": {"text": "Потерять деньги", "scores": {"MATERIAL": 2}}}},
-        {"id": "c1_4", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКогда ты тревожишься, о чём чаще?", "options": {"a": {"text": "Что обо мне подумают, как меня воспримут", "scores": {"SYMBOLIC": 2}}, "b": {"text": "Хватит ли денег, успею ли, справлюсь ли", "scores": {"MATERIAL": 2}}}}
+        {
+            "id": "c1_3", 
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nЧто хуже: потерять деньги или потерять доверие близких?", 
+            "options": {
+                "a": {"text": "Потерять доверие", "scores": {"SYMBOLIC": 2}}, 
+                "b": {"text": "Потерять деньги", "scores": {"MATERIAL": 2}}
+            }
+        },
+        {
+            "id": "c1_4", 
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКогда ты тревожишься, о чём чаще?", 
+            "options": {
+                "a": {"text": "Что обо мне подумают, как меня воспримут", "scores": {"SYMBOLIC": 2}}, 
+                "b": {"text": "Хватит ли денег, успею ли, справлюсь ли", "scores": {"MATERIAL": 2}}
+            }
+        }
     ],
     "stage2_borderline": [
-        {"id": "c2_1", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак часто ты чувствуешь, что застрял на месте?", "options": {"1": "Постоянно, не знаю как двигаться", "3": "Иногда, но нахожу выход", "4": "Редко, я в движении"}},
-        {"id": "c2_2", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак ты относишься к своим прошлым ошибкам?", "options": {"1": "Стыжусь их, избегаю вспоминать", "3": "Анализирую и учусь", "4": "Принимаю как опыт"}}
+        {
+            "id": "c2_1", 
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак часто ты чувствуешь, что застрял на месте?", 
+            "options": {
+                "1": "Постоянно, не знаю как двигаться", 
+                "3": "Иногда, но нахожу выход", 
+                "4": "Редко, я в движении"
+            }
+        },
+        {
+            "id": "c2_2", 
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак ты относишься к своим прошлым ошибкам?", 
+            "options": {
+                "1": "Стыжусь их, избегаю вспоминать", 
+                "3": "Анализирую и учусь", 
+                "4": "Принимаю как опыт"
+            }
+        }
     ],
     "stage3_discrepancy": [
-        {"id": "c3_1", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nВспомни последний месяц. Сколько раз ты действовал не так, как хотел?", "options": {"1": "Постоянно", "2": "Часто (больше 5 раз)", "3": "Иногда (2-4 раза)", "5": "Редко (0-1 раз)"}},
-        {"id": "c3_2", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак быстро ты замечаешь свои автоматические реакции?", "options": {"1": "Не замечаю, действую на автомате", "2": "Замечаю после", "4": "Замечаю в процессе", "5": "Замечаю до и могу изменить"}},
-        {"id": "c3_3", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак часто ты делаешь то, что обещал себе?", "options": {"1": "Почти никогда", "2": "Иногда", "4": "Часто", "5": "Почти всегда"}}
+        {
+            "id": "c3_1", 
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nВспомни последний месяц. Сколько раз ты действовал не так, как хотел?", 
+            "options": {
+                "1": "Постоянно", 
+                "2": "Часто (больше 5 раз)", 
+                "3": "Иногда (2-4 раза)", 
+                "5": "Редко (0-1 раз)"
+            }
+        },
+        {
+            "id": "c3_2", 
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак быстро ты замечаешь свои автоматические реакции?", 
+            "options": {
+                "1": "Не замечаю, действую на автомате", 
+                "2": "Замечаю после", 
+                "4": "Замечаю в процессе", 
+                "5": "Замечаю до и могу изменить"
+            }
+        },
+        {
+            "id": "c3_3", 
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак часто ты делаешь то, что обещал себе?", 
+            "options": {
+                "1": "Почти никогда", 
+                "2": "Иногда", 
+                "4": "Часто", 
+                "5": "Почти всегда"
+            }
+        }
     ],
     "stage4_tie": [
-        {"id": "c4_1", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nЕсли бы ты мог изменить только одно, что бы выбрал?", "options": {"a": {"text": "Где я нахожусь", "dilts": "ENVIRONMENT"}, "b": {"text": "Что я делаю", "dilts": "BEHAVIOR"}, "c": {"text": "Что я умею", "dilts": "CAPABILITIES"}, "d": {"text": "Что для меня важно", "dilts": "VALUES"}, "e": {"text": "Кто я", "dilts": "IDENTITY"}}},
-        {"id": "c4_2", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nГде находится твоя главная проблема?", "options": {"a": {"text": "В обстоятельствах", "dilts": "ENVIRONMENT"}, "b": {"text": "В моих действиях", "dilts": "BEHAVIOR"}, "c": {"text": "В моих навыках", "dilts": "CAPABILITIES"}, "d": {"text": "В моих целях", "dilts": "VALUES"}, "e": {"text": "В моём самоопределении", "dilts": "IDENTITY"}}}
+        {
+            "id": "c4_1", 
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nЕсли бы ты мог изменить только одно, что бы выбрал?", 
+            "options": {
+                "a": {"text": "Где я нахожусь", "dilts": "ENVIRONMENT"}, 
+                "b": {"text": "Что я делаю", "dilts": "BEHAVIOR"}, 
+                "c": {"text": "Что я умею", "dilts": "CAPABILITIES"}, 
+                "d": {"text": "Что для меня важно", "dilts": "VALUES"}, 
+                "e": {"text": "Кто я", "dilts": "IDENTITY"}
+            }
+        },
+        {
+            "id": "c4_2", 
+            "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nГде находится твоя главная проблема?", 
+            "options": {
+                "a": {"text": "В обстоятельствах", "dilts": "ENVIRONMENT"}, 
+                "b": {"text": "В моих действиях", "dilts": "BEHAVIOR"}, 
+                "c": {"text": "В моих навыках", "dilts": "CAPABILITIES"}, 
+                "d": {"text": "В моих целях", "dilts": "VALUES"}, 
+                "e": {"text": "В моём самоопределении", "dilts": "IDENTITY"}
+            }
+        }
     ]
 }
+
+# ============================================
+# ФУНКЦИИ ЗАЩИТЫ ОТ КОНФЛИКТОВ И ОШИБОК
+# ============================================
+
+def clear_telegram_conflicts():
+    """Очищает конфликты перед запуском бота"""
+    try:
+        logger.info("🔄 Очистка конфликтов Telegram...")
+        
+        # 1. Удаляем webhook
+        response = requests.get(
+            f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=true", 
+            timeout=10
+        )
+        if response.status_code == 200:
+            logger.info("✅ Webhook удален")
+        else:
+            logger.warning(f"⚠️ Ошибка удаления webhook: {response.status_code}")
+        
+        # 2. Очищаем очередь обновлений
+        response = requests.get(
+            f"https://api.telegram.org/bot{TOKEN}/getUpdates?offset=-1", 
+            timeout=10
+        )
+        
+        # 3. Проверяем токен
+        response = requests.get(
+            f"https://api.telegram.org/bot{TOKEN}/getMe", 
+            timeout=10
+        )
+        if response.status_code == 200:
+            username = response.json()['result']['username']
+            logger.info(f"✅ Токен валиден: @{username}")
+        else:
+            logger.error(f"❌ Неверный токен: {response.status_code}")
+        
+        logger.info("✅ Конфликты очищены")
+        time.sleep(2)
+        
+    except Exception as e:
+        logger.error(f"⚠️ Ошибка очистки конфликтов: {e}")
+
+def check_all_profiles():
+    """Проверяет загрузку всех 36 профилей"""
+    print("\n" + "="*50)
+    print("🔍 ПРОВЕРКА ЗАГРУЗКИ 36 ПРОФИЛЕЙ")
+    print("="*50)
+    
+    all_profiles = loader.get_all_profiles()
+    logger.info(f"📊 Всего найдено профилей: {len(all_profiles)}")
+    
+    # Проверяем все комбинации
+    expected_types = ['sa', 'sp', 'ia', 'ip']
+    expected_levels = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+    expected_suffixes = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
+    
+    found = 0
+    missing = []
+    
+    # Проверяем все комбинации
+    for type_code in expected_types:
+        print(f"\n🔍 Проверяю {type_code.upper()} профили:")
+        for level in expected_levels:
+            for suffix in expected_suffixes:
+                profile_key = f"{type_code}_{level}_{suffix}"
+                profile = loader.get_profile(profile_key)
+                
+                if profile:
+                    print(f"  ✅ {profile_key}")
+                    found += 1
+                else:
+                    missing.append(profile_key)
+                    print(f"  ❌ {profile_key} - НЕ НАЙДЕН")
+    
+    print("\n" + "="*50)
+    print(f"📈 НАЙДЕНО: {found}/36 профилей")
+    
+    if missing:
+        print(f"⚠️  ОТСУТСТВУЮТ: {len(missing)} профилей")
+        for m in missing[:10]:
+            print(f"   - {m}")
+        if len(missing) > 10:
+            print(f"   ... и еще {len(missing) - 10} профилей")
+    
+    if found == 36:
+        print("✅ ВСЕ 36 ПРОФИЛЕЙ ЗАГРУЖЕНЫ!")
+    else:
+        print("⚠️  ВНИМАНИЕ: Не все профили загружены!")
+    
+    print("="*50 + "\n")
+    
+    return found == 36
+
+# ============================================
+# ФУНКЦИИ РАБОТЫ С БАЗОЙ ДАННЫХ И ДОСТУПАМИ
+# ============================================
+
+def get_user_access_from_db(user_id: int) -> dict:
+    """Проверяет доступ пользователя в БД"""
+    try:
+        response = requests.get(
+            f"{API_URL}/api/check-access/{user_id}",
+            timeout=10
+        )
+        if response.status_code == 200:
+            data = response.json()
+            logger.info(f"✅ Проверка доступа user_id {user_id}: {data.get('has_access', False)}")
+            return data
+        else:
+            logger.warning(f"API вернул {response.status_code} для user_id {user_id}")
+            return {"has_access": False, "error": f"API error {response.status_code}"}
+    except requests.exceptions.Timeout:
+        logger.error(f"Timeout при проверке доступа user_id {user_id}")
+        return {"has_access": False, "error": "timeout"}
+    except Exception as e:
+        logger.error(f"Ошибка проверки доступа user_id {user_id}: {e}")
+        return {"has_access": False, "error": str(e)}
+
+def grant_access_in_db(user_id: int, profile_type: str) -> dict:
+    """Предоставляет доступ пользователю к материалам профиля"""
+    try:
+        payload = {
+            "user_id": user_id,
+            "profile_type": profile_type,
+            "access_granted_at": datetime.now().isoformat(),
+            "expires_at": datetime.now().replace(year=datetime.now().year + 10).isoformat()  # 10 лет
+        }
+        
+        response = requests.post(
+            f"{API_URL}/api/grant-access",
+            json=payload,
+            timeout=10
+        )
+        
+        if response.status_code in [200, 201]:
+            logger.info(f"✅ Доступ предоставлен user_id {user_id} для профиля {profile_type}")
+            return {"success": True}
+        else:
+            logger.error(f"❌ Ошибка предоставления доступа: {response.status_code}")
+            return {"success": False, "error": f"API error {response.status_code}"}
+    except Exception as e:
+        logger.error(f"❌ Ошибка предоставления доступа: {e}")
+        return {"success": False, "error": str(e)}
+
+def generate_yandex_disk_link(profile_key: str) -> str:
+    """Генерирует ссылку на Яндекс.Диск для профиля"""
+    # Приводим к нижнему регистру для надежности
+    profile_key_lower = profile_key.lower()
+    
+    # Получаем имя папки
+    folder_name = YANDEX_DISK_FOLDERS.get(profile_key_lower)
+    
+    if not folder_name:
+        logger.error(f"❌ Не найдена папка для профиля {profile_key}")
+        
+        # Fallback: пытаемся сгенерировать имя папки
+        try:
+            parts = profile_key_lower.split('_')
+            if len(parts) >= 3:
+                folder_name = f"{parts[0].upper()}_{parts[1]}_{parts[2].upper()}"
+                logger.warning(f"⚠️ Сгенерировано имя папки: {folder_name}")
+            else:
+                folder_name = "DEFAULT_FOLDER"
+                logger.warning(f"⚠️ Используется папка по умолчанию")
+        except:
+            folder_name = "DEFAULT_FOLDER"
+            logger.warning(f"⚠️ Используется папка по умолчанию")
+    
+    # В реальной реализации здесь будет ссылка на конкретную папку
+    # Пока используем заглушку
+    base_url = "https://disk.yandex.ru/d/"
+    return f"{base_url}{folder_name}"
 
 # ============================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ТЕСТА
@@ -731,7 +1212,6 @@ def format_profile_title(profile_title: str, profile_header: str) -> str:
             return f"🎯 {profile_header} / {line1}"
     
     return f"🎯 {profile_header}"
-
 def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
     """ИСПРАВЛЕННАЯ ВЕРСИЯ: Находит реально существующий файл профиля."""
     type_code = profile_data.get('type_code', 'sa').lower()
@@ -740,116 +1220,82 @@ def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
     
     logger.info(f"🎯 FALLBACK ПОИСК: type={type_code}, level={level}, dilts={dilts_code}")
     
-    search_types = [type_code]
+    # 1. Прямое совпадение
+    target_key = f"{type_code}_{level}_{dilts_code}"
+    profile = loader.get_profile(target_key)
     
-    if type_code == "ip" or type_code == "ip-адрес":
-        search_types = ["ip", "ip-адрес", "ip - адрес"]
-    elif type_code == "ip - адрес":
-        search_types = ["ip - адрес", "ip-адрес", "ip"]
+    if profile:
+        logger.info(f"✅ Прямое совпадение: {target_key}")
+        return profile
     
-    logger.info(f"🔍 Варианты поиска для типа {type_code}: {search_types}")
+    logger.info(f"🔍 Прямое совпадение не найдено: {target_key}")
     
-    for search_type in search_types:
-        target_key = f"{search_type}_{level}_{dilts_code}"
-        profile = loader.get_profile(target_key)
-        if profile:
-            logger.info(f"✅ Exact match: {target_key}")
-            return profile
-    
-    logger.info(f"🔍 Точное совпадение не найдено для {type_code}_{level}_{dilts_code}")
-    
+    # 2. Ищем тот же тип и уровень, другой суффикс Дилтса
     possible_suffixes = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
     
-    for search_type in search_types:
-        logger.info(f"🔍 Ищу {search_type}_{level}_* с разными суффиксами")
-        
-        for suffix in possible_suffixes:
-            test_key = f"{search_type}_{level}_{suffix}"
-            profile = loader.get_profile(test_key)
-            if profile:
-                logger.info(f"✅ Найден с суффиксом {suffix}: {test_key}")
-                return profile
-    
-    for search_type in search_types:
-        test_key = f"{search_type}_{level}"
+    for suffix in possible_suffixes:
+        if suffix == dilts_code:
+            continue  # Уже проверяли
+            
+        test_key = f"{type_code}_{level}_{suffix}"
         profile = loader.get_profile(test_key)
         if profile:
-            logger.info(f"✅ Найден без суффикса: {test_key}")
+            logger.info(f"✅ Найден с другим суффиксом Дилтса: {test_key}")
             return profile
     
-    logger.info(f"🔍 Ищу любой профиль *_{level}_* для типа {type_code}")
+    # 3. Ищем тот же тип, ближайший уровень, любой суффикс
     all_profiles = loader.get_all_profiles()
     
-    all_type_profiles = []
+    type_profiles = []
     for key in all_profiles:
         key_lower = key.lower()
-        for search_type in search_types:
-            if key_lower.startswith(f"{search_type}_"):
-                all_type_profiles.append((key, key_lower))
-                break
+        if key_lower.startswith(f"{type_code}_"):
+            type_profiles.append((key, key_lower))
     
-    logger.info(f"📚 Все доступные профили типа {type_code} (варианты: {search_types}):")
-    for key, key_lower in sorted(all_type_profiles):
-        logger.info(f"   - {key}")
+    logger.info(f"📚 Все профили типа {type_code.upper()}: {len(type_profiles)} шт.")
     
-    same_level_profiles = []
-    for key, key_lower in all_type_profiles:
-        try:
-            parts = key_lower.split('_')
-            if len(parts) >= 2 and parts[1].isdigit():
-                key_level = int(parts[1])
-                if key_level == level:
-                    same_level_profiles.append(key)
-        except (ValueError, IndexError):
-            continue
+    if type_profiles:
+        # Ищем ближайший уровень
+        best_diff = float('inf')
+        best_profile = None
+        best_key = None
+        
+        for key, key_lower in type_profiles:
+            try:
+                parts = key_lower.split('_')
+                if len(parts) >= 2 and parts[1].isdigit():
+                    key_level = int(parts[1])
+                    diff = abs(key_level - level)
+                    
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_key = key
+                        best_profile = loader.get_profile(key)
+            except (ValueError, IndexError):
+                continue
+        
+        if best_profile:
+            logger.info(f"📈 Найден ближайший профиль: {best_key} (разница уровней: {best_diff})")
+            return best_profile
     
-    logger.info(f"📊 Профили уровня {level} типа {type_code}: {same_level_profiles}")
+    # 4. Аварийный fallback - базовые профили каждого типа
+    logger.error(f"🔥 КРИТИЧЕСКАЯ ОШИБКА: Не найден профиль для {type_code}, level={level}, dilts={dilts_code}")
     
-    if same_level_profiles:
-        fallback_key = same_level_profiles[0]
-        logger.info(f"✅ Найден профиль уровня {level}: {fallback_key}")
-        return loader.get_profile(fallback_key)
+    emergency_keys = [
+        "sa_1_def", "sa_2_sit", "sa_3_con",
+        "sp_1_def", "sp_2_sit", "sp_3_con",
+        "ia_1_def", "ia_2_sit", "ia_3_con",
+        "ip_1_def", "ip_2_sit", "ip_3_con"
+    ]
     
-    logger.info(f"⚠️ Нет профилей уровня {level}, ищу ближайший уровень для типа {type_code}")
+    for emergency_key in emergency_keys:
+        profile = loader.get_profile(emergency_key)
+        if profile:
+            logger.warning(f"🚨 Использую аварийный профиль: {emergency_key}")
+            return profile
     
-    available_levels = []
-    for key, key_lower in all_type_profiles:
-        try:
-            parts = key_lower.split('_')
-            if len(parts) >= 2 and parts[1].isdigit():
-                key_level = int(parts[1])
-                available_levels.append((key, key_level))
-        except (ValueError, IndexError):
-            continue
-    
-    if not available_levels:
-        logger.error(f"❌ НЕТ ПРОФИЛЕЙ для типа {type_code}!")
-        emergency_key = "sa_1_def"
-        logger.warning(f"🚨 Использую аварийный профиль: {emergency_key}")
-        return loader.get_profile(emergency_key)
-    
-    min_diff = float('inf')
-    best_key = None
-    best_level = None
-    
-    for key, key_level in available_levels:
-        diff = abs(key_level - level)
-        if diff < min_diff:
-            min_diff = diff
-            best_key = key
-            best_level = key_level
-        elif diff == min_diff and key_level > best_level:
-            best_key = key
-            best_level = key_level
-    
-    if best_key:
-        logger.info(f"📈 Найден ближайший уровень {best_level} (разница {min_diff}): {best_key}")
-        return loader.get_profile(best_key)
-    
-    logger.error(f"🔥 КРИТИЧЕСКАЯ ОШИБКА: Ничего не найдено для типа {type_code}, level={level}")
-    emergency_key = "sa_1_def"
-    logger.warning(f"🚨 Использую аварийный профиль: {emergency_key}")
-    return loader.get_profile(emergency_key)
+    logger.critical("💥 НЕТ НИ ОДНОГО ПРОФИЛЯ! Проверьте загрузчик.")
+    return None
 
 def get_card_description_from_profile(profile: VariaticaProfile, profile_data: dict) -> dict:
     """Получает описание профиля с очисткой заголовков"""
@@ -905,7 +1351,7 @@ def calculate_profile_final(context_data: dict) -> dict:
     
     coherence = check_profile_coherence(final_level, dilts_level)
     
-    logger.info(f" FINAL PROFILE CALCULATION:")
+    logger.info(f"🎯 FINAL PROFILE CALCULATION:")
     logger.info(f"   Type: {type_code} ({perception_type})")
     logger.info(f"   Level: {final_level} ({get_level_name(final_level)})")
     logger.info(f"   Dilts: {dilts_level} ({dilts_code})")
@@ -943,11 +1389,21 @@ def check_profile_coherence(profile_level: int, dilts_level: str) -> dict:
     expected_dilts = expected_dilts_by_level.get(profile_level, ["VALUES"])
     is_coherent = dilts_level in expected_dilts
     
+    discrepancy_level = 0
+    if not is_coherent:
+        if profile_level <= 3 and dilts_level == "IDENTITY":
+            discrepancy_level = 3  # Высокое несоответствие
+        elif profile_level >= 7 and dilts_level == "ENVIRONMENT":
+            discrepancy_level = 3  # Высокое несоответствие
+        else:
+            discrepancy_level = 1  # Низкое несоответствие
+    
     return {
         "is_coherent": is_coherent,
         "profile_level": profile_level,
         "dilts_level": dilts_level,
-        "expected_dilts": expected_dilts
+        "expected_dilts": expected_dilts,
+        "discrepancy_level": discrepancy_level
     }
 
 def need_clarification_stage1(scores):
@@ -1161,7 +1617,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     welcome_text = (
         f"Привет, {user.first_name}! 👋\n\n"
-        f"🎴 <b>Добро пожаловать в психодиагностический тест ВАРИАТИКА ver 1.9!</b>\n\n"
+        f"🎴 <b>Добро пожаловать в психодиагностический тест ВАРИАТИКА ver 2.0!</b>\n\n"
         f"🔍 <b>Узнай о себе то, что ты ещё не знаешь.</b>\n\n"
         f"<b>Этот тест поможет определить:</b>\n"
         f"• Как ты воспринимаешь реальность \n"
@@ -1200,6 +1656,10 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"User {update.effective_user.id} started test")
     
     return await show_stage_1_intro(update, context)
+
+# ============================================
+# ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
+# ============================================
 
 async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 1"""
@@ -1358,6 +1818,10 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(result_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_2
+
+# ============================================
+# ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+# ============================================
 
 async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 2"""
@@ -1527,6 +1991,10 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(result_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_3
 
+# ============================================
+# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ
+# ============================================
+
 async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 3"""
     query = update.callback_query
@@ -1683,6 +2151,10 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(result_text, reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_4
 
+# ============================================
+# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
+# ============================================
+
 async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 4"""
     query = update.callback_query
@@ -1838,6 +2310,10 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await asyncio.sleep(2)
         
         return await show_results_screen(update, context)
+
+# ============================================
+# ФУНКЦИИ УТОЧНЕНИЙ
+# ============================================
 
 async def ask_clarification_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт уточняющий вопрос"""
@@ -2088,7 +2564,7 @@ async def handle_dilts_clarification(update: Update, context: ContextTypes.DEFAU
 # ============================================
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - версия 1.9 (исправлен fallback)"""
+    """ЭКРАН РЕЗУЛЬТАТОВ ТЕСТА - версия 2.0 (исправлен fallback, добавлена интеграция с Яндекс.Диском)"""
     query = update.callback_query
     
     has_shared = context.user_data.get("has_shared", False)
@@ -2200,6 +2676,299 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.message.reply_text(message_2.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
     return RESULTS
+# ============================================
+# КОМАНДЫ ДЛЯ МАТЕРИАЛОВ И ДОСТУПА
+# ============================================
+
+async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /materials - выдает материалы после оплаты"""
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    # Проверяем, есть ли в context.user_data результаты теста
+    if 'profile_data' not in context.user_data:
+        keyboard = [[InlineKeyboardButton("🚀 НАЧАТЬ ТЕСТ", callback_data="start_test")]]
+        
+        await update.message.reply_text(
+            "📋 Сначала пройдите тест, чтобы получить ваш профиль.\n\n"
+            "Используйте кнопку ниже чтобы начать тест:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    profile_data = context.user_data.get('profile_data', {})
+    profile_key = profile_data.get('display_name', '')
+    
+    if not profile_key:
+        await update.message.reply_text(
+            "❌ Не найден профиль. Пожалуйста, пройдите тест заново.\n\n"
+            "Используйте /start чтобы начать тест."
+        )
+        return
+    
+    logger.info(f"📦 User {user_id} ({user_name}) requested materials for profile: {profile_key}")
+    
+    # Проверяем доступ в БД
+    await update.message.reply_text("🔍 Проверяю ваш доступ к материалам...")
+    access_data = get_user_access_from_db(user_id)
+    
+    if access_data.get('has_access'):
+        # Получаем ссылку на Яндекс.Диск
+        materials_link = generate_yandex_disk_link(profile_key)
+        
+        # Обновляем доступ в БД с информацией о профиле
+        grant_result = grant_access_in_db(user_id, profile_key)
+        
+        if not grant_result.get('success'):
+            logger.warning(f"Не удалось обновить доступ в БД для user_id {user_id}: {grant_result.get('error')}")
+        
+        keyboard = [
+            [InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)],
+            [InlineKeyboardButton("🔄 ПРОВЕРИТЬ СТАТУС", callback_data="check_current_status")]
+        ]
+        
+        await update.message.reply_text(
+            f"✅ <b>ВАШИ МАТЕРИАЛЫ ГОТОВЫ!</b>\n\n"
+            f"👤 <b>Пользователь:</b> {user_name}\n"
+            f"🎯 <b>Ваш профиль:</b> {profile_key}\n"
+            f"📦 <b>Доступ к:</b> Полному пакету ВАРИАТИКА\n\n"
+            f"📚 <b>В папке на Яндекс.Диске вас ждут:</b>\n"
+            f"• Полный разбор профиля (15+ страниц)\n"
+            f"• Терапевтическая сказка\n"
+            f"• Книга ВАРИАТИКА (.PDF)\n"
+            f"• Рекомендации по развитию\n"
+            f"• Карта сильных и слабых сторон\n\n"
+            f"🔗 <b>Ссылка на Яндекс.Диск:</b>\n"
+            f"Нажмите кнопку ниже для скачивания материалов:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    else:
+        # Предлагаем купить
+        keyboard = [
+            [InlineKeyboardButton("💎 КУПИТЬ ДОСТУП 690 РУБ", callback_data="show_package")],
+            [InlineKeyboardButton("🧪 ТЕСТОВАЯ ОПЛАТА 1 РУБ", callback_data="test_payment")]
+        ]
+        
+        error_msg = access_data.get('error', '')
+        error_info = f"\n\n<i>Техническая информация: {error_msg}</i>" if error_msg else ""
+        
+        await update.message.reply_text(
+            f"❌ <b>У ВАС НЕТ ДОСТУПА К МАТЕРИАЛАМ</b>\n\n"
+            f"👤 <b>Пользователь:</b> {user_name}\n"
+            f"🎯 <b>Ваш профиль:</b> {profile_key}\n"
+            f"📦 <b>Статус:</b> Доступ не оплачен\n\n"
+            f"<b>Для получения полного пакета ВАРИАТИКА:</b>\n"
+            f"✅ Полный разбор профиля (15+ страниц)\n"
+            f"✅ Терапевтическая сказка\n"
+            f"✅ Книга ВАРИАТИКА (.PDF)\n"
+            f"✅ Рекомендации по развитию\n"
+            f"✅ Карта сильных и слабых сторон\n\n"
+            f"💰 <b>Цены:</b>\n"
+            f"💎 Полный пакет: 690 руб\n"
+            f"🧪 Тест оплаты: 1 руб\n\n"
+            f"💳 <b>Все способы оплаты доступны:</b>\n"
+            f"• СБП (Система быстрых платежей)\n"
+            f"• ЮMoney (Яндекс.Деньги)\n"
+            f"• Банковские карты (Visa, MasterCard, Мир)\n"
+            f"• Apple Pay / Google Pay\n"
+            f"• QIWI и другие\n\n"
+            f"Нажмите кнопку ниже для покупки:{error_info}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+
+async def myaccess_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /myaccess - проверка доступов"""
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    logger.info(f"🔍 User {user_id} ({user_name}) checked access")
+    
+    # Проверяем доступ в БД
+    await update.message.reply_text("🔍 Проверяю статус вашего доступа...")
+    access_data = get_user_access_from_db(user_id)
+    
+    if access_data.get('has_access'):
+        profile_type = access_data.get('profile_type', 'не указан')
+        granted_at = access_data.get('access_granted_at', 'не указано')
+        expires_at = access_data.get('expires_at', 'бессрочно')
+        
+        # Получаем ссылку на материалы
+        materials_link = generate_yandex_disk_link(profile_type)
+        
+        keyboard = [
+            [InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)],
+            [InlineKeyboardButton("🔄 ПРОВЕРИТЬ СТАТУС", callback_data="check_current_status")]
+        ]
+        
+        await update.message.reply_text(
+            f"✅ <b>ДОСТУП АКТИВЕН!</b>\n\n"
+            f"👤 <b>Пользователь:</b> {user_name}\n"
+            f"🎯 <b>Профиль:</b> {profile_type}\n"
+            f"📦 <b>Пакет:</b> Полный ВАРИАТИКА\n"
+            f"📅 <b>Доступ открыт:</b> {granted_at}\n"
+            f"📅 <b>Действителен до:</b> {expires_at}\n\n"
+            f"<b>Для получения материалов используйте кнопку ниже:</b>\n\n"
+            f"📚 <b>В папке на Яндекс.Диске:</b>\n"
+            f"• Полный разбор профиля (15+ страниц)\n"
+            f"• Терапевтическая сказка\n"
+            f"• Книга ВАРИАТИКА (.PDF)\n"
+            f"• Рекомендации по развитию\n"
+            f"• Карта сильных и слабых сторон",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    else:
+        # Проверяем, есть ли результаты теста в context.user_data
+        if 'profile_data' in context.user_data:
+            profile_data = context.user_data.get('profile_data', {})
+            profile_key = profile_data.get('display_name', 'не определен')
+            
+            keyboard = [
+                [InlineKeyboardButton("💎 КУПИТЬ ДОСТУП 690 РУБ", callback_data="show_package")],
+                [InlineKeyboardButton("🧪 ТЕСТОВАЯ ОПЛАТА 1 РУБ", callback_data="test_payment")]
+            ]
+            
+            await update.message.reply_text(
+                f"❌ <b>ДОСТУП НЕ АКТИВЕН</b>\n\n"
+                f"👤 <b>Пользователь:</b> {user_name}\n"
+                f"🎯 <b>Ваш профиль:</b> {profile_key}\n"
+                f"📦 <b>Статус:</b> Доступ не оплачен\n\n"
+                f"<b>Для получения материалов:</b>\n"
+                f"✅ Полный разбор профиля (15+ страниц)\n"
+                f"✅ Терапевтическая сказка\n"
+                f"✅ Книга ВАРИАТИКА (.PDF)\n"
+                f"✅ Рекомендации по развитию\n"
+                f"✅ Карта сильных и слабых сторон\n\n"
+                f"💰 <b>Цены:</b>\n"
+                f"💎 Полный пакет: 690 руб\n"
+                f"🧪 Тест оплаты: 1 руб\n\n"
+                f"Нажмите кнопку ниже для покупки:",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML"
+            )
+        else:
+            keyboard = [
+                [InlineKeyboardButton("🚀 НАЧАТЬ ТЕСТ", callback_data="start_test")],
+                [InlineKeyboardButton("💎 КУПИТЬ ДОСТУП", callback_data="show_package")]
+            ]
+            
+            await update.message.reply_text(
+                f"👤 <b>Пользователь:</b> {user_name}\n"
+                f"📦 <b>Статус:</b> Доступ не активирован\n\n"
+                f"<b>Для получения доступа:</b>\n"
+                f"1️⃣ Пройдите тест (/start)\n"
+                f"2️⃣ Узнайте свой профиль\n"
+                f"3️⃣ Оплатите доступ к материалам\n\n"
+                f"🎯 <b>ИЛИ:</b> Купите доступ сразу\n\n"
+                f"Начните с теста или покупки:",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML"
+            )
+
+async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /check <id> - проверка статуса платежа"""
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if not context.args:
+        await update.message.reply_text(
+            "❌ <b>Укажите ID платежа</b>\n\n"
+            "Пример: <code>/check test_1234567890</code>\n"
+            "Пример: <code>/check variatica_1234567890</code>\n\n"
+            "ID платежа вы получаете при создании заказа.",
+            parse_mode="HTML"
+        )
+        return
+    
+    payment_id = context.args[0]
+    
+    logger.info(f"🔍 User {user_id} ({user_name}) checked payment: {payment_id}")
+    
+    await update.message.reply_text(f"🔍 Проверяю статус платежа: <code>{payment_id}</code>", parse_mode="HTML")
+    
+    # Проверяем статус через API
+    result = check_payment_status_db(payment_id)
+    
+    if not result.get("success"):
+        error_msg = result.get('error', 'Неизвестная ошибка')
+        await update.message.reply_text(f"❌ <b>Ошибка:</b> {error_msg}", parse_mode="HTML")
+        return
+    
+    status = result.get("status", "unknown")
+    
+    if status == "succeeded":
+        is_test = "test_" in payment_id
+        
+        if is_test:
+            message = (
+                f"🎉 <b>ТЕСТОВЫЙ ПЛАТЕЖ ОПЛАЧЕН!</b>\n\n"
+                f"✅ Платеж <code>{payment_id}</code> успешно завершен!\n\n"
+                f"🔓 <b>СИСТЕМА РАБОТАЕТ КОРРЕКТНО!</b>\n"
+                f"Тестовые материалы будут доступны в течение 5 минут.\n\n"
+                f"Для полного курса используйте команду /myaccess"
+            )
+        else:
+            message = (
+                f"🎉 <b>ОПЛАТА ПОДТВЕРЖДЕНА!</b>\n\n"
+                f"✅ Ваш заказ <code>{payment_id}</code> успешно оплачен!\n\n"
+                f"🔓 <b>ДОСТУП ОТКРЫТ!</b>\n"
+                f"Вы получили доступ ко всем материалам полного пакета ВАРИАТИКА!\n\n"
+                f"Для получения материалов используйте /materials"
+            )
+        
+    elif status in ["pending", "waiting"]:
+        message = (
+            f"⏳ <b>ОЖИДАЕТ ОПЛАТЫ</b>\n\n"
+            f"Заказ <code>{payment_id}</code> еще не оплачен.\n\n"
+            f"<b>Для оплаты:</b>\n"
+            f"1. Используйте ссылку из бота\n"
+            f"2. Выберите способ оплаты\n"
+            f"3. После оплаты статус обновится автоматически"
+        )
+    elif status == "canceled":
+        message = (
+            f"❌ <b>ПЛАТЕЖ ОТМЕНЕН</b>\n\n"
+            f"Заказ <code>{payment_id}</code> был отменен.\n\n"
+            f"Для создания нового заказа используйте команду /start"
+        )
+    else:
+        message = f"📊 <b>Статус заказа:</b> <code>{status}</code>"
+    
+    await update.message.reply_text(message, parse_mode='HTML')
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /help - справка по командам"""
+    help_text = (
+        f"🆘 <b>КОМАНДЫ БОТА ВАРИАТИКА</b>\n\n"
+        
+        f"<b>Основные команды:</b>\n"
+        f"<code>/start</code> - начать тест\n"
+        f"<code>/help</code> - эта справка\n"
+        f"<code>/cancel</code> - отменить текущий тест\n\n"
+        
+        f"<b>Команды доступа:</b>\n"
+        f"<code>/materials</code> - получить материалы после оплаты\n"
+        f"<code>/myaccess</code> - проверить статус доступа\n"
+        f"<code>/check &lt;id&gt;</code> - проверить статус платежа\n\n"
+        
+        f"<b>Информация:</b>\n"
+        f"🎯 <b>Тест:</b> 4 этапа, 32 вопроса\n"
+        f"⏱ <b>Время:</b> 10-15 минут\n"
+        f"💰 <b>Полный пакет:</b> 690 руб\n"
+        f"🧪 <b>Тест оплаты:</b> 1 руб\n\n"
+        
+        f"<b>Поддержка:</b>\n"
+        f"Автор: {AUTHOR_LINK}\n"
+        f"Бот: {BOT_LINK}"
+    )
+    
+    await update.message.reply_text(help_text, parse_mode='HTML')
+
+# ============================================
+# ЭКРАНЫ ДЛЯ ПОДАРКОВ И ОПЛАТЫ
+# ============================================
 
 async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ЭКРАН: ИНСТРУКЦИЯ ПО ШАРИНГУ"""
@@ -2256,7 +3025,7 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"• QIWI и другие\n\n"
         f"💡 <b>После оплаты вы получите:</b>\n"
         f"• Мгновенный доступ к материалам\n"
-        f"• Ссылку на Яндекс.Диск\n"
+        f"• Ссылку на Яндекс.Диск с вашей персональной папкой\n"
         f"• Чек по 54-ФЗ (в боевом режиме)\n"
         f"• Техническую поддержку"
     )
@@ -2278,6 +3047,8 @@ async def buy_variatica_package(update: Update, context: ContextTypes.DEFAULT_TY
     
     user_id = query.from_user.id
     user_name = query.from_user.first_name
+    
+    logger.info(f"💰 User {user_id} ({user_name}) buying full package")
     
     await query.edit_message_text("💎 *Создаю заказ на полный пакет ВАРИАТИКА...*", parse_mode='Markdown')
     
@@ -2318,7 +3089,7 @@ async def buy_variatica_package(update: Update, context: ContextTypes.DEFAULT_TY
         f"✅ Книгу ВАРИАТИКА (.PDF)\n"
         f"✅ Персональные рекомендации\n"
         f"✅ Карту сильных и слабых сторон\n"
-        f"✅ Ссылку на Яндекс.Диск\n\n"
+        f"✅ Ссылку на Яндекс.Диск с вашей папкой\n\n"
         f"💡 *Все способы оплаты доступны:* СБП, ЮMoney, карты\n"
         f"🔒 *Защита от дублей:* ✅ активна\n\n"
         f"*Для оплаты нажмите кнопку ниже:*\n"
@@ -2334,6 +3105,9 @@ async def test_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     user_id = query.from_user.id
+    user_name = query.from_user.first_name
+    
+    logger.info(f"🧪 User {user_id} ({user_name}) creating test payment")
     
     await query.edit_message_text("🧪 *Создаю тестовый платеж 1 рубль...*", parse_mode='Markdown')
     
@@ -2364,6 +3138,7 @@ async def test_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(
         f"🧪 *ТЕСТОВЫЙ ПЛАТЕЖ СОЗДАН*\n\n"
+        f"👤 *Пользователь:* {user_name}\n"
         f"💰 *Сумма:* 1 рубль\n"
         f"📋 *ID:* `{payment_id}`\n\n"
         f"*Для проверки платежной системы:*\n"
@@ -2490,21 +3265,84 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# ГЛАВНАЯ ФУНКЦИЯ
+# ОБРАБОТЧИК СЕТЕВЫХ ОШИБОК
+# ============================================
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик ошибок"""
+    error_msg = str(context.error)
+    
+    logger.error(f"💥 Ошибка: {error_msg}")
+    
+    # Сетевые ошибки
+    if any(keyword in error_msg for keyword in ["NetworkError", "RemoteProtocolError", "Timeout", "ConnectionError", "Connection reset"]):
+        logger.warning(f"⚠️ Сетевая ошибка: {error_msg}")
+        
+        if update and update.effective_message:
+            try:
+                await update.effective_message.reply_text(
+                    "⚠️ Временная сетевая проблема. Попробуйте снова через 10 секунд."
+                )
+            except:
+                pass
+        
+        await asyncio.sleep(5)
+        return
+    
+    # Конфликт ботов
+    if "Conflict" in error_msg or "terminated by other getUpdates" in error_msg:
+        logger.error("💥 КОНФЛИКТ БОТОВ! Очищаю...")
+        clear_telegram_conflicts()
+        
+        if update and update.effective_message:
+            try:
+                await update.effective_message.reply_text(
+                    "🔄 Обнаружен конфликт ботов. Перезапускаю..."
+                )
+            except:
+                pass
+        
+        await asyncio.sleep(10)
+        return
+    
+    # Прочие ошибки
+    if update and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                f"❌ Произошла ошибка:\n\n{error_msg[:200]}..."
+            )
+        except:
+            pass
+
+# ============================================
+# ГЛАВНАЯ ФУНКЦИЯ ЗАПУСКА
 # ============================================
 
 def main():
-    """Запуск бота"""
-    print("\n" + "="*50)
-    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 1.9")
-    print("="*50)
-    print("ИСПРАВЛЕНИЯ:")
-    print("1. Исправлен fallback для всех типов профилей")
-    print("2. Интегрирована платежная система")
-    print("3. Сохранена полная логика теста")
-    print("="*50 + "\n")
+    """Главная функция запуска бота с защитой от ошибок"""
+    print("\n" + "="*60)
+    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.0")
+    print("="*60)
+    print("ИСПРАВЛЕНИЯ И НОВОВВЕДЕНИЯ:")
+    print("1. ✅ Защита от конфликтов ботов (clear_telegram_conflicts)")
+    print("2. ✅ Проверка всех 36 профилей (check_all_profiles)")
+    print("3. ✅ Команды /materials, /myaccess, /check")
+    print("4. ✅ Яндекс.Диск интеграция (36 папок для профилей)")
+    print("5. ✅ Обработка сетевых ошибок")
+    print("6. ✅ Исправленный fallback для профилей")
+    print("7. ✅ Устойчивый запуск с перезапуском")
+    print("="*60 + "\n")
     
-    # Проверка конфигурации платежной системы
+    # 1. Очищаем конфликты
+    clear_telegram_conflicts()
+    
+    # 2. Проверяем профили
+    if not check_all_profiles():
+        print("⚠️ ВНИМАНИЕ: Не все профили загружены!")
+        print("   Бот будет работать, но некоторые профили могут отсутствовать.")
+        print("   Для корректной работы необходимо 36 профилей.")
+    
+    # 3. Проверяем конфигурацию платежной системы
     if not YOOKASSA_SHOP_ID or not YOOKASSA_SECRET_KEY:
         print("⚠️  ВНИМАНИЕ: Платежная система НЕ настроена!")
         print("   Для работы платежей установите переменные окружения:")
@@ -2517,21 +3355,32 @@ def main():
         print(f"💰 Цена полного пакета: 690 руб")
         print(f"🧪 Тестовый платеж: 1 руб")
     
-    print("\n🔍 ПРОВЕРКА ЗАГРУЗКИ ПРОФИЛЕЙ")
-    print("="*30)
+    # 4. Проверяем Яндекс.Диск конфигурацию
+    print(f"\n🔗 Яндекс.Диск конфигурация:")
+    print(f"   Базовый URL: {YANDEX_DISK_BASE_URL}")
+    print(f"   Папок настроено: {len(YANDEX_DISK_FOLDERS)}/36")
     
-    all_profiles = loader.get_all_profiles()
-    print(f"📊 Всего профилей загружено: {len(all_profiles)}")
+    # 5. Создаем приложение с увеличенными таймаутами
+    application = (Application.builder()
+        .token(TOKEN)
+        .connect_timeout(30.0)
+        .read_timeout(30.0)
+        .write_timeout(30.0)
+        .pool_timeout(30.0)
+        .get_updates_read_timeout(30.0)
+        .build())
     
-    for profile_type in ['sa', 'sp', 'ia', 'ip']:
-        type_profiles = [p for p in all_profiles if p.lower().startswith(f"{profile_type}_")]
-        print(f"🔍 {profile_type.upper()} профилей: {len(type_profiles)}")
+    # 6. Добавляем обработчик ошибок
+    application.add_error_handler(error_handler)
     
-    print("="*30)
-    print("✅ Проверка завершена. Запускаю бота...")
+    # 7. Добавляем новые команды
+    application.add_handler(CommandHandler("materials", materials_command))
+    application.add_handler(CommandHandler("myaccess", myaccess_command))
+    application.add_handler(CommandHandler("check", check_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("start", start))
     
-    application = Application.builder().token(TOKEN).build()
-    
+    # 8. Создаем ConversationHandler (основную логику теста)
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -2596,14 +3445,52 @@ def main():
                 CallbackQueryHandler(open_gift_screen, pattern="^open_gift$")
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        allow_reentry=True
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            CommandHandler("start", start),
+            CommandHandler("materials", materials_command),
+            CommandHandler("myaccess", myaccess_command)
+        ],
+        allow_reentry=True,
+        conversation_timeout=3600  # 1 час таймаут
     )
     
     application.add_handler(conv_handler)
     
-    logger.info("🚀 Bot started: ВАРИАТИКА ver 1.9 с платежной системой!")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # 9. Добавляем обработчик для кнопки check_current_status
+    application.add_handler(CallbackQueryHandler(
+        lambda update, context: status_payment(update, context), 
+        pattern="^check_current_status$"
+    ))
+    
+    print("✅ Бот готов к работе!")
+    print("📱 Доступные команды:")
+    print("   /start - начать тест")
+    print("   /materials - получить материалы после оплаты")
+    print("   /myaccess - проверить статус доступа")
+    print("   /check <id> - проверить статус платежа")
+    print("   /help - справка по командам")
+    print("="*60)
+    print("🔄 Запускаю бота...\n")
+    
+    # 10. Запускаем с безопасными параметрами
+    try:
+        application.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES,
+            poll_interval=1.0,
+            timeout=30,
+            bootstrap_retries=3,
+            close_loop_on_stop=False
+        )
+    except KeyboardInterrupt:
+        print("\n🛑 Бот остановлен пользователем")
+    except Exception as e:
+        logger.critical(f"💥 Критическая ошибка: {e}")
+        print(f"\n💥 Критическая ошибка: {e}")
+        print("🔄 Перезапуск через 10 секунд...")
+        time.sleep(10)
+        os.execv(sys.executable, ['python'] + sys.argv)
 
 if __name__ == "__main__":
     main()
