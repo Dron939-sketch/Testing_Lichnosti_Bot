@@ -464,7 +464,7 @@ STAGE_2_QUESTIONS = {
 
 # Таблица баллов для этапа 2
 STAGE_2_SCORING = {
-    "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": {
+    "СОЦИАЛЬНО**-АФФИЛИАТИВНЫЙ": {
         0: {"1": 2, "2": 2, "3": 2, "5": 2},
         1: {"1": 2, "2": 2, "3": 2, "4": 2},
         2: {"1": 2, "3": 2, "2": 2, "1": 2},
@@ -568,7 +568,7 @@ CLARIFICATION_QUESTIONS = {
         {"id": "c3_3", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nКак часто ты делаешь то, что обещал себе?", "options": {"1": "Почти никогда", "2": "Иногда", "4": "Часто", "5": "Почти всегда"}}
     ],
     "stage4_tie": [
-        {"id": "c4_1", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nЕсли бы ты мог изменить только одно, что бы выбрал?", "options": {"a": {"text": "Где я нахожусь", "dilts": "ENVIRONMENT"}, "b": {"text": "Что я делаю", "dilts": "BEHAVIOR"}, "c": {"text": "Что я умею", "dilts": "CAPABILITIES"}, "d": {"text": "Что для меня важно", "dilts": "VALUES"}, "e": {"text": "Кто я", "dilts": "IDENTITY"}}},
+        {"id": "c4_1", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nЕсли бы ты мог изменить что-то одно, что бы это было?", "options": {"a": {"text": "Где я нахожусь", "dilts": "ENVIRONMENT"}, "b": {"text": "Что я делаю", "dilts": "BEHAVIOR"}, "c": {"text": "Что я умею", "dilts": "CAPABILITIES"}, "d": {"text": "Что для меня важно", "dilts": "VALUES"}, "e": {"text": "Кто я", "dilts": "IDENTITY"}}},
         {"id": "c4_2", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nГде находится твоя главная проблема?", "options": {"a": {"text": "В обстоятельствах", "dilts": "ENVIRONMENT"}, "b": {"text": "В моих действиях", "dilts": "BEHAVIOR"}, "c": {"text": "В моих навыках", "dilts": "CAPABILITIES"}, "d": {"text": "В моих целях", "dilts": "VALUES"}, "e": {"text": "В моём самоопределении", "dilts": "IDENTITY"}}}
     ]
 }
@@ -737,173 +737,234 @@ def format_profile_title(profile_title: str, profile_header: str) -> str:
     return f"🎯 {profile_header}"
 
 # ============================================
-# ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОИСКА ПРОФИЛЯ С FALLBACK
+# КОНСТАНТЫ ДЛЯ НОВОЙ ЛОГИКИ ПОИСКА
+# ============================================
+
+STANDARD_SUFFIXES = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
+LEVEL_DIFFS = [0, 1, -1, 2, -2, 3, -3, 4, -4]
+EMERGENCY_PROFILES = [
+    "sa_1_def", "sa_2_sit", "sa_3_con",
+    "sp_1_def", "sp_2_sit", "sp_3_con", 
+    "ia_1_def", "ia_2_sit", "ia_3_con",
+    "ip_1_def", "ip_2_sit", "ip_3_con"
+]
+
+# ============================================
+# ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОИСКА ПРОФИЛЯ (версия 2.2)
 # ============================================
 
 def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
     """
-    ИСПРАВЛЕННАЯ ВЕРСИЯ: Находит реально существующий файл профиля.
-    Приоритет: точное совпадение → разные суффиксы → без суффикса → любой файл уровня → ближайший уровень
-    Поддерживает все типы: SA, SP, IA, IP (с обработкой ip/ip-адрес и ip - адрес)
+    УПРОЩЕННАЯ ЛОГИКА ПОИСКА ПРОФИЛЯ (как в версии 2.2).
+    
+    ПРИНЦИП: Найти профиль по ТИПУ и УРОВНЮ, игнорируя точный суффикс Дилтса.
+    
+    Args:
+        profile_data (dict): Данные профиля:
+            - type_code (str): Код типа (sa, sp, ia, ip)
+            - level (int): Уровень 1-9
+            - dilts_code (str): Код Дилтса (игнорируется для точного поиска)
+    
+    Returns:
+        VariaticaProfile: Найденный профиль
+    
+    Raises:
+        Exception: Если профиль не найден даже после всех fallback
     """
+    # Извлекаем данные из входных параметров
     type_code = profile_data.get('type_code', 'sa').lower()
     level = profile_data.get('level', 1)
     dilts_code = profile_data.get('dilts_code', 'def').lower()
     
-    logger.info(f"🎯 FALLBACK ПОИСК: type={type_code}, level={level}, dilts={dilts_code}")
+    logger.info(f"🔍 НАЧИНАЕМ ПОИСК ПРОФИЛЯ")
+    logger.info(f"   Тип: {type_code}")
+    logger.info(f"   Уровень: {level}")
+    logger.info(f"   DILTS код: {dilts_code} (будет игнорироваться для точного поиска)")
     
     # ============================================
-    # НОРМАЛИЗАЦИЯ ТИПОВ ДЛЯ ПОИСКА
+    # ШАГ 1: Определяем порядок поиска суффиксов
     # ============================================
     
-    # Определяем возможные варианты именования для данного типа
-    # Особенно важно для IP типа (может быть ip, ip-адрес, ip - адрес)
-    search_types = [type_code]
+    # Начинаем с запрошенного суффикса, если он стандартный
+    search_order = []
+    if dilts_code in STANDARD_SUFFIXES:
+        search_order.append(dilts_code)
+        logger.info(f"   Добавлен запрошенный суффикс: {dilts_code}")
     
-    if type_code == "ip" or type_code == "ip-адрес":
-        # Для IP типа пробуем все возможные варианты
-        search_types = ["ip", "ip-адрес", "ip - адрес"]
-    elif type_code == "ip - адрес":
-        search_types = ["ip - адрес", "ip-адрес", "ip"]
+    # Добавляем все стандартные суффиксы
+    search_order.extend(STANDARD_SUFFIXES)
     
-    logger.info(f"🔍 Варианты поиска для типа {type_code}: {search_types}")
+    # Удаляем дубликаты (сохраняем порядок)
+    search_order = list(dict.fromkeys(search_order))
     
-    # ============================================
-    # 1. ТОЧНОЕ СОВПАДЕНИЕ (все варианты)
-    # ============================================
-    
-    for search_type in search_types:
-        target_key = f"{search_type}_{level}_{dilts_code}"
-        profile = loader.get_profile(target_key)
-        if profile:
-            logger.info(f"✅ Exact match: {target_key}")
-            return profile
-    
-    logger.info(f"🔍 Точное совпадение не найдено для {type_code}_{level}_{dilts_code}")
+    logger.info(f"🔍 ПОРЯДОК ПОИСКА СУФФИКСОВ:")
+    for i, suffix in enumerate(search_order, 1):
+        logger.info(f"   {i}. {suffix}")
     
     # ============================================
-    # 2. ПОИСК С РАЗНЫМИ СУФФИКСАМИ НА ТОМ ЖЕ УРОВНЕ
+    # ШАГ 2: Ищем профиль того же типа и уровня
     # ============================================
     
-    # Все возможные суффиксы (в порядке из файловой системы)
-    possible_suffixes = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
+    logger.info(f"🔍 ШАГ 1: Ищу профиль {type_code}_{level}_*")
+    logger.info(f"   Проверяю {len(search_order)} вариантов суффиксов")
     
-    for search_type in search_types:
-        logger.info(f"🔍 Ищу {search_type}_{level}_* с разными суффиксами")
+    found_profile = None
+    found_key = None
+    
+    for suffix in search_order:
+        profile_key = f"{type_code}_{level}_{suffix}"
+        logger.debug(f"   Пробую загрузить: {profile_key}")
         
-        for suffix in possible_suffixes:
-            test_key = f"{search_type}_{level}_{suffix}"
-            profile = loader.get_profile(test_key)
-            if profile:
-                logger.info(f"✅ Найден с суффиксом {suffix}: {test_key}")
-                return profile
-    
-    # ============================================
-    # 3. ПОИСК БЕЗ СУФФИКСА
-    # ============================================
-    
-    for search_type in search_types:
-        test_key = f"{search_type}_{level}"
-        profile = loader.get_profile(test_key)
+        profile = loader.get_profile(profile_key)
+        
         if profile:
-            logger.info(f"✅ Найден без суффикса: {test_key}")
+            found_profile = profile
+            found_key = profile_key
+            logger.info(f"✅ УСПЕХ: Найден профиль {profile_key}")
+            logger.info(f"   Суффикс '{suffix}' из поискового списка")
+            break
+        else:
+            logger.debug(f"   Профиль {profile_key} не найден")
+    
+    if found_profile:
+        logger.info(f"🎯 ВОЗВРАЩАЮ НАЙДЕННЫЙ ПРОФИЛЬ: {found_key}")
+        return found_profile
+    
+    logger.warning(f"⚠️ ПРЕДУПРЕЖДЕНИЕ: Не найден профиль {type_code}_{level}_*")
+    logger.warning(f"   Проверено {len(search_order)} суффиксов")
+    
+    # ============================================
+    # ШАГ 3: Ищем на ближайших уровнях
+    # ============================================
+    
+    logger.info(f"🔍 ШАГ 2: Ищу профиль на соседних уровнях")
+    logger.info(f"   Будем проверять уровни с разницей: {LEVEL_DIFFS}")
+    
+    found_profile = None
+    found_key = None
+    found_diff = 0
+    
+    for diff in LEVEL_DIFFS:
+        test_level = level + diff
+        
+        # Проверяем границы 1-9
+        if test_level < 1:
+            logger.debug(f"   Пропускаем уровень {test_level} (< 1)")
+            continue
+        if test_level > 9:
+            logger.debug(f"   Пропускаем уровень {test_level} (> 9)")
+            continue
+            
+        if diff == 0:
+            # Уровень 0 уже проверяли выше, пропускаем
+            continue
+        
+        logger.info(f"🔍 Проверяю уровень {test_level} (разница {diff})")
+        
+        for suffix in STANDARD_SUFFIXES:
+            profile_key = f"{type_code}_{test_level}_{suffix}"
+            logger.debug(f"   Пробую загрузить: {profile_key}")
+            
+            profile = loader.get_profile(profile_key)
+            
+            if profile:
+                found_profile = profile
+                found_key = profile_key
+                found_diff = diff
+                logger.info(f"✅ УСПЕХ: Найден профиль {profile_key}")
+                logger.info(f"   Уровень {test_level} (разница {diff}), суффикс '{suffix}'")
+                break
+        
+        if found_profile:
+            break
+    
+    if found_profile:
+        logger.info(f"🎯 ВОЗВРАЩАЮ ПРОФИЛЬ С УРОВНЯ {found_diff}: {found_key}")
+        return found_profile
+    
+    logger.error(f"❌ ОШИБКА: Не найден профиль типа {type_code} ни на одном уровне")
+    logger.error(f"   Проверены уровни 1-9 с разницей до ±4")
+    
+    # ============================================
+    # ШАГ 4: Аварийный fallback
+    # ============================================
+    
+    logger.warning(f"⚠️ ШАГ 3: Перехожу к аварийным профилям")
+    logger.info(f"   Список аварийных профилей ({len(EMERGENCY_PROFILES)} шт.):")
+    for i, emergency_key in enumerate(EMERGENCY_PROFILES, 1):
+        logger.info(f"   {i}. {emergency_key}")
+    
+    found_profile = None
+    found_key = None
+    
+    for emergency_key in EMERGENCY_PROFILES:
+        logger.debug(f"   Пробую загрузить аварийный профиль: {emergency_key}")
+        
+        profile = loader.get_profile(emergency_key)
+        
+        if profile:
+            found_profile = profile
+            found_key = emergency_key
+            logger.warning(f"⚠️ ИСПОЛЬЗУЮ АВАРИЙНЫЙ ПРОФИЛЬ: {emergency_key}")
+            logger.warning(f"   Это профиль по умолчанию, так как искомый не найден")
+            break
+    
+    if found_profile:
+        logger.info(f"🎯 ВОЗВРАЩАЮ АВАРИЙНЫЙ ПРОФИЛЬ: {found_key}")
+        return found_profile
+    
+    logger.critical(f"💥 КРИТИЧЕСКАЯ ОШИБКА: Не найден ни один аварийный профиль!")
+    logger.critical(f"   Проверено {len(EMERGENCY_PROFILES)} аварийных профилей")
+    
+    # ============================================
+    # ШАГ 5: Последняя попытка - любой доступный профиль
+    # ============================================
+    
+    logger.critical(f"💥 ШАГ 4: Последняя попытка - любой доступный профиль")
+    
+    all_profiles = loader.get_all_profiles()
+    logger.info(f"   Всего доступно профилей в системе: {len(all_profiles)}")
+    
+    if all_profiles:
+        # Берем первый попавшийся профиль
+        first_key = list(all_profiles.keys())[0]
+        profile = loader.get_profile(first_key)
+        
+        if profile:
+            logger.critical(f"🚨 ВОЗВРАЩАЮ ЛЮБОЙ ДОСТУПНЫЙ ПРОФИЛЬ: {first_key}")
+            logger.critical(f"   Это экстренный fallback, так как ничего другого не найдено")
             return profile
     
     # ============================================
-    # 4. ЛЮБОЙ ПРОФИЛЬ НА ТОМ ЖЕ УРОВНЕ
+    # Если дошли сюда - критическая ошибка
     # ============================================
     
-    logger.info(f"🔍 Ищу любой профиль *_{level}_* для типа {type_code}")
-    all_profiles = loader.get_all_profiles()
+    error_msg = f"💥 КРИТИЧЕСКАЯ ОШИБКА: Не найден ни один профиль для type={type_code}, level={level}"
+    logger.critical(error_msg)
+    logger.critical(f"   Проверено: уровни 1-9, {len(STANDARD_SUFFIXES)} суффиксов")
+    logger.critical(f"   Аварийных профилей: {len(EMERGENCY_PROFILES)}")
+    logger.critical(f"   Всего профилей в системе: {len(all_profiles)}")
     
-    # Собираем все профили этого типа (всех вариантов)
-    all_type_profiles = []
-    for key in all_profiles:
-        key_lower = key.lower()
-        # Проверяем все варианты типа
-        for search_type in search_types:
-            if key_lower.startswith(f"{search_type}_"):
-                all_type_profiles.append((key, key_lower))
-                break
-    
-    # Отладочная информация
-    logger.info(f"📚 Все доступные профили типа {type_code} (варианты: {search_types}):")
-    for key, key_lower in sorted(all_type_profiles):
-        logger.info(f"   - {key}")
-    
-    # Ищем профили на том же уровне
-    same_level_profiles = []
-    for key, key_lower in all_type_profiles:
-        # Извлекаем уровень из ключа
-        try:
-            parts = key_lower.split('_')
-            if len(parts) >= 2 and parts[1].isdigit():
-                key_level = int(parts[1])
-                if key_level == level:
-                    same_level_profiles.append(key)
-        except (ValueError, IndexError):
-            continue
-    
-    logger.info(f"📊 Профили уровня {level} типа {type_code}: {same_level_profiles}")
-    
-    if same_level_profiles:
-        # Берем первый попавшийся профиль того же уровня
-        fallback_key = same_level_profiles[0]
-        logger.info(f"✅ Найден профиль уровня {level}: {fallback_key}")
-        return loader.get_profile(fallback_key)
-    
-    # ============================================
-    # 5. БЛИЖАЙШИЙ УРОВЕНЬ (только если ничего не найдено)
-    # ============================================
-    
-    logger.info(f"⚠️ Нет профилей уровня {level}, ищу ближайший уровень для типа {type_code}")
-    
-    # Собираем все уровни этого типа
-    available_levels = []
-    for key, key_lower in all_type_profiles:
-        try:
-            parts = key_lower.split('_')
-            if len(parts) >= 2 and parts[1].isdigit():
-                key_level = int(parts[1])
-                available_levels.append((key, key_level))
-        except (ValueError, IndexError):
-            continue
-    
-    if not available_levels:
-        logger.error(f"❌ НЕТ ПРОФИЛЕЙ для типа {type_code}!")
-        # Аварийный fallback
-        emergency_key = "sa_1_def"
-        logger.warning(f"🚨 Использую аварийный профиль: {emergency_key}")
-        return loader.get_profile(emergency_key)
-    
-    # Находим ближайший уровень
-    min_diff = float('inf')
-    best_key = None
-    best_level = None
-    
-    for key, key_level in available_levels:
-        diff = abs(key_level - level)
-        if diff < min_diff:
-            min_diff = diff
-            best_key = key
-            best_level = key_level
-        elif diff == min_diff and key_level > best_level:
-            # При одинаковой разнице берем более высокий уровень
-            best_key = key
-            best_level = key_level
-    
-    if best_key:
-        logger.info(f"📈 Найден ближайший уровень {best_level} (разница {min_diff}): {best_key}")
-        return loader.get_profile(best_key)
-    
-    # ============================================
-    # 6. АВАРИЙНЫЙ FALLBACK
-    # ============================================
-    
-    logger.error(f"🔥 КРИТИЧЕСКАЯ ОШИБКА: Ничего не найдено для типа {type_code}, level={level}")
-    emergency_key = "sa_1_def"
-    logger.warning(f"🚨 Использую аварийный профиль: {emergency_key}")
-    return loader.get_profile(emergency_key)
+    # Поднимаем исключение с подробной информацией
+    raise Exception(f"""
+❌ НЕ УДАЛОСЬ НАЙТИ ПРОФИЛЬ
+
+Параметры поиска:
+• Тип: {type_code}
+• Уровень: {level}
+• DILTS код: {dilts_code}
+
+Что было проверено:
+1. Профиль {type_code}_{level}_* с {len(search_order)} суффиксами
+2. Ближайшие уровни (разница до ±4)
+3. {len(EMERGENCY_PROFILES)} аварийных профилей
+4. Все доступные профили ({len(all_profiles)} шт.)
+
+Возможные причины:
+• Файлы профилей не загружены
+• Неправильная структура папок
+• Отсутствуют профили для типа {type_code}
+""")
 
 # ============================================
 # ФУНКЦИЯ ПОЛУЧЕНИЯ ОПИСАНИЯ ПРОФИЛЯ
