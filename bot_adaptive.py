@@ -1504,14 +1504,14 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Определяем кнопки
     if not has_shared:
         keyboard = [
-            [InlineKeyboardButton("📤 Поделиться и получить бонус", callback_data="get_gift")],
-            [InlineKeyboardButton("🧠 Полное описание профиля от психолога", callback_data="show_package")],
+            [InlineKeyboardButton("🪞 Поделиться зеркалом", callback_data="get_gift")],
+            [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
             [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")]
         ]
     else:
         keyboard = [
-            [InlineKeyboardButton("🎁 Забрать бонус", callback_data="open_gift")],
-            [InlineKeyboardButton("🧠 Полное описание профиля от психолога", callback_data="show_package")],
+            [InlineKeyboardButton("🎁 Получить сказку «Мастер Меча»", callback_data="open_gift")],
+            [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
             [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")]
         ]
     
@@ -1555,8 +1555,8 @@ async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     share_url = f"https://t.me/share/url?url={BOT_LINK}&text={encoded_text}"
     
     keyboard = [
-        [InlineKeyboardButton("🪞 Передать зеркало другу", url=share_url)],
-        [InlineKeyboardButton("✅ Я поделился — получить сказку", callback_data="confirm_share")],
+        [InlineKeyboardButton("🪞 Поделиться зеркалом", url=share_url)],
+        [InlineKeyboardButton("✅ Я поделился(ась) — получить подарок", callback_data="confirm_share")],
         [InlineKeyboardButton("Продолжить без этого →", callback_data="skip_share")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1747,7 +1747,7 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     
     keyboard = [
-        [InlineKeyboardButton("💳 ОПЛАТИТЬ 1 РУБЛЬ (тест)", url=confirmation_url)],
+        [InlineKeyboardButton("💳 Оплатить 1 рубль (тестовый режим)", url=confirmation_url)],
         [InlineKeyboardButton("🔄 Проверить статус", callback_data=f"check_payment_{payment_id}")],
         [InlineKeyboardButton("🏠 В меню", callback_data="main_menu")]
     ]
@@ -2018,21 +2018,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     welcome_text = (
         f"{user.first_name}, привет! 👋\n\n"
-        f"Я — Виртуальный психолог Вариатика.\n\n"
-        f"За 15 минут узнаете о себе то, что обычно остаётся невидимым.\n"
-        f"Увидите скрытые паттерны, которые управляют вашими решениями.\n\n"
-        f"А главное — узнаете то, о себе знать действительно нужно.\n"
-        f"То, что даст точку опоры для роста.\n\n"
-        f"Вас ждёт:\n\n"
+        f"🧠 Я — Виртуальный психолог Вариатика.\n\n"
+        f"🕒 За 15 минут узнаете о себе то, что обычно остаётся невидимым.\n"
+        f"👁️ Увидите скрытые паттерны, которые управляют вашими решениями.\n\n"
+        f"⚡ А главное — узнаете то, о себе знать действительно нужно.\n"
+        f"🎯 То, что даст точку опоры для роста.\n\n"
+        f"📊 Вас ждёт:\n\n"
         f"1️⃣ Адаптивный тест (4 этапа)\n"
         f"   ↳ Поймёте свой уникальный профиль\n\n"
         f"2️⃣ Персональные материалы\n"
         f"   ↳ Узнаете куда направлять усилия\n\n"
-        f"Начнём исследование?"
+        f"🚀 Начнём исследование?"
     )
     
     keyboard = [
-        [InlineKeyboardButton("Начать исследование →", callback_data="start_test")],
+        [InlineKeyboardButton("🚀 Начать исследование →", callback_data="start_test")],
         [InlineKeyboardButton("🤔 А зачем это вообще?", callback_data="why_details")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2076,7 +2076,7 @@ async def why_details_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 ⏱ 15 минут вместо лет терапии!
 Потому что в 21 веке даже самопознание должно быть эффективным!"""
     
-    keyboard = [[InlineKeyboardButton("Ладно, убедил! Начинаем →", callback_data="start_test")]]
+    keyboard = [[InlineKeyboardButton("👌 Понял(а). Начинаем →", callback_data="start_test")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(details_text, reply_markup=reply_markup)
@@ -3132,7 +3132,7 @@ async def show_psychologist_conclusion(update: Update, context: ContextTypes.DEF
     )
     
     keyboard = [
-        [InlineKeyboardButton("💎 Получить полное описание профиля", callback_data="show_package")],
+        [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
         [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")],
         [InlineKeyboardButton("🏠 В главное меню", callback_data="main_menu")]
     ]
