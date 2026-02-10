@@ -71,6 +71,58 @@ EMERGENCY_PROFILES = [
 ]
 
 # ============================================
+# СЛОВАРЬ ССЫЛОК НА МАТЕРИАЛЫ (Яндекс.Диск)
+# ============================================
+
+PROFILE_LINKS = {
+    # SA Profiles (9)
+    "SA_1_DEF": "https://disk.yandex.ru/d/HAcOfAg1tpIedA",
+    "SA_2_SIT": "https://disk.yandex.ru/d/MwdMClX9koCTmA",
+    "SA_3_CON": "https://disk.yandex.ru/d/NKN_XemK62t5nA",
+    "SA_4_EXP": "https://disk.yandex.ru/d/tTSiN5zhSb8LtA",
+    "SA_5_INT": "https://disk.yandex.ru/d/xUdv7bsBT3Wbhg",
+    "SA_6_AUT": "https://disk.yandex.ru/d/lYWKaOdEkC_5Ag",
+    "SA_7_VAL": "https://disk.yandex.ru/d/7BCOKs-6qS6-5g",
+    "SA_8_TRA": "https://disk.yandex.ru/d/SqlDISkse1OEGQ",
+    "SA_9_IDE": "https://disk.yandex.ru/d/vGzHmuckInNL5g",
+    
+    # SP Profiles (9)
+    "SP_1_DEF": "https://disk.yandex.ru/d/7nmOP7wR2iQ9YA",
+    "SP_2_SIT": "https://disk.yandex.ru/d/Ro_mcLDd_QmilA",
+    "SP_3_CON": "https://disk.yandex.ru/d/kUJH3BLMnb4CfA",
+    "SP_4_EXP": "https://disk.yandex.ru/d/KBSO1g0HYNJBcQ",
+    "SP_5_INT": "https://disk.yandex.ru/d/s2jhq2ngz3pmYg",
+    "SP_6_AUT": "https://disk.yandex.ru/d/xWBv4TLFosOB5g",
+    "SP_7_VAL": "https://disk.yandex.ru/d/K1whXj6C6KAazQ",
+    "SP_8_TRA": "https://disk.yandex.ru/d/ZZhRISNn-GNPTg",
+    "SP_9_IDE": "https://disk.yandex.ru/d/jBCaEpYOdZI-JQ",
+    
+    # IA Profiles (9)
+    "IA_1_DEF": "https://disk.yandex.ru/d/M1Y7z175uGKIHg",
+    "IA_2_SIT": "https://disk.yandex.ru/d/X3yz6IP0pdRmVQ",
+    "IA_3_CON": "https://disk.yandex.ru/d/DCkqqALby9UpFg",
+    "IA_4_EXP": "https://disk.yandex.ru/d/aLT8oJBu0EGwLg",
+    "IA_5_INT": "https://disk.yandex.ru/d/x0QXWi7MDR7h0g",
+    "IA_6_AUT": "https://disk.yandex.ru/d/xRjBzTxYh0v4bg",
+    "IA_7_VAL": "https://disk.yandex.ru/d/1fHqhIitNuz_XQ",
+    "IA_8_TRA": "https://disk.yandex.ru/d/0wSeHeF_SWZyFw",
+    "IA_9_IDE": "https://disk.yandex.ru/d/ub0YpQQgS4g6rQ",
+    
+    # IP Profiles (9)
+    "IP_1_DEF": "https://disk.yandex.ru/d/m-WOQwDdgQxsnQ",
+    "IP_2_SIT": "https://disk.yandex.ru/d/aL4VlAQdlaZ-6g",
+    "IP_3_CON": "https://disk.yandex.ru/d/N8GG9XbnC3bFhg",
+    "IP_4_EXP": "https://disk.yandex.ru/d/54RFOZmGhA4cfA",
+    "IP_5_INT": "https://disk.yandex.ru/d/l5iFTIX8-gTycQ",
+    "IP_6_AUT": "https://disk.yandex.ru/d/bTo_vcCoC1KU7Q",
+    "IP_7_VAL": "https://disk.yandex.ru/d/TMx1VP843bnJQw",
+    "IP_8_TRA": "https://disk.yandex.ru/d/e9KfJdLcl3gp7g",
+    "IP_9_IDE": "https://disk.yandex.ru/d/ZiQPHJSDrrWZhw"
+}
+
+DEFAULT_PROFILE = "SA_1_DEF"
+
+# ============================================
 # ВОПРОСЫ ЭТАПА 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
 # ============================================
 
@@ -594,6 +646,67 @@ CLARIFICATION_QUESTIONS = {
         {"id": "c4_2", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nГде находится твоя главная проблема?", "options": {"a": {"text": "В обстоятельствах", "dilts": "ENVIRONMENT"}, "b": {"text": "В моих действиях", "dilts": "BEHAVIOR"}, "c": {"text": "В моих навыках", "dilts": "CAPABILITIES"}, "d": {"text": "В моих целях", "dilts": "VALUES"}, "e": {"text": "В моём самоопределении", "dilts": "IDENTITY"}}}
     ]
 }
+
+# ============================================
+# ФУНКЦИЯ ПОКАЗА МАТЕРИАЛОВ ПОСЛЕ ОПЛАТЫ
+# ============================================
+
+async def show_materials_after_payment(
+    update: Update, 
+    context: ContextTypes.DEFAULT_TYPE, 
+    payment_id: str, 
+    profile_code: str
+):
+    """
+    Показывает материалы пользователю после успешной оплаты.
+    
+    Параметры:
+    - update, context: стандартные параметры Telegram бота
+    - payment_id: ID платежа (для отображения)
+    - profile_code: код профиля (например, "IP_4_EXP")
+    """
+    # Получаем ссылку из словаря
+    disk_link = PROFILE_LINKS.get(profile_code, PROFILE_LINKS[DEFAULT_PROFILE])
+    
+    # Формируем текст сообщения
+    message_text = f"""🎉 *ОПЛАТА ПОДТВЕРЖДЕНА\!*
+
+✅ Ваш платеж успешно обработан\.
+
+📋 *ID платежа:* `{payment_id}`
+📊 *Ваш профиль:* `{profile_code}`
+💰 *Сумма:* 1 руб \(тестовый режим\)
+
+📚 *Ваши материалы готовы:*
+• Полный разбор профиля {profile_code}
+• Терапевтическая сказка
+• Книга «ВАРИАТИКА»
+• Рекомендации по развитию
+
+🔗 *Ссылка на Яндекс\.Диск:*
+`{disk_link}`
+
+*Нажмите кнопку ниже для открытия материалов:*"""
+    
+    # Создаем кнопку
+    keyboard = [
+        [InlineKeyboardButton(f"📁 ОТКРЫТЬ {profile_code}", url=disk_link)]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Отправляем сообщение
+    if update.callback_query:
+        await update.callback_query.message.edit_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode="MarkdownV2"
+        )
+    else:
+        await update.message.reply_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode="MarkdownV2"
+        )
 
 # ============================================
 # ФУНКЦИИ ПЛАТЕЖНОЙ СИСТЕМЫ
@@ -1431,19 +1544,18 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"Спасибо за репост! Твой подарок ждёт тебя.\n\n"
         )
     
-    # Определяем кнопки
+    # Добавляем кнопку "📁 Получить материалы"
+    keyboard = []
+    
     if not has_shared:
-        keyboard = [
-            [InlineKeyboardButton("📤 Поделиться и получить подарок", callback_data="get_gift")],
-            [InlineKeyboardButton("💎 Полный пакет рекомендаций", callback_data="show_package")],
-            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
-        ]
+        keyboard.append([InlineKeyboardButton("📤 Поделиться и получить подарок", callback_data="get_gift")])
     else:
-        keyboard = [
-            [InlineKeyboardButton("🎁 Забрать подарок", callback_data="open_gift")],
-            [InlineKeyboardButton("💎 Полный пакет рекомендаций", callback_data="show_package")],
-            [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
-        ]
+        keyboard.append([InlineKeyboardButton("🎁 Забрать подарок", callback_data="open_gift")])
+    
+    # Кнопка материалов (используем реальный профиль)
+    keyboard.append([InlineKeyboardButton("📁 Получить материалы", callback_data=f"materials:{profile_data.get('display_name', DEFAULT_PROFILE)}")])
+    keyboard.append([InlineKeyboardButton("💎 Полный пакет рекомендаций", callback_data="show_package")])
+    keyboard.append([InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -1497,7 +1609,7 @@ async def buy_without_test_callback(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     await query.answer()
     
-    context.user_data["pending_payment_profile"] = "SA_1_DEF"  # Профиль по умолчанию
+    context.user_data["pending_payment_profile"] = DEFAULT_PROFILE
     
     await show_payment_screen(update, context)
 
@@ -1516,7 +1628,7 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.info(f"✅ Использую РЕАЛЬНЫЙ профиль из теста: {profile_code}")
     else:
         # Запасной вариант
-        profile_code = context.user_data.get("pending_payment_profile", "SA_1_DEF")
+        profile_code = context.user_data.get("pending_payment_profile", DEFAULT_PROFILE)
         logger.info(f"⚠️ Использую запасной профиль: {profile_code}")
     
     context.user_data["pending_payment_profile"] = profile_code
@@ -1654,14 +1766,33 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
     status = status_result.get("status", "unknown")
     
     if status == "succeeded":
-        message = (
-            f"✅ *ОПЛАТА ПОДТВЕРЖДЕНА!*\n\n"
-            f"🎉 Платеж `{payment_id}` успешно завершен!\n\n"
-            f"📦 *МАТЕРИАЛЫ ГОТОВЫ!*\n"
-            f"Для получения материалов нажмите кнопку ниже:"
+        # Получаем profile_code для показа материалов
+        profile_code = DEFAULT_PROFILE
+        
+        # Способ 1: Из context.user_data
+        profile_data = context.user_data.get("profile_data")
+        if profile_data and 'display_name' in profile_data:
+            profile_code = profile_data['display_name']
+        
+        # Способ 2: Из last_payment_profile
+        elif context.user_data.get("last_payment_profile"):
+            profile_code = context.user_data.get("last_payment_profile")
+        
+        # Способ 3: Из pending_payment_profile
+        elif context.user_data.get("pending_payment_profile"):
+            profile_code = context.user_data.get("pending_payment_profile")
+        
+        # Показываем материалы через новую функцию
+        await show_materials_after_payment(
+            update=update,
+            context=context,
+            payment_id=payment_id,
+            profile_code=profile_code
         )
         
-        keyboard = [[InlineKeyboardButton("📥 ПОЛУЧИТЬ МАТЕРИАЛЫ", callback_data=f"get_materials_{payment_id}")]]
+        # Сохраняем информацию о последнем успешном платеже
+        context.user_data["last_payment_id"] = payment_id
+        context.user_data["last_payment_profile"] = profile_code
         
     elif status in ["pending", "waiting"]:
         message = (
@@ -1679,18 +1810,24 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
         else:
             keyboard = [[InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")]]
         
+        await query.edit_message_text(
+            message,
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        
     else:
         message = (
             f"📊 *СТАТУС ПЛАТЕЖА:* `{status}`\n\n"
             f"📋 *ID:* `{payment_id}`"
         )
         keyboard = [[InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")]]
-    
-    await query.edit_message_text(
-        message,
-        parse_mode='Markdown',
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+        
+        await query.edit_message_text(
+            message,
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 async def get_materials_callback_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Получение материалов после оплаты"""
@@ -1707,36 +1844,51 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
         parse_mode='Markdown'
     )
     
-    # Получаем материалы через API
+    # Получаем материалы через API (для обратной совместимости)
     materials_result = await get_materials_link_api(payment_id, user_id)
     
     if not materials_result.get("success"):
+        # Если API не работает, используем локальный словарь
         error_msg = materials_result.get("error", "Неизвестная ошибка")
+        logger.warning(f"API не доступен: {error_msg}, использую локальный словарь")
         
-        keyboard = [[InlineKeyboardButton("🔄 Попробовать снова", callback_data=f"get_materials_{payment_id}")]]
+        # Получаем profile_code из user_data
+        profile_code = DEFAULT_PROFILE
+        if context.user_data.get("last_payment_profile"):
+            profile_code = context.user_data.get("last_payment_profile")
+        elif context.user_data.get("profile_data") and 'display_name' in context.user_data["profile_data"]:
+            profile_code = context.user_data["profile_data"]["display_name"]
         
-        await query.edit_message_text(
-            f"❌ *ОШИБКА ПРИ ПОЛУЧЕНИИ МАТЕРИАЛОВ*\n\n"
-            f"`{error_msg}`\n\n"
-            f"Попробуйте позже или обратитесь в поддержку.",
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup(keyboard)
+        # Получаем ссылку из локального словаря
+        disk_link = PROFILE_LINKS.get(profile_code, PROFILE_LINKS[DEFAULT_PROFILE])
+        
+        # Показываем материалы через новую функцию
+        await show_materials_after_payment(
+            update=update,
+            context=context,
+            payment_id=payment_id,
+            profile_code=profile_code
         )
         return
     
     materials_link = materials_result.get("materials_link")
-    profile_code = materials_result.get("profile_code", "SA_1_DEF")
+    profile_code = materials_result.get("profile_code", DEFAULT_PROFILE)
     
     if not materials_link:
-        await query.edit_message_text(
-            f"❌ *ССЫЛКА НЕ НАЙДЕНА*\n\n"
-            f"Материалы для платежа `{payment_id}` не найдены.\n"
-            f"Обратитесь в поддержку.",
-            parse_mode='Markdown'
+        # Если нет ссылки от API, используем локальный словарь
+        logger.warning("API не вернул ссылку, использую локальный словарь")
+        disk_link = PROFILE_LINKS.get(profile_code, PROFILE_LINKS[DEFAULT_PROFILE])
+        
+        # Показываем материалы через новую функцию
+        await show_materials_after_payment(
+            update=update,
+            context=context,
+            payment_id=payment_id,
+            profile_code=profile_code
         )
         return
     
-    # Показываем ссылку на материалы
+    # Показываем ссылку на материалы (старый формат для обратной совместимости)
     keyboard = [[InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)]]
     
     await query.edit_message_text(
@@ -1756,6 +1908,100 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
         parse_mode='Markdown',
         reply_markup=InlineKeyboardMarkup(keyboard),
         disable_web_page_preview=True
+    )
+
+# ============================================
+# ОБРАБОТЧИК КНОПКИ МАТЕРИАЛОВ В РЕЗУЛЬТАТАХ
+# ============================================
+
+async def handle_materials_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка нажатия кнопки материалов"""
+    query = update.callback_query
+    await query.answer()
+    
+    profile_code = query.data.split(":")[1]
+    disk_link = PROFILE_LINKS.get(profile_code, PROFILE_LINKS[DEFAULT_PROFILE])
+    
+    message_text = f"""📚 *МАТЕРИАЛЫ ДЛЯ ПРОФИЛЯ*
+
+📊 Профиль: `{profile_code}`
+
+🔗 *Ссылка на Яндекс\.Диск:*
+`{disk_link}`
+
+*Для доступа к материалам:*
+1\. Нажмите кнопку ниже
+2\. Или используйте команду /materials
+3\. Или пройдите по ссылке выше"""
+    
+    keyboard = [
+        [InlineKeyboardButton(f"📁 ОТКРЫТЬ {profile_code}", url=disk_link)]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.message.reply_text(
+        message_text,
+        reply_markup=reply_markup,
+        parse_mode="MarkdownV2"
+    )
+
+# ============================================
+# УПРОЩЕННАЯ КОМАНДА /materials
+# ============================================
+
+async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Упрощенная команда для получения материалов"""
+    user = update.effective_user
+    
+    # Проверяем наличие профиля в user_data
+    profile_code = None
+    
+    # Способ 1: Из profile_data
+    profile_data = context.user_data.get("profile_data")
+    if profile_data and 'display_name' in profile_data:
+        profile_code = profile_data['display_name']
+    
+    # Способ 2: Из last_payment_profile
+    elif context.user_data.get("last_payment_profile"):
+        profile_code = context.user_data.get("last_payment_profile")
+    
+    # Способ 3: Из pending_payment_profile
+    elif context.user_data.get("pending_payment_profile"):
+        profile_code = context.user_data.get("pending_payment_profile")
+    
+    if not profile_code:
+        # Если профиля нет - предлагаем пройти тест
+        await update.message.reply_text(
+            "📝 *У вас пока нет профиля*\n\n"
+            "Пройдите тест, чтобы получить ваш психологический профиль и материалы\.\n"
+            "Используйте команду /start для начала теста\.",
+            parse_mode="MarkdownV2"
+        )
+        return
+    
+    # Получаем ссылку из словаря
+    disk_link = PROFILE_LINKS.get(profile_code, PROFILE_LINKS[DEFAULT_PROFILE])
+    
+    # Формируем сообщение
+    message_text = f"""📚 *ВАШИ МАТЕРИАЛЫ*
+
+👤 *{user.first_name}*, ваш профиль: `{profile_code}`
+
+🔗 *Ссылка на материалы:*
+`{disk_link}`
+
+*Нажмите кнопку ниже для открытия:*"""
+    
+    # Создаем кнопку
+    keyboard = [
+        [InlineKeyboardButton(f"📁 ОТКРЫТЬ {profile_code}", url=disk_link)]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        message_text,
+        reply_markup=reply_markup,
+        parse_mode="MarkdownV2"
     )
 
 # ============================================
@@ -1916,7 +2162,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Как ты воспринимаешь реальность \n"
         f"• Каким способом обрабатываешь информацию \n"
         f"• Какие поведенческие паттерны у тебя есть \n"
-        f"• Что не дает тебе расти 🚀\n\n"
+        f"• Что не даёт тебе расти 🚀\n\n"
         f"🎯 <b>Что тебя ждёт:</b>\n\n"
         f"1️⃣ <b>ЭТАП 1:</b> Конфигурация восприятия (8 вопросов)\n"
         f"2️⃣ <b>ЭТАП 2:</b> Конфигурация мышления (8 вопросов)\n"
@@ -2184,7 +2430,7 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
     current = context.user_data.get("stage2_current", 0)
     
-    questions = STAGE_2_QUESTIONS.get(perception_type, STAGE_2_QUESTIONS["СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ"])
+    questions = STAGE_2_QUESTIONS.get(perception_type, STAGE_2_QUESTIONS["СОЦИАЛЬНО  -АФФИЛИАТИВНЫЙ"])
     
     if current >= len(questions):
         return await finish_stage_2(update, context)
@@ -2756,85 +3002,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# КОМАНДА ДЛЯ ПОЛУЧЕНИЯ МАТЕРИАЛОВ
-# ============================================
-
-async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /materials для получения материалов после оплаты"""
-    user_id = update.effective_user.id
-    user_name = update.effective_user.first_name
-    
-    # Проверяем, есть ли сохраненный payment_id
-    last_payment_id = context.user_data.get("last_payment_id")
-    
-    if not last_payment_id:
-        await update.message.reply_text(
-            f"📭 *У вас нет активных платежей*\n\n"
-            f"👤 *{user_name}*, для получения материалов необходимо приобрести полный пакет.\n\n"
-            f"💎 *Полный пакет ВАРИАТИКА:*\n"
-            f"• Стоимость: 1 руб (тестовый режим)\n"
-            f"• ВСЕ способы оплаты (СБП, ЮMoney, карты)\n"
-            f"• Мгновенный доступ после оплаты\n"
-            f"• Все материалы курса\n\n"
-            f"Используйте команду /buy для покупки",
-            parse_mode='Markdown'
-        )
-        return
-    
-    # Пытаемся получить материалы
-    await update.message.reply_text(
-        f"🔍 *ПОИСК МАТЕРИАЛОВ...*\n\n"
-        f"📋 *ID платежа:* `{last_payment_id}`\n\n"
-        f"⏳ Проверяю доступ...",
-        parse_mode='Markdown'
-    )
-    
-    materials_result = await get_materials_link_api(last_payment_id, user_id)
-    
-    if not materials_result.get("success"):
-        error_msg = materials_result.get("error", "Неизвестная ошибка")
-        
-        keyboard = [[InlineKeyboardButton("💳 Купить пакет", callback_data="buy_without_test")]]
-        
-        await update.message.reply_text(
-            f"❌ *НЕ УДАЛОСЬ ПОЛУЧИТЬ МАТЕРИАЛЫ*\n\n"
-            f"`{error_msg}`\n\n"
-            f"Возможно, платеж еще не обработан или возникла ошибка.\n"
-            f"Попробуйте позже или приобретите пакет заново.",
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-    
-    materials_link = materials_result.get("materials_link")
-    profile_code = materials_result.get("profile_code", "SA_1_DEF")
-    
-    if not materials_link:
-        await update.message.reply_text(
-            f"❌ *ССЫЛКА НЕ НАЙДЕНА*\n\n"
-            f"Материалы для платежа `{last_payment_id}` не найдены.\n"
-            f"Обратитесь в поддержку.",
-            parse_mode='Markdown'
-        )
-        return
-    
-    # Показываем ссылку на материалы
-    keyboard = [[InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)]]
-    
-    await update.message.reply_text(
-        f"✅ *МАТЕРИАЛЫ ГОТОВЫ!*\n\n"
-        f"👤 *{user_name}*, вот ваши материалы курса ВАРИАТИКА:\n\n"
-        f"📋 *ID заказа:* `{last_payment_id}`\n"
-        f"📊 *Профиль:* `{profile_code}`\n"
-        f"💰 *Сумма:* 1 руб (тестовый режим)\n\n"
-        f"🔗 *Ссылка на Яндекс.Диск:*\n"
-        f"Нажмите кнопку ниже для скачивания:",
-        parse_mode='Markdown',
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        disable_web_page_preview=True
-    )
-
-# ============================================
 # КОМАНДА ДЛЯ ПРОВЕРКИ СТАТУСА
 # ============================================
 
@@ -2947,6 +3114,11 @@ def main():
     print("💎 Стоимость полного пакета: 1 руб (ТЕСТОВЫЙ РЕЖИМ)")
     print("💳 Доступные способы оплаты: СБП, ЮMoney, банковские карты")
     print("="*30)
+    print("📚 ЛОКАЛЬНЫЙ СЛОВАРЬ ССЫЛОК: 36 профилей загружено")
+    print("✅ show_materials_after_payment: ГОТОВА")
+    print("✅ Упрощенная команда /materials: ГОТОВА")
+    print("✅ Кнопка в результатах теста: ДОБАВЛЕНА")
+    print("="*30)
     print("🚀 Запускаю бота...")
     
     application = Application.builder().token(TOKEN).build()
@@ -2955,6 +3127,12 @@ def main():
     application.add_handler(CommandHandler("buy", buy_command))
     application.add_handler(CommandHandler("materials", materials_command))
     application.add_handler(CommandHandler("status", status_command))
+    
+    # Добавляем обработчик для кнопки материалов
+    application.add_handler(CallbackQueryHandler(
+        handle_materials_button, 
+        pattern="^materials:"
+    ))
     
     conv_handler = ConversationHandler(
         entry_points=[
@@ -2999,7 +3177,8 @@ def main():
                 CallbackQueryHandler(buy_package_callback, pattern="^buy_package$"),
                 CallbackQueryHandler(restart_test, pattern="^restart_test$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(show_results_screen, pattern="^show_results$")
+                CallbackQueryHandler(show_results_screen, pattern="^show_results$"),
+                CallbackQueryHandler(handle_materials_button, pattern="^materials:")
             ],
             GIFT_SCREEN: [
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
@@ -3032,6 +3211,10 @@ def main():
     logger.info(f"📡 API: {API_URL}")
     logger.info(f"💳 YooKassa: {'✅ ACTIVE' if YOOKASSA_SHOP_ID and YOOKASSA_SECRET_KEY else '❌ INACTIVE'}")
     logger.info("💰 Payment system: ACTIVE (1 RUB TEST MODE, all methods)")
+    logger.info("📚 Local materials dictionary: 36 profiles loaded")
+    logger.info("✅ show_materials_after_payment: READY")
+    logger.info("✅ Simplified /materials command: READY")
+    logger.info("✅ Materials button in results: ADDED")
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
