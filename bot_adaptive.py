@@ -15,6 +15,8 @@ import re
 import time
 import random
 import requests
+import base64
+import uuid
 from collections import Counter
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -45,6 +47,9 @@ logger = logging.getLogger(__name__)
 
 # Конфигурация платежной системы
 API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
+YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
+YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
+TELEGRAM_BOT_URL = "https://t.me/Testing_Lichnosti_bot"
 BOT_LINK = "t.me/Testing_Lichnosti_bot"
 AUTHOR_LINK = "@meysternlp"
 SHARE_TEXT = "Только что узнал о себе то, о чём ещё не знал... Тест показывает скрытые паттерны. КатеГОрически рекомендую.."
@@ -600,61 +605,224 @@ def generate_payment_id(prefix="buy") -> str:
     random_str = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=8))
     return f"{prefix}_{timestamp}_{random_str}"
 
-async def create_payment_advanced(user_id: int, profile_code: str, amount: float = 1.00) -> dict:  # ✅ Изменено на 1 рубль
-    """Создает платеж через API"""
-    
-    payment_id = generate_payment_id()
-    
-    data = {
-        "payment_id": payment_id,
-        "user_id": user_id,
-        "profile_code": profile_code.upper(),
-        "amount": amount,
-        "description": f"Оплата курса ВАРИАТИКА (профиль: {profile_code})"
-    }
-    
+def create_yookassa_invoice(payment_id: str, user_id: int, profile_code: str, amount: float = 1.0, email: str = None) -> dict:
+    """
+    Создает платеж через Invoices API ЮKassa
+    Пользователь увидит ВСЕ способы оплаты: СБП, ЮMoney, карты и т.д.
+    """
     try:
+        logger.info(f"📤 Создаю платеж ЮKassa: {payment_id}, профиль: {profile_code}")
+        
+        # 1. Подготовка авторизации
+        auth_string = f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}"
+        auth_encoded = base64.b64encode(auth_string.encode()).decode()
+        
+        # 2. Уникальный ключ для защиты от дублей
+        unique_id = uuid.uuid4().hex[:16]
+        idempotence_key = f"{payment_id}_{unique_id}_{int(time.time())}"
+        
+        # 3. Заголовки запроса
+        headers = {
+            'Authorization': f'Basic {auth_encoded}',
+            'Content-Type': 'application/json',
+            'Idempotence-Key': idempotence_key
+        }
+        
+        # 4. Email для чека (если не указан)
+        if not email:
+            email = f"user_{user_id}@telegram.org"
+        
+        # 5. ОПИСАНИЕ с профилем пользователя
+        description = f"Профиль {profile_code} - Курс ВАРИАТИКА"
+        
+        # 6. ТЕЛО ЗАПРОСА к ЮKassa (главная часть!)
+        payload = {
+            "amount": {
+                "value": f"{amount:.2f}",
+                "currency": "RUB"
+            },
+            # ⚠️ ВНИМАНИЕ: НЕ УКАЗЫВАЕМ payment_method_data!
+            # Пользователь сам выберет способ оплаты на стороне ЮKassa
+            "confirmation": {
+                "type": "redirect",
+                "return_url": TELEGRAM_BOT_URL
+            },
+            "capture": True,
+            "description": description,
+            "metadata": {
+                "payment_id": payment_id,
+                "user_id": user_id,
+                "telegram_id": str(user_id),
+                "profile_code": profile_code,
+                "is_test": "true" if amount == 1.0 else "false"
+            },
+            # Чек по 54-ФЗ (обязательно для боевого режима)
+            "receipt": {
+                "customer": {
+                    "email": email
+                },
+                "items": [
+                    {
+                        "description": f"Курс ВАРИАТИКА для профиля {profile_code}",
+                        "quantity": "1.00",
+                        "amount": {
+                            "value": f"{amount:.2f}",
+                            "currency": "RUB"
+                        },
+                        "vat_code": "1",
+                        "payment_subject": "service",
+                        "payment_mode": "full_payment"
+                    }
+                ]
+            }
+        }
+        
+        # 7. Отправка запроса в ЮKassa
+        logger.info(f"💳 Отправляю запрос в ЮKassa (Invoices API)...")
+        
         response = requests.post(
-            f"{API_URL}/api/create-payment-advanced",
-            json=data,
-            timeout=10
+            "https://api.yookassa.ru/v3/payments",
+            headers=headers,
+            json=payload,
+            timeout=30
         )
         
-        logger.info(f"Payment API response: {response.status_code}")
+        logger.info(f"📥 Ответ ЮKassa: {response.status_code}")
         
-        # ✅ ИСПРАВЛЕНО: принимаем и 200, и 201 как успешные
-        if response.status_code in [200, 201]:
-            result = response.json()
-            if result.get("success"):
+        # 8. Обработка ответа
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Получаем ссылку для оплаты
+            confirmation_url = data.get('confirmation', {}).get('confirmation_url')
+            
+            if confirmation_url:
+                logger.info(f"✅ Платеж создан в ЮKassa: {data.get('id')}")
+                
                 return {
                     "success": True,
                     "payment_id": payment_id,
-                    "confirmation_url": result.get("confirmation_url"),
-                    "yookassa_id": result.get("yookassa_id"),
-                    "amount": result.get("amount", amount),
-                    "profile_link": result.get("profile_link"),
-                    "invoice_type": result.get("invoice_type", "yookassa_invoice"),
-                    "available_methods": result.get("available_methods", "all"),
-                    "status": result.get("status", "pending")
+                    "confirmation_url": confirmation_url,
+                    "yookassa_id": data.get('id'),
+                    "amount": amount,
+                    "profile_code": profile_code,
+                    "invoice_type": "yookassa_invoice",
+                    "available_methods": "all",
+                    "status": data.get('status', 'pending')
                 }
             else:
-                return {
-                    "success": False,
-                    "error": result.get("error", "Unknown error from API"),
-                    "payment_id": payment_id
-                }
+                logger.error(f"❌ Нет ссылки для оплаты в ответе ЮKassa")
+                return {"success": False, "error": "Нет ссылки для оплаты"}
         else:
+            error_text = response.text[:500]
+            logger.error(f"❌ Ошибка ЮKassa {response.status_code}: {error_text}")
+            return {"success": False, "error": f"Ошибка ЮKassa: {response.status_code}", "details": error_text}
+            
+    except Exception as e:
+        logger.error(f"❌ Исключение при создании платежа ЮKassa: {e}")
+        return {"success": False, "error": str(e)}
+
+async def create_payment_advanced(user_id: int, profile_code: str, amount: float = 1.00) -> dict:
+    """
+    СОЗДАЕТ ПЛАТЕЖ в нашей базе данных + в ЮKassa
+    Теперь включает профиль пользователя!
+    """
+    
+    # 1. Генерируем ID платежа
+    timestamp = int(time.time())
+    if amount == 1.0:
+        payment_id = f"test_{user_id}_{timestamp}"
+    else:
+        payment_id = f"prod_{user_id}_{timestamp}"
+    
+    logger.info(f"💳 Создаю платеж: {payment_id}, профиль: {profile_code}, сумма: {amount}")
+    
+    # 2. Сначала создаем в нашей БД
+    try:
+        db_payload = {
+            "payment_id": payment_id,
+            "user_id": user_id,
+            "profile_code": profile_code.upper(),
+            "amount": amount,
+            "email": f"user_{user_id}@telegram.org",
+            "description": f"Профиль {profile_code} - Курс ВАРИАТИКА"
+        }
+        
+        db_response = requests.post(
+            f"{API_URL}/api/create-payment-advanced",
+            json=db_payload,
+            timeout=10
+        )
+        
+        # ✅ ИСПРАВЛЕНО: принимаем и 200, и 201 как успешные
+        if db_response.status_code in [200, 201]:
+            db_data = db_response.json()
+            
+            # 3. Если API вернул confirmation_url - используем его
+            if db_data.get("confirmation_url"):
+                logger.info(f"✅ Платеж создан через API: {payment_id}")
+                return {
+                    "success": True,
+                    "payment_id": payment_id,
+                    "confirmation_url": db_data["confirmation_url"],
+                    "amount": amount,
+                    "profile_code": profile_code,
+                    "yookassa_id": db_data.get("yookassa_id"),
+                    "invoice_type": db_data.get("invoice_type", "yookassa_invoice"),
+                    "available_methods": db_data.get("available_methods", "all"),
+                    "status": db_data.get("status", "pending")
+                }
+            
+            # 4. Иначе создаем через ЮKassa напрямую
+            logger.info(f"🔄 Создаю платеж через ЮKassa напрямую: {payment_id}")
+            yookassa_result = create_yookassa_invoice(
+                payment_id=payment_id,
+                user_id=user_id,
+                profile_code=profile_code,
+                amount=amount,
+                email=f"user_{user_id}@telegram.org"
+            )
+            
+            if yookassa_result["success"]:
+                # 5. Сохраняем ID ЮKassa в нашей БД
+                try:
+                    update_response = requests.post(
+                        f"{API_URL}/api/update-yookassa-id",
+                        json={
+                            "payment_id": payment_id,
+                            "yookassa_id": yookassa_result.get("yookassa_id"),
+                            "profile_code": profile_code,
+                            "status": "waiting"
+                        },
+                        timeout=5
+                    )
+                    
+                    if update_response.status_code in [200, 201]:
+                        logger.info(f"✅ ID ЮKassa сохранен в БД")
+                    else:
+                        logger.warning(f"⚠️ Не удалось сохранить ID ЮKassa: {update_response.status_code}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Ошибка при сохранении ID ЮKassa: {e}")
+                
+                return yookassa_result
+            else:
+                logger.error(f"❌ Ошибка создания платежа в ЮKassa: {yookassa_result.get('error')}")
+                return yookassa_result
+                
+        else:
+            error_text = db_response.text[:200]
+            logger.error(f"❌ Ошибка БД {db_response.status_code}: {error_text}")
             return {
-                "success": False,
-                "error": f"API error: {response.status_code}",
-                "details": response.text[:200]
+                "success": False, 
+                "error": f"Ошибка API: {db_response.status_code}",
+                "details": error_text
             }
             
     except Exception as e:
-        logger.error(f"Payment creation error: {e}")
+        logger.error(f"❌ Ошибка подключения к API: {e}")
         return {
             "success": False,
-            "error": f"Connection error: {str(e)}"
+            "error": f"Ошибка подключения: {str(e)}"
         }
 
 async def get_materials_link_api(payment_id: str, user_id: int) -> dict:
@@ -1310,7 +1478,7 @@ async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Книгу «ВАРИАТИКА. Библиотека человеческих паттернов»\n"
             f"• Персональные рекомендации по развитию\n"
             f"• Карту сильных и слабых сторон\n\n"
-            f"💰 *Стоимость:* 1 руб (тестовый режим)\n"  # ✅ Изменено на 1 рубль
+            f"💰 *Стоимость:* 1 руб (тестовый режим)\n"
             f"💳 *Все способы оплаты:* СБП, ЮMoney, банковские карты\n\n"
             f"Выбери действие:",
             parse_mode='Markdown',
@@ -1358,32 +1526,33 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"💳 *СОЗДАЮ ПЛАТЕЖ...*\n\n"
             f"👤 *Пользователь:* {user_name}\n"
             f"📊 *Профиль:* `{profile_code}`\n"
-            f"💰 *Сумма:* 1 руб (тестовый режим)\n\n"  # ✅ Изменено на 1 рубль
+            f"💰 *Сумма:* 1 руб (тестовый режим)\n\n"
             f"⏳ *Создаю ссылку для оплаты...*",
             parse_mode='Markdown'
         )
     
     # Создаем платеж через API с суммой 1 рубль
-    payment_result = await create_payment_advanced(user_id, profile_code, 1.00)  # ✅ Изменено на 1 рубль
+    payment_result = await create_payment_advanced(user_id, profile_code, 1.00)
     
     if not payment_result.get("success"):
         error_msg = payment_result.get("error", "Неизвестная ошибка")
+        details = payment_result.get("details", "")
         
         keyboard = [[InlineKeyboardButton("🔄 Попробовать снова", callback_data="buy_without_test")]]
         
+        error_text = f"❌ *Ошибка при создании платежа:*\n`{error_msg}`"
+        if details:
+            error_text += f"\n\n`{details[:100]}`"
+        
         if query:
             await query.edit_message_text(
-                f"❌ *ОШИБКА ПРИ СОЗДАНИИ ПЛАТЕЖА*\n\n"
-                f"`{error_msg}`\n\n"
-                f"Попробуйте еще раз или обратитесь в поддержку.",
+                error_text,
                 parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
             await update.message.reply_text(
-                f"❌ *ОШИБКА ПРИ СОЗДАНИИ ПЛАТЕЖА*\n\n"
-                f"`{error_msg}`\n\n"
-                f"Попробуйте еще раз или обратитесь в поддержку.",
+                error_text,
                 parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
@@ -1396,26 +1565,40 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data["last_payment_id"] = payment_id
     context.user_data["last_payment_profile"] = profile_code
     
-    # Показываем ссылку на оплату
+    # Информация о Invoices API
+    invoice_info = ""
+    invoice_type = payment_result.get('invoice_type', 'yookassa_invoice')
+    available_methods = payment_result.get('available_methods', 'all')
+    
+    if invoice_type == 'yookassa_invoice' and available_methods == 'all':
+        invoice_info = (
+            "\n💡 *ВСЕ способы оплаты доступны:*\n"
+            "• СБП (Сбербанк Онлайн)\n"
+            "• ЮMoney\n"
+            "• Банковские карты (Visa/Mastercard/Мир)\n"
+            "• Тинькофф, Альфа-Банк\n"
+            "• И другие\n"
+        )
+    
+    # Финальное сообщение пользователю
     message_text = (
         f"✅ *ПЛАТЕЖ СОЗДАН!*\n\n"
         f"👤 *Пользователь:* {user_name}\n"
+        f"📊 *Ваш профиль:* `{profile_code}`\n"
         f"📋 *ID платежа:* `{payment_id}`\n"
-        f"📊 *Профиль:* `{profile_code}`\n"
-        f"💰 *Сумма:* 1 руб (тестовый режим)\n\n"  # ✅ Изменено на 1 рубль
-        f"💡 *ВСЕ способы оплаты доступны:*\n"
-        f"• СБП (Сбер)\n"
-        f"• ЮMoney\n"
-        f"• Банковские карты\n"
-        f"• Тинькофф\n"
-        f"• Альфа-Банк\n"
-        f"• И другие\n\n"
-        f"🔗 *Для оплаты нажмите кнопку ниже:*\n"
-        f"После успешной оплаты вы получите мгновенное уведомление и доступ к материалам."
+        f"💰 *Сумма:* 1 руб (тестовый режим)\n"
+        f"{invoice_info}"
+        f"\n🔒 *Защита от дублей:* ✅ активна\n"
+        f"📊 *Профиль сохранен:* ✅ `{profile_code}`\n\n"
+        f"*Для оплаты нажмите кнопку ниже:*\n"
+        f"После успешной оплаты:\n"
+        f"1. Вы получите уведомление\n"
+        f"2. Ссылка на материалы придет автоматически\n"
+        f"3. Профиль `{profile_code}` будет сохранен"
     )
     
     keyboard = [
-        [InlineKeyboardButton("💳 ОПЛАТИТЬ 1 РУБ (тест)", url=confirmation_url)],  # ✅ Изменено на 1 рубль
+        [InlineKeyboardButton("💳 ОПЛАТИТЬ 1 РУБЛЬ (тест)", url=confirmation_url)],
         [InlineKeyboardButton("🔄 Проверить статус", callback_data=f"check_payment_{payment_id}")],
         [InlineKeyboardButton("🏠 В меню", callback_data="main_menu")]
     ]
@@ -1561,7 +1744,7 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
         f"🎉 Ваш заказ успешно обработан!\n\n"
         f"📋 *ID заказа:* `{payment_id}`\n"
         f"📊 *Профиль:* `{profile_code}`\n"
-        f"💰 *Сумма:* 1 руб (тестовый режим)\n\n"  # ✅ Изменено на 1 рубль
+        f"💰 *Сумма:* 1 руб (тестовый режим)\n\n"
         f"📚 *Что вы получили:*\n"
         f"• Полный разбор профиля (15+ страниц)\n"
         f"• Персональную терапевтическую сказку\n"
@@ -1635,13 +1818,13 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"• Персональные рекомендации по развитию\n"
         f"• Карта сильных и слабых сторон\n\n"
         f"{profile_info}"
-        f"<b>Цена:</b> 1 ₽ (тестовый режим)\n\n"  # ✅ Изменено на 1 рубль
+        f"<b>Цена:</b> 1 ₽ (тестовый режим)\n\n"
         f"💳 *Все способы оплаты:* СБП, ЮMoney, банковские карты, Тинькофф, Альфа-Банк\n\n"
         f"После оплаты материалы придут автоматически!"
     )
     
     keyboard = [
-        [InlineKeyboardButton("💳 Купить за 1 руб (тест)", callback_data="buy_package")],  # ✅ Изменено на 1 рубль
+        [InlineKeyboardButton("💳 Купить за 1 руб (тест)", callback_data="buy_package")],
         [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
     ]
     
@@ -2589,7 +2772,7 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📭 *У вас нет активных платежей*\n\n"
             f"👤 *{user_name}*, для получения материалов необходимо приобрести полный пакет.\n\n"
             f"💎 *Полный пакет ВАРИАТИКА:*\n"
-            f"• Стоимость: 1 руб (тестовый режим)\n"  # ✅ Изменено на 1 рубль
+            f"• Стоимость: 1 руб (тестовый режим)\n"
             f"• ВСЕ способы оплаты (СБП, ЮMoney, карты)\n"
             f"• Мгновенный доступ после оплаты\n"
             f"• Все материалы курса\n\n"
@@ -2643,7 +2826,7 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 *{user_name}*, вот ваши материалы курса ВАРИАТИКА:\n\n"
         f"📋 *ID заказа:* `{last_payment_id}`\n"
         f"📊 *Профиль:* `{profile_code}`\n"
-        f"💰 *Сумма:* 1 руб (тестовый режим)\n\n"  # ✅ Изменено на 1 рубль
+        f"💰 *Сумма:* 1 руб (тестовый режим)\n\n"
         f"🔗 *Ссылка на Яндекс.Диск:*\n"
         f"Нажмите кнопку ниже для скачивания:",
         parse_mode='Markdown',
@@ -2755,8 +2938,13 @@ def main():
     print("\n💳 ПРОВЕРКА ПЛАТЕЖНОЙ СИСТЕМЫ")
     print("="*30)
     print(f"📡 API URL: {API_URL}")
+    print(f"🏪 YooKassa Shop ID: {YOOKASSA_SHOP_ID if YOOKASSA_SHOP_ID else '❌ НЕ УСТАНОВЛЕН'}")
+    print(f"🔑 YooKassa Secret Key: {'✅ УСТАНОВЛЕН' if YOOKASSA_SECRET_KEY else '❌ НЕ УСТАНОВЛЕН'}")
+    if YOOKASSA_SECRET_KEY:
+        key_type = "БОЕВОЙ (live_)" if YOOKASSA_SECRET_KEY.startswith('live_') else "ТЕСТОВЫЙ (test_)"
+        print(f"📊 Тип ключа: {key_type}")
     print("✅ Платежная система: ГОТОВА")
-    print("💎 Стоимость полного пакета: 1 руб (ТЕСТОВЫЙ РЕЖИМ)")  # ✅ Изменено на 1 рубль
+    print("💎 Стоимость полного пакета: 1 руб (ТЕСТОВЫЙ РЕЖИМ)")
     print("💳 Доступные способы оплаты: СБП, ЮMoney, банковские карты")
     print("="*30)
     print("🚀 Запускаю бота...")
@@ -2842,7 +3030,8 @@ def main():
     
     logger.info("🚀 Bot started: ВАРИАТИКА ver 2.2 with PAYMENT SYSTEM!")
     logger.info(f"📡 API: {API_URL}")
-    logger.info("💰 Payment system: ACTIVE (1 RUB TEST MODE, all methods)")  # ✅ Изменено
+    logger.info(f"💳 YooKassa: {'✅ ACTIVE' if YOOKASSA_SHOP_ID and YOOKASSA_SECRET_KEY else '❌ INACTIVE'}")
+    logger.info("💰 Payment system: ACTIVE (1 RUB TEST MODE, all methods)")
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
