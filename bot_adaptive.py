@@ -385,7 +385,7 @@ STAGE_2_QUESTIONS = {
             }
         },
         {
-            "text": "Человек хочет большего, но не действует.\n\nПочему?",
+            "text": "Человник хочет большего, но не действует.\n\nПочему?",
             "options": {
                 "1": "Не верит в себя",
                 "2": "Не знает, как",
@@ -459,7 +459,7 @@ STAGE_2_QUESTIONS = {
             }
         },
         {
-            "text": "Человек перегружен информацией.\n\nЧто делать?",
+            "text": "Человник перегружен информацией.\n\nЧто делать?",
             "options": {
                 "1": "Избегать информации",
                 "2": "Пытаться всё изучить",
@@ -545,7 +545,7 @@ STAGE_3_QUESTIONS = [
 STAGE_4_QUESTIONS = [
     {"id": "q4_1", "text": "Как часто ты чувствуешь, что «что-то не так» в жизни?", "options": {"a": {"text": "Постоянно", "dilts": "IDENTITY"}, "b": {"text": "Часто", "dilts": "VALUES"}, "c": {"text": "Иногда", "dilts": "CAPABILITIES"}, "d": {"text": "Редко или никогда", "dilts": "ENVIRONMENT"}}},
     {"id": "q4_2", "text": "Что именно «не так»?\n\nВыбери то, что ближе всего:", "options": {"a": {"text": "Не то окружение (место, люди, условия)", "dilts": "ENVIRONMENT"}, "b": {"text": "Делаю не то, что хочу", "dilts": "BEHAVIOR"}, "c": {"text": "Не умею делать то, что хочу", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимаю, чего хочу", "dilts": "VALUES"}}},
-    {"id": "q4_3", "text": "Человек чувствует себя несчастным.\n\nВ чём, скорее всего, причина?", "options": {"a": {"text": "Не те люди вокруг", "dilts": "ENVIRONMENT"}, "b": {"text": "Делает не то, что хочет", "dilts": "BEHAVIOR"}, "c": {"text": "Не умеет делать то, что хочет", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимает, чего хочет", "dilts": "VALUES"}}},
+    {"id": "q4_3", "text": "Человник чувствует себя несчастным.\n\nВ чём, скорее всего, причина?", "options": {"a": {"text": "Не те люди вокруг", "dilts": "ENVIRONMENT"}, "b": {"text": "Делает не то, что хочет", "dilts": "BEHAVIOR"}, "c": {"text": "Не умеет делать то, что хочет", "dilts": "CAPABILITIES"}, "d": {"text": "Не понимает, чего хочет", "dilts": "VALUES"}}},
     {"id": "q4_4", "text": "Если бы ты мог изменить что-то одно, что бы это было?", "options": {"a": {"text": "Своё окружение", "dilts": "ENVIRONMENT"}, "b": {"text": "Своё поведение", "dilts": "BEHAVIOR"}, "c": {"text": "Свои способности", "dilts": "CAPABILITIES"}, "d": {"text": "Своё понимание целей", "dilts": "VALUES"}}},
     {"id": "q4_5", "text": "Что для тебя сложнее всего?", "options": {"a": {"text": "Изменить внешние условия", "dilts": "ENVIRONMENT"}, "b": {"text": "Начать действовать", "dilts": "BEHAVIOR"}, "c": {"text": "Научиться новому", "dilts": "CAPABILITIES"}, "d": {"text": "Понять, чего я хочу", "dilts": "VALUES"}}},
     {"id": "q4_6", "text": "Когда ты застреваешь в проблеме, что обычно не хватает?", "options": {"a": {"text": "Ресурсов (время, деньги, связи)", "dilts": "ENVIRONMENT"}, "b": {"text": "Действий (не начинаю)", "dilts": "BEHAVIOR"}, "c": {"text": "Навыков (не умею)", "dilts": "CAPABILITIES"}, "d": {"text": "Понимания (не знаю зачем)", "dilts": "VALUES"}}},
@@ -600,7 +600,7 @@ def generate_payment_id(prefix="buy") -> str:
     random_str = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=8))
     return f"{prefix}_{timestamp}_{random_str}"
 
-async def create_payment_advanced(user_id: int, profile_code: str, amount: float = 690.00) -> dict:
+async def create_payment_advanced(user_id: int, profile_code: str, amount: float = 1.00) -> dict:  # ✅ Изменено на 1 рубль
     """Создает платеж через API"""
     
     payment_id = generate_payment_id()
@@ -622,7 +622,8 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
         
         logger.info(f"Payment API response: {response.status_code}")
         
-        if response.status_code == 200:
+        # ✅ ИСПРАВЛЕНО: принимаем и 200, и 201 как успешные
+        if response.status_code in [200, 201]:
             result = response.json()
             if result.get("success"):
                 return {
@@ -1147,14 +1148,40 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     profile_card = get_card_description_from_profile(profile, profile_data)
     context.user_data["profile_card"] = profile_card
     
+    # ✅ ВАЖНОЕ ИСПРАВЛЕНИЕ: Определяем РЕАЛЬНЫЙ код профиля из найденного профиля
+    try:
+        # Получаем ключ профиля из найденного объекта
+        if hasattr(profile, 'key'):
+            actual_profile_key = profile.key.lower()
+            logger.info(f"🔍 Найден ключ профиля: {actual_profile_key}")
+        elif hasattr(profile, 'profile_name'):
+            actual_profile_key = profile.profile_name.lower()
+        else:
+            # Если нет ключа, пытаемся извлечь из card данных
+            actual_profile_key = f"{profile_card.get('type_code', 'sa')}_{profile_card.get('level', 1)}_{profile_card.get('dilts_code', 'def')}".lower()
+        
+        # Обновляем profile_data РЕАЛЬНЫМИ данными
+        parts = actual_profile_key.split('_')
+        if len(parts) >= 3:
+            profile_data['type_code'] = parts[0].upper()
+            profile_data['level'] = int(parts[1])
+            profile_data['dilts_code'] = parts[2].lower()
+            profile_data['display_name'] = actual_profile_key.upper()
+            context.user_data["profile_data"] = profile_data
+            logger.info(f"✅ Обновлен profile_data реальным профилем: {profile_data['display_name']}")
+            
+    except Exception as e:
+        logger.error(f"⚠️ Ошибка определения реального профиля: {e}")
+        # Оставляем старые данные как запасной вариант
+    
     # ====================================================
     # СООБЩЕНИЕ 1: Заголовок + Архетип + Цитата + "Это ты если..." + Суть проблемы
     # ====================================================
     
     message_1 = ""
     
-    # Заголовок
-    profile_header = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
+    # Заголовок - используем РЕАЛЬНЫЙ display_name
+    profile_header = profile_data.get('display_name', f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}")
     raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
     formatted_title = format_profile_title(raw_title, profile_header)
     message_1 += f"<b>{formatted_title}</b>\n\n"
@@ -1283,7 +1310,7 @@ async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Книгу «ВАРИАТИКА. Библиотека человеческих паттернов»\n"
             f"• Персональные рекомендации по развитию\n"
             f"• Карту сильных и слабых сторон\n\n"
-            f"💰 *Стоимость:* 690 руб\n"
+            f"💰 *Стоимость:* 1 руб (тестовый режим)\n"  # ✅ Изменено на 1 рубль
             f"💳 *Все способы оплаты:* СБП, ЮMoney, банковские карты\n\n"
             f"Выбери действие:",
             parse_mode='Markdown',
@@ -1312,20 +1339,32 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     
-    profile_code = context.user_data.get("pending_payment_profile", "SA_1_DEF")
+    # ✅ ИСПРАВЛЕНО: Берем РЕАЛЬНЫЙ профиль из результатов теста
+    profile_data = context.user_data.get("profile_data")
+    
+    if profile_data and 'display_name' in profile_data:
+        # Используем РЕАЛЬНЫЙ профиль, который нашли в базе
+        profile_code = profile_data['display_name']
+        logger.info(f"✅ Использую РЕАЛЬНЫЙ профиль из теста: {profile_code}")
+    else:
+        # Запасной вариант
+        profile_code = context.user_data.get("pending_payment_profile", "SA_1_DEF")
+        logger.info(f"⚠️ Использую запасной профиль: {profile_code}")
+    
+    context.user_data["pending_payment_profile"] = profile_code
     
     if query:
         await query.edit_message_text(
             f"💳 *СОЗДАЮ ПЛАТЕЖ...*\n\n"
             f"👤 *Пользователь:* {user_name}\n"
             f"📊 *Профиль:* `{profile_code}`\n"
-            f"💰 *Сумма:* 690 руб\n\n"
+            f"💰 *Сумма:* 1 руб (тестовый режим)\n\n"  # ✅ Изменено на 1 рубль
             f"⏳ *Создаю ссылку для оплаты...*",
             parse_mode='Markdown'
         )
     
-    # Создаем платеж через API
-    payment_result = await create_payment_advanced(user_id, profile_code, 690.00)
+    # Создаем платеж через API с суммой 1 рубль
+    payment_result = await create_payment_advanced(user_id, profile_code, 1.00)  # ✅ Изменено на 1 рубль
     
     if not payment_result.get("success"):
         error_msg = payment_result.get("error", "Неизвестная ошибка")
@@ -1363,7 +1402,7 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"👤 *Пользователь:* {user_name}\n"
         f"📋 *ID платежа:* `{payment_id}`\n"
         f"📊 *Профиль:* `{profile_code}`\n"
-        f"💰 *Сумма:* 690 руб\n\n"
+        f"💰 *Сумма:* 1 руб (тестовый режим)\n\n"  # ✅ Изменено на 1 рубль
         f"💡 *ВСЕ способы оплаты доступны:*\n"
         f"• СБП (Сбер)\n"
         f"• ЮMoney\n"
@@ -1376,7 +1415,7 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     
     keyboard = [
-        [InlineKeyboardButton("💳 ОПЛАТИТЬ 690 РУБ", url=confirmation_url)],
+        [InlineKeyboardButton("💳 ОПЛАТИТЬ 1 РУБ (тест)", url=confirmation_url)],  # ✅ Изменено на 1 рубль
         [InlineKeyboardButton("🔄 Проверить статус", callback_data=f"check_payment_{payment_id}")],
         [InlineKeyboardButton("🏠 В меню", callback_data="main_menu")]
     ]
@@ -1522,7 +1561,7 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
         f"🎉 Ваш заказ успешно обработан!\n\n"
         f"📋 *ID заказа:* `{payment_id}`\n"
         f"📊 *Профиль:* `{profile_code}`\n"
-        f"💰 *Сумма:* 690 руб\n\n"
+        f"💰 *Сумма:* 1 руб (тестовый режим)\n\n"  # ✅ Изменено на 1 рубль
         f"📚 *Что вы получили:*\n"
         f"• Полный разбор профиля (15+ страниц)\n"
         f"• Персональную терапевтическую сказку\n"
@@ -1596,13 +1635,13 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"• Персональные рекомендации по развитию\n"
         f"• Карта сильных и слабых сторон\n\n"
         f"{profile_info}"
-        f"<b>Цена:</b> 690 ₽\n\n"
+        f"<b>Цена:</b> 1 ₽ (тестовый режим)\n\n"  # ✅ Изменено на 1 рубль
         f"💳 *Все способы оплаты:* СБП, ЮMoney, банковские карты, Тинькофф, Альфа-Банк\n\n"
         f"После оплаты материалы придут автоматически!"
     )
     
     keyboard = [
-        [InlineKeyboardButton("💳 Купить за 690 руб", callback_data="buy_package")],
+        [InlineKeyboardButton("💳 Купить за 1 руб (тест)", callback_data="buy_package")],  # ✅ Изменено на 1 рубль
         [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
     ]
     
@@ -2550,7 +2589,7 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📭 *У вас нет активных платежей*\n\n"
             f"👤 *{user_name}*, для получения материалов необходимо приобрести полный пакет.\n\n"
             f"💎 *Полный пакет ВАРИАТИКА:*\n"
-            f"• Стоимость: 690 руб\n"
+            f"• Стоимость: 1 руб (тестовый режим)\n"  # ✅ Изменено на 1 рубль
             f"• ВСЕ способы оплаты (СБП, ЮMoney, карты)\n"
             f"• Мгновенный доступ после оплаты\n"
             f"• Все материалы курса\n\n"
@@ -2604,7 +2643,7 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 *{user_name}*, вот ваши материалы курса ВАРИАТИКА:\n\n"
         f"📋 *ID заказа:* `{last_payment_id}`\n"
         f"📊 *Профиль:* `{profile_code}`\n"
-        f"💰 *Сумма:* 690 руб\n\n"
+        f"💰 *Сумма:* 1 руб (тестовый режим)\n\n"  # ✅ Изменено на 1 рубль
         f"🔗 *Ссылка на Яндекс.Диск:*\n"
         f"Нажмите кнопку ниже для скачивания:",
         parse_mode='Markdown',
@@ -2717,7 +2756,7 @@ def main():
     print("="*30)
     print(f"📡 API URL: {API_URL}")
     print("✅ Платежная система: ГОТОВА")
-    print("💎 Стоимость полного пакета: 690 руб")
+    print("💎 Стоимость полного пакета: 1 руб (ТЕСТОВЫЙ РЕЖИМ)")  # ✅ Изменено на 1 рубль
     print("💳 Доступные способы оплаты: СБП, ЮMoney, банковские карты")
     print("="*30)
     print("🚀 Запускаю бота...")
@@ -2803,7 +2842,7 @@ def main():
     
     logger.info("🚀 Bot started: ВАРИАТИКА ver 2.2 with PAYMENT SYSTEM!")
     logger.info(f"📡 API: {API_URL}")
-    logger.info("💰 Payment system: ACTIVE (690 RUB, all methods)")
+    logger.info("💰 Payment system: ACTIVE (1 RUB TEST MODE, all methods)")  # ✅ Изменено
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
