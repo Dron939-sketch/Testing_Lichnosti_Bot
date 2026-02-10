@@ -3995,13 +3995,9 @@ except Exception as e:
 ============================================
 ТОЧКА ВХОДА
 ============================================
-if name == 'main':
-try:
-main()
-except KeyboardInterrupt:
-print("\n\n🛑 Бот остановлен пользователем")
-sys.exit(0)
-except Exception as e:
-logger.critical(f"💥 КРИТИЧЕСКАЯ ОШИБКА: {e}")
-sys.exit(1)
+# Запускаем бота
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+if __name__ == "__main__":
+    main()
 
