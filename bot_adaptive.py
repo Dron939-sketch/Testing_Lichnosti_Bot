@@ -52,7 +52,7 @@ YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 TELEGRAM_BOT_URL = "https://t.me/Testing_Lichnosti_bot"
 BOT_LINK = "t.me/Testing_Lichnosti_bot"
 AUTHOR_LINK = "@meysternlp"
-SHARE_TEXT = "Только что познакомился с виртуальным психологом Вариатика. Узнал о себе то, о чём ещё не знал... Рекомендую для самопознания!"
+SHARE_TEXT = "Мне в руки попало особое зеркало. В нём видно то, что обычно скрыто даже от себя.\n\nЯ посмотрел(а). Увидел(а). Теперь держи — твоя очередь смотреть."
 
 # Состояния ConversationHandler
 STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS, GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, DILTS_CLARIFICATION, PAYMENT_SCREEN = range(11)
@@ -486,7 +486,7 @@ STAGE_2_QUESTIONS = {
 
 # Таблица баллов для этапа 2
 STAGE_2_SCORING = {
-    "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": {
+    "СОЦИАЛЬНО-AФФИЛИАТИВНЫЙ": {
         0: {"1": 2, "2": 2, "3": 2, "5": 2},
         1: {"1": 2, "2": 2, "3": 2, "4": 2},
         2: {"1": 2, "3": 2, "2": 2, "1": 2},
@@ -878,7 +878,7 @@ def calculate_progress(current: int, total: int) -> str:
     progress = int((current / total) * 100)
     filled = int(progress / 10)
     bar = "▓" * filled + "░" * (10 - filled)
-    return f"{bar} {progress}%\nПройдено: {current}/{total}"
+    return f"{bar} {progress}%"
 
 def determine_perception_type(scores):
     """Определяет тип восприятия"""
@@ -1478,6 +1478,87 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     return RESULTS
 
 # ============================================
+# ОБНОВЛЕННЫЕ ФУНКЦИИ ШАРИНГА
+# ============================================
+
+async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ЭКРАН: ДАЙТЕ ДРУГИМ ЗЕРКАЛО — ПОЛУЧИТЕ МЕЧ"""
+    query = update.callback_query
+    await query.answer()
+    
+    instruction_text = (
+        f"🧠 <b>ДАЙТЕ ДРУГИМ ЗЕРКАЛО — ПОЛУЧИТЕ МЕЧ</b>\n\n"
+        
+        f"Иногда самое полезное, что мы можем сделать для близких —\n"
+        f"дать им зеркало.\n\n"
+        
+        f"<i>Поделитесь этим зеркалом с теми, кому оно может быть важно.</i>\n\n"
+        
+        f"⚔️ <b>А в благодарность — получите свой Меч:</b>\n"
+        f"Терапевтическая сказка <b>«Мастер Меча»</b>\n\n"
+        
+        f"📖 <b>Эта сказка работает с тем, что мешает вам\n"
+        f"«расправить плечи» на уровне убеждений.</b>\n\n"
+        
+        f"Она мягко трансформирует те ограничивающие установки,\n"
+        f"которые создают невидимую тяжесть на ваших плечах.\n\n"
+        
+        f"🔗 <i>Просто нажмите кнопку ниже —\n"
+        f"я подготовлю сообщение для друзей.</i>"
+    )
+    
+    encoded_text = urllib.parse.quote(SHARE_TEXT)
+    share_url = f"https://t.me/share/url?url={BOT_LINK}&text={encoded_text}"
+    
+    keyboard = [
+        [InlineKeyboardButton("🪞 Передать зеркало другу", url=share_url)],
+        [InlineKeyboardButton("✅ Я поделился — получить сказку", callback_data="confirm_share")],
+        [InlineKeyboardButton("Продолжить без этого →", callback_data="skip_share")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(instruction_text, reply_markup=reply_markup, parse_mode="HTML")
+    return GIFT_SCREEN
+
+async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ЭКРАН: ПОКАЗ СКАЗКИ «МАСТЕР МЕЧА»"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Используем существующую ссылку
+    GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"
+    
+    gift_text = (
+        f"⚔️ <b>ВАШ МЕЧ ГОТОВ!</b>\n\n"
+        
+        f"📚 <b>Терапевтическая сказка «Мастер Меча»</b>\n\n"
+        
+        f"Эта сказка работает именно с тем, что мешает вам\n"
+        f"расправить плечи на уровне убеждений.\n\n"
+        
+        f"<i>Она не «ломает» старые установки,\n"
+        f"а создаёт пространство для новых —\n"
+        f"тех, что позволяют стоять прямо и легко.</i>\n\n"
+        
+        f"💡 <b>Как читать для максимального эффекта:</b>\n"
+        f"1. Прочитайте перед сном\n"
+        f"2. Ищите в тексте «металл» (вашу истинную природу)\n"
+        f"3. Отмечайте «зазубрины» (ваши ограничения)\n"
+        f"4. Обращайте внимание на символы тяжести/лёгкости\n\n"
+        
+        f"<i>Приятного чтения и лёгкости в плечах!</i> 🪶✨"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("⚔️ Открыть сказку «Мастер Меча»", url=GIFT_PDF_LINK)],
+        [InlineKeyboardButton("⬅️ Назад к результатам", callback_data="back_to_results")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(gift_text, reply_markup=reply_markup, parse_mode="HTML")
+    return OPEN_GIFT_SCREEN
+
+# ============================================
 # ЭКРАНЫ ПЛАТЕЖНОЙ СИСТЕМЫ
 # ============================================
 
@@ -1786,40 +1867,19 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
 # ОСТАЛЬНЫЕ ЭКРАНЫ (ОБНОВЛЕННЫЕ)
 # ============================================
 
-async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН: ИНСТРУКЦИЯ ПО ШАРИНГУ"""
-    query = update.callback_query
-    await query.answer()
-    
-    instruction_text = (
-        f"🧠 <b>ПОДЕЛИТЕСЬ ОТКРЫТИЕМ!</b>\n\n"
-        f"Помогите друзьям тоже начать путь самопознания с виртуальным психологом.\n\n"
-        f"<b>Как это работает:</b>\n"
-        f"1. Нажмите кнопку ниже\n"
-        f"2. Отправьте сообщение друзьям\n"
-        f"3. Вернитесь сюда и нажмите «✅ Я поделился»\n\n"
-        f"<i>В благодарность я подготовлю для вас бонусный материал.</i>"
-    )
-    
-    encoded_text = urllib.parse.quote(SHARE_TEXT)
-    share_url = f"https://t.me/share/url?url={BOT_LINK}&text={encoded_text}"
-    
-    keyboard = [
-        [InlineKeyboardButton("📤 Поделиться с друзьями", url=share_url)],
-        [InlineKeyboardButton("✅ Я поделился", callback_data="confirm_share")],
-        [InlineKeyboardButton("⬅️ Назад к результатам", callback_data="back_to_results")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(instruction_text, reply_markup=reply_markup, parse_mode="HTML")
-    return GIFT_SCREEN
-
 async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Подтверждение шаринга"""
     query = update.callback_query
     await query.answer("✅ Спасибо за репост! Ваш бонус готов!")
     
     context.user_data["has_shared"] = True
+    
+    return await show_results_screen(update, context)
+
+async def skip_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пропуск шаринга"""
+    query = update.callback_query
+    await query.answer("Продолжаем без репоста")
     
     return await show_results_screen(update, context)
 
@@ -1873,34 +1933,6 @@ async def buy_package_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     # Переходим к созданию платежа
     return await buy_command(update, context)
 
-async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН: ОТКРЫТИЕ ПОДАРКА"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Используем стандартную ссылку на подарок
-    GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"
-    
-    gift_text = (
-        f"🧠 <b>ВАШ БОНУС ГОТОВ!</b>\n\n"
-        f"📚 Терапевтическая сказка для трансформации структуры восприятия\n\n"
-        f"Эта сказка разрешает внутренние противоречия в конфигурации восприятия вашего профиля.\n\n"
-        f"💡 <b>Как использовать:</b>\n"
-        f"1. Нажмите кнопку ниже, чтобы открыть PDF\n"
-        f"2. Прочитайте\n"
-        f"3. Обращайте внимание на символы и метафоры\n\n"
-        f"<i>Приятного чтения и глубоких инсайтов!</i> 📖✨"
-    )
-    
-    keyboard = [
-        [InlineKeyboardButton("📖 Открыть бонусный материал", url=GIFT_PDF_LINK)],
-        [InlineKeyboardButton("⬅️ Назад к результатам", callback_data="back_to_results")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(gift_text, reply_markup=reply_markup, parse_mode="HTML")
-    return OPEN_GIFT_SCREEN
-
 async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Кнопка 'Назад' - возвращает к результатам"""
     query = update.callback_query
@@ -1933,33 +1965,81 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return await start(fake_update, context)
 
 # ============================================
-# НАЧАЛЬНЫЕ ЭКРАНЫ И КОМАНДЫ
+# КОМАНДА /START С КНОПКОЙ "ДЕТАЛИ" - ОБНОВЛЕННАЯ ВЕРСИЯ
 # ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /start"""
+    """Основная команда /start с двумя кнопками"""
     user = update.effective_user
     
     welcome_text = (
-        f"🧠 <b>Привет, {user.first_name}!</b>\n\n"
-        f"Я — <b>Виртуальный психолог Вариатика</b>, ваш персональный помощник в самопознании.\n\n"
-        f"<b>Чтобы познакомиться поближе и получить персональные рекомендации:</b>\n\n"
-        f"1️⃣ <b>Пройдите адаптивный тест</b> (4 этапа, 10-15 минут)\n"
-        f"   ↳ Узнаете свой базовый психотип\n\n"
-        f"2️⃣ <b>Получите бесплатные инсайты</b>\n"
-        f"   ↳ Поймёте свои ключевые паттерны\n\n"
-        f"3️⃣ <b>Закажите полное описание профиля</b> за 1 руб\n"
-        f"   ↳ 15+ страниц детального анализа\n"
-        f"   ↳ Персональные рекомендации по развитию\n"
-        f"   ↳ Практические инструменты для жизни\n\n"
-        f"<i>Это не просто тест — это начало вашего пути к самопониманию.</i>\n\n"
-        f"Готовы начать наше знакомство? 🧠✨"
+        f"{user.first_name}, привет! 👋\n\n"
+        f"Я — Виртуальный психолог Вариатика.\n\n"
+        f"За 15 минут узнаете о себе то, что обычно остаётся невидимым.\n"
+        f"Увидите скрытые паттерны, которые управляют вашими решениями.\n\n"
+        f"А главное — узнаете то, о себе знать действительно нужно.\n"
+        f"То, что даст точку опоры для роста.\n\n"
+        f"Вас ждёт:\n\n"
+        f"1️⃣ Адаптивный тест (4 этапа)\n"
+        f"   ↳ Поймёте свой уникальный профиль\n\n"
+        f"2️⃣ Персональные материалы\n"
+        f"   ↳ Узнаете куда направлять усилия\n\n"
+        f"Начнём исследование?"
     )
     
-    keyboard = [[InlineKeyboardButton("🧠 Начать знакомство с психологом", callback_data="start_test")]]
+    keyboard = [
+        [InlineKeyboardButton("Начать исследование →", callback_data="start_test")],
+        [InlineKeyboardButton("🤔 А зачем это вообще?", callback_data="why_details")]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
+    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+    return None
+
+# ============================================
+# КНОПКА "ДЕТАЛИ" (why_details)
+# ============================================
+
+async def why_details_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик кнопки 'Детали'"""
+    query = update.callback_query
+    await query.answer()
+    
+    details_text = """🎭 Немного правды с юмором...
+
+Как говорится: 'Нет здоровых, есть не дообследованные!' 
+Я ваш виртуальный психолог — дообследую 😉
+
+🧠 Что я умею (кроме шуток):
+• Вижу паттерны там, где вы видите хаос
+• Нахожу систему там, где вы видите случайности  
+• Обнаруживаю 'прошивку' вашего восприятия
+
+🎯 Конкретно в тесте:
+
+1️⃣ Конфигурация восприятия
+   ↳ Как ваш разум фильтрует реальность
+
+2️⃣ Конфигурация мышления  
+   ↳ Как обрабатываете информацию
+
+3️⃣ Паттерны поведения
+   ↳ Что делаете 'на автомате'
+
+4️⃣ Точка роста
+   ↳ Куда двигаться осознанно
+
+⏱ 15 минут вместо лет терапии!
+Потому что в 21 веке даже самопознание должно быть эффективным!"""
+    
+    keyboard = [[InlineKeyboardButton("Ладно, убедил! Начинаем →", callback_data="start_test")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(details_text, reply_markup=reply_markup)
+
+# ============================================
+# НАЧАЛО ТЕСТА
+# ============================================
 
 async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало теста"""
@@ -1980,7 +2060,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_stage_1_intro(update, context)
 
 # ============================================
-# ЭТАП 1: КАК ВЫ ВОСПРИНИМАЕТЕ МИР?
+# ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ (ОБНОВЛЕННЫЕ ЭКРАНЫ)
 # ============================================
 
 async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1988,7 +2068,7 @@ async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     
     intro_text = (
-        f"🧠 <b>ЭТАП 1: КАК ВЫ ВОСПРИНИМАЕТЕ МИР?</b>\n\n"
+        f"🧠 <b>ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ</b>\n\n"
         f"Как ваш виртуальный психолог, я начну с понимания вашей базовой конфигурации восприятия.\n\n"
         f"<b>Что мы исследуем:</b>\n"
         f"• Куда направлено ваше внимание\n"
@@ -2059,9 +2139,10 @@ async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     tip = PSYCHOLOGIST_TIPS["stage1"][min(current, len(PSYCHOLOGIST_TIPS["stage1"])-1)]
     
+    # Убираем номер вопроса из текста вопроса, оставляем только заголовок этапа
     question_text = (
-        f"🧠 <b>ЭТАП 1: ИССЛЕДОВАНИЕ ВОСПРИЯТИЯ</b>\n\n"
-        f"<b>Вопрос {current+1}/8:</b>\n{question['text']}\n\n"
+        f"🧠 <b>ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ</b>\n\n"
+        f"{question['text']}\n\n"
         f"{tip}\n\n"
         f"{progress}"
     )
@@ -2140,7 +2221,7 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ <b>ЭТАП 1 ЗАВЕРШЁН!</b>\n\n"
         f"🧠 Конфигурация восприятия определена\n\n"
         f"<i>Хорошая работа! Теперь я лучше понимаю, как вы видите мир.</i>\n\n"
-        f"🔍 Переходим к <b>ЭТАПУ 2</b>: исследование конфигурации мышления.\n\n"
+        f"🔍 Переходим к <b>ЭТАПУ 2</b>: конфигурация мышления.\n\n"
         f"Готовы продолжить?"
     )
     
@@ -2151,7 +2232,7 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STAGE_2
 
 # ============================================
-# ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+# ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ (ОБНОВЛЕННЫЕ ЭКРАНЫ)
 # ============================================
 
 async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2160,7 +2241,7 @@ async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
     
     intro_text = (
-        f"🧠 <b>ЭТАП 2: КАК ВЫ МЫСЛИТЕ?</b>\n\n"
+        f"🧠 <b>ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ</b>\n\n"
         f"Теперь исследуем ваш тип мышления внутри системы восприятия.\n\n"
         f"<b>Что мы узнаем:</b>\n"
         f"• Ваш текущий способ обработки информации\n"
@@ -2236,9 +2317,10 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     tip = PSYCHOLOGIST_TIPS["stage2"][min(current, len(PSYCHOLOGIST_TIPS["stage2"])-1)]
     
+    # Убираем номер вопроса из текста вопроса, оставляем только заголовок этапа
     question_text = (
-        f"🧠 <b>ЭТАП 2: ИССЛЕДОВАНИЕ МЫШЛЕНИЯ</b>\n\n"
-        f"<b>Вопрос {current+1}/8:</b>\n{question['text']}\n\n"
+        f"🧠 <b>ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ</b>\n\n"
+        f"{question['text']}\n\n"
         f"{tip}\n\n"
         f"{progress}"
     )
@@ -2320,7 +2402,7 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ <b>ЭТАП 2 ЗАВЕРШЁН!</b>\n\n"
         f"🧠 Конфигурация мышления определена\n\n"
         f"<i>Отличная работа! Теперь я вижу, как вы обрабатываете информацию.</i>\n\n"
-        f"🔍 Переходим к <b>ЭТАПУ 3</b>: исследование поведенческих паттернов.\n\n"
+        f"🔍 Переходим к <b>ЭТАПУ 3</b>: поведенческие паттерны.\n\n"
         f"Готовы продолжить?"
     )
     
@@ -2331,7 +2413,7 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STAGE_3
 
 # ============================================
-# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ
+# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ (ОБНОВЛЕННЫЕ ЭКРАНЫ)
 # ============================================
 
 async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2340,7 +2422,7 @@ async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
     
     intro_text = (
-        f"🧠 <b>ЭТАП 3: КАК ВЫ ДЕЙСТВУЕТЕ?</b>\n\n"
+        f"🧠 <b>ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ</b>\n\n"
         f"Теперь исследуем ваши автоматические реакции и поведенческие паттерны.\n\n"
         f"<b>Почему это важно:</b>\n"
         f"• Мы часто думаем одно, а делаем другое\n"
@@ -2406,9 +2488,10 @@ async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     tip = PSYCHOLOGIST_TIPS["stage3"][min(current, len(PSYCHOLOGIST_TIPS["stage3"])-1)]
     
+    # Убираем номер вопроса из текста вопроса, оставляем только заголовок этапа
     question_text = (
-        f"🧠 <b>ЭТАП 3: ИССЛЕДОВАНИЕ ПОВЕДЕНИЯ</b>\n\n"
-        f"<b>Вопрос {current+1}/8:</b>\n{question['text']}\n\n"
+        f"🧠 <b>ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ</b>\n\n"
+        f"{question['text']}\n\n"
         f"{tip}\n\n"
         f"{progress}"
     )
@@ -2488,7 +2571,7 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ <b>ЭТАП 3 ЗАВЕРШЁН!</b>\n\n"
         f"🧠 Поведенческие паттерны проанализированы\n\n"
         f"<i>Отлично! Теперь я вижу полную картину ваших автоматических реакций.</i>\n\n"
-        f"🔍 Переходим к <b>ЭТАПУ 4</b>: исследование конфликта логических уровней.\n\n"
+        f"🔍 Переходим к <b>ЭТАПУ 4</b>: конфликт логических уровней.\n\n"
         f"Это последний этап! Готовы?"
     )
     
@@ -2499,7 +2582,7 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STAGE_4
 
 # ============================================
-# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
+# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ (ОБНОВЛЕННЫЕ ЭКРАНЫ)
 # ============================================
 
 async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2508,7 +2591,7 @@ async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
     
     intro_text = (
-        f"🧠 <b>ЭТАП 4: ГДЕ ВАША ТОЧКА РОСТА?</b>\n\n"
+        f"🧠 <b>ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ</b>\n\n"
         f"Последний этап нашего исследования определит, на каком уровне находится ваша главная точка роста.\n\n"
         f"<b>Что мы узнаем:</b>\n"
         f"• Где находится основное напряжение в вашей жизни\n"
@@ -2577,9 +2660,10 @@ async def ask_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     tip = PSYCHOLOGIST_TIPS["stage4"][min(current, len(PSYCHOLOGIST_TIPS["stage4"])-1)]
     
+    # Убираем номер вопроса из текста вопроса, оставляем только заголовок этапа
     question_text = (
-        f"🧠 <b>ЭТАП 4: ИССЛЕДОВАНИЕ ТОЧКИ РОСТА</b>\n\n"
-        f"<b>Вопрос {current+1}/8:</b>\n{question['text']}\n\n"
+        f"🧠 <b>ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ</b>\n\n"
+        f"{question['text']}\n\n"
         f"{tip}\n\n"
         f"{progress}"
     )
@@ -3012,7 +3096,6 @@ async def show_psychologist_conclusion(update: Update, context: ContextTypes.DEF
     
     await query.edit_message_text(conclusion_text, reply_markup=reply_markup, parse_mode="HTML")
     
-    # Добавить этот вызов в show_results_screen после показа результатов
     return RESULTS
 
 # ============================================
@@ -3067,6 +3150,9 @@ def main():
     application.add_handler(CommandHandler("materials", materials_command))
     application.add_handler(CommandHandler("status", status_command))
     
+    # Добавляем обработчик для кнопки "Детали"
+    application.add_handler(CallbackQueryHandler(why_details_callback, pattern="^why_details$"))
+    
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -3111,11 +3197,13 @@ def main():
                 CallbackQueryHandler(restart_test, pattern="^restart_test$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(show_results_screen, pattern="^show_results$"),
-                CallbackQueryHandler(show_psychologist_conclusion, pattern="^psychologist_conclusion$")
+                CallbackQueryHandler(show_psychologist_conclusion, pattern="^psychologist_conclusion$"),
+                CallbackQueryHandler(skip_share, pattern="^skip_share$"),
+                CallbackQueryHandler(confirm_share, pattern="^confirm_share$")
             ],
             GIFT_SCREEN: [
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(skip_share, pattern="^skip_share$"),
                 CallbackQueryHandler(get_gift_screen, pattern="^get_gift$")
             ],
             PACKAGE_SCREEN: [
@@ -3146,6 +3234,7 @@ def main():
     logger.info("💰 Payment system: ACTIVE (1 RUB TEST MODE, all methods)")
     logger.info("🧠 Positioning: Виртуальный психолог для самопознания")
     logger.info("💎 Product: Полное описание профиля личности")
+    logger.info("🔄 Updated: Система шаринга 'Зеркало → Меч' v1.0")
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
