@@ -1,7 +1,9 @@
+#!/usr/bin/env python3
 """
 АДАПТИВНЫЙ ТЕСТ: ОПРЕДЕЛЕНИЕ АРХЕТИПА
 4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
 ВЕРСИЯ 2.2: Упрощенная логика поиска профилей (игнорируем точный DILTS)
+С ИНТЕГРАЦИЕЙ ПЛАТЕЖНОЙ СИСТЕМЫ VARIATICA
 """
 
 import logging
@@ -10,6 +12,9 @@ import asyncio
 import urllib.parse
 import math
 import re
+import time
+import random
+import requests
 from collections import Counter
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -38,15 +43,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Состояния ConversationHandler
-STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS, GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, DILTS_CLARIFICATION = range(10)
-
-# Константы
+# Конфигурация платежной системы
+API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
 BOT_LINK = "t.me/Testing_Lichnosti_bot"
-GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"
 AUTHOR_LINK = "@meysternlp"
 SHARE_TEXT = "Только что узнал о себе то, о чём ещё не знал... Тест показывает скрытые паттерны. КатеГОрически рекомендую.."
-PAYMENT_LINK = "https://yookassa.ru/my/i/aYHvs0MnrXUT/l"
+
+# Состояния ConversationHandler
+STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS, GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, DILTS_CLARIFICATION, PAYMENT_SCREEN = range(11)
 
 # ============================================
 # КОНСТАНТЫ ДЛЯ УПРОЩЕННОГО ПОИСКА (ВЕРСИЯ 2.2)
@@ -284,7 +288,7 @@ STAGE_2_QUESTIONS = {
             "options": {
                 "1": "Ещё больше вопросов",
                 "2": "Новые идеи, но нет действий",
-                "4": "Понимание и действия",
+                "4": "Понимаение и действия",
                 "5": "Трансформация опыта"
             }
         },
@@ -307,7 +311,7 @@ STAGE_2_QUESTIONS = {
             }
         },
         {
-            "text": "Человек погружён в экзистенциальный кризис.\n\nЧто ему делать?",
+            "text": "Человник погружён в экзистенциальный кризис.\n\nЧто ему делать?",
             "options": {
                 "1": "Отвлечься, не думать об этом",
                 "2": "Искать ответы (книги, терапия)",
@@ -585,6 +589,135 @@ CLARIFICATION_QUESTIONS = {
         {"id": "c4_2", "text": "🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\nГде находится твоя главная проблема?", "options": {"a": {"text": "В обстоятельствах", "dilts": "ENVIRONMENT"}, "b": {"text": "В моих действиях", "dilts": "BEHAVIOR"}, "c": {"text": "В моих навыках", "dilts": "CAPABILITIES"}, "d": {"text": "В моих целях", "dilts": "VALUES"}, "e": {"text": "В моём самоопределении", "dilts": "IDENTITY"}}}
     ]
 }
+
+# ============================================
+# ФУНКЦИИ ПЛАТЕЖНОЙ СИСТЕМЫ
+# ============================================
+
+def generate_payment_id(prefix="buy") -> str:
+    """Генерирует уникальный ID платежа"""
+    timestamp = int(time.time())
+    random_str = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=8))
+    return f"{prefix}_{timestamp}_{random_str}"
+
+async def create_payment_advanced(user_id: int, profile_code: str, amount: float = 690.00) -> dict:
+    """Создает платеж через API"""
+    
+    payment_id = generate_payment_id()
+    
+    data = {
+        "payment_id": payment_id,
+        "user_id": user_id,
+        "profile_code": profile_code.upper(),
+        "amount": amount,
+        "description": f"Оплата курса ВАРИАТИКА (профиль: {profile_code})"
+    }
+    
+    try:
+        response = requests.post(
+            f"{API_URL}/api/create-payment-advanced",
+            json=data,
+            timeout=10
+        )
+        
+        logger.info(f"Payment API response: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("success"):
+                return {
+                    "success": True,
+                    "payment_id": payment_id,
+                    "confirmation_url": result.get("confirmation_url"),
+                    "yookassa_id": result.get("yookassa_id"),
+                    "amount": result.get("amount", amount),
+                    "profile_link": result.get("profile_link"),
+                    "invoice_type": result.get("invoice_type", "yookassa_invoice"),
+                    "available_methods": result.get("available_methods", "all"),
+                    "status": result.get("status", "pending")
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": result.get("error", "Unknown error from API"),
+                    "payment_id": payment_id
+                }
+        else:
+            return {
+                "success": False,
+                "error": f"API error: {response.status_code}",
+                "details": response.text[:200]
+            }
+            
+    except Exception as e:
+        logger.error(f"Payment creation error: {e}")
+        return {
+            "success": False,
+            "error": f"Connection error: {str(e)}"
+        }
+
+async def get_materials_link_api(payment_id: str, user_id: int) -> dict:
+    """Получает ссылку на материалы через API"""
+    try:
+        response = requests.get(
+            f"{API_URL}/api/get-materials/{payment_id}",
+            params={"user_id": user_id},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("success"):
+                return {
+                    "success": True,
+                    "materials_link": result.get("materials_link"),
+                    "profile_code": result.get("profile_code"),
+                    "profile_link": result.get("profile_link")
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": result.get("error", "Unknown error")
+                }
+        else:
+            return {
+                "success": False,
+                "error": f"API error: {response.status_code}"
+            }
+    except Exception as e:
+        logger.error(f"Materials API error: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+async def check_payment_status_api(payment_id: str) -> dict:
+    """Проверяет статус платежа через API"""
+    try:
+        response = requests.get(
+            f"{API_URL}/api/payment-status/{payment_id}",
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            return {
+                "success": True,
+                "status": result.get("status", "unknown"),
+                "payment_id": payment_id,
+                "data": result
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"API error: {response.status_code}"
+            }
+    except Exception as e:
+        logger.error(f"Status check error: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 # ============================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -1124,6 +1257,286 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     return RESULTS
 
 # ============================================
+# ЭКРАНЫ ПЛАТЕЖНОЙ СИСТЕМЫ
+# ============================================
+
+async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /buy для покупки полного пакета"""
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    # Проверяем, есть ли результаты теста
+    profile_data = context.user_data.get("profile_data")
+    
+    if not profile_data:
+        # Пользователь еще не прошел тест
+        keyboard = [
+            [InlineKeyboardButton("🚀 Пройти тест", callback_data="start_test")],
+            [InlineKeyboardButton("💎 Купить без теста", callback_data="buy_without_test")]
+        ]
+        
+        await update.message.reply_text(
+            f"👋 *{user_name}*, чтобы получить персонализированный пакет, сначала пройди тест.\n\n"
+            f"💎 *Полный пакет ВАРИАТИКА включает:*\n"
+            f"• Полный разбор вашего профиля (15+ страниц)\n"
+            f"• Персональную терапевтическую сказку\n"
+            f"• Книгу «ВАРИАТИКА. Библиотека человеческих паттернов»\n"
+            f"• Персональные рекомендации по развитию\n"
+            f"• Карту сильных и слабых сторон\n\n"
+            f"💰 *Стоимость:* 690 руб\n"
+            f"💳 *Все способы оплаты:* СБП, ЮMoney, банковские карты\n\n"
+            f"Выбери действие:",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    # Если есть результаты теста, используем профиль пользователя
+    profile_code = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
+    context.user_data["pending_payment_profile"] = profile_code
+    
+    await show_payment_screen(update, context)
+
+async def buy_without_test_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Покупка без прохождения теста"""
+    query = update.callback_query
+    await query.answer()
+    
+    context.user_data["pending_payment_profile"] = "SA_1_DEF"  # Профиль по умолчанию
+    
+    await show_payment_screen(update, context)
+
+async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Экран создания платежа"""
+    query = update.callback_query if hasattr(update, 'callback_query') else None
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    profile_code = context.user_data.get("pending_payment_profile", "SA_1_DEF")
+    
+    if query:
+        await query.edit_message_text(
+            f"💳 *СОЗДАЮ ПЛАТЕЖ...*\n\n"
+            f"👤 *Пользователь:* {user_name}\n"
+            f"📊 *Профиль:* `{profile_code}`\n"
+            f"💰 *Сумма:* 690 руб\n\n"
+            f"⏳ *Создаю ссылку для оплаты...*",
+            parse_mode='Markdown'
+        )
+    
+    # Создаем платеж через API
+    payment_result = await create_payment_advanced(user_id, profile_code, 690.00)
+    
+    if not payment_result.get("success"):
+        error_msg = payment_result.get("error", "Неизвестная ошибка")
+        
+        keyboard = [[InlineKeyboardButton("🔄 Попробовать снова", callback_data="buy_without_test")]]
+        
+        if query:
+            await query.edit_message_text(
+                f"❌ *ОШИБКА ПРИ СОЗДАНИИ ПЛАТЕЖА*\n\n"
+                f"`{error_msg}`\n\n"
+                f"Попробуйте еще раз или обратитесь в поддержку.",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ *ОШИБКА ПРИ СОЗДАНИИ ПЛАТЕЖА*\n\n"
+                f"`{error_msg}`\n\n"
+                f"Попробуйте еще раз или обратитесь в поддержку.",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        return
+    
+    # Сохраняем информацию о платеже
+    payment_id = payment_result["payment_id"]
+    confirmation_url = payment_result["confirmation_url"]
+    
+    context.user_data["last_payment_id"] = payment_id
+    context.user_data["last_payment_profile"] = profile_code
+    
+    # Показываем ссылку на оплату
+    message_text = (
+        f"✅ *ПЛАТЕЖ СОЗДАН!*\n\n"
+        f"👤 *Пользователь:* {user_name}\n"
+        f"📋 *ID платежа:* `{payment_id}`\n"
+        f"📊 *Профиль:* `{profile_code}`\n"
+        f"💰 *Сумма:* 690 руб\n\n"
+        f"💡 *ВСЕ способы оплаты доступны:*\n"
+        f"• СБП (Сбер)\n"
+        f"• ЮMoney\n"
+        f"• Банковские карты\n"
+        f"• Тинькофф\n"
+        f"• Альфа-Банк\n"
+        f"• И другие\n\n"
+        f"🔗 *Для оплаты нажмите кнопку ниже:*\n"
+        f"После успешной оплаты вы получите мгновенное уведомление и доступ к материалам."
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("💳 ОПЛАТИТЬ 690 РУБ", url=confirmation_url)],
+        [InlineKeyboardButton("🔄 Проверить статус", callback_data=f"check_payment_{payment_id}")],
+        [InlineKeyboardButton("🏠 В меню", callback_data="main_menu")]
+    ]
+    
+    if query:
+        await query.edit_message_text(
+            message_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown',
+            disable_web_page_preview=True
+        )
+    else:
+        await update.message.reply_text(
+            message_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown',
+            disable_web_page_preview=True
+        )
+    
+    return PAYMENT_SCREEN
+
+async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверка статуса платежа"""
+    query = update.callback_query
+    await query.answer()
+    
+    payment_id = query.data.split("_")[2]
+    
+    await query.edit_message_text(
+        f"🔍 *ПРОВЕРЯЮ СТАТУС ПЛАТЕЖА...*\n\n"
+        f"📋 *ID:* `{payment_id}`\n\n"
+        f"⏳ Запрашиваю информацию...",
+        parse_mode='Markdown'
+    )
+    
+    # Проверяем статус через API
+    status_result = await check_payment_status_api(payment_id)
+    
+    if not status_result.get("success"):
+        error_msg = status_result.get("error", "Неизвестная ошибка")
+        
+        keyboard = [[InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")]]
+        
+        await query.edit_message_text(
+            f"❌ *ОШИБКА ПРИ ПРОВЕРКЕ*\n\n"
+            f"`{error_msg}`\n\n"
+            f"Попробуйте позже.",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    status = status_result.get("status", "unknown")
+    
+    if status == "succeeded":
+        message = (
+            f"✅ *ОПЛАТА ПОДТВЕРЖДЕНА!*\n\n"
+            f"🎉 Платеж `{payment_id}` успешно завершен!\n\n"
+            f"📦 *МАТЕРИАЛЫ ГОТОВЫ!*\n"
+            f"Для получения материалов нажмите кнопку ниже:"
+        )
+        
+        keyboard = [[InlineKeyboardButton("📥 ПОЛУЧИТЬ МАТЕРИАЛЫ", callback_data=f"get_materials_{payment_id}")]]
+        
+    elif status in ["pending", "waiting"]:
+        message = (
+            f"⏳ *ОЖИДАЕТ ОПЛАТЫ*\n\n"
+            f"Платеж `{payment_id}` еще не оплачен.\n\n"
+            f"💳 *Для оплаты нажмите кнопку ниже:*"
+        )
+        
+        # Получаем confirmation_url из user_data или API
+        payment_data = context.user_data.get("payment_data", {})
+        confirmation_url = payment_data.get(payment_id, {}).get("confirmation_url")
+        
+        if confirmation_url:
+            keyboard = [[InlineKeyboardButton("💳 ПЕРЕЙТИ К ОПЛАТЕ", url=confirmation_url)]]
+        else:
+            keyboard = [[InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")]]
+        
+    else:
+        message = (
+            f"📊 *СТАТУС ПЛАТЕЖА:* `{status}`\n\n"
+            f"📋 *ID:* `{payment_id}`"
+        )
+        keyboard = [[InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")]]
+    
+    await query.edit_message_text(
+        message,
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def get_materials_callback_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Получение материалов после оплаты"""
+    query = update.callback_query
+    await query.answer()
+    
+    payment_id = query.data.split("_")[2]
+    user_id = update.effective_user.id
+    
+    await query.edit_message_text(
+        f"📦 *ПОЛУЧАЮ МАТЕРИАЛЫ...*\n\n"
+        f"📋 *ID платежа:* `{payment_id}`\n\n"
+        f"⏳ Загружаю ссылки...",
+        parse_mode='Markdown'
+    )
+    
+    # Получаем материалы через API
+    materials_result = await get_materials_link_api(payment_id, user_id)
+    
+    if not materials_result.get("success"):
+        error_msg = materials_result.get("error", "Неизвестная ошибка")
+        
+        keyboard = [[InlineKeyboardButton("🔄 Попробовать снова", callback_data=f"get_materials_{payment_id}")]]
+        
+        await query.edit_message_text(
+            f"❌ *ОШИБКА ПРИ ПОЛУЧЕНИИ МАТЕРИАЛОВ*\n\n"
+            f"`{error_msg}`\n\n"
+            f"Попробуйте позже или обратитесь в поддержку.",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    materials_link = materials_result.get("materials_link")
+    profile_code = materials_result.get("profile_code", "SA_1_DEF")
+    
+    if not materials_link:
+        await query.edit_message_text(
+            f"❌ *ССЫЛКА НЕ НАЙДЕНА*\n\n"
+            f"Материалы для платежа `{payment_id}` не найдены.\n"
+            f"Обратитесь в поддержку.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Показываем ссылку на материалы
+    keyboard = [[InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)]]
+    
+    await query.edit_message_text(
+        f"✅ *МАТЕРИАЛЫ ГОТОВЫ!*\n\n"
+        f"🎉 Ваш заказ успешно обработан!\n\n"
+        f"📋 *ID заказа:* `{payment_id}`\n"
+        f"📊 *Профиль:* `{profile_code}`\n"
+        f"💰 *Сумма:* 690 руб\n\n"
+        f"📚 *Что вы получили:*\n"
+        f"• Полный разбор профиля (15+ страниц)\n"
+        f"• Персональную терапевтическую сказку\n"
+        f"• Книгу «ВАРИАТИКА»\n"
+        f"• Рекомендации по развитию\n"
+        f"• Карту сильных и слабых сторон\n\n"
+        f"🔗 *Ссылка на Яндекс.Диск:*\n"
+        f"Нажмите кнопку ниже для скачивания:",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        disable_web_page_preview=True
+    )
+
+# ============================================
 # ОСТАЛЬНЫЕ ЭКРАНЫ (БЕЗ ИЗМЕНЕНИЙ)
 # ============================================
 
@@ -1165,6 +1578,15 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     
+    # Проверяем, есть ли результаты теста
+    profile_data = context.user_data.get("profile_data")
+    
+    if profile_data:
+        profile_code = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
+        profile_info = f"\n📊 *Ваш профиль:* `{profile_code}`\n"
+    else:
+        profile_info = "\n📊 *Профиль:* будет определен после теста\n"
+    
     package_text = (
         f"<b>💎 ПОЛНЫЙ ПАКЕТ ВАРИАТИКА</b>\n\n"
         f"<b>Что входит:</b>\n"
@@ -1173,25 +1595,37 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"• Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (.PDF)\n"
         f"• Персональные рекомендации по развитию\n"
         f"• Карта сильных и слабых сторон\n\n"
+        f"{profile_info}"
         f"<b>Цена:</b> 690 ₽\n\n"
-        f"После оплаты свяжись со мной для получения материалов:\n"
-        f"👉 @meysternlp"
+        f"💳 *Все способы оплаты:* СБП, ЮMoney, банковские карты, Тинькофф, Альфа-Банк\n\n"
+        f"После оплаты материалы придут автоматически!"
     )
     
     keyboard = [
-        [InlineKeyboardButton("💳 Купить", url=PAYMENT_LINK)],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")],
-        [InlineKeyboardButton("💬 Консультация", url=f"https://t.me/{AUTHOR_LINK[1:]}" if AUTHOR_LINK.startswith('@') else f"https://t.me/{AUTHOR_LINK}")]
+        [InlineKeyboardButton("💳 Купить за 690 руб", callback_data="buy_package")],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
     ]
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(package_text, reply_markup=reply_markup, parse_mode="HTML")
     return PACKAGE_SCREEN
 
+async def buy_package_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Покупка пакета из экрана результатов"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Переходим к созданию платежа
+    return await buy_command(update, context)
+
 async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ЭКРАН: ОТКРЫТИЕ ПОДАРКА"""
     query = update.callback_query
     await query.answer()
+    
+    # Используем стандартную ссылку на подарок
+    GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"
     
     gift_text = (
         f"<b>🎁 ВАШ ПОДАРОК ГОТОВ!</b>\n\n"
@@ -1236,8 +1670,16 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     return await start_test(update, context)
 
+async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возврат в главное меню"""
+    query = update.callback_query
+    await query.answer()
+    
+    fake_update = Update(update.update_id + 1, message=query.message)
+    return await start(fake_update, context)
+
 # ============================================
-# НАЧАЛЬНЫЕ ЭКРАНЫ И КОМАНДЫ (БЕЗ ИЗМЕНЕНИЙ)
+# НАЧАЛЬНЫЕ ЭКРАНЫ И КОМАНДЫ
 # ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1287,7 +1729,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_stage_1_intro(update, context)
 
 # ============================================
-# ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ (БЕЗ ИЗМЕНЕНИЙ)
+# ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
 # ============================================
 
 async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1449,7 +1891,7 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STAGE_2
 
 # ============================================
-# ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ (БЕЗ ИЗМЕНЕНИЙ)
+# ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ
 # ============================================
 
 async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1487,7 +1929,7 @@ async def show_stage_2_details(update: Update, context: ContextTypes.DEFAULT_TYP
         f"2️⃣ ПОИСКОВЫЙ — активный поиск решения\n"
         f"3️⃣ КОНСТРУКТИВНЫЙ — создание стабильной базы\n"
         f"4️⃣ КРИЗИСНЫЙ — переосмысление достигнутого\n"
-        f"5️⃣ ИНТЕГРАТИВНЫй — уверенное владение\n"
+        f"5️⃣ ИНТЕГРАТИВНЫЙ — уверенное владение\n"
         f"6️⃣ АЛЬТРУИСТИЧЕСКИЙ — служение другим\n"
         f"7️⃣ МУДРЕЦКИЙ — глубокое понимание\n"
         f"8️⃣ СИСТЕМНЫЙ — управление на системном уровне\n"
@@ -1621,7 +2063,7 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STAGE_3
 
 # ============================================
-# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ (БЕЗ ИЗМЕНЕНИЙ)
+# ЭТАП 3: ПОВЕДЕНЧЕСКИЕ ПАТТЕРНЫ
 # ============================================
 
 async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1781,7 +2223,7 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STAGE_4
 
 # ============================================
-# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ (БЕЗ ИЗМЕНЕНИЙ)
+# ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
 # ============================================
 
 async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1927,21 +2369,14 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     coherence = profile_data["coherence"]
     context.user_data["profile_data"] = profile_data
     
-    if not coherence["is_coherent"] and coherence.get("discrepancy_level", 0) >= 2:
-        logger.info(f"Major discrepancy ({coherence.get('discrepancy_level', 0)}) → asking clarification")
-        return await ask_intelligent_clarification(update, context, profile_data, coherence)
-    else:
-        if not coherence["is_coherent"]:
-            logger.info(f"Minor discrepancy ({coherence.get('discrepancy_level', 0)}) → showing with note")
-        
-        loading_text = f"⏳ <b>ОБРАБАТЫВАЮ РЕЗУЛЬТАТЫ...</b>\n\nАнализирую твои ответы и определяю профиль..."
-        await query.edit_message_text(loading_text, parse_mode="HTML")
-        await asyncio.sleep(2)
-        
-        return await show_results_screen(update, context)
+    loading_text = f"⏳ <b>ОБРАБАТЫВАЮ РЕЗУЛЬТАТЫ...</b>\n\nАнализирую твои ответы и определяю профиль..."
+    await query.edit_message_text(loading_text, parse_mode="HTML")
+    await asyncio.sleep(2)
+    
+    return await show_results_screen(update, context)
 
 # ============================================
-# ФУНКЦИИ УТОЧНЕНИЙ (БЕЗ ИЗМЕНЕНИЙ)
+# ФУНКЦИИ УТОЧНЕНИЙ
 # ============================================
 
 async def ask_clarification_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2087,109 +2522,8 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
     
     return CLARIFICATION
 
-async def ask_intelligent_clarification(update: Update, context: ContextTypes.DEFAULT_TYPE, profile_data: dict, coherence: dict):
-    """Задаёт интеллектуальный уточняющий вопрос на основе Дилтса"""
-    query = update.callback_query
-    
-    profile_level = profile_data["level"]
-    current_dilts = profile_data["dilts_level"]
-    
-    if profile_level <= 3 and current_dilts == "IDENTITY":
-        question = (
-            f"🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\n"
-            f"Ты указал, что твоя главная проблема - в самоопределении (кто ты).\n\n"
-            f"Но в остальных ответах ты показываешь уровень начинающего.\n\n"
-            f"<b>Что точнее описывает твою ситуацию?</b>"
-        )
-        options = {
-            "a": "Мне сложно с окружающими условиями (место, люди, обстоятельства)",
-            "b": "Я не знаю, как действовать в ситуациях",
-            "c": "Я действительно переосмысливаю, кто я есть"
-        }
-        
-    elif profile_level >= 7 and current_dilts == "ENVIRONMENT":
-        question = (
-            f"🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\n"
-            f"По твоим ответам у тебя продвинутый уровень развития.\n\n"
-            f"Но ты указываешь, что проблема в основном в окружении.\n\n"
-            f"<b>Что на самом деле главное?</b>"
-        )
-        options = {
-            "a": "Да, проблема именно в условиях (нужно сменить окружение)",
-            "b": "Проблема в моих внутренних ценностях и понимании",
-            "c": "Я переосмысливаю свою идентичность"
-        }
-    
-    else:
-        question = (
-            f"🔍 УТОЧНЯЮЩИЙ ВОПРОС\n\n"
-            f"Чтобы уточнить результат, ответь:\n\n"
-            f"<b>Где находится корень твоих главных трудностей?</b>"
-        )
-        options = {
-            "a": "В обстоятельствах и окружении",
-            "b": "В моих действиях и привычках", 
-            "c": "В навыках и способностях",
-            "d": "В целях и ценностях",
-            "e": "В самоопределении (кто я)"
-        }
-    
-    context.user_data["dilts_clarification_data"] = {
-        "profile_data": profile_data,
-        "coherence": coherence
-    }
-    
-    keyboard = []
-    for opt_id, opt_text in options.items():
-        keyboard.append([InlineKeyboardButton(opt_text, callback_data=f"dilts_clarify_{opt_id}")])
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(question, reply_markup=reply_markup, parse_mode="HTML")
-    
-    return DILTS_CLARIFICATION
-
-async def handle_dilts_clarification(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка ответа на уточняющий вопрос по Дилтсу"""
-    query = update.callback_query
-    await query.answer()
-    
-    option_id = query.data.split("_")[-1]
-    
-    answer_to_dilts = {
-        "a": "ENVIRONMENT",
-        "b": "BEHAVIOR", 
-        "c": "CAPABILITIES",
-        "d": "VALUES",
-        "e": "IDENTITY"
-    }
-    
-    refined_dilts = answer_to_dilts.get(option_id, "VALUES")
-    
-    clarification_data = context.user_data.get("dilts_clarification_data", {})
-    profile_data = clarification_data.get("profile_data", {})
-    
-    context.user_data["stage4_dilts_answers"].append(refined_dilts)
-    context.user_data["refined_dilts"] = refined_dilts
-    
-    logger.info(f"User clarified dilts: {option_id} → {refined_dilts}")
-    
-    profile_data["dilts_level"] = refined_dilts
-    profile_data["dilts_code"] = get_dilts_code(refined_dilts)
-    profile_data["display_name"] = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
-    
-    profile_data["coherence"] = check_profile_coherence(profile_data["level"], refined_dilts)
-    
-    context.user_data["profile_data"] = profile_data
-    
-    loading_text = f"⏳ <b>ОБРАБАТЫВАЮ РЕЗУЛЬТАТЫ...</b>\n\nАнализирую твои ответы и определяю профиль..."
-    await query.edit_message_text(loading_text, parse_mode="HTML")
-    await asyncio.sleep(2)
-    
-    return await show_results_screen(update, context)
-
 # ============================================
-# ОТМЕНА ТЕСТА (БЕЗ ИЗМЕНЕНИЙ)
+# ОТМЕНА ТЕСТА
 # ============================================
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2200,58 +2534,200 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
+# КОМАНДА ДЛЯ ПОЛУЧЕНИЯ МАТЕРИАЛОВ
+# ============================================
+
+async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /materials для получения материалов после оплаты"""
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    # Проверяем, есть ли сохраненный payment_id
+    last_payment_id = context.user_data.get("last_payment_id")
+    
+    if not last_payment_id:
+        await update.message.reply_text(
+            f"📭 *У вас нет активных платежей*\n\n"
+            f"👤 *{user_name}*, для получения материалов необходимо приобрести полный пакет.\n\n"
+            f"💎 *Полный пакет ВАРИАТИКА:*\n"
+            f"• Стоимость: 690 руб\n"
+            f"• ВСЕ способы оплаты (СБП, ЮMoney, карты)\n"
+            f"• Мгновенный доступ после оплаты\n"
+            f"• Все материалы курса\n\n"
+            f"Используйте команду /buy для покупки",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Пытаемся получить материалы
+    await update.message.reply_text(
+        f"🔍 *ПОИСК МАТЕРИАЛОВ...*\n\n"
+        f"📋 *ID платежа:* `{last_payment_id}`\n\n"
+        f"⏳ Проверяю доступ...",
+        parse_mode='Markdown'
+    )
+    
+    materials_result = await get_materials_link_api(last_payment_id, user_id)
+    
+    if not materials_result.get("success"):
+        error_msg = materials_result.get("error", "Неизвестная ошибка")
+        
+        keyboard = [[InlineKeyboardButton("💳 Купить пакет", callback_data="buy_without_test")]]
+        
+        await update.message.reply_text(
+            f"❌ *НЕ УДАЛОСЬ ПОЛУЧИТЬ МАТЕРИАЛЫ*\n\n"
+            f"`{error_msg}`\n\n"
+            f"Возможно, платеж еще не обработан или возникла ошибка.\n"
+            f"Попробуйте позже или приобретите пакет заново.",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    materials_link = materials_result.get("materials_link")
+    profile_code = materials_result.get("profile_code", "SA_1_DEF")
+    
+    if not materials_link:
+        await update.message.reply_text(
+            f"❌ *ССЫЛКА НЕ НАЙДЕНА*\n\n"
+            f"Материалы для платежа `{last_payment_id}` не найдены.\n"
+            f"Обратитесь в поддержку.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Показываем ссылку на материалы
+    keyboard = [[InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)]]
+    
+    await update.message.reply_text(
+        f"✅ *МАТЕРИАЛЫ ГОТОВЫ!*\n\n"
+        f"👤 *{user_name}*, вот ваши материалы курса ВАРИАТИКА:\n\n"
+        f"📋 *ID заказа:* `{last_payment_id}`\n"
+        f"📊 *Профиль:* `{profile_code}`\n"
+        f"💰 *Сумма:* 690 руб\n\n"
+        f"🔗 *Ссылка на Яндекс.Диск:*\n"
+        f"Нажмите кнопку ниже для скачивания:",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        disable_web_page_preview=True
+    )
+
+# ============================================
+# КОМАНДА ДЛЯ ПРОВЕРКИ СТАТУСА
+# ============================================
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /status для проверки статуса последнего платежа"""
+    user_id = update.effective_user.id
+    last_payment_id = context.user_data.get("last_payment_id")
+    
+    if not last_payment_id:
+        await update.message.reply_text(
+            "📭 *Нет активных платежей*\n\n"
+            "У вас нет последних платежей для проверки.\n"
+            "Используйте /buy для создания нового платежа.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    await update.message.reply_text(
+        f"🔍 *ПРОВЕРЯЮ СТАТУС...*\n\n"
+        f"📋 *ID платежа:* `{last_payment_id}`\n\n"
+        f"⏳ Запрашиваю информацию...",
+        parse_mode='Markdown'
+    )
+    
+    # Проверяем статус через API
+    status_result = await check_payment_status_api(last_payment_id)
+    
+    if not status_result.get("success"):
+        error_msg = status_result.get("error", "Неизвестная ошибка")
+        
+        await update.message.reply_text(
+            f"❌ *ОШИБКА ПРИ ПРОВЕРКЕ*\n\n"
+            f"`{error_msg}`\n\n"
+            f"Попробуйте позже.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    status = status_result.get("status", "unknown")
+    
+    if status == "succeeded":
+        message = (
+            f"✅ *ОПЛАТА ПОДТВЕРЖДЕНА!*\n\n"
+            f"🎉 Платеж `{last_payment_id}` успешно завершен!\n\n"
+            f"📦 *МАТЕРИАЛЫ ГОТОВЫ!*\n"
+            f"Для получения материалов используйте команду:\n"
+            f"`/materials`\n\n"
+            f"✅ Вы получите мгновенный доступ."
+        )
+        
+    elif status in ["pending", "waiting"]:
+        message = (
+            f"⏳ *ОЖИДАЕТ ОПЛАТЫ*\n\n"
+            f"Платеж `{last_payment_id}` еще не оплачен.\n\n"
+            f"💳 *Для оплаты используйте команду:*\n"
+            f"`/buy`\n\n"
+            f"Или дождитесь обработки платежа."
+        )
+        
+    else:
+        message = (
+            f"📊 *СТАТУС ПЛАТЕЖА:* `{status.upper()}`\n\n"
+            f"📋 *ID:* `{last_payment_id}`\n\n"
+            f"Если статус не меняется, попробуйте создать новый платеж: /buy"
+        )
+    
+    await update.message.reply_text(message, parse_mode='Markdown')
+
+# ============================================
 # ГЛАВНАЯ ФУНКЦИЯ
 # ============================================
 
 def main():
     """Запуск бота"""
-    print("\n" + "="*50)
-    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.2")
-    print("="*50)
-    print("ОСНОВНЫЕ ИЗМЕНЕНИЯ:")
-    print("1. Упрощенная логика поиска профилей")
-    print("2. Игнорирование точного dilts_code")
-    print("3. Поиск по типу и уровню (суффикс вторичен)")
-    print("4. Системный fallback на ближайшие уровни")
-    print("5. Аварийный fallback из 12 базовых профилей")
-    print("="*50 + "\n")
+    print("\n" + "="*60)
+    print("🚀 ЗАПУСК БОТА ВАРИАТИКА ver 2.2 С ПЛАТЕЖНОЙ СИСТЕМОЙ")
+    print("="*60)
+    print("ОСНОВНЫЕ ФУНКЦИИ:")
+    print("1. Адаптивный психодиагностический тест (4 этапа)")
+    print("2. Упрощенная логика поиска профилей")
+    print("3. Интеграция с платежной системой VARIATICA")
+    print("4. Поддержка Invoices API (ВСЕ способы оплаты)")
+    print("5. Автоматическая выдача материалов")
+    print("="*60 + "\n")
     
     # Проверка загрузки профилей
     print("🔍 ПРОВЕРКА ЗАГРУЗКИ ПРОФИЛЕЙ")
     print("="*30)
     
-    all_profiles = loader.get_all_profiles()
-    print(f"📊 Всего профилей загружено: {len(all_profiles)}")
+    try:
+        all_profiles = loader.get_all_profiles()
+        print(f"📊 Всего профилей загружено: {len(all_profiles)}")
+        
+        # Проверяем профили по типам
+        for profile_type in ['sa', 'sp', 'ia', 'ip']:
+            type_profiles = [p for p in all_profiles if p.lower().startswith(f"{profile_type}_")]
+            print(f"🔍 {profile_type.upper()} профилей: {len(type_profiles)}")
+    except Exception as e:
+        print(f"⚠️ Ошибка при загрузке профилей: {e}")
     
-    # Проверяем профили по типам
-    for profile_type in ['sa', 'sp', 'ia', 'ip']:
-        type_profiles = [p for p in all_profiles if p.lower().startswith(f"{profile_type}_")]
-        print(f"🔍 {profile_type.upper()} профилей: {len(type_profiles)}")
-    
-    # Тестируем новую логику поиска
-    print("\n🧪 Тестируем новую логику поиска v2.2:")
-    test_cases = [
-        ("sa", 4, "cap"),
-        ("sp", 5, "val"),
-        ("ia", 3, "def"),
-        ("ip", 2, "sit"),
-        ("xx", 1, "def"),  # Несуществующий тип
-        ("sa", 10, "def"), # Несуществующий уровень
-    ]
-    
-    for type_code, level, dilts in test_cases:
-        test_data = {"type_code": type_code, "level": level, "dilts_code": dilts}
-        try:
-            profile = get_profile_fallback(test_data)
-            found_key = getattr(profile, 'key', 'unknown')
-            print(f"  {type_code}_{level}_{dilts:3} → ✅ {found_key}")
-        except Exception as e:
-            print(f"  {type_code}_{level}_{dilts:3} → ❌ {str(e)}")
-    
+    print("\n💳 ПРОВЕРКА ПЛАТЕЖНОЙ СИСТЕМЫ")
     print("="*30)
-    print("✅ Проверка завершена. Запускаю бота...")
+    print(f"📡 API URL: {API_URL}")
+    print("✅ Платежная система: ГОТОВА")
+    print("💎 Стоимость полного пакета: 690 руб")
+    print("💳 Доступные способы оплаты: СБП, ЮMoney, банковские карты")
+    print("="*30)
+    print("🚀 Запускаю бота...")
     
     application = Application.builder().token(TOKEN).build()
+    
+    # Добавляем команды
+    application.add_handler(CommandHandler("buy", buy_command))
+    application.add_handler(CommandHandler("materials", materials_command))
+    application.add_handler(CommandHandler("status", status_command))
     
     conv_handler = ConversationHandler(
         entry_points=[
@@ -2289,13 +2765,11 @@ def main():
             CLARIFICATION: [
                 CallbackQueryHandler(handle_clarification_answer, pattern="^clarify_")
             ],
-            DILTS_CLARIFICATION: [
-                CallbackQueryHandler(handle_dilts_clarification, pattern="^dilts_clarify_")
-            ],
             RESULTS: [
                 CallbackQueryHandler(get_gift_screen, pattern="^get_gift$"),
                 CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
                 CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
+                CallbackQueryHandler(buy_package_callback, pattern="^buy_package$"),
                 CallbackQueryHandler(restart_test, pattern="^restart_test$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(show_results_screen, pattern="^show_results$")
@@ -2307,11 +2781,18 @@ def main():
             ],
             PACKAGE_SCREEN: [
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(show_package_screen, pattern="^show_package$")
+                CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
+                CallbackQueryHandler(buy_package_callback, pattern="^buy_package$")
             ],
             OPEN_GIFT_SCREEN: [
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(open_gift_screen, pattern="^open_gift$")
+            ],
+            PAYMENT_SCREEN: [
+                CallbackQueryHandler(check_payment_callback, pattern="^check_payment_"),
+                CallbackQueryHandler(get_materials_callback_payment, pattern="^get_materials_"),
+                CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"),
+                CallbackQueryHandler(buy_without_test_callback, pattern="^buy_without_test$")
             ]
         },
         fallbacks=[CommandHandler("cancel", cancel)],
@@ -2320,8 +2801,10 @@ def main():
     
     application.add_handler(conv_handler)
     
-    logger.info("🚀 Bot started: ВАРИАТИКА ver 2.2!")
-    logger.info("📊 Changes: Simplified profile search logic (ignore exact DILTS match)")
+    logger.info("🚀 Bot started: ВАРИАТИКА ver 2.2 with PAYMENT SYSTEM!")
+    logger.info(f"📡 API: {API_URL}")
+    logger.info("💰 Payment system: ACTIVE (690 RUB, all methods)")
+    
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
