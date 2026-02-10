@@ -4,7 +4,6 @@
 4 этапа + адаптивные уточнения + СИСТЕМА БАЛЛОВ как в карточном тесте
 ВЕРСИЯ 2.2: Упрощенная логика поиска профилей (игнорируем точный DILTS)
 С ИНТЕГРАЦИЕЙ ПЛАТЕЖНОЙ СИСТЕМЫ VARIATICA
-С СИСТЕМОЙ ПРОГРЕВА API ПРИ СТАРТЕ ТЕСТА
 """
 
 import logging
@@ -70,63 +69,6 @@ EMERGENCY_PROFILES = [
     "ia_1_def", "ia_2_sit", "ia_3_con",
     "ip_1_def", "ip_2_sit", "ip_3_con"
 ]
-
-# ============================================
-# СЛОВАРЬ ССЫЛОК ЯНДЕКС.ДИСК ДЛЯ ПРЯМОГО СОЕДИНЕНИЯ
-# ============================================
-
-def get_yandex_disk_link_direct(profile_code: str) -> str:
-    """
-    Вспомогательная функция ТОЛЬКО для прямого соединения с ЮKassa
-    Возвращает ссылку на папку Яндекс.Диска с полными материалами профиля
-    """
-    YANDEX_DISK_LINKS_DIRECT = {
-        # SA профили - СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ
-        "SA_1_DEF": "https://disk.yandex.ru/d/HAcOfAg1tpIedA",
-        "SA_2_SIT": "https://disk.yandex.ru/d/MwdMClX9koCTmA",
-        "SA_3_CON": "https://disk.yandex.ru/d/NKN_XemK62t5nA",
-        "SA_4_EXP": "https://disk.yandex.ru/d/tTSiN5zhSb8LtA",
-        "SA_5_INT": "https://disk.yandex.ru/d/xUdv7bsBT3Wbhg",
-        "SA_6_AUT": "https://disk.yandex.ru/d/lYWKaOdEkC_5Ag",
-        "SA_7_VAL": "https://disk.yandex.ru/d/7BCOKs-6qS6-5g",
-        "SA_8_TRA": "https://disk.yandex.ru/d/SqlDISkse1OEGQ",
-        "SA_9_IDE": "https://disk.yandex.ru/d/vGzHmuckInNL5g",
-        
-        # SP профили - ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ
-        "SP_1_DEF": "https://disk.yandex.ru/d/7nmOP7wR2iQ9YA",
-        "SP_2_SIT": "https://disk.yandex.ru/d/Ro_mcLDd_QmilA",
-        "SP_3_CON": "https://disk.yandex.ru/d/kUJH3BLMnb4CfA",
-        "SP_4_EXP": "https://disk.yandex.ru/d/KBSO1g0HYNJBcQ",
-        "SP_5_INT": "https://disk.yandex.ru/d/s2jhq2ngz3pmYg",
-        "SP_6_AUT": "https://disk.yandex.ru/d/xWBv4TLFosOB5g",
-        "SP_7_VAL": "https://disk.yandex.ru/d/K1whXj6C6KAazQ",
-        "SP_8_TRA": "https://disk.yandex.ru/d/ZZhRISNn-GNPTg",
-        "SP_9_IDE": "https://disk.yandex.ru/d/jBCaEpYOdZI-JQ",
-        
-        # IA профили - ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ
-        "IA_1_DEF": "https://disk.yandex.ru/d/M1Y7z175uGKIHg",
-        "IA_2_SIT": "https://disk.yandex.ru/d/X3yz6IP0pdRmVQ",
-        "IA_3_CON": "https://disk.yandex.ru/d/DCkqqALby9UpFg",
-        "IA_4_EXP": "https://disk.yandex.ru/d/aLT8oJBu0EGwLg",
-        "IA_5_INT": "https://disk.yandex.ru/d/x0QXWi7MDR7h0g",
-        "IA_6_AUT": "https://disk.yandex.ru/d/xRjBzTxYh0v4bg",
-        "IA_7_VAL": "https://disk.yandex.ru/d/1fHqhIitNuz_XQ",
-        "IA_8_TRA": "https://disk.yandex.ru/d/0wSeHeF_SWZyFw",
-        "IA_9_IDE": "https://disk.yandex.ru/d/ub0YpQQgS4g6rQ",
-        
-        # IP профили - СТРУКТУРНО-АНАЛИТИЧЕСКИЙ
-        "IP_1_DEF": "https://disk.yandex.ru/d/m-WOQwDdgQxsnQ",
-        "IP_2_SIT": "https://disk.yandex.ru/d/aL4VlAQdlaZ-6g",
-        "IP_3_CON": "https://disk.yandex.ru/d/N8GG9XbnC3bFhg",
-        "IP_4_EXP": "https://disk.yandex.ru/d/54RFOZmGhA4cfA",
-        "IP_5_INT": "https://disk.yandex.ru/d/l5iFTIX8-gTycQ",
-        "IP_6_AUT": "https://disk.yandex.ru/d/bTo_vcCoC1KU7Q",
-        "IP_7_VAL": "https://disk.yandex.ru/d/TMx1VP843bnJQw",
-        "IP_8_TRA": "https://disk.yandex.ru/d/e9KfJdLcl3gp7g",
-        "IP_9_IDE": "https://disk.yandex.ru/d/ZiQPHJSDrrWZhw"
-    }
-    
-    return YANDEX_DISK_LINKS_DIRECT.get(profile_code.upper(), "https://disk.yandex.ru/d/Cacp7x1Vt3XhbA")
 
 # ============================================
 # ВОПРОСЫ ЭТАПА 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
@@ -671,10 +613,6 @@ def create_yookassa_invoice(payment_id: str, user_id: int, profile_code: str, am
     try:
         logger.info(f"📤 Создаю платеж ЮKassa: {payment_id}, профиль: {profile_code}")
         
-        # Получаем ссылку на Яндекс.Диск для этого профиля
-        yandex_link = get_yandex_disk_link_direct(profile_code)
-        logger.info(f"🔗 Ссылка на Яндекс.Диск для профиля {profile_code}: {yandex_link}")
-        
         # 1. Подготовка авторизации
         auth_string = f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}"
         auth_encoded = base64.b64encode(auth_string.encode()).decode()
@@ -695,7 +633,7 @@ def create_yookassa_invoice(payment_id: str, user_id: int, profile_code: str, am
             email = f"user_{user_id}@telegram.org"
         
         # 5. ОПИСАНИЕ с профилем пользователя
-        description = f"Полные материалы профиля {profile_code} - ВАРИАТИКА"
+        description = f"Профиль {profile_code} - Курс ВАРИАТИКА"
         
         # 6. ТЕЛО ЗАПРОСА к ЮKassa (главная часть!)
         payload = {
@@ -707,18 +645,15 @@ def create_yookassa_invoice(payment_id: str, user_id: int, profile_code: str, am
             # Пользователь сам выберет способ оплаты на стороне ЮKassa
             "confirmation": {
                 "type": "redirect",
-                # 🔥 ИЗМЕНЕНИЕ 1: Добавляем параметры в return_url
-                "return_url": f"{TELEGRAM_BOT_URL}?payment={payment_id}&profile={profile_code}&materials={yandex_link}"
+                "return_url": TELEGRAM_BOT_URL
             },
             "capture": True,
             "description": description,
-            # 🔥 ИЗМЕНЕНИЕ 2: Добавляем yandex_link в metadata
             "metadata": {
                 "payment_id": payment_id,
                 "user_id": user_id,
                 "telegram_id": str(user_id),
                 "profile_code": profile_code,
-                "yandex_link": yandex_link,  # ВАЖНО: Добавляем ссылку
                 "is_test": "true" if amount == 1.0 else "false"
             },
             # Чек по 54-ФЗ (обязательно для боевого режима)
@@ -728,7 +663,7 @@ def create_yookassa_invoice(payment_id: str, user_id: int, profile_code: str, am
                 },
                 "items": [
                     {
-                        "description": f"Полные материалы профиля {profile_code}",
+                        "description": f"Курс ВАРИАТИКА для профиля {profile_code}",
                         "quantity": "1.00",
                         "amount": {
                             "value": f"{amount:.2f}",
@@ -771,7 +706,6 @@ def create_yookassa_invoice(payment_id: str, user_id: int, profile_code: str, am
                     "yookassa_id": data.get('id'),
                     "amount": amount,
                     "profile_code": profile_code,
-                    "yandex_link": yandex_link,  # ВАЖНО: Возвращаем ссылку
                     "invoice_type": "yookassa_invoice",
                     "available_methods": "all",
                     "status": data.get('status', 'pending')
@@ -794,20 +728,6 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
     Теперь включает профиль пользователя!
     """
     
-    # Логируем сколько времени прошло с начала теста
-    test_started_at = context.user_data.get("test_started_at", 0)
-    if test_started_at:
-        elapsed = time.time() - test_started_at
-        logger.info(f"⏱ Пользователь {user_id}: с начала теста прошло {elapsed:.1f} секунд")
-        
-        # Дополнительная информация о статусе прогрева
-        if elapsed < 60:
-            logger.info(f"⏳ Пользователь {user_id}: тест только начался ({elapsed:.1f} сек), API может быть в процессе запуска")
-        elif elapsed < 300:
-            logger.info(f"⚡ Пользователь {user_id}: тест в процессе ({elapsed:.1f} сек), API должен запуститься")
-        else:
-            logger.info(f"✅ Пользователь {user_id}: тест длится более 5 минут ({elapsed:.1f} сек), API должен быть готов")
-    
     # 1. Генерируем ID платежа
     timestamp = int(time.time())
     if amount == 1.0:
@@ -825,14 +745,13 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
             "profile_code": profile_code.upper(),
             "amount": amount,
             "email": f"user_{user_id}@telegram.org",
-            "description": f"Полные материалы профиля {profile_code}"
+            "description": f"Профиль {profile_code} - Курс ВАРИАТИКА"
         }
         
-        # УВЕЛИЧИВАЕМ ТАЙМАУТ с 10 до 30 секунд
         db_response = requests.post(
             f"{API_URL}/api/create-payment-advanced",
             json=db_payload,
-            timeout=30  # Увеличить с 10 до 30 секунд
+            timeout=10
         )
         
         # ✅ ИСПРАВЛЕНО: принимаем и 200, и 201 как успешные
@@ -854,8 +773,8 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
                     "status": db_data.get("status", "pending")
                 }
             
-            # 4. Иначе создаем через ЮKassa напрямую (FALLBACK)
-            logger.info(f"🔄 Создаю платеж через ЮKassa напрямую (fallback): {payment_id}")
+            # 4. Иначе создаем через ЮKassa напрямую
+            logger.info(f"🔄 Создаю платеж через ЮKassa напрямую: {payment_id}")
             yookassa_result = create_yookassa_invoice(
                 payment_id=payment_id,
                 user_id=user_id,
@@ -873,28 +792,17 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
                             "payment_id": payment_id,
                             "yookassa_id": yookassa_result.get("yookassa_id"),
                             "profile_code": profile_code,
-                            "yandex_link": yookassa_result.get("yandex_link"),  # Добавляем ссылку
                             "status": "waiting"
                         },
-                        timeout=10  # Таймаут для fallback запроса
+                        timeout=5
                     )
                     
                     if update_response.status_code in [200, 201]:
-                        logger.info(f"✅ ID ЮKassa и ссылка сохранены в БД")
+                        logger.info(f"✅ ID ЮKassa сохранен в БД")
                     else:
                         logger.warning(f"⚠️ Не удалось сохранить ID ЮKassa: {update_response.status_code}")
                 except Exception as e:
                     logger.warning(f"⚠️ Ошибка при сохранении ID ЮKassa: {e}")
-                
-                # 🔥 ИЗМЕНЕНИЕ: Сохраняем ссылку в user_data для быстрого доступа
-                if "payment_data" not in context.user_data:
-                    context.user_data["payment_data"] = {}
-                
-                context.user_data["payment_data"][payment_id] = {
-                    "confirmation_url": yookassa_result.get("confirmation_url"),
-                    "yandex_link": yookassa_result.get("yandex_link"),
-                    "profile_code": profile_code
-                }
                 
                 return yookassa_result
             else:
@@ -904,78 +812,17 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
         else:
             error_text = db_response.text[:200]
             logger.error(f"❌ Ошибка БД {db_response.status_code}: {error_text}")
-            
-            # FALLBACK: Пробуем создать платеж напрямую через ЮKassa
-            logger.info(f"🔄 Пробую создать платеж напрямую через ЮKassa (fallback)")
-            yookassa_result = create_yookassa_invoice(
-                payment_id=payment_id,
-                user_id=user_id,
-                profile_code=profile_code,
-                amount=amount,
-                email=f"user_{user_id}@telegram.org"
-            )
-            
-            if yookassa_result["success"]:
-                logger.info(f"✅ Платеж создан через ЮKassa напрямую (fallback успешен)")
-                return yookassa_result
-            else:
-                return {
-                    "success": False, 
-                    "error": f"Ошибка API: {db_response.status_code}",
-                    "details": error_text
-                }
-            
-    except requests.exceptions.Timeout:
-        logger.error(f"❌ Таймаут при подключении к API (30 секунд)")
-        
-        # FALLBACK: Пробуем создать платеж напрямую через ЮKassa
-        logger.info(f"🔄 Таймаут API, пробую создать платеж напрямую через ЮKassa (fallback)")
-        yookassa_result = create_yookassa_invoice(
-            payment_id=payment_id,
-            user_id=user_id,
-            profile_code=profile_code,
-            amount=amount,
-            email=f"user_{user_id}@telegram.org"
-        )
-        
-        if yookassa_result["success"]:
-            logger.info(f"✅ Платеж создан через ЮKassa напрямую после таймаута")
-            return yookassa_result
-        else:
             return {
-                "success": False,
-                "error": "Таймаут подключения к API (30 сек) и fallback не сработал",
-                "details": "Сервер долго не отвечает. Попробуйте позже."
-            }
-            
-    except requests.exceptions.ConnectionError:
-        logger.error(f"❌ Ошибка подключения к API")
-        
-        # FALLBACK: Пробуем создать платеж напрямую через ЮKassa
-        logger.info(f"🔄 Ошибка подключения к API, пробую создать платеж напрямую через ЮKassa (fallback)")
-        yookassa_result = create_yookassa_invoice(
-            payment_id=payment_id,
-            user_id=user_id,
-            profile_code=profile_code,
-            amount=amount,
-            email=f"user_{user_id}@telegram.org"
-        )
-        
-        if yookassa_result["success"]:
-            logger.info(f"✅ Платеж создан через ЮKassa напрямую после ошибки подключения")
-            return yookassa_result
-        else:
-            return {
-                "success": False,
-                "error": "Не удалось подключиться к API серверу",
-                "details": "Сервер временно недоступен. Попробуйте позже."
+                "success": False, 
+                "error": f"Ошибка API: {db_response.status_code}",
+                "details": error_text
             }
             
     except Exception as e:
-        logger.error(f"❌ Исключение при создании платежа: {e}")
+        logger.error(f"❌ Ошибка подключения к API: {e}")
         return {
             "success": False,
-            "error": f"Неизвестная ошибка: {str(e)}"
+            "error": f"Ошибка подключения: {str(e)}"
         }
 
 async def get_materials_link_api(payment_id: str, user_id: int) -> dict:
@@ -1027,7 +874,7 @@ async def check_payment_status_api(payment_id: str) -> dict:
                 "success": True,
                 "status": result.get("status", "unknown"),
                 "payment_id": payment_id,
-                "data": result  # ВАЖНО: должен включать metadata
+                "data": result
             }
         else:
             return {
@@ -1040,98 +887,6 @@ async def check_payment_status_api(payment_id: str) -> dict:
             "success": False,
             "error": str(e)
         }
-
-# ============================================
-# ФУНКЦИЯ ПРОГРЕВА API ПРИ СТАРТЕ ТЕСТА
-# ============================================
-
-async def warm_up_api_background():
-    """
-    Фоновая задача для прогрева API сервера.
-    Запускается при старте теста, чтобы API успел запуститься к моменту оплаты.
-    
-    Принцип работы:
-    1. Отправляет GET запрос к корню API (https://testing-lichnosti-bot-1.onrender.com/)
-    2. Таймаут 5 секунд (не важно если не ответит)
-    3. Игнорирует все ошибки (таймаут, ConnectionError и т.д.)
-    4. Логирует процесс для отладки
-    
-    Зачем это нужно:
-    - Render.com запускает сервер при первом запросе
-    - "Холодный старт" занимает 30-60 секунд
-    - Тест длится 10-15 минут → API успевает запуститься
-    - К моменту оплаты сервер уже будет "теплым"
-    """
-    try:
-        logger.info("🔥 Запускаю фоновый прогрев API сервера...")
-        
-        # Отправляем GET запрос к API серверу
-        response = await asyncio.wait_for(
-            asyncio.get_event_loop().run_in_executor(
-                None, 
-                lambda: requests.get(API_URL, timeout=5)
-            ),
-            timeout=5
-        )
-        
-        if response.status_code == 200:
-            logger.info("✅ API сервер готов к работе (ответил 200)")
-        else:
-            logger.info(f"📡 API сервер ответил: {response.status_code}")
-            
-    except asyncio.TimeoutError:
-        logger.info("⏰ API запускается... (таймаут ожидаем)")
-    except requests.exceptions.ConnectionError:
-        logger.info("🔌 API перезапускается... (ConnectionError)")
-    except requests.exceptions.RequestException as e:
-        logger.info(f"⚠️ API временно недоступен: {type(e).__name__}")
-    except Exception as e:
-        logger.info(f"🔧 Непредвиденная ошибка при прогреве: {type(e).__name__}")
-    
-    logger.info("📈 Прогрев API завершен (или пропущен)")
-
-# ============================================
-# УМНАЯ ПРОВЕРКА СТАТУСА ПЛАТЕЖА
-# ============================================
-
-async def smart_check_payment_status(payment_id: str, context: ContextTypes.DEFAULT_TYPE) -> dict:
-    """
-    Умная проверка статуса платежа:
-    1. Сначала пытается через API
-    2. Если API не доступен → проверяет локальное хранилище
-    3. Если нет данных → возвращает "processing"
-    """
-    logger.info(f"🔍 Умная проверка статуса платежа: {payment_id}")
-    
-    # 1. Пытаемся через API
-    try:
-        status_result = await check_payment_status_api(payment_id)
-        if status_result.get("success"):
-            logger.info(f"✅ Статус получен через API: {status_result.get('status')}")
-            return status_result
-    except Exception as e:
-        logger.warning(f"⚠️ API проверка не удалась: {e}")
-    
-    # 2. Проверяем локальное хранилище (user_data)
-    user_payments = context.user_data.get("user_payments", {})
-    if payment_id in user_payments:
-        local_status = user_payments[payment_id].get("status", "unknown")
-        logger.info(f"📱 Статус из локального хранилища: {local_status}")
-        return {
-            "success": True,
-            "status": local_status,
-            "payment_id": payment_id,
-            "source": "local_cache"
-        }
-    
-    # 3. Если нет данных нигде
-    logger.info(f"❓ Статус платежа неизвестен, возвращаем 'processing'")
-    return {
-        "success": True,
-        "status": "processing",
-        "payment_id": payment_id,
-        "source": "fallback"
-    }
 
 # ============================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -1680,13 +1435,13 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not has_shared:
         keyboard = [
             [InlineKeyboardButton("📤 Поделиться и получить подарок", callback_data="get_gift")],
-            [InlineKeyboardButton("💎 Полные материалы профиля", callback_data="show_package")],
+            [InlineKeyboardButton("💎 Полный пакет рекомендаций", callback_data="show_package")],
             [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
         ]
     else:
         keyboard = [
             [InlineKeyboardButton("🎁 Забрать подарок", callback_data="open_gift")],
-            [InlineKeyboardButton("💎 Полные материалы профиля", callback_data="show_package")],
+            [InlineKeyboardButton("💎 Полный пакет рекомендаций", callback_data="show_package")],
             [InlineKeyboardButton("🔄 Пройти ещё раз", callback_data="restart_test")]
         ]
     
@@ -1716,13 +1471,13 @@ async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         
         await update.message.reply_text(
-            f"👋 *{user_name}*, чтобы получить персонализированные материалы, сначала пройди тест.\n\n"
-            f"💎 *Полные материалы профиля включают:*\n"
+            f"👋 *{user_name}*, чтобы получить персонализированный пакет, сначала пройди тест.\n\n"
+            f"💎 *Полный пакет ВАРИАТИКА включает:*\n"
             f"• Полный разбор вашего профиля (15+ страниц)\n"
             f"• Персональную терапевтическую сказку\n"
-            f"• Карту сильных и слабых сторон\n"
-            f"• Рекомендации по развитию\n"
-            f"• Практические инструменты\n\n"
+            f"• Книгу «ВАРИАТИКА. Библиотека человеческих паттернов»\n"
+            f"• Персональные рекомендации по развитию\n"
+            f"• Карту сильных и слабых сторон\n\n"
             f"💰 *Стоимость:* 1 руб (тестовый режим)\n"
             f"💳 *Все способы оплаты:* СБП, ЮMoney, банковские карты\n\n"
             f"Выбери действие:",
@@ -1897,26 +1652,16 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
         return
     
     status = status_result.get("status", "unknown")
-    data = status_result.get("data", {})
-    metadata = data.get("metadata", {})
     
     if status == "succeeded":
-        # 🔥 ИЗМЕНЕНИЕ 1: Берем данные из metadata или из user_data
-        profile_code = metadata.get("profile_code") or context.user_data.get("last_payment_profile", "SA_1_DEF")
-        yandex_link = metadata.get("yandex_link") or get_yandex_disk_link_direct(profile_code)
-        
         message = (
             f"✅ *ОПЛАТА ПОДТВЕРЖДЕНА!*\n\n"
-            f"🎉 Платеж `{payment_id}` успешно завершен!\n"
-            f"📊 *Ваш профиль:* `{profile_code}`\n\n"
-            f"📦 *ПОЛНЫЕ МАТЕРИАЛЫ ПРОФИЛЯ ГОТОВЫ!*\n\n"
-            f"🔗 *Ссылка на папку с материалами:*\n"
-            f"`{yandex_link}`\n\n"
-            f"Нажмите кнопку ниже для перехода к материалам:"
+            f"🎉 Платеж `{payment_id}` успешно завершен!\n\n"
+            f"📦 *МАТЕРИАЛЫ ГОТОВЫ!*\n"
+            f"Для получения материалов нажмите кнопку ниже:"
         )
         
-        # 🔥 ИЗМЕНЕНИЕ 2: Кнопка ведет напрямую на Яндекс.Диск
-        keyboard = [[InlineKeyboardButton("📥 ОТКРЫТЬ ПАПКУ С МАТЕРИАЛАМИ", url=yandex_link)]]
+        keyboard = [[InlineKeyboardButton("📥 ПОЛУЧИТЬ МАТЕРИАЛЫ", callback_data=f"get_materials_{payment_id}")]]
         
     elif status in ["pending", "waiting"]:
         message = (
@@ -2003,9 +1748,9 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
         f"📚 *Что вы получили:*\n"
         f"• Полный разбор профиля (15+ страниц)\n"
         f"• Персональную терапевтическую сказку\n"
-        f"• Карту сильных и слабых сторон\n"
+        f"• Книгу «ВАРИАТИКА»\n"
         f"• Рекомендации по развитию\n"
-        f"• Практические инструменты\n\n"
+        f"• Карту сильных и слабых сторон\n\n"
         f"🔗 *Ссылка на Яндекс.Диск:*\n"
         f"Нажмите кнопку ниже для скачивания:",
         parse_mode='Markdown',
@@ -2014,7 +1759,7 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
     )
 
 # ============================================
-# ОСТАЛЬНЫЕ ЭКРАНЫ (С ИЗМЕНЕНИЯМИ)
+# ОСТАЛЬНЫЕ ЭКРАНЫ (БЕЗ ИЗМЕНЕНИЙ)
 # ============================================
 
 async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2051,7 +1796,7 @@ async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_results_screen(update, context)
 
 async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН: ПОЛНЫЕ МАТЕРИАЛЫ ПРОФИЛЯ"""
+    """ЭКРАН: ПОЛНЫЙ ПАКЕТ"""
     query = update.callback_query
     await query.answer()
     
@@ -2065,13 +1810,13 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         profile_info = "\n📊 *Профиль:* будет определен после теста\n"
     
     package_text = (
-        f"<b>💎 ПОЛНЫЕ МАТЕРИАЛЫ ПРОФИЛЯ</b>\n\n"
+        f"<b>💎 ПОЛНЫЙ ПАКЕТ ВАРИАТИКА</b>\n\n"
         f"<b>Что входит:</b>\n"
         f"• Полный разбор вашего профиля (15+ страниц детального анализа)\n"
         f"• Персональная терапевтическая сказка для коррекции конфликтующих частей\n"
-        f"• Карта сильных и слабых сторон\n"
-        f"• Рекомендации по развитию\n"
-        f"• Практические инструменты для работы с паттернами\n\n"
+        f"• Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (.PDF)\n"
+        f"• Персональные рекомендации по развитию\n"
+        f"• Карта сильных и слабых сторон\n\n"
         f"{profile_info}"
         f"<b>Цена:</b> 1 ₽ (тестовый режим)\n\n"
         f"💳 *Все способы оплаты:* СБП, ЮMoney, банковские карты, Тинькофф, Альфа-Банк\n\n"
@@ -2156,18 +1901,11 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return await start(fake_update, context)
 
 # ============================================
-# ОБНОВЛЕННАЯ КОМАНДА /start С ПРОГРЕВОМ API
+# НАЧАЛЬНЫЕ ЭКРАНЫ И КОМАНДЫ
 # ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /start"""
-    # Запускаем прогрев API в фоне
-    try:
-        asyncio.create_task(warm_up_api_background())
-        logger.info(f"🚀 Пользователь {update.effective_user.id}: запущен фоновый прогрев API")
-    except Exception as e:
-        logger.warning(f"⚠️ Не удалось запустить прогрев API: {e}")
-    
     user = update.effective_user
     
     welcome_text = (
@@ -2194,25 +1932,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
 
-# ============================================
-# ОБНОВЛЕННАЯ ФУНКЦИЯ start_test С ПРОГРЕВОМ API
-# ============================================
-
 async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало теста"""
     query = update.callback_query
     await query.answer()
-    
-    # Запускаем прогрев API в фоне (если еще не запущен)
-    try:
-        asyncio.create_task(warm_up_api_background())
-        logger.info(f"🚀 Пользователь {update.effective_user.id}: повторный прогрев API при начале теста")
-    except Exception as e:
-        logger.warning(f"⚠️ Не удалось запустить повторный прогрев API: {e}")
-    
-    # Сохраняем время начала теста
-    context.user_data["test_started_at"] = time.time()
-    logger.info(f"⏱ Пользователь {update.effective_user.id}: начал тест в {context.user_data['test_started_at']}")
     
     context.user_data.clear()
     context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
@@ -3047,12 +2770,12 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not last_payment_id:
         await update.message.reply_text(
             f"📭 *У вас нет активных платежей*\n\n"
-            f"👤 *{user_name}*, для получения материалов необходимо приобрести полные материалы профиля.\n\n"
-            f"💎 *Полные материалы профиля:*\n"
+            f"👤 *{user_name}*, для получения материалов необходимо приобрести полный пакет.\n\n"
+            f"💎 *Полный пакет ВАРИАТИКА:*\n"
             f"• Стоимость: 1 руб (тестовый режим)\n"
             f"• ВСЕ способы оплаты (СБП, ЮMoney, карты)\n"
             f"• Мгновенный доступ после оплаты\n"
-            f"• Все материалы профиля\n\n"
+            f"• Все материалы курса\n\n"
             f"Используйте команду /buy для покупки",
             parse_mode='Markdown'
         )
@@ -3071,13 +2794,13 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not materials_result.get("success"):
         error_msg = materials_result.get("error", "Неизвестная ошибка")
         
-        keyboard = [[InlineKeyboardButton("💳 Купить материалы", callback_data="buy_without_test")]]
+        keyboard = [[InlineKeyboardButton("💳 Купить пакет", callback_data="buy_without_test")]]
         
         await update.message.reply_text(
             f"❌ *НЕ УДАЛОСЬ ПОЛУЧИТЬ МАТЕРИАЛЫ*\n\n"
             f"`{error_msg}`\n\n"
             f"Возможно, платеж еще не обработан или возникла ошибка.\n"
-            f"Попробуйте позже или приобретите материалы заново.",
+            f"Попробуйте позже или приобретите пакет заново.",
             parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
@@ -3100,7 +2823,7 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         f"✅ *МАТЕРИАЛЫ ГОТОВЫ!*\n\n"
-        f"👤 *{user_name}*, вот ваши материалы профиля ВАРИАТИКА:\n\n"
+        f"👤 *{user_name}*, вот ваши материалы курса ВАРИАТИКА:\n\n"
         f"📋 *ID заказа:* `{last_payment_id}`\n"
         f"📊 *Профиль:* `{profile_code}`\n"
         f"💰 *Сумма:* 1 руб (тестовый режим)\n\n"
@@ -3193,8 +2916,8 @@ def main():
     print("1. Адаптивный психодиагностический тест (4 этапа)")
     print("2. Упрощенная логика поиска профилей")
     print("3. Интеграция с платежной системой VARIATICA")
-    print("4. Прямые инвойсы в ЮKassa с Яндекс.Диск ссылками")
-    print("5. Автоматическая выдача материалов после оплаты")
+    print("4. Поддержка Invoices API (ВСЕ способы оплаты)")
+    print("5. Автоматическая выдача материалов")
     print("="*60 + "\n")
     
     # Проверка загрузки профилей
@@ -3221,14 +2944,8 @@ def main():
         key_type = "БОЕВОЙ (live_)" if YOOKASSA_SECRET_KEY.startswith('live_') else "ТЕСТОВЫЙ (test_)"
         print(f"📊 Тип ключа: {key_type}")
     print("✅ Платежная система: ГОТОВА")
-    print("💎 Стоимость полных материалов профиля: 1 руб (ТЕСТОВЫЙ РЕЖИМ)")
+    print("💎 Стоимость полного пакета: 1 руб (ТЕСТОВЫЙ РЕЖИМ)")
     print("💳 Доступные способы оплаты: СБП, ЮMoney, банковские карты")
-    print("🔗 Яндекс.Диск: 36 ссылок загружено")
-    print("="*30)
-    print("🔥 СИСТЕМА ПРЯМОЙ ИНТЕГРАЦИИ С ЮKASSA:")
-    print("✅ Яндекс.Диск ссылки в metadata платежа")
-    print("✅ Возвратные URL с параметрами")
-    print("✅ Прямые ссылки на материалы после оплаты")
     print("="*30)
     print("🚀 Запускаю бота...")
     
@@ -3311,12 +3028,10 @@ def main():
     
     application.add_handler(conv_handler)
     
-    logger.info("🚀 Bot started: ВАРИАТИКА ver 2.2 with DIRECT YOOKASSA INTEGRATION!")
+    logger.info("🚀 Bot started: ВАРИАТИКА ver 2.2 with PAYMENT SYSTEM!")
     logger.info(f"📡 API: {API_URL}")
     logger.info(f"💳 YooKassa: {'✅ ACTIVE' if YOOKASSA_SHOP_ID and YOOKASSA_SECRET_KEY else '❌ INACTIVE'}")
     logger.info("💰 Payment system: ACTIVE (1 RUB TEST MODE, all methods)")
-    logger.info("🔗 Яндекс.Диск: 36 ссылок готово для прямого доступа")
-    logger.info("🔥 API warming system: ACTIVE (starts on /start and test start)")
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
