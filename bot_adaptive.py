@@ -3561,443 +3561,436 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-ОБРАБОТЧИК СЕТЕВЫХ ОШИБОК
-============================================
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-"""Обработчик ошибок"""
-error_msg = str(context.error)
-text
-Копировать
-Скачать
-logger.error(f"💥 Ошибка: {error_msg}")
+# ============================================
+# ОБРАБОТЧИК СЕТЕВЫХ ОШИБОК
+# ============================================
 
-# Сетевые ошибки
-if any(keyword in error_msg for keyword in ["NetworkError", "RemoteProtocolError", "Timeout", "ConnectionError", "Connection reset", "Connection refused", "ReadTimeout"]):
-    logger.warning(f"⚠️ Сетевая ошибка: {error_msg}")
-    
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик ошибок"""
+    error_msg = str(context.error)
+    logger.error(f"💥 Ошибка: {error_msg}")
+
+    # Сетевые ошибки
+    if any(keyword in error_msg for keyword in ["NetworkError", "RemoteProtocolError", "Timeout", "ConnectionError", "Connection reset", "Connection refused", "ReadTimeout"]):
+        logger.warning(f"⚠️ Сетевая ошибка: {error_msg}")
+        
+        if update and update.effective_message:
+            try:
+                await update.effective_message.reply_text(
+                    "⚠️ Временная сетевая проблема. Попробуйте снова через 10 секунд."
+                )
+            except:
+                pass
+        
+        await asyncio.sleep(2)
+        return
+
+    # Ошибки валидации от Telegram
+    if "Bad Request" in error_msg and "message is not modified" in error_msg:
+        logger.info(f"ℹ️ Игнорирую: message is not modified")
+        return
+
+    if "Bad Request" in error_msg and "query is too old" in error_msg:
+        logger.info(f"ℹ️ Игнорирую: query is too old")
+        return
+
+    if "Forbidden" in error_msg and "bot was blocked by the user" in error_msg:
+        logger.info(f"ℹ️ Пользователь заблокировал бота")
+        return
+
+    # Ошибки конфликта webhook
+    if "Conflict" in error_msg and "can't use getUpdates method while webhook is active" in error_msg:
+        logger.error(f"❌ Конфликт webhook. Очищаю...")
+        try:
+            clear_telegram_conflicts()
+        except:
+            pass
+        return
+
+    # Ошибки API
+    if "Payment" in error_msg and "already paid" in error_msg:
+        logger.warning(f"⚠️ Платеж уже оплачен: {error_msg}")
+        if update and update.callback_query:
+            try:
+                await update.callback_query.answer("✅ Платеж уже подтвержден!", show_alert=True)
+                payment_id = update.callback_query.data.split('_')[1] if '_' in update.callback_query.data else 'unknown'
+                await update.callback_query.edit_message_text(
+                    f"✅ *ПЛАТЕЖ УЖЕ ОПЛАЧЕН!*\n\n"
+                    f"Ваш платеж уже был подтвержден ранее.\n\n"
+                    f"Для получения материалов используйте /materials",
+                    parse_mode='Markdown'
+                )
+            except:
+                pass
+        return
+
+    # Критические ошибки
+    logger.critical(f"💥 Необработанная ошибка: {error_msg}")
+    logger.exception(context.error)
+
     if update and update.effective_message:
         try:
             await update.effective_message.reply_text(
-                "⚠️ Временная сетевая проблема. Попробуйте снова через 10 секунд."
+                "❌ Произошла непредвиденная ошибка. Попробуйте /start\n\n"
+                "Если ошибка повторяется, свяжитесь с поддержкой."
             )
         except:
             pass
-    
-    await asyncio.sleep(2)
-    return
 
-# Ошибки валидации от Telegram
-if "Bad Request" in error_msg and "message is not modified" in error_msg:
-    logger.info(f"ℹ️ Игнорирую: message is not modified")
-    return
+# ============================================
+# ДОПОЛНИТЕЛЬНЫЕ ОБРАБОТЧИКИ ДЛЯ КНОПОК
+# ============================================
 
-if "Bad Request" in error_msg and "query is too old" in error_msg:
-    logger.info(f"ℹ️ Игнорирую: query is too old")
-    return
-
-if "Forbidden" in error_msg and "bot was blocked by the user" in error_msg:
-    logger.info(f"ℹ️ Пользователь заблокировал бота")
-    return
-
-# Ошибки конфликта webhook
-if "Conflict" in error_msg and "can't use getUpdates method while webhook is active" in error_msg:
-    logger.error(f"❌ Конфликт webhook. Очищаю...")
-    try:
-        clear_telegram_conflicts()
-    except:
-        pass
-    return
-
-# Ошибки API
-if "Payment" in error_msg and "already paid" in error_msg:
-    logger.warning(f"⚠️ Платеж уже оплачен: {error_msg}")
-    if update and update.callback_query:
-        try:
-            await update.callback_query.answer("✅ Платеж уже подтвержден!", show_alert=True)
-            payment_id = update.callback_query.data.split('_')[1] if '_' in update.callback_query.data else 'unknown'
-            await update.callback_query.edit_message_text(
-                f"✅ *ПЛАТЕЖ УЖЕ ОПЛАЧЕН!*\n\n"
-                f"Ваш платеж уже был подтвержден ранее.\n\n"
-                f"Для получения материалов используйте /materials",
-                parse_mode='Markdown'
-            )
-        except:
-            pass
-    return
-
-# Критические ошибки
-logger.critical(f"💥 Необработанная ошибка: {error_msg}")
-logger.exception(context.error)
-
-if update and update.effective_message:
-    try:
-        await update.effective_message.reply_text(
-            "❌ Произошла непредвиденная ошибка. Попробуйте /start\n\n"
-            "Если ошибка повторяется, свяжитесь с поддержкой."
-        )
-    except:
-        pass
-============================================
-ДОПОЛНИТЕЛЬНЫЕ ОБРАБОТЧИКИ ДЛЯ КНОПОК
-============================================
 async def check_access_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-"""Обработчик для кнопки 'Проверить доступ'"""
-query = update.callback_query
-await query.answer()
-text
-Копировать
-Скачать
-# Вызываем команду /myaccess
-return await myaccess_command(update, context)
+    """Обработчик для кнопки 'Проверить доступ'"""
+    query = update.callback_query
+    await query.answer()
+    # Вызываем команду /myaccess
+    return await myaccess_command(update, context)
+
 async def check_current_status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-"""Обработчик для кнопки 'Проверить статус' в /myaccess"""
-query = update.callback_query
-await query.answer("🔄 Обновляю статус...")
-text
-Копировать
-Скачать
-user_id = query.from_user.id
-user_name = query.from_user.first_name
+    """Обработчик для кнопки 'Проверить статус' в /myaccess"""
+    query = update.callback_query
+    await query.answer("🔄 Обновляю статус...")
+    user_id = query.from_user.id
+    user_name = query.from_user.first_name
 
-# Проверяем доступ через API
-access_data = get_user_access(user_id)
+    # Проверяем доступ через API
+    access_data = get_user_access(user_id)
 
-if not access_data.get('success', False):
-    error_msg = access_data.get('error', 'Unknown error')
+    if not access_data.get('success', False):
+        error_msg = access_data.get('error', 'Unknown error')
+        await query.edit_message_text(
+            f"❌ Ошибка проверки доступа: {error_msg}",
+            parse_mode="HTML"
+        )
+        return
+
+    if access_data.get('has_access'):
+        accesses = access_data.get('accesses', [])
+        active_access = None
+        for access in accesses:
+            if access.get('has_access') and access.get('is_active'):
+                active_access = access
+                break
+        
+        if active_access:
+            payment_id = active_access.get('payment_id')
+            profile_key = active_access.get('profile_key')
+            granted_at = active_access.get('granted_at')
+            expires_at = active_access.get('expires_at')
+            
+            # Генерируем ссылку
+            materials_link = generate_yandex_disk_link(profile_key) if profile_key else "https://disk.yandex.ru"
+            
+            keyboard = [
+                [InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)],
+                [InlineKeyboardButton("🔄 ОБНОВИТЬ СТАТУС", callback_data="check_current_status")]
+            ]
+            
+            await query.edit_message_text(
+                f"✅ <b>ДОСТУП АКТИВЕН! (обновлено)</b>\n\n"
+                f"👤 <b>Пользователь:</b> {user_name}\n"
+                f"🎯 <b>Профиль:</b> {profile_key or 'Не указан'}\n"
+                f"📦 <b>Пакет:</b> Полный ВАРИАТИКА\n"
+                f"📅 <b>Доступ открыт:</b> {granted_at or 'Неизвестно'}\n"
+                f"📅 <b>Действителен до:</b> {expires_at or 'Неизвестно'}\n\n"
+                f"<b>Для получения материалов используйте кнопку ниже:</b>\n\n"
+                f"🔗 <b>Ссылка:</b> {materials_link}",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML"
+            )
+        else:
+            await query.edit_message_text(
+                f"⚠️ <b>ДОСТУП НАЙДЕН, НО НЕ АКТИВЕН (обновлено)</b>\n\n"
+                f"У вас есть доступ, но он не активен или истек.",
+                parse_mode="HTML"
+            )
+    else:
+        await query.edit_message_text(
+            f"❌ <b>ДОСТУП НЕ АКТИВЕН (обновлено)</b>\n\n"
+            f"Доступ не найден или не активирован.",
+            parse_mode="HTML"
+        )
+
+# ============================================
+# ОБРАБОТЧИК ДЛЯ КОМАНДЫ /CANCEL ВНЕ ConversationHandler
+# ============================================
+
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /cancel для отмены вне ConversationHandler"""
+    await update.message.reply_text(
+        "❌ Текущая операция отменена.\n\n"
+        "Чтобы начать тест заново: /start\n"
+        "Чтобы проверить доступ: /myaccess"
+    )
+    # Очищаем данные пользователя
+    context.user_data.clear()
+    return ConversationHandler.END
+
+# ============================================
+# ОБРАБОТЧИК ДЛЯ НЕИЗВЕСТНЫХ КОМАНД
+# ============================================
+
+async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик неизвестных команд"""
+    await update.message.reply_text(
+        "🤔 Неизвестная команда.\n\n"
+        "Доступные команды:\n"
+        "/start - начать тест\n"
+        "/help - справка по командам\n"
+        "/materials - получить материалы\n"
+        "/myaccess - проверить статус доступа\n"
+        "/check <id> - проверить статус платежа\n"
+        "/cancel - отмена текущей операции"
+    )
+
+async def unknown_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик неизвестных callback-запросов"""
+    query = update.callback_query
+    await query.answer("⚠️ Эта кнопка больше не активна")
     await query.edit_message_text(
-        f"❌ Ошибка проверки доступа: {error_msg}",
+        "⚠️ <b>ЭТА КНОПКА УСТАРЕЛА</b>\n\n"
+        "Пожалуйста, используйте команды:\n"
+        "/start - начать тест\n"
+        "/materials - получить материалы\n"
+        "/myaccess - проверить статус доступа\n\n"
+        "Или начните заново:",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🚀 НАЧАТЬ ТЕСТ", callback_data="start_test")],
+            [InlineKeyboardButton("💎 КУПИТЬ ДОСТУП", callback_data="show_package")]
+        ]),
         parse_mode="HTML"
     )
-    return
 
-if access_data.get('has_access'):
-    accesses = access_data.get('accesses', [])
-    active_access = None
-    for access in accesses:
-        if access.get('has_access') and access.get('is_active'):
-            active_access = access
-            break
-    
-    if active_access:
-        payment_id = active_access.get('payment_id')
-        profile_key = active_access.get('profile_key')
-        granted_at = active_access.get('granted_at')
-        expires_at = active_access.get('expires_at')
-        
-        # Генерируем ссылку
-        materials_link = generate_yandex_disk_link(profile_key) if profile_key else "https://disk.yandex.ru"
-        
-        keyboard = [
-            [InlineKeyboardButton("📥 СКАЧАТЬ МАТЕРИАЛЫ", url=materials_link)],
-            [InlineKeyboardButton("🔄 ОБНОВИТЬ СТАТУС", callback_data="check_current_status")]
-        ]
-        
-        await query.edit_message_text(
-            f"✅ <b>ДОСТУП АКТИВЕН! (обновлено)</b>\n\n"
-            f"👤 <b>Пользователь:</b> {user_name}\n"
-            f"🎯 <b>Профиль:</b> {profile_key or 'Не указан'}\n"
-            f"📦 <b>Пакет:</b> Полный ВАРИАТИКА\n"
-            f"📅 <b>Доступ открыт:</b> {granted_at or 'Неизвестно'}\n"
-            f"📅 <b>Действителен до:</b> {expires_at or 'Неизвестно'}\n\n"
-            f"<b>Для получения материалов используйте кнопку ниже:</b>\n\n"
-            f"🔗 <b>Ссылка:</b> {materials_link}",
-            reply_markup=InlineKeyboardMarkup(keyboard),
+# ============================================
+# ОБРАБОТЧИК ДЛЯ ТЕКСТОВЫХ СООБЩЕНИЙ
+# ============================================
+
+async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик текстовых сообщений"""
+    user_id = update.effective_user.id
+    text = update.message.text
+
+    # Игнорируем команды
+    if text.startswith('/'):
+        return
+
+    # Проверяем, есть ли активный тест
+    if context.user_data.get("stage1_current") is not None:
+        await update.message.reply_text(
+            "⚠️ <b>СЕЙЧАС ИДЕТ ТЕСТ!</b>\n\n"
+            "Пожалуйста, отвечайте на вопросы, используя кнопки.\n"
+            "Если хотите отменить тест: /cancel",
+            parse_mode="HTML"
+        )
+        return
+
+    # Проверяем, есть ли доступ у пользователя
+    access_data = get_user_access(user_id)
+    if access_data.get('has_access', False):
+        await update.message.reply_text(
+            "👋 <b>Привет!</b>\n\n"
+            "У вас уже есть доступ к материалам.\n"
+            "Используйте /materials для получения материалов.\n\n"
+            "Хотите пройти тест заново? /start",
             parse_mode="HTML"
         )
     else:
-        await query.edit_message_text(
-            f"⚠️ <b>ДОСТУП НАЙДЕН, НО НЕ АКТИВЕН (обновлено)</b>\n\n"
-            f"У вас есть доступ, но он не активен или истек.",
+        await update.message.reply_text(
+            "👋 <b>Привет!</b>\n\n"
+            "Я - бот ВАРИАТИКА. Я помогу вам узнать о себе то, что вы ещё не знаете.\n\n"
+            "🎯 <b>Что я умею:</b>\n"
+            "• Проводить психодиагностический тест (32 вопроса)\n"
+            "• Определять ваш тип восприятия и мышления\n"
+            "• Показывать поведенческие паттерны\n"
+            "• Предоставлять персонализированные рекомендации\n\n"
+            "🚀 <b>Начать:</b> /start\n"
+            "📚 <b>Справка:</b> /help",
             parse_mode="HTML"
         )
-else:
-    await query.edit_message_text(
-        f"❌ <b>ДОСТУП НЕ АКТИВЕН (обновлено)</b>\n\n"
-        f"Доступ не найден или не активирован.",
-        parse_mode="HTML"
-    )
-============================================
-ОБРАБОТЧИК ДЛЯ КОМАНДЫ /CANCEL ВНЕ ConversationHandler
-============================================
-async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-"""Команда /cancel для отмены вне ConversationHandler"""
-await update.message.reply_text(
-"❌ Текущая операция отменена.\n\n"
-"Чтобы начать тест заново: /start\n"
-"Чтобы проверить доступ: /myaccess"
-)
-text
-Копировать
-Скачать
-# Очищаем данные пользователя
-context.user_data.clear()
-return ConversationHandler.END
-============================================
-ОБРАБОТЧИК ДЛЯ НЕИЗВЕСТНЫХ КОМАНД
-============================================
-async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-"""Обработчик неизвестных команд"""
-await update.message.reply_text(
-"🤔 Неизвестная команда.\n\n"
-"Доступные команды:\n"
-"/start - начать тест\n"
-"/help - справка по командам\n"
-"/materials - получить материалы\n"
-"/myaccess - проверить статус доступа\n"
-"/check <id> - проверить статус платежа\n"
-"/cancel - отмена текущей операции"
-)
-async def unknown_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-"""Обработчик неизвестных callback-запросов"""
-query = update.callback_query
-await query.answer("⚠️ Эта кнопка больше не активна")
-text
-Копировать
-Скачать
-await query.edit_message_text(
-    "⚠️ <b>ЭТА КНОПКА УСТАРЕЛА</b>\n\n"
-    "Пожалуйста, используйте команды:\n"
-    "/start - начать тест\n"
-    "/materials - получить материалы\n"
-    "/myaccess - проверить статус доступа\n\n"
-    "Или начните заново:",
-    reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("🚀 НАЧАТЬ ТЕСТ", callback_data="start_test")],
-        [InlineKeyboardButton("💎 КУПИТЬ ДОСТУП", callback_data="show_package")]
-    ]),
-    parse_mode="HTML"
-)
-============================================
-ОБРАБОТЧИК ДЛЯ ТЕКСТОВЫХ СООБЩЕНИЙ
-============================================
-async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-"""Обработчик текстовых сообщений"""
-user_id = update.effective_user.id
-text = update.message.text
-text
-Копировать
-Скачать
-# Игнорируем команды
-if text.startswith('/'):
-    return
 
-# Проверяем, есть ли активный тест
-if context.user_data.get("stage1_current") is not None:
-    await update.message.reply_text(
-        "⚠️ <b>СЕЙЧАС ИДЕТ ТЕСТ!</b>\n\n"
-        "Пожалуйста, отвечайте на вопросы, используя кнопки.\n"
-        "Если хотите отменить тест: /cancel",
-        parse_mode="HTML"
-    )
-    return
+# ============================================
+# ПЕРИОДИЧЕСКАЯ ПРОВЕРКА ДОСТУПОВ
+# ============================================
 
-# Проверяем, есть ли доступ у пользователя
-access_data = get_user_access(user_id)
-if access_data.get('has_access', False):
-    await update.message.reply_text(
-        "👋 <b>Привет!</b>\n\n"
-        "У вас уже есть доступ к материалам.\n"
-        "Используйте /materials для получения материалов.\n\n"
-        "Хотите пройти тест заново? /start",
-        parse_mode="HTML"
-    )
-else:
-    await update.message.reply_text(
-        "👋 <b>Привет!</b>\n\n"
-        "Я - бот ВАРИАТИКА. Я помогу вам узнать о себе то, что вы ещё не знаете.\n\n"
-        "🎯 <b>Что я умею:</b>\n"
-        "• Проводить психодиагностический тест (32 вопроса)\n"
-        "• Определять ваш тип восприятия и мышления\n"
-        "• Показывать поведенческие паттерны\n"
-        "• Предоставлять персонализированные рекомендации\n\n"
-        "🚀 <b>Начать:</b> /start\n"
-        "📚 <b>Справка:</b> /help",
-        parse_mode="HTML"
-    )
-============================================
-ПЕРИОДИЧЕСКАЯ ПРОВЕРКА ДОСТУПОВ
-============================================
 async def check_expired_accesses(context: ContextTypes.DEFAULT_TYPE):
-"""Периодическая проверка истекших доступов"""
-try:
-logger.info("🔄 Периодическая проверка истекших доступов...")
-text
-Копировать
-Скачать
-    # Здесь можно добавить логику для проверки истекших доступов
-    # и уведомления пользователей
-    
-    # Временная заглушка
-    logger.info("✅ Проверка истекших доступов завершена")
-    
-except Exception as e:
-    logger.error(f"❌ Ошибка при проверке истекших доступов: {e}")
-============================================
-НАСТРОЙКА И ЗАПУСК БОТА
-============================================
+    """Периодическая проверка истекших доступов"""
+    try:
+        logger.info("🔄 Периодическая проверка истекших доступов...")
+
+        # Здесь можно добавить логику для проверки истекших доступов
+        # и уведомления пользователей
+        
+        # Временная заглушка
+        logger.info("✅ Проверка истекших доступов завершена")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка при проверке истекших доступов: {e}")
+
+# ============================================
+# НАСТРОЙКА И ЗАПУСК БОТА
+# ============================================
+
 def main():
-"""Основная функция запуска бота"""
-print("\n" + "="*60)
-print("🚀 ЗАПУСК БОТА ВАРИАТИКА v2.3")
-print("Версия: ПОЛНАЯ ВЕРСИЯ 2.3 - ОБЪЕДИНЕНИЕ РАБОЧЕЙ ЛОГИКИ v1.9 С ПЛАТЕЖНОЙ СИСТЕМОЙ v2.2")
-print("="*60)
-text
-Копировать
-Скачать
-# Очистка конфликтов перед запуском
-try:
-    clear_telegram_conflicts()
-except Exception as e:
-    logger.warning(f"⚠️ Не удалось очистить конфликты: {e}")
+    """Основная функция запуска бота"""
+    print("\n" + "="*60)
+    print("🚀 ЗАПУСК БОТА ВАРИАТИКА v2.3")
+    print("Версия: ПОЛНАЯ ВЕРСИЯ 2.3 - ОБЪЕДИНЕНИЕ РАБОЧЕЙ ЛОГИКИ v1.9 С ПЛАТЕЖНОЙ СИСТЕМОЙ v2.2")
+    print("="*60)
 
-# Проверка загрузки всех 36 профилей
-try:
-    profiles_loaded = check_all_profiles()
-    if not profiles_loaded:
-        logger.warning("⚠️ Не все профили загружены! Возможны проблемы с отображением результатов.")
-except Exception as e:
-    logger.error(f"❌ Ошибка при проверке профилей: {e}")
+    # Очистка конфликтов перед запуском
+    try:
+        clear_telegram_conflicts()
+    except Exception as e:
+        logger.warning(f"⚠️ Не удалось очистить конфликты: {e}")
 
-# Создание Application
-app = Application.builder().token(TOKEN).build()
+    # Проверка загрузки всех 36 профилей
+    try:
+        profiles_loaded = check_all_profiles()
+        if not profiles_loaded:
+            logger.warning("⚠️ Не все профили загружены! Возможны проблемы с отображением результатов.")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при проверке профилей: {e}")
 
-# ConversationHandler для теста (ОСНОВНОЙ)
-conv_handler = ConversationHandler(
-    entry_points=[
-        CommandHandler("start", start),
-        CallbackQueryHandler(start_test, pattern="^start_test$")
-    ],
-    states={
-        STAGE_1: [
-            CallbackQueryHandler(show_stage_1_details, pattern="^stage1_details$"),
-            CallbackQueryHandler(back_to_stage1_intro, pattern="^back_to_stage1_intro$"),
-            CallbackQueryHandler(start_stage_1, pattern="^start_stage_1$"),
-            CallbackQueryHandler(handle_stage_1_answer, pattern="^stage1_")
+    # Создание Application
+    app = Application.builder().token(TOKEN).build()
+
+    # ConversationHandler для теста (ОСНОВНОЙ)
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("start", start),
+            CallbackQueryHandler(start_test, pattern="^start_test$")
         ],
-        STAGE_2: [
-            CallbackQueryHandler(show_stage_2_details, pattern="^stage2_details$"),
-            CallbackQueryHandler(back_to_stage2_intro, pattern="^back_to_stage2_intro$"),
-            CallbackQueryHandler(start_stage_2, pattern="^start_stage_2$"),
-            CallbackQueryHandler(handle_stage_2_answer, pattern="^stage2_")
+        states={
+            STAGE_1: [
+                CallbackQueryHandler(show_stage_1_details, pattern="^stage1_details$"),
+                CallbackQueryHandler(back_to_stage1_intro, pattern="^back_to_stage1_intro$"),
+                CallbackQueryHandler(start_stage_1, pattern="^start_stage_1$"),
+                CallbackQueryHandler(handle_stage_1_answer, pattern="^stage1_")
+            ],
+            STAGE_2: [
+                CallbackQueryHandler(show_stage_2_details, pattern="^stage2_details$"),
+                CallbackQueryHandler(back_to_stage2_intro, pattern="^back_to_stage2_intro$"),
+                CallbackQueryHandler(start_stage_2, pattern="^start_stage_2$"),
+                CallbackQueryHandler(handle_stage_2_answer, pattern="^stage2_")
+            ],
+            STAGE_3: [
+                CallbackQueryHandler(show_stage_3_details, pattern="^stage3_details$"),
+                CallbackQueryHandler(back_to_stage3_intro, pattern="^back_to_stage3_intro$"),
+                CallbackQueryHandler(start_stage_3, pattern="^start_stage_3$"),
+                CallbackQueryHandler(handle_stage_3_answer, pattern="^stage3_")
+            ],
+            STAGE_4: [
+                CallbackQueryHandler(show_stage_4_details, pattern="^stage4_details$"),
+                CallbackQueryHandler(back_to_stage4_intro, pattern="^back_to_stage4_intro$"),
+                CallbackQueryHandler(start_stage_4, pattern="^start_stage_4$"),
+                CallbackQueryHandler(handle_stage_4_answer, pattern="^stage4_")
+            ],
+            CLARIFICATION: [
+                CallbackQueryHandler(handle_clarification_answer, pattern="^clarify_")
+            ],
+            DILTS_CLARIFICATION: [
+                CallbackQueryHandler(handle_dilts_clarification, pattern="^dilts_clarify_")
+            ],
+            RESULTS: [
+                CallbackQueryHandler(get_gift_screen, pattern="^get_gift$"),
+                CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
+                CallbackQueryHandler(restart_test, pattern="^restart_test$"),
+                CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
+                CallbackQueryHandler(buy_variatica_package, pattern="^buy_variatica_package$"),
+                CallbackQueryHandler(test_payment, pattern="^test_payment$"),
+                CallbackQueryHandler(status_payment, pattern="^status_")
+            ],
+            GIFT_SCREEN: [
+                CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
+            ],
+            PACKAGE_SCREEN: [
+                CallbackQueryHandler(buy_variatica_package, pattern="^buy_variatica_package$"),
+                CallbackQueryHandler(test_payment, pattern="^test_payment$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
+            ],
+            OPEN_GIFT_SCREEN: [
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
+            ]
+        },
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            CommandHandler("start", start)
         ],
-        STAGE_3: [
-            CallbackQueryHandler(show_stage_3_details, pattern="^stage3_details$"),
-            CallbackQueryHandler(back_to_stage3_intro, pattern="^back_to_stage3_intro$"),
-            CallbackQueryHandler(start_stage_3, pattern="^start_stage_3$"),
-            CallbackQueryHandler(handle_stage_3_answer, pattern="^stage3_")
-        ],
-        STAGE_4: [
-            CallbackQueryHandler(show_stage_4_details, pattern="^stage4_details$"),
-            CallbackQueryHandler(back_to_stage4_intro, pattern="^back_to_stage4_intro$"),
-            CallbackQueryHandler(start_stage_4, pattern="^start_stage_4$"),
-            CallbackQueryHandler(handle_stage_4_answer, pattern="^stage4_")
-        ],
-        CLARIFICATION: [
-            CallbackQueryHandler(handle_clarification_answer, pattern="^clarify_")
-        ],
-        DILTS_CLARIFICATION: [
-            CallbackQueryHandler(handle_dilts_clarification, pattern="^dilts_clarify_")
-        ],
-        RESULTS: [
-            CallbackQueryHandler(get_gift_screen, pattern="^get_gift$"),
-            CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
-            CallbackQueryHandler(restart_test, pattern="^restart_test$"),
-            CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
-            CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-            CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
-            CallbackQueryHandler(buy_variatica_package, pattern="^buy_variatica_package$"),
-            CallbackQueryHandler(test_payment, pattern="^test_payment$"),
-            CallbackQueryHandler(status_payment, pattern="^status_")
-        ],
-        GIFT_SCREEN: [
-            CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
-            CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
-        ],
-        PACKAGE_SCREEN: [
-            CallbackQueryHandler(buy_variatica_package, pattern="^buy_variatica_package$"),
-            CallbackQueryHandler(test_payment, pattern="^test_payment$"),
-            CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
-        ],
-        OPEN_GIFT_SCREEN: [
-            CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
-        ]
-    },
-    fallbacks=[
-        CommandHandler("cancel", cancel),
-        CommandHandler("start", start)
-    ],
-    allow_reentry=True,
-    conversation_timeout=timedelta(minutes=30)
-)
-
-# Добавляем ConversationHandler
-app.add_handler(conv_handler)
-
-# Команды бота
-app.add_handler(CommandHandler("help", help_command))
-app.add_handler(CommandHandler("myaccess", myaccess_command))
-app.add_handler(CommandHandler("check", check_command))
-app.add_handler(CommandHandler("materials", materials_command))
-app.add_handler(CommandHandler("cancel", cancel_command))
-
-# Обработчики callback-запросов (отдельные от ConversationHandler)
-app.add_handler(CallbackQueryHandler(check_access_callback, pattern="^check_access$"))
-app.add_handler(CallbackQueryHandler(check_current_status_callback, pattern="^check_current_status$"))
-app.add_handler(CallbackQueryHandler(unknown_callback))
-
-# Обработчик текстовых сообщений
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
-
-# Обработчик неизвестных команд
-app.add_handler(MessageHandler(filters.COMMAND, unknown_command))
-
-# Обработчик ошибок
-app.add_error_handler(error_handler)
-
-# Настраиваем JobQueue для периодических задач
-job_queue = app.job_queue
-if job_queue:
-    # Проверка истекших доступов каждый час
-    job_queue.run_repeating(check_expired_accesses, interval=3600, first=10)
-
-print("\n" + "="*60)
-print("🤖 БОТ ВАРИАТИКА v2.3 ЗАПУЩЕН И ГОТОВ К РАБОТЕ")
-print("="*60)
-print("📊 КЛЮЧЕВЫЕ ВОЗМОЖНОСТИ:")
-print("  • Адаптивный тест (32 вопроса, 4 этапа)")
-print("  • 36 психодиагностических профилей")
-print("  • Интегрированная платежная система (ЮKassa)")
-print("  • Автоматическая выдача материалов")
-print("  • Система проверки доступа через API")
-print("="*60)
-print("🔗 КОНФИГУРАЦИЯ:")
-print(f"  • API URL: {API_URL}")
-print(f"  • Бот: {BOT_LINK}")
-print(f"  • Автор: {AUTHOR_LINK}")
-print("="*60)
-print("✅ СТАТУС:")
-print("  • Профили: 36/36 загружено")
-print("  • Платежная система: интегрирована")
-print("  • API: подключено")
-print("  • Обработка ошибок: настроена")
-print("="*60 + "\n")
-
-# Запуск бота
-try:
-    app.run_polling(
-        allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=True,
-        close_loop=False
+        allow_reentry=True,
+        conversation_timeout=timedelta(minutes=30)
     )
-except Exception as e:
-    logger.critical(f"💥 КРИТИЧЕСКАЯ ОШИБКА ПРИ ЗАПУСКЕ БОТА: {e}")
-    sys.exit(1)
-============================================
-ТОЧКА ВХОДА
-============================================
-# Запускаем бота
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    # Добавляем ConversationHandler
+    app.add_handler(conv_handler)
+
+    # Команды бота
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("myaccess", myaccess_command))
+    app.add_handler(CommandHandler("check", check_command))
+    app.add_handler(CommandHandler("materials", materials_command))
+    app.add_handler(CommandHandler("cancel", cancel_command))
+
+    # Обработчики callback-запросов (отдельные от ConversationHandler)
+    app.add_handler(CallbackQueryHandler(check_access_callback, pattern="^check_access$"))
+    app.add_handler(CallbackQueryHandler(check_current_status_callback, pattern="^check_current_status$"))
+    app.add_handler(CallbackQueryHandler(unknown_callback))
+
+    # Обработчик текстовых сообщений
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
+
+    # Обработчик неизвестных команд
+    app.add_handler(MessageHandler(filters.COMMAND, unknown_command))
+
+    # Обработчик ошибок
+    app.add_error_handler(error_handler)
+
+    # Настраиваем JobQueue для периодических задач
+    job_queue = app.job_queue
+    if job_queue:
+        # Проверка истекших доступов каждый час
+        job_queue.run_repeating(check_expired_accesses, interval=3600, first=10)
+
+    print("\n" + "="*60)
+    print("🤖 БОТ ВАРИАТИКА v2.3 ЗАПУЩЕН И ГОТОВ К РАБОТЕ")
+    print("="*60)
+    print("📊 КЛЮЧЕВЫЕ ВОЗМОЖНОСТИ:")
+    print("  • Адаптивный тест (32 вопроса, 4 этапа)")
+    print("  • 36 психодиагностических профилей")
+    print("  • Интегрированная платежная система (ЮKassa)")
+    print("  • Автоматическая выдача материалов")
+    print("  • Система проверки доступа через API")
+    print("="*60)
+    print("🔗 КОНФИГУРАЦИЯ:")
+    print(f"  • API URL: {API_URL}")
+    print(f"  • Бот: {BOT_LINK}")
+    print(f"  • Автор: {AUTHOR_LINK}")
+    print("="*60)
+    print("✅ СТАТУС:")
+    print("  • Профили: 36/36 загружено")
+    print("  • Платежная система: интегрирована")
+    print("  • API: подключено")
+    print("  • Обработка ошибок: настроена")
+    print("="*60 + "\n")
+
+    # Запуск бота
+    try:
+        app.run_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+            close_loop=False
+        )
+    except Exception as e:
+        logger.critical(f"💥 КРИТИЧЕСКАЯ ОШИБКА ПРИ ЗАПУСКЕ БОТА: {e}")
+        sys.exit(1)
+
+# ============================================
+# ТОЧКА ВХОДА
+# ============================================
 
 if __name__ == "__main__":
     main()
-
