@@ -2297,45 +2297,6 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return await start(fake_update, context)
 
 # ============================================
-# 🔥 ИСПРАВЛЕННАЯ ФУНКЦИЯ show_psychologist_conclusion (ЗАМЕНА КНОПКИ ПО ТЗ)
-# ============================================
-
-async def show_psychologist_conclusion(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Заключительное сообщение от психолога"""
-    query = update.callback_query
-    await query.answer()
-    
-    conclusion_text = (
-        f"🧠 <b>БЛАГОДАРЮ ЗА ДОВЕРИЕ!</b>\n\n"
-        f"<i>Как ваш виртуальный психолог, я рад был помочь вам в начале пути самопознания.</i>\n\n"
-        f"<b>Что дальше?</b>\n\n"
-        f"1️⃣ <b>Используйте полученные инсайты</b>\n"
-        f"   ↳ Обращайте внимание на обнаруженные паттерны\n\n"
-        f"2️⃣ <b>Получите полное описание профиля</b>\n"
-        f"   ↳ Глубокий анализ от психолога\n"
-        f"   ↳ Конкретные рекомендации для вас\n\n"
-        f"3️⃣ <b>Возвращайтесь к тесту через 3-6 месяцев</b>\n"
-        f"   ↳ Отслеживайте свой прогресс\n"
-        f"   ↳ Замечайте изменения в паттернах\n\n"
-        f"<i>Помните: самопознание — это путь, а не пункт назначения.</i>\n\n"
-        f"Всегда готов помочь,\n"
-        f"<b>Ваш виртуальный психолог Вариатика</b> 🧠"
-    )
-    
-    # 🔥 ЗАМЕНА КНОПКИ ПО ТЗ: убираем "🏠 В главное меню" с callback_data="main_menu"
-    # 🔥 ДОБАВЛЯЕМ: "👤 Связаться с автором" с url="https://t.me/meysternlp"
-    keyboard = [
-        [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
-        [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")],
-        [InlineKeyboardButton("👤 Связаться с автором", url="https://t.me/meysternlp")]  # 🔥 ЗАМЕНЕНО
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(conclusion_text, reply_markup=reply_markup, parse_mode="HTML")
-    
-    return RESULTS
-
-# ============================================
 # КОМАНДА /START С КНОПКОЙ "ДЕТАЛИ" - ОБНОВЛЕННАЯ ВЕРСИЯ
 # ============================================
 
@@ -3444,6 +3405,43 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(message, parse_mode='Markdown')
 
 # ============================================
+# ЗАКЛЮЧИТЕЛЬНОЕ СООБЩЕНИЕ ОТ ПСИХОЛОГА
+# ============================================
+
+async def show_psychologist_conclusion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Заключительное сообщение от психолога"""
+    query = update.callback_query
+    await query.answer()
+    
+    conclusion_text = (
+        f"🧠 <b>БЛАГОДАРЮ ЗА ДОВЕРИЕ!</b>\n\n"
+        f"<i>Как ваш виртуальный психолог, я рад был помочь вам в начале пути самопознания.</i>\n\n"
+        f"<b>Что дальше?</b>\n\n"
+        f"1️⃣ <b>Используйте полученные инсайты</b>\n"
+        f"   ↳ Обращайте внимание на обнаруженные паттерны\n\n"
+        f"2️⃣ <b>Получите полное описание профиля</b>\n"
+        f"   ↳ Глубокий анализ от психолога\n"
+        f"   ↳ Конкретные рекомендации для вас\n\n"
+        f"3️⃣ <b>Возвращайтесь к тесту через 3-6 месяцев</b>\n"
+        f"   ↳ Отслеживайте свой прогресс\n"
+        f"   ↳ Замечайте изменения в паттернах\n\n"
+        f"<i>Помните: самопознание — это путь, а не пункт назначения.</i>\n\n"
+        f"Всегда готов помочь,\n"
+        f"<b>Ваш виртуальный психолог Вариатика</b> 🧠"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
+        [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")],
+        [InlineKeyboardButton("🏠 В главное меню", callback_data="main_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(conclusion_text, reply_markup=reply_markup, parse_mode="HTML")
+    
+    return RESULTS
+
+# ============================================
 # ГЛАВНАЯ ФУНКЦИЯ
 # ============================================
 
@@ -3563,7 +3561,7 @@ def main():
             PAYMENT_SCREEN: [
                 CallbackQueryHandler(check_payment_callback, pattern="^check_payment_"),
                 CallbackQueryHandler(get_materials_callback_payment, pattern="^get_materials_"),
-                CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"),  # 🔥 НЕ ТРОГАЕМ - РАБОТАЕТ
+                CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"),
                 CallbackQueryHandler(buy_without_test_callback, pattern="^buy_without_test$")
             ]
         },
@@ -3592,8 +3590,7 @@ def main():
     logger.info("🔄 Updated: Добавлена функция get_discrepancy_note()")
     logger.info("🔄 Updated: УДАЛЕН текст о бонусе за репост")
     logger.info("🔄 Updated: ДОБАВЛЕНО примечание о конфликте Дилтса")
-    logger.info("🔄 Updated: КНОПКИ ОСТАВЛЕНЫ БЕЗ ИЗМЕНЕНИЙ в show_results_screen")
-    logger.info("🔄 Updated: 🔥 ЗАМЕНЕНА КНОПКА в show_psychologist_conclusion - теперь '👤 Связаться с автором' с URL")
+    logger.info("🔄 Updated: КНОПКИ ОСТАВЛЕНЫ БЕЗ ИЗМЕНЕНИЙ")
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
