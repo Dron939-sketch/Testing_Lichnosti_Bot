@@ -2696,7 +2696,7 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
     
     try:
         await query.answer()
-    } catch Exception as e:
+    except Exception as e:
         logger.error(f"Ошибка при answer(): {e}")
     
     if context.user_data.get("processing", False):
