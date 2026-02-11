@@ -2,7 +2,7 @@
 """
 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА: ПУТЬ К САМОПОЗНАНИЮ
 4 этапа адаптивного исследования + персональное описание профиля
-ВЕРСИЯ 3.5: ПОЛНОЕ ИСПРАВЛЕНИЕ STATE-ОШИБОК ПО ТЗ 3.0
+ВЕРСИЯ 3.6: ИСПРАВЛЕНИЕ ПРИМЕЧАНИЯ О РАСХОЖДЕНИИ И НАВИГАЦИОННЫХ КНОПОК
 """
 
 import logging
@@ -1636,73 +1636,56 @@ def get_level_group(level: int) -> str:
     else:
         return "7-9"
 
+# ============================================
+# 🔴 ИСПРАВЛЕНО (ТЗ 3.6): ФУНКЦИЯ ПРИМЕЧАНИЯ О РАСХОЖДЕНИИ
+# ============================================
+
 def get_discrepancy_note(profile_data: dict, actual_profile_key: str) -> str:
     """
-    Формирует примечание о конфликте уровней Дилтса.
-    Смягченная логика: конфликт ТОЛЬКО при полном несоответствии.
-    Если конфликта нет - возвращает пустую строку.
+    ИСПРАВЛЕНО (ТЗ 3.6): ВСЕГДА возвращает примечание, если найден ЛЮБОЙ суффикс
+    Без проверки соответствия уровню
+    
+    Принцип работы:
+    1. Извлекает ЛЮБОЙ суффикс из строки (def, sit, con, exp, int, aut, val, tra, ide)
+    2. ВСЕГДА возвращает соответствующую фразу из CONFLICT_PHRASES, если суффикс найден
+    3. Не проверяет соответствие уровню (это уже есть в самом факте расхождения)
     """
-    if not profile_data or not actual_profile_key:
-        logger.warning(f"⚠️ get_discrepancy_note: данные отсутствуют - profile_data: {bool(profile_data)}, actual_profile_key: {bool(actual_profile_key)}")
+    if not actual_profile_key:
+        logger.warning("⚠️ get_discrepancy_note: actual_profile_key отсутствует")
         return ""
     
     try:
-        # Получаем тип и уровень из profile_data
-        profile_type = profile_data.get('type_code', '').lower()
-        profile_level = profile_data.get('level', 1)
+        # Приводим к нижнему регистру для поиска
+        key_lower = actual_profile_key.lower()
+        logger.info(f"🔍 Поиск суффикса в ключе: {key_lower}")
         
-        # Получаем суффикс из актуального ключа профиля
-        parts = actual_profile_key.lower().split('_')
-        if len(parts) >= 3:
-            actual_suffix = parts[2]
-            
-            # СМЯГЧЕННАЯ ЛОГИКА: определяем допустимые суффиксы для уровня
-            if profile_level == 1:
-                expected_suffixes = ['def']
-            elif profile_level == 2:
-                expected_suffixes = ['sit']
-            elif profile_level == 3:
-                expected_suffixes = ['con']
-            elif profile_level == 4:
-                expected_suffixes = ['exp', 'def']
-            elif profile_level == 5:
-                expected_suffixes = ['int', 'sit']
-            elif profile_level == 6:
-                expected_suffixes = ['aut', 'con']
-            elif profile_level == 7:
-                expected_suffixes = ['val', 'exp', 'int']
-            elif profile_level == 8:
-                expected_suffixes = ['tra', 'aut']
-            elif profile_level == 9:
-                expected_suffixes = ['ide', 'val', 'tra']
-            else:
-                expected_suffixes = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
-            
-            # КОНФЛИКТ ТОЛЬКО если суффикс完全不 соответствует уровню
-            is_conflict = actual_suffix not in expected_suffixes
-            
-            if is_conflict:
-                # Получаем уровень Дилтса из суффикса
-                dilts_level = SUFFIX_TO_DILTS.get(actual_suffix, "ENVIRONMENT")
-                
-                # Получаем фразу из констант
-                conflict_phrase = CONFLICT_PHRASES.get(dilts_level, {})
-                note = conflict_phrase.get("note", "")
-                
-                if note:
-                    logger.info(f"✅ Сформировано примечание о конфликте: {profile_type}_{profile_level}_{actual_suffix} (не входит в {expected_suffixes})")
-                    return f"{note}\n\n"
-                else:
-                    return f"🔥 Примечание: Обнаружено несоответствие уровней развития.\n\n"
-            
-            else:
-                logger.info(f"✅ Конфликта нет: {actual_suffix} входит в {expected_suffixes}")
-                return ""
+        # Ищем ЛЮБОЙ известный суффикс в строке
+        found_suffix = None
+        for suffix in STANDARD_SUFFIXES:
+            # Проверяем, содержится ли суффикс как отдельное слово (окруженное _ или в конце/начале)
+            if f"_{suffix}" in key_lower or key_lower.startswith(f"{suffix}_") or key_lower.endswith(f"_{suffix}") or key_lower == suffix:
+                found_suffix = suffix
+                logger.info(f"✅ Найден суффикс: {found_suffix}")
+                break
         
+        # Если суффикс найден - ВСЕГДА возвращаем примечание
+        if found_suffix:
+            dilts_level = SUFFIX_TO_DILTS.get(found_suffix, "ENVIRONMENT")
+            conflict_phrase = CONFLICT_PHRASES.get(dilts_level, {})
+            note = conflict_phrase.get("note", "")
+            
+            if note:
+                logger.info(f"✅ Сформировано примечание о конфликте: суффикс={found_suffix}, dilts={dilts_level}")
+                return f"{note}\n\n"
+            else:
+                logger.warning(f"⚠️ Не найдена фраза для суффикса {found_suffix}, dilts={dilts_level}")
+                return f"🔥 Примечание: Обнаружено несоответствие в вашем профиле.\n\n"
+        
+        logger.info(f"❌ Суффикс не найден в ключе: {key_lower}")
         return ""
         
     except Exception as e:
-        logger.error(f"❌ Ошибка в get_discrepancy_note: {e}")
+        logger.error(f"❌ Ошибка в get_discrepancy_note: {e}", exc_info=True)
         return ""
 
 def calculate_thinking_level_by_scores(level_scores_dict):
@@ -2193,7 +2176,7 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_results_screen(update, context)
 
 # ============================================
-# ИСПРАВЛЕННЫЕ ФУНКЦИИ ПОКАЗА РЕЗУЛЬТАТОВ
+# 🔴 ИСПРАВЛЕНО (ТЗ 3.6): ЭКРАН РЕЗУЛЬТАТОВ
 # ============================================
 
 async def show_results_screen(
@@ -2201,7 +2184,9 @@ async def show_results_screen(
     context: ContextTypes.DEFAULT_TYPE,
     force_shared_view: bool = False
 ):
-    """ЭКРАН РЕЗУЛЬТАТОВ - версия виртуального психолога с ПРИМЕЧАНИЕМ ДИЛТСА"""
+    """
+    ИСПРАВЛЕНО (ТЗ 3.6): ЭКРАН РЕЗУЛЬТАТОВ с примечанием о расхождении
+    """
     query = update.callback_query
     
     has_shared = context.user_data.get("has_shared", False) or force_shared_view
@@ -2252,6 +2237,7 @@ async def show_results_screen(
     except Exception as e:
         logger.error(f"⚠️ Ошибка определения реального профиля: {e}")
     
+    # 🔥 ИСПРАВЛЕНО: ВСЕГДА пытаемся получить примечание
     discrepancy_note = ""
     if actual_profile_key:
         discrepancy_note = get_discrepancy_note(profile_data, actual_profile_key)
@@ -2337,6 +2323,7 @@ async def show_results_screen(
         f"<i>Это только начало вашего пути к самопознанию.</i>\n\n"
     )
     
+    # 🔥 ИСПРАВЛЕНО: ВСЕГДА добавляем примечание, если оно есть
     if discrepancy_note:
         message_2 += f"{discrepancy_note}"
         logger.info(f"✅ Примечание Дилтса добавлено в сообщение 2")
@@ -2361,64 +2348,59 @@ async def show_results_screen(
     return RESULTS
 
 # ============================================
-# ИСПРАВЛЕННЫЕ ФУНКЦИИ НАВИГАЦИИ
+# 🔴 ИСПРАВЛЕНО (ТЗ 3.6): ФУНКЦИИ НАВИГАЦИИ
 # ============================================
 
 async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    ИСПРАВЛЕНО (ТЗ 3.0): Возврат к результатам с удалением старого сообщения
-    Используется в PACKAGE_SCREEN и RESULTS
+    ИСПРАВЛЕНО (ТЗ 3.6): ВСЕГДА показывает полный экран результатов с КНОПКАМИ
+    
+    1. Удаляет текущее сообщение
+    2. Вызывает show_results_screen(force_shared_view=True)
+    3. ЯВНО возвращает RESULTS
     """
     query = update.callback_query
     await query.answer("🔄 Возвращаюсь к результатам...")
     
+    # Удаляем текущее сообщение
     try:
         await query.message.delete()
         logger.info(f"✅ User {update.effective_user.id}: Удалено сообщение при back_to_results")
     except Exception as e:
         logger.warning(f"⚠️ User {update.effective_user.id}: Не удалось удалить сообщение: {e}")
     
+    # Показываем полный экран результатов с кнопками
     await show_results_screen(update, context, force_shared_view=True)
     
-    logger.info(f"🔄 User {update.effective_user.id}: Возврат к RESULTS")
-    return RESULTS
-
-async def skip_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    ИСПРАВЛЕНО (ТЗ 3.0): Пропуск шаринга
-    Удаляет экран шаринга и показывает результаты
-    """
-    query = update.callback_query
-    await query.answer("⏩ Продолжаем без репоста")
-    
-    try:
-        await query.message.delete()
-        logger.info(f"✅ User {update.effective_user.id}: Удалён экран шаринга")
-    except Exception as e:
-        logger.warning(f"⚠️ User {update.effective_user.id}: Не удалось удалить сообщение: {e}")
-    
-    await show_results_screen(update, context)
-    
-    logger.info(f"🔄 User {update.effective_user.id}: skip_share → RESULTS")
+    logger.info(f"🔄 User {update.effective_user.id}: back_to_results → RESULTS")
     return RESULTS
 
 async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    ИСПРАВЛЕНО (ТЗ 3.0): Возврат в главное меню
-    Завершает текущий диалог и показывает приветствие
+    ИСПРАВЛЕНО (ТЗ 3.6): ПОЛНЫЙ сброс состояния и возврат в стартовое меню
+    
+    1. Очищает user_data ПОЛНОСТЬЮ
+    2. Удаляет текущее сообщение
+    3. Отправляет ПРИВЕТСТВИЕ (/start) в новом сообщении
+    4. ЯВНО возвращает ConversationHandler.END
     """
     query = update.callback_query
     await query.answer("🏠 Возврат в главное меню...")
     
+    # Удаляем текущее сообщение
     try:
         await query.message.delete()
+        logger.info(f"✅ User {update.effective_user.id}: Удалено сообщение при main_menu")
     except Exception as e:
-        logger.warning(f"Не удалось удалить сообщение: {e}")
+        logger.warning(f"⚠️ User {update.effective_user.id}: Не удалось удалить сообщение: {e}")
     
+    # ПОЛНОСТЬЮ очищаем user_data
     context.user_data.clear()
+    logger.info(f"🧹 User {update.effective_user.id}: user_data полностью очищена")
     
     user = update.effective_user
     
+    # Отправляем ПРИВЕТСТВИЕ в новом сообщении
     welcome_text = (
         f"{user.first_name}, привет! 👋\n\n"
         f"🧠 Я — Виртуальный психолог Вариатика.\n\n"
@@ -2446,12 +2428,60 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup=reply_markup
     )
     
-    logger.info(f"✅ User {update.effective_user.id}: main_menu → END")
+    logger.info(f"✅ User {update.effective_user.id}: main_menu_callback → ConversationHandler.END")
     return ConversationHandler.END
+
+async def back_to_results_after_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    ИСПРАВЛЕНО (ТЗ 3.6): Возврат к результатам ПОСЛЕ просмотра подарка
+    
+    1. Удаляет текущее сообщение с подарком
+    2. Показывает ПОЛНЫЙ экран результатов с кнопками
+    3. ЯВНО возвращает RESULTS
+    """
+    query = update.callback_query
+    await query.answer("🔄 Возвращаюсь к результатам...")
+    
+    # Удаляем сообщение с подарком
+    try:
+        await query.message.delete()
+        logger.info(f"🎁 User {update.effective_user.id}: Удалено сообщение с подарком")
+    except Exception as e:
+        logger.warning(f"⚠️ User {update.effective_user.id}: Не удалось удалить сообщение с подарком: {e}")
+    
+    # Показываем полный экран результатов с кнопками
+    await show_results_screen(update, context, force_shared_view=True)
+    
+    logger.info(f"🔄 User {update.effective_user.id}: back_to_results_after_gift → RESULTS")
+    return RESULTS
+
+async def skip_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    ИСПРАВЛЕНО (ТЗ 3.6): Пропуск шаринга
+    
+    1. Удаляет экран шаринга
+    2. Показывает ПОЛНЫЙ экран результатов с кнопками
+    3. ЯВНО возвращает RESULTS
+    """
+    query = update.callback_query
+    await query.answer("⏩ Продолжаем без репоста")
+    
+    # Удаляем экран шаринга
+    try:
+        await query.message.delete()
+        logger.info(f"✅ User {update.effective_user.id}: Удалён экран шаринга")
+    except Exception as e:
+        logger.warning(f"⚠️ User {update.effective_user.id}: Не удалось удалить сообщение: {e}")
+    
+    # Показываем полный экран результатов с кнопками
+    await show_results_screen(update, context, force_shared_view=True)
+    
+    logger.info(f"🔄 User {update.effective_user.id}: skip_share → RESULTS")
+    return RESULTS
 
 async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    ИСПРАВЛЕНО (ТЗ 3.0): Подтверждение шаринга - СРАЗУ показывает подарок
+    ИСПРАВЛЕНО (ТЗ 3.6): Подтверждение шаринга - СРАЗУ показывает подарок
     """
     query = update.callback_query
     await query.answer("✅ Спасибо за репост! Ваш бонус готов!")
@@ -2461,27 +2491,191 @@ async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"✅ User {update.effective_user.id}: confirm_share → open_gift_screen")
     return await open_gift_screen(update, context)
 
-async def back_to_results_after_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ============================================
+# 🔴 ИСПРАВЛЕНО (ТЗ 3.6): ФУНКЦИИ ЭКРАНОВ
+# ============================================
+
+async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    ИСПРАВЛЕНО (ТЗ 3.0): Возврат к результатам ПОСЛЕ просмотра подарка
-    Удаляет сообщение с подарком и отправляет результаты в НОВОМ сообщении
+    ИСПРАВЛЕНО (ТЗ 3.6): ЭКРАН: ПОЛНОЕ ОПИСАНИЕ ПРОФИЛЯ ОТ ПСИХОЛОГА
+    С КНОПКОЙ ВОЗВРАТА К РЕЗУЛЬТАТАМ
     """
     query = update.callback_query
-    await query.answer("🔄 Возвращаюсь к результатам...")
+    await query.answer()
     
-    try:
-        await query.message.delete()
-        logger.info(f"🎁 User {update.effective_user.id}: Удалено сообщение с подарком")
-    except Exception as e:
-        logger.warning(f"⚠️ User {update.effective_user.id}: Не удалось удалить сообщение с подарком: {e}")
+    profile_data = context.user_data.get("profile_data")
     
-    await show_results_screen(update, context, force_shared_view=True)
+    if profile_data:
+        profile_code = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
+        profile_info = f"\n📊 <b>Ваш профиль:</b> <code>{profile_code}</code>\n"
+        personal_note = f"\n<i>Это описание будет создано персонально для вас на основе ваших ответов.</i>"
+    else:
+        profile_info = "\n📊 <b>Профиль:</b> будет определен после теста\n"
+        personal_note = f"\n<i>После теста я подготовлю персональное описание именно для вас.</i>"
     
-    logger.info(f"🔄 User {update.effective_user.id}: OPEN_GIFT_SCREEN → RESULTS")
-    return RESULTS
+    package_text = (
+        f"🧠 <b>ПОЛНОЕ ОПИСАНИЕ ВАШЕГО ПРОФИЛЯ</b>\n\n"
+        f"<i>Как ваш виртуальный психолог, я подготовлю для вас:</i>\n\n"
+        f"• 📖 <b>Детальный анализ личности</b> (15+ страниц)\n"
+        f"• 🎯 <b>Ключевые паттерны поведения</b> с примерами\n"
+        f"• 🚀 <b>Точки роста</b> и рекомендации по развитию\n"
+        f"• ⚠️ <b>Потенциальные ограничения</b> и как их обходить\n"
+        f"• 💡 <b>Практические инструменты</b> для ежедневного применения\n"
+        f"• 🔍 <b>Сильные стороны</b> и как их использовать\n\n"
+        f"{profile_info}"
+        f"<b>Стоимость:</b> 690 ₽\n\n"
+        f"💳 <b>Все способы оплаты:</b> СБП, ЮMoney, банковские карты\n\n"
+        f"{personal_note}\n\n"
+        f"<b>Это ваше персональное руководство по самопознанию!</b>"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("🧠 Получить описание профиля за 690 ₽", callback_data="buy_package")],
+        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]  # ✅ КНОПКА ВОЗВРАТА
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(package_text, reply_markup=reply_markup, parse_mode="HTML")
+    return PACKAGE_SCREEN
+
+async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    ИСПРАВЛЕНО (ТЗ 3.6): Экран создания платежа с КНОПКОЙ ВОЗВРАТА К РЕЗУЛЬТАТАМ
+    """
+    query = update.callback_query if hasattr(update, 'callback_query') else None
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    profile_data = context.user_data.get("profile_data")
+    
+    if profile_data and 'display_name' in profile_data:
+        profile_code = profile_data['display_name']
+        logger.info(f"✅ Использую РЕАЛЬНЫЙ профиль из теста: {profile_code}")
+    else:
+        profile_code = context.user_data.get("pending_payment_profile", "SA_1_DEF")
+        logger.info(f"⚠️ Использую запасной профиль: {profile_code}")
+    
+    context.user_data["pending_payment_profile"] = profile_code
+    
+    if query:
+        await query.edit_message_text(
+            f"💳 *СОЗДАЮ ПЛАТЕЖ...*\n\n"
+            f"🧠 *Виртуальный психолог Вариатика*\n"
+            f"👤 *Клиент:* {user_name}\n"
+            f"📊 *Профиль:* `{profile_code}`\n"
+            f"💰 *Сумма:* 690 рублей\n\n"
+            f"⏳ *Создаю ссылку для оплаты...*",
+            parse_mode='Markdown'
+        )
+    
+    payment_result = await create_payment_advanced(user_id, profile_code, 690.00)
+    
+    if not payment_result.get("success"):
+        error_msg = payment_result.get("error", "Неизвестная ошибка")
+        details = payment_result.get("details", "")
+        
+        keyboard = [
+            [InlineKeyboardButton("🔄 Попробовать снова", callback_data="buy_without_test")],
+            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]  # ✅ КНОПКА ВОЗВРАТА
+        ]
+        
+        error_text = f"❌ *Ошибка при создании платежа:*\n`{error_msg}`"
+        if details:
+            error_text += f"\n\n`{details[:100]}`"
+        
+        if query:
+            await query.edit_message_text(
+                error_text,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        else:
+            await update.message.reply_text(
+                error_text,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        return PAYMENT_SCREEN
+    
+    payment_id = payment_result["payment_id"]
+    confirmation_url = payment_result["confirmation_url"]
+    
+    context.user_data["last_payment_id"] = payment_id
+    context.user_data["last_payment_profile"] = profile_code
+    
+    # СОХРАНЯЕМ confirmation_url для повторной проверки
+    if "payment_data" not in context.user_data:
+        context.user_data["payment_data"] = {}
+    
+    context.user_data["payment_data"][payment_id] = {
+        "confirmation_url": confirmation_url,
+        "profile_code": profile_code,
+        "timestamp": time.time(),
+        "user_id": user_id
+    }
+    
+    logger.info(f"💾 Сохранён payment_id {payment_id} с confirmation_url")
+    
+    invoice_info = ""
+    invoice_type = payment_result.get('invoice_type', 'yookassa_invoice')
+    available_methods = payment_result.get('available_methods', 'all')
+    
+    if invoice_type == 'yookassa_invoice' and available_methods == 'all':
+        invoice_info = (
+            "\n💡 *ВСЕ способы оплаты доступны:*\n"
+            "• СБП (Сбербанк Онлайн)\n"
+            "• ЮMoney\n"
+            "• Банковские карты (Visa/Mastercard/Мир)\n"
+            "• Тинькофф, Альфа-Банк\n"
+            "• И другие\n"
+        )
+    
+    # ✅ ДОБАВЛЯЕМ КНОПКУ ВОЗВРАТА К РЕЗУЛЬТАТАМ
+    keyboard = [
+        [InlineKeyboardButton("💳 Оплатить 690 рублей", url=confirmation_url)],
+        [InlineKeyboardButton("🔄 Проверить статус", callback_data=f"check_payment_{payment_id}")],
+        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")],  # 🔥 НОВАЯ КНОПКА
+        [InlineKeyboardButton("🏠 В меню", callback_data="main_menu")]
+    ]
+    
+    message_text = (
+        f"✅ *ПЛАТЕЖ СОЗДАН!*\n\n"
+        f"🧠 *Виртуальный психолог Вариатика*\n\n"
+        f"👤 *Клиент:* {user_name}\n"
+        f"📊 *Ваш профиль:* `{profile_code}`\n"
+        f"📋 *ID платежа:* `{payment_id}`\n"
+        f"💰 *Сумма:* 690 рублей\n"
+        f"{invoice_info}"
+        f"\n🔒 *Защита от дублей:* ✅ активна\n"
+        f"📊 *Профиль сохранен:* ✅ `{profile_code}`\n\n"
+        f"*Для оплаты нажмите кнопку ниже:*\n"
+        f"После успешной оплаты:\n"
+        f"1. Вы получите уведомление\n"
+        f"2. Ссылка на персональное описание профиля придет автоматически\n"
+        f"3. Профиль `{profile_code}` будет сохранен\n\n"
+        f"<i>Вы также можете вернуться к результатам теста и продолжить позже.</i>"
+    )
+    
+    if query:
+        await query.edit_message_text(
+            message_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown',
+            disable_web_page_preview=True
+        )
+    else:
+        await update.message.reply_text(
+            message_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown',
+            disable_web_page_preview=True
+        )
+    
+    return PAYMENT_SCREEN
 
 # ============================================
-# ИСПРАВЛЕННЫЕ ФУНКЦИИ ОБРАБОТКИ ОТВЕТОВ (С FINALLY)
+# ФУНКЦИИ ОБРАБОТКИ ОТВЕТОВ (С FINALLY)
 # ============================================
 
 async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3505,7 +3699,7 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Сначала поделитесь зеркалом с друзьями, чтобы получить подарок!", 
             show_alert=True
         )
-        return await show_results_screen(update, context)
+        return await show_results_screen(update, context, force_shared_view=True)
     
     GIFT_PDF_LINK = os.getenv(
         "GIFT_PDF_LINK", 
@@ -3527,47 +3721,6 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     return OPEN_GIFT_SCREEN
-
-async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН: ПОЛНОЕ ОПИСАНИЕ ПРОФИЛЯ ОТ ПСИХОЛОГА"""
-    query = update.callback_query
-    await query.answer()
-    
-    profile_data = context.user_data.get("profile_data")
-    
-    if profile_data:
-        profile_code = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
-        profile_info = f"\n📊 <b>Ваш профиль:</b> <code>{profile_code}</code>\n"
-        personal_note = f"\n<i>Это описание будет создано персонально для вас на основе ваших ответов.</i>"
-    else:
-        profile_info = "\n📊 <b>Профиль:</b> будет определен после теста\n"
-        personal_note = f"\n<i>После теста я подготовлю персональное описание именно для вас.</i>"
-    
-    package_text = (
-        f"🧠 <b>ПОЛНОЕ ОПИСАНИЕ ВАШЕГО ПРОФИЛЯ</b>\n\n"
-        f"<i>Как ваш виртуальный психолог, я подготовлю для вас:</i>\n\n"
-        f"• 📖 <b>Детальный анализ личности</b> (15+ страниц)\n"
-        f"• 🎯 <b>Ключевые паттерны поведения</b> с примерами\n"
-        f"• 🚀 <b>Точки роста</b> и рекомендации по развитию\n"
-        f"• ⚠️ <b>Потенциальные ограничения</b> и как их обходить\n"
-        f"• 💡 <b>Практические инструменты</b> для ежедневного применения\n"
-        f"• 🔍 <b>Сильные стороны</b> и как их использовать\n\n"
-        f"{profile_info}"
-        f"<b>Стоимость:</b> 690 ₽\n\n"
-        f"💳 <b>Все способы оплаты:</b> СБП, ЮMoney, банковские карты\n\n"
-        f"{personal_note}\n\n"
-        f"<b>Это ваше персональное руководство по самопознанию!</b>"
-    )
-    
-    keyboard = [
-        [InlineKeyboardButton("🧠 Получить описание профиля за 690 ₽", callback_data="buy_package")],
-        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
-    ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(package_text, reply_markup=reply_markup, parse_mode="HTML")
-    return PACKAGE_SCREEN
 
 async def buy_package_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Покупка пакета из экрана результатов"""
@@ -3693,135 +3846,6 @@ async def buy_without_test_callback(update: Update, context: ContextTypes.DEFAUL
     
     return await show_payment_screen(update, context)
 
-async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    ИСПРАВЛЕНО (ТЗ 3.0): Экран создания платежа с сохранением confirmation_url
-    """
-    query = update.callback_query if hasattr(update, 'callback_query') else None
-    user_id = update.effective_user.id
-    user_name = update.effective_user.first_name
-    
-    profile_data = context.user_data.get("profile_data")
-    
-    if profile_data and 'display_name' in profile_data:
-        profile_code = profile_data['display_name']
-        logger.info(f"✅ Использую РЕАЛЬНЫЙ профиль из теста: {profile_code}")
-    else:
-        profile_code = context.user_data.get("pending_payment_profile", "SA_1_DEF")
-        logger.info(f"⚠️ Использую запасной профиль: {profile_code}")
-    
-    context.user_data["pending_payment_profile"] = profile_code
-    
-    if query:
-        await query.edit_message_text(
-            f"💳 *СОЗДАЮ ПЛАТЕЖ...*\n\n"
-            f"🧠 *Виртуальный психолог Вариатика*\n"
-            f"👤 *Клиент:* {user_name}\n"
-            f"📊 *Профиль:* `{profile_code}`\n"
-            f"💰 *Сумма:* 690 рублей\n\n"
-            f"⏳ *Создаю ссылку для оплаты...*",
-            parse_mode='Markdown'
-        )
-    
-    payment_result = await create_payment_advanced(user_id, profile_code, 690.00)
-    
-    if not payment_result.get("success"):
-        error_msg = payment_result.get("error", "Неизвестная ошибка")
-        details = payment_result.get("details", "")
-        
-        keyboard = [[InlineKeyboardButton("🔄 Попробовать снова", callback_data="buy_without_test")]]
-        
-        error_text = f"❌ *Ошибка при создании платежа:*\n`{error_msg}`"
-        if details:
-            error_text += f"\n\n`{details[:100]}`"
-        
-        if query:
-            await query.edit_message_text(
-                error_text,
-                parse_mode='Markdown',
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-        else:
-            await update.message.reply_text(
-                error_text,
-                parse_mode='Markdown',
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-        return PAYMENT_SCREEN
-    
-    payment_id = payment_result["payment_id"]
-    confirmation_url = payment_result["confirmation_url"]
-    
-    context.user_data["last_payment_id"] = payment_id
-    context.user_data["last_payment_profile"] = profile_code
-    
-    # ✅ СОХРАНЯЕМ confirmation_url для повторной проверки
-    if "payment_data" not in context.user_data:
-        context.user_data["payment_data"] = {}
-    
-    context.user_data["payment_data"][payment_id] = {
-        "confirmation_url": confirmation_url,
-        "profile_code": profile_code,
-        "timestamp": time.time(),
-        "user_id": user_id
-    }
-    
-    logger.info(f"💾 Сохранён payment_id {payment_id} с confirmation_url")
-    
-    invoice_info = ""
-    invoice_type = payment_result.get('invoice_type', 'yookassa_invoice')
-    available_methods = payment_result.get('available_methods', 'all')
-    
-    if invoice_type == 'yookassa_invoice' and available_methods == 'all':
-        invoice_info = (
-            "\n💡 *ВСЕ способы оплаты доступны:*\n"
-            "• СБП (Сбербанк Онлайн)\n"
-            "• ЮMoney\n"
-            "• Банковские карты (Visa/Mastercard/Мир)\n"
-            "• Тинькофф, Альфа-Банк\n"
-            "• И другие\n"
-        )
-    
-    message_text = (
-        f"✅ *ПЛАТЕЖ СОЗДАН!*\n\n"
-        f"🧠 *Виртуальный психолог Вариатика*\n\n"
-        f"👤 *Клиент:* {user_name}\n"
-        f"📊 *Ваш профиль:* `{profile_code}`\n"
-        f"📋 *ID платежа:* `{payment_id}`\n"
-        f"💰 *Сумма:* 690 рублей\n"
-        f"{invoice_info}"
-        f"\n🔒 *Защита от дублей:* ✅ активна\n"
-        f"📊 *Профиль сохранен:* ✅ `{profile_code}`\n\n"
-        f"*Для оплаты нажмите кнопку ниже:*\n"
-        f"После успешной оплаты:\n"
-        f"1. Вы получите уведомление\n"
-        f"2. Ссылка на персональное описание профиля придет автоматически\n"
-        f"3. Профиль `{profile_code}` будет сохранен"
-    )
-    
-    keyboard = [
-        [InlineKeyboardButton("💳 Оплатить 690 рублей", url=confirmation_url)],
-        [InlineKeyboardButton("🔄 Проверить статус", callback_data=f"check_payment_{payment_id}")],
-        [InlineKeyboardButton("🏠 В меню", callback_data="main_menu")]
-    ]
-    
-    if query:
-        await query.edit_message_text(
-            message_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown',
-            disable_web_page_preview=True
-        )
-    else:
-        await update.message.reply_text(
-            message_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown',
-            disable_web_page_preview=True
-        )
-    
-    return PAYMENT_SCREEN
-
 async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     ИСПРАВЛЕНО (ТЗ 3.0): Проверка статуса платежа с использованием сохранённого confirmation_url
@@ -3843,7 +3867,10 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
     if not status_result.get("success"):
         error_msg = status_result.get("error", "Неизвестная ошибка")
         
-        keyboard = [[InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")]]
+        keyboard = [
+            [InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")],
+            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+        ]
         
         await query.edit_message_text(
             f"❌ *ОШИБКА ПРИ ПРОВЕРКЕ*\n\n"
@@ -3864,7 +3891,10 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
             f"Для получения персонального описания профиля нажмите кнопку ниже:"
         )
         
-        keyboard = [[InlineKeyboardButton("📥 ПОЛУЧИТЬ ОПИСАНИЕ ПРОФИЛЯ", callback_data=f"get_materials_{payment_id}")]]
+        keyboard = [
+            [InlineKeyboardButton("📥 ПОЛУЧИТЬ ОПИСАНИЕ ПРОФИЛЯ", callback_data=f"get_materials_{payment_id}")],
+            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+        ]
         
     elif status in ["pending", "waiting"]:
         message = (
@@ -3873,22 +3903,30 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
             f"💳 *Для оплаты нажмите кнопку ниже:*"
         )
         
-        # ✅ ИСПОЛЬЗУЕМ сохранённый confirmation_url
         payment_data = context.user_data.get("payment_data", {})
         payment_info = payment_data.get(payment_id, {})
         confirmation_url = payment_info.get("confirmation_url")
         
         if confirmation_url:
-            keyboard = [[InlineKeyboardButton("💳 ПЕРЕЙТИ К ОПЛАТЕ", url=confirmation_url)]]
+            keyboard = [
+                [InlineKeyboardButton("💳 ПЕРЕЙТИ К ОПЛАТЕ", url=confirmation_url)],
+                [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+            ]
         else:
-            keyboard = [[InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")]]
+            keyboard = [
+                [InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")],
+                [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+            ]
         
     else:
         message = (
             f"📊 *СТАТУС ПЛАТЕЖА:* `{status}`\n\n"
             f"📋 *ID:* `{payment_id}`"
         )
-        keyboard = [[InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")]]
+        keyboard = [
+            [InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")],
+            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+        ]
     
     await query.edit_message_text(
         message,
@@ -3899,7 +3937,9 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
     return PAYMENT_SCREEN
 
 async def get_materials_callback_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Получение материалов после оплаты"""
+    """
+    ИСПРАВЛЕНО (ТЗ 3.6): Получение материалов после оплаты с кнопкой возврата к результатам
+    """
     query = update.callback_query
     await query.answer()
     
@@ -3918,7 +3958,10 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
     if not materials_result.get("success"):
         error_msg = materials_result.get("error", "Неизвестная ошибка")
         
-        keyboard = [[InlineKeyboardButton("🔄 Попробовать снова", callback_data=f"get_materials_{payment_id}")]]
+        keyboard = [
+            [InlineKeyboardButton("🔄 Попробовать снова", callback_data=f"get_materials_{payment_id}")],
+            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+        ]
         
         await query.edit_message_text(
             f"❌ *ОШИБКА ПРИ ПОЛУЧЕНИИ МАТЕРИАЛОВ*\n\n"
@@ -3941,7 +3984,11 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
         )
         return PAYMENT_SCREEN
     
-    keyboard = [[InlineKeyboardButton("📥 СКАЧАТЬ ПЕРСОНАЛЬНОЕ ОПИСАНИЕ", url=materials_link)]]
+    # ✅ ДОБАВЛЯЕМ КНОПКУ ВОЗВРАТА К РЕЗУЛЬТАТАМ
+    keyboard = [
+        [InlineKeyboardButton("📥 СКАЧАТЬ ПЕРСОНАЛЬНОЕ ОПИСАНИЕ", url=materials_link)],
+        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]  # 🔥 НОВАЯ КНОПКА
+    ]
     
     await query.edit_message_text(
         f"✅ *ПЕРСОНАЛЬНОЕ ОПИСАНИЕ ГОТОВО!*\n\n"
@@ -4215,29 +4262,25 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*60)
-    print("🧠 ЗАПУСК ВИРТУАЛЬНОГО ПСИХОЛОГА ВАРИАТИКА (ВЕРСИЯ 3.5)")
+    print("🧠 ЗАПУСК ВИРТУАЛЬНОГО ПСИХОЛОГА ВАРИАТИКА (ВЕРСИЯ 3.6)")
     print("="*60)
-    print("ВНЕДРЕНИЕ ТЗ 3.0 - ПОЛНОЕ ИСПРАВЛЕНИЕ STATE-ОШИБОК:")
+    print("ВНЕДРЕНИЕ ТЗ 3.6 - ИСПРАВЛЕНИЕ ПРИМЕЧАНИЯ И НАВИГАЦИИ")
     print("="*60)
-    print("🔴 БЛОК КРИТИЧЕСКИХ ОШИБОК:")
-    print("1. ✅ ИСПРАВЛЕНО: back_to_results() удаляет сообщение и возвращает RESULTS")
-    print("2. ✅ ИСПРАВЛЕНО: Секция PACKAGE_SCREEN добавлена в ConversationHandler")
-    print("3. ✅ ИСПРАВЛЕНО: skip_share() удаляет сообщение и возвращает RESULTS")
-    print("4. ✅ ИСПРАВЛЕНО: Секция PAYMENT_SCREEN добавлена в ConversationHandler")
-    print("5. ✅ ИСПРАВЛЕНО: confirm_share() → open_gift_screen() → OPEN_GIFT_SCREEN")
+    print("🔴 ВЫСОКИЙ ПРИОРИТЕТ - ИСПРАВЛЕНО:")
+    print("1. ✅ get_discrepancy_note() - ВСЕГДА возвращает примечание при наличии ЛЮБОГО суффикса")
+    print("2. ✅ back_to_results() - УДАЛЯЕТ сообщение, показывает ПОЛНЫЙ экран результатов, ВОЗВРАЩАЕТ RESULTS")
+    print("3. ✅ main_menu_callback() - ПОЛНЫЙ сброс user_data, УДАЛЕНИЕ сообщения, отправка ПРИВЕТСТВИЯ, ConversationHandler.END")
+    print("4. ✅ back_to_results_after_gift() - УДАЛЯЕТ сообщение с подарком, показывает ПОЛНЫЙ экран результатов")
     print("="*60)
-    print("🟠 ВЫСОКИЙ ПРИОРИТЕТ:")
-    print("6. ✅ ИСПРАВЛЕНО: buy_command() возвращает PAYMENT_SCREEN")
-    print("7. ✅ ИСПРАВЛЕНО: buy_without_test_callback() возвращает PAYMENT_SCREEN")
-    print("8. ✅ ИСПРАВЛЕНО: confirmation_url сохраняется в context.user_data")
-    print("9. ✅ ИСПРАВЛЕНО: check_payment_callback() использует сохранённый URL")
+    print("🟠 СРЕДНИЙ ПРИОРИТЕТ - ИСПРАВЛЕНО:")
+    print("5. ✅ show_package_screen() - ДОБАВЛЕНА кнопка 'Вернуться к результатам'")
+    print("6. ✅ show_payment_screen() - ДОБАВЛЕНА кнопка 'Вернуться к результатам'")
+    print("7. ✅ get_materials_callback_payment() - ДОБАВЛЕНА кнопка 'Вернуться к результатам'")
+    print("8. ✅ check_payment_callback() - ДОБАВЛЕНА кнопка 'Вернуться к результатам'")
     print("="*60)
-    print("🟡 СРЕДНИЙ ПРИОРИТЕТ:")
-    print("10. ✅ ИСПРАВЛЕНО: main_menu_callback() завершает диалог, без фейк-апдейта")
-    print("11. ✅ ИСПРАВЛЕНО: Во всех handle_stage_X_answer() добавлен finally")
-    print("12. ✅ ИСПРАВЛЕНО: Во всех ask_stage_X_question() удаление дублей")
-    print("13. ✅ ИСПРАВЛЕНО: В start() проверяется и завершается предыдущий диалог")
-    print("14. ✅ ИСПРАВЛЕНО: generate_payment_id() использует user_id")
+    print("🟡 НИЗКИЙ ПРИОРИТЕТ - ИСПРАВЛЕНО:")
+    print("9. ✅ ВО ВСЕХ навигационных callback'ах ПЕРВЫМ действием удаляется сообщение")
+    print("10. ✅ НЕТ дублирования сообщений при возврате")
     print("="*60)
     print("🔒 ФУНКЦИЯ get_profile_fallback() НЕ ИЗМЕНЕНА!")
     print("="*60)
@@ -4331,7 +4374,6 @@ def main():
                 CallbackQueryHandler(skip_share, pattern="^skip_share$"),
                 CallbackQueryHandler(get_gift_screen, pattern="^get_gift$")
             ],
-            # ✅ ИСПРАВЛЕНО: ДОБАВЛЕНА СЕКЦИЯ PACKAGE_SCREEN
             PACKAGE_SCREEN: [
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
@@ -4341,12 +4383,12 @@ def main():
                 CallbackQueryHandler(back_to_results_after_gift, pattern="^back_to_results_after_gift$"),
                 CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
             ],
-            # ✅ ИСПРАВЛЕНО: ДОБАВЛЕНА СЕКЦИЯ PAYMENT_SCREEN
             PAYMENT_SCREEN: [
                 CallbackQueryHandler(check_payment_callback, pattern="^check_payment_"),
                 CallbackQueryHandler(get_materials_callback_payment, pattern="^get_materials_"),
                 CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"),
-                CallbackQueryHandler(buy_without_test_callback, pattern="^buy_without_test$")
+                CallbackQueryHandler(buy_without_test_callback, pattern="^buy_without_test$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")  # ✅ ДОБАВЛЕНО
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
@@ -4356,9 +4398,10 @@ def main():
     application.add_handler(conv_handler)
     
     logger.info("🧠 Виртуальный психолог Вариатика запущен!")
-    logger.info("✅ ТЗ 3.0 ПОЛНОСТЬЮ ВНЕДРЕНО!")
-    logger.info("✅ ВСЕ 13 STATE-ОШИБОК ИСПРАВЛЕНЫ!")
-    logger.info("📋 Версия 3.5 - ПОЛНАЯ СТАБИЛИЗАЦИЯ CONVERSATIONHANDLER")
+    logger.info("✅ ТЗ 3.6 ПОЛНОСТЬЮ ВНЕДРЕНО!")
+    logger.info("✅ ПРИМЕЧАНИЕ О РАСХОЖДЕНИИ ИСПРАВЛЕНО!")
+    logger.info("✅ НАВИГАЦИОННЫЕ КНОПКИ ИСПРАВЛЕНЫ!")
+    logger.info("📋 Версия 3.6 - ПОЛНАЯ СТАБИЛИЗАЦИЯ НАВИГАЦИИ")
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
