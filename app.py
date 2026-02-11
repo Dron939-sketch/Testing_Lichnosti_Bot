@@ -749,7 +749,7 @@ def send_telegram_pure(user_id, payment_id, access_token=None, is_recovery=False
 📁 *Профиль:* `{profile_name}`
 🔗 *Ссылка на материалы:* {yandex_link}
 
-💰 Спасибо за покупку курса "ВАРИАТИКА"!
+💎 Ваше персональное описание профиля готово.
 Для быстрого доступа нажмите кнопку ниже ⬇️
             """
         else:
@@ -761,7 +761,7 @@ def send_telegram_pure(user_id, payment_id, access_token=None, is_recovery=False
 📁 *Профиль:* `{profile_name}`
 🔗 *Ссылка на материалы:* {yandex_link}
 
-💰 Спасибо за покупку курса "ВАРИАТИКА"!
+💎 Ваше персональное описание профиля готово.
 Для быстрого доступа нажмите кнопку ниже ⬇️
             """
         
@@ -800,7 +800,7 @@ def send_telegram_pure(user_id, payment_id, access_token=None, is_recovery=False
 📁 Профиль: {profile_name}
 🔗 Ссылка на материалы: {yandex_link}
 
-💰 Спасибо за покупку курса "ВАРИАТИКА"!
+💎 Ваше персональное описание профиля готово.
 Для быстрого доступа нажмите ссылку выше или кнопку ниже."""
                 
                 response = requests.post(url, json={
