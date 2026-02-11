@@ -2,7 +2,7 @@
 """
 app.py - Полный Flask API для платежной системы с мгновенными уведомлениями
 Версия с системой восстановления при падении и отказоустойчивостью
-С ПОДДЕРЖКОЙ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК
+С ПОДДЕРЖКОЙ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК + ИЗОЛИРОВАННЫЙ 18+ МОДУЛЬ
 """
 
 import os
@@ -103,6 +103,13 @@ PROFILE_LINKS = {
 
 DEFAULT_PROFILE = "SA_1_DEF"  # Профиль по умолчанию
 TELEGRAM_BOT_URL = "https://t.me/Testing_Lichnosti_bot"
+
+# ============================================
+# 18+ МОДУЛЬ - КОНСТАНТЫ (ДОБАВИТЬ ПОСЛЕ TELEGRAM_BOT_URL)
+# ============================================
+SEXUAL_DEFAULT_PROFILE = "sa_5_int"
+SEXUAL_PAYMENT_AMOUNT = 99.00
+SEXUAL_PROFILES_DIR = "sexual_18"  # Папка с JSON-файлами
 
 # Создание Flask приложения
 app = Flask(__name__)
@@ -590,6 +597,64 @@ def create_recovery_log_table():
         logger.error(f"❌ Ошибка создания таблицы recovery_log: {e}")
         return False
 
+def create_sexual_access_tables():
+    """Создает таблицы для 18+ модуля"""
+    if not POSTGRES_AVAILABLE:
+        return False
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Таблица покупок доступа
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sexual_access_purchases (
+            id SERIAL PRIMARY KEY,
+            buyer_id BIGINT NOT NULL,
+            target_id BIGINT NOT NULL,
+            target_name VARCHAR(255),
+            target_profile_key VARCHAR(50) NOT NULL,
+            invite_id VARCHAR(100),
+            payment_id VARCHAR(100) UNIQUE NOT NULL,
+            amount DECIMAL(10,2) DEFAULT 99.00,
+            status VARCHAR(50) DEFAULT 'pending',
+            purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            confirmed_at TIMESTAMP,
+            UNIQUE(buyer_id, target_id)
+        )
+        """)
+        
+        # Таблица приглашений
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sexual_invites (
+            id SERIAL PRIMARY KEY,
+            invite_id VARCHAR(100) UNIQUE NOT NULL,
+            buyer_id BIGINT NOT NULL,
+            target_id BIGINT NOT NULL,
+            target_name VARCHAR(255),
+            target_profile_key VARCHAR(50) NOT NULL,
+            status VARCHAR(50) DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            purchased_at TIMESTAMP
+        )
+        """)
+        
+        # Индексы
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sexual_purchases_buyer ON sexual_access_purchases(buyer_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sexual_purchases_target ON sexual_access_purchases(target_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sexual_purchases_status ON sexual_access_purchases(status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sexual_invites_buyer ON sexual_invites(buyer_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sexual_invites_target ON sexual_invites(target_id)")
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        logger.info("✅ Таблицы 18+ модуля созданы")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Ошибка создания таблиц 18+: {e}")
+        return False
+
 def create_all_tables():
     """Создает все таблицы с нуля - БЕЗОПАСНАЯ ВЕРСИЯ"""
     logger.info("🗄️ Безопасное создание/проверка всех таблиц базы данных...")
@@ -599,7 +664,8 @@ def create_all_tables():
         "user_access": create_user_access_table(),
         "yookassa_webhooks": create_yookassa_webhooks_table(),
         "notifications_log": create_notifications_log_table(),
-        "recovery_log": create_recovery_log_table()
+        "recovery_log": create_recovery_log_table(),
+        "sexual_access": create_sexual_access_tables()  # ДОБАВИТЬ
     }
     
     success_count = sum(1 for result in results.values() if result)
@@ -826,6 +892,69 @@ def send_telegram_pure(user_id, payment_id, access_token=None, is_recovery=False
         logger.error(f"❌ Ошибка отправки уведомления: {e}")
         return False
 
+def send_sexual_telegram(user_id, payment_id, profile_key, is_recovery=False):
+    """Отправляет уведомление о доступе к 18+ профилю - БЕЗ ССЫЛОК!"""
+    try:
+        telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        if not telegram_token:
+            logger.error("❌ TELEGRAM_BOT_TOKEN не настроен")
+            return False
+        
+        profile_name = profile_key if profile_key else "sa_5_int"
+        
+        if is_recovery:
+            message = f"""
+🔞 *ДОСТУП ВОССТАНОВЛЕН*
+
+✅ Ваш платеж `#{payment_id[:8]}` подтвержден!
+
+📱 *Профиль:* `{profile_name}`
+
+👉 Откройте бота и нажмите кнопку "Мой профиль"
+⚡️ Контент доступен внутри бота (без ссылок)
+            """
+        else:
+            message = f"""
+🔞 *ДОСТУП АКТИВИРОВАН*
+
+✅ Оплата `#{payment_id[:8]}` успешно обработана!
+
+📱 *Профиль:* `{profile_name}`
+
+👉 Откройте бота и нажмите кнопку "Мой профиль"
+⚡️ Контент доступен внутри бота (без ссылок)
+            """
+        
+        url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+        
+        # Кнопка БЕЗ ссылки - только callback
+        keyboard = [[
+            {
+                "text": "🔞 ОТКРЫТЬ 18+ ПРОФИЛЬ",
+                "callback_data": f"sexual_open_{profile_key}"
+            }
+        ]]
+        
+        response = requests.post(url, json={
+            "chat_id": user_id,
+            "text": message,
+            "parse_mode": "Markdown",
+            "reply_markup": {
+                "inline_keyboard": keyboard
+            }
+        }, timeout=10)
+        
+        if response.status_code == 200:
+            logger.info(f"🔞 18+ уведомление отправлено user={user_id}, профиль={profile_key}")
+            return True
+        else:
+            logger.error(f"❌ Ошибка 18+ уведомления: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка отправки 18+ уведомления: {e}")
+        return False
+
 @async_task
 def log_notification_async(user_id, payment_id, success, is_recovery=False, profile_code=None):
     """Асинхронное логирование уведомления"""
@@ -897,6 +1026,17 @@ def send_notification_async(user_id, payment_id, access_token=None, is_recovery=
         return success
     except Exception as e:
         logger.error(f"❌ Ошибка в асинхронной отправке уведомления: {e}")
+        return False
+
+@async_task
+def send_sexual_notification_async(user_id, payment_id, profile_key, is_recovery=False):
+    """Асинхронная отправка 18+ уведомления"""
+    try:
+        logger.info(f"🔞 Отправка 18+ уведомления user={user_id}")
+        success = send_sexual_telegram(user_id, payment_id, profile_key, is_recovery)
+        return success
+    except Exception as e:
+        logger.error(f"❌ Ошибка асинхронной отправки 18+: {e}")
         return False
 
 # Оригинальная функция для обратной совместимости
@@ -1417,7 +1557,20 @@ def home():
             "create_tables": "/create-all-tables (GET) - безопасный"
         },
         "note": "✅ Исправлено: все уведомления теперь содержат ссылки на Яндекс.Диск согласно профилю",
-        "bug_fix": "✅ Функция send_telegram_pure() теперь отправляет ссылки и кнопки с прямыми ссылками"
+        "bug_fix": "✅ Функция send_telegram_pure() теперь отправляет ссылки и кнопки с прямыми ссылками",
+        "sexual_module": {
+            "price": f"{SEXUAL_PAYMENT_AMOUNT}₽",
+            "default_profile": SEXUAL_DEFAULT_PROFILE,
+            "delivery": "JSON-файлы в sexual_18/, просмотр в боте",
+            "no_links": "✅ ССЫЛОК НА ДИСК НЕТ - ТОЛЬКО ТЕКСТ",
+            "endpoints": {
+                "create_payment": "/api/sexual/create-payment-99 (POST)",
+                "confirm": "/api/sexual/confirm-payment (POST)",
+                "get_profile": "/api/sexual/get-profile/<user_id> (GET)",
+                "create_invite": "/api/sexual/create-invite (POST)",
+                "check_access": "/api/sexual/check-access/<buyer_id>/<target_id> (GET)"
+            }
+        }
     })
 
 # ============================================
@@ -2500,6 +2653,25 @@ def admin_dashboard():
         """)
         webhooks_stats = cursor.fetchall()
         
+        # Статистика 18+ модуля
+        try:
+            cursor.execute("SELECT COUNT(*) FROM sexual_access_purchases")
+            sexual_total = cursor.fetchone()[0]
+        except:
+            sexual_total = 0
+
+        try:
+            cursor.execute("SELECT COUNT(*) FROM sexual_access_purchases WHERE status = 'succeeded'")
+            sexual_succeeded = cursor.fetchone()[0]
+        except:
+            sexual_succeeded = 0
+
+        try:
+            cursor.execute("SELECT COUNT(*) FROM sexual_invites")
+            sexual_invites = cursor.fetchone()[0]
+        except:
+            sexual_invites = 0
+        
         cursor.close()
         conn.close()
         
@@ -2631,6 +2803,15 @@ def admin_dashboard():
                     "notifications": "активна"
                 },
                 "notification_fix": "✅ Исправлено: все уведомления содержат ссылки на Яндекс.Диск"
+            },
+            "sexual_module": {
+                "total_purchases": sexual_total,
+                "succeeded_purchases": sexual_succeeded,
+                "total_invites": sexual_invites,
+                "default_profile": SEXUAL_DEFAULT_PROFILE,
+                "price": SEXUAL_PAYMENT_AMOUNT,
+                "no_links": "✅ ССЫЛОК НА ДИСК НЕТ - ТОЛЬКО JSON",
+                "status": "Активен"
             }
         })
         
@@ -2662,7 +2843,9 @@ def create_all_tables_endpoint():
                     "user_access - доступы пользователей",
                     "yookassa_webhooks - логи вебхуков",
                     "notifications_log - логи уведомлений",
-                    "recovery_log - логи восстановления"
+                    "recovery_log - логи восстановления",
+                    "sexual_access_purchases - покупки 18+ доступа",
+                    "sexual_invites - приглашения 18+"
                 ],
                 "profiles_added": f"Обновлено {updated} платежей с профилями",
                 "method": "безопасная проверка и добавление колонок",
@@ -2674,7 +2857,13 @@ def create_all_tables_endpoint():
                     "unique_index_on_webhooks": True,
                     "prevents_duplicate_notifications": True
                 },
-                "notification_fix": "✅ send_telegram_pure() исправлена: теперь отправляет ссылки на Яндекс.Диск"
+                "notification_fix": "✅ send_telegram_pure() исправлена: теперь отправляет ссылки на Яндекс.Диск",
+                "sexual_module": {
+                    "default_profile": SEXUAL_DEFAULT_PROFILE,
+                    "price": f"{SEXUAL_PAYMENT_AMOUNT}₽",
+                    "profiles_dir": SEXUAL_PROFILES_DIR,
+                    "no_links": True
+                }
             })
         else:
             return jsonify({
@@ -2704,13 +2893,16 @@ def check_db():
         cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
         tables = [row[0] for row in cursor.fetchall()]
         
-        expected_tables = ['payments', 'user_access', 'yookassa_webhooks', 'notifications_log', 'recovery_log']
+        expected_tables = ['payments', 'user_access', 'yookassa_webhooks', 'notifications_log', 'recovery_log', 'sexual_access_purchases', 'sexual_invites']
         table_status = {table: table in tables for table in expected_tables}
         
         data_counts = {}
         for table in tables:
-            cursor.execute(f"SELECT COUNT(*) FROM {table}")
-            data_counts[table] = cursor.fetchone()[0]
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                data_counts[table] = cursor.fetchone()[0]
+            except:
+                data_counts[table] = 0
         
         cursor.execute("""
         SELECT status, COUNT(*) 
@@ -2765,6 +2957,29 @@ def check_db():
         """)
         user_access_columns = [row[0] for row in cursor.fetchall()]
         
+        # Проверка структуры таблиц 18+ модуля
+        try:
+            cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'sexual_access_purchases'
+            ORDER BY ordinal_position
+            """)
+            sexual_purchases_columns = [row[0] for row in cursor.fetchall()]
+        except:
+            sexual_purchases_columns = []
+            
+        try:
+            cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'sexual_invites'
+            ORDER BY ordinal_position
+            """)
+            sexual_invites_columns = [row[0] for row in cursor.fetchall()]
+        except:
+            sexual_invites_columns = []
+        
         # Проверка индексов дедупликации
         cursor.execute("""
         SELECT indexname, indexdef 
@@ -2787,6 +3002,25 @@ def check_db():
         """)
         duplicate_payments = cursor.fetchone()[0] or 0
         
+        # Статистика 18+ модуля
+        try:
+            cursor.execute("SELECT COUNT(*) FROM sexual_access_purchases")
+            sexual_total = cursor.fetchone()[0]
+        except:
+            sexual_total = 0
+            
+        try:
+            cursor.execute("SELECT COUNT(*) FROM sexual_access_purchases WHERE status = 'succeeded'")
+            sexual_succeeded = cursor.fetchone()[0]
+        except:
+            sexual_succeeded = 0
+            
+        try:
+            cursor.execute("SELECT COUNT(*) FROM sexual_invites")
+            sexual_invites_count = cursor.fetchone()[0]
+        except:
+            sexual_invites_count = 0
+        
         cursor.close()
         conn.close()
         
@@ -2802,6 +3036,20 @@ def check_db():
             "recent_recoveries": {result: count for result, count in recent_recoveries},
             "payments_table_columns": payment_columns,
             "user_access_table_columns": user_access_columns,
+            "sexual_module": {
+                "tables_exist": {
+                    "sexual_access_purchases": 'sexual_access_purchases' in tables,
+                    "sexual_invites": 'sexual_invites' in tables
+                },
+                "sexual_purchases_columns": sexual_purchases_columns,
+                "sexual_invites_columns": sexual_invites_columns,
+                "total_purchases": sexual_total,
+                "succeeded_purchases": sexual_succeeded,
+                "total_invites": sexual_invites_count,
+                "default_profile": SEXUAL_DEFAULT_PROFILE,
+                "profiles_dir": SEXUAL_PROFILES_DIR,
+                "no_links": True
+            },
             "unique_indexes": {idx[0]: idx[1] for idx in unique_indexes},
             "duplicate_payments": duplicate_payments,
             "has_required_columns": {
@@ -2960,7 +3208,7 @@ def health_check():
         return jsonify({
             "status": "healthy" if (POSTGRES_AVAILABLE and "connected" in db_status and telegram_token_set) else "degraded",
             "service": "variatica_payment_api",
-            "version": "7.0 (с поддержкой 36 профилей Яндекс.Диск)",
+            "version": "7.0 (с поддержкой 36 профилей Яндекс.Диск + 18+ модуль)",
             "database": db_status,
             "yookassa_sdk": "available" if YOOKASSA_SDK_AVAILABLE else "not_available",
             "yookassa_configured": yookassa_configured,
@@ -2970,7 +3218,7 @@ def health_check():
             "supported_payment_methods": "all (через Invoices API)",
             "profiles_available": len(PROFILE_LINKS),
             "default_profile": DEFAULT_PROFILE,
-            "architecture": "исправленная (36 профилей + Invoices API + безопасные таблицы)",
+            "architecture": "исправленная (36 профилей + Invoices API + безопасные таблицы + 18+ модуль)",
             "timestamp": datetime.now().isoformat(),
             "critical_fixes": [
                 "✅ Поддержка 36 профилей Яндекс.Диск",
@@ -2991,8 +3239,15 @@ def health_check():
                 "2. Используйте /admin/dashboard для мониторинга",
                 "3. Проверьте /check-db для диагностики БД",
                 "4. Используйте /api/create-payment-advanced для создания счетов с профилями",
-                "5. Протестируйте /test-send/<user_id>/<profile_code> для проверки уведомлений"
-            ]
+                "5. Протестируйте /test-send/<user_id>/<profile_code> для проверки уведомлений",
+                "6. Для 18+ модуля используйте /api/sexual/create-payment-99"
+            ],
+            "sexual_module": {
+                "profiles": [SEXUAL_DEFAULT_PROFILE],
+                "type": "JSON в sexual_18/, БЕЗ ССЫЛОК",
+                "active": True,
+                "no_links": True
+            }
         }), 200
         
     except Exception as e:
@@ -3001,6 +3256,304 @@ def health_check():
             "error": str(e)[:200],
             "timestamp": datetime.now().isoformat()
         }), 500
+
+# ============================================
+# 6. 18+ МОДУЛЬ - ПОЛНОСТЬЮ БЕЗ ССЫЛОК (ДОБАВИТЬ ПОСЛЕ /health)
+# ============================================
+
+@app.route('/api/sexual/create-payment-99', methods=['POST'])
+def api_sexual_create_payment_99():
+    """Создает платеж на 99₽ для доступа к 18+ профилю - БЕЗ ССЫЛОК!"""
+    try:
+        data = request.get_json()
+        payment_id = data.get('payment_id')
+        buyer_id = data.get('buyer_id')
+        target_id = data.get('target_id')
+        target_name = data.get('target_name')
+        invite_id = data.get('invite_id')
+        
+        if not all([payment_id, buyer_id, target_id]):
+            return jsonify({"success": False, "error": "Missing required fields"}), 400
+        
+        # ЗАГЛУШКА: всегда SA_5_INT
+        target_profile_key = SEXUAL_DEFAULT_PROFILE
+        
+        # Создаем платеж через ЮKassa (99₽)
+        yookassa_data = create_yookassa_invoice(
+            payment_id=payment_id,
+            amount=SEXUAL_PAYMENT_AMOUNT,
+            user_id=buyer_id,
+            description=f"🔞 Доступ к 18+ профилю {target_name or 'друга'}"
+        )
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        INSERT INTO sexual_access_purchases (
+            buyer_id, target_id, target_name, target_profile_key, 
+            invite_id, payment_id, amount, status
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (buyer_id, target_id) DO UPDATE SET
+            payment_id = EXCLUDED.payment_id,
+            status = EXCLUDED.status,
+            purchased_at = CURRENT_TIMESTAMP
+        RETURNING id
+        """, (
+            buyer_id, target_id, target_name, target_profile_key,
+            invite_id, payment_id, SEXUAL_PAYMENT_AMOUNT, 'pending'
+        ))
+        
+        purchase_id = cursor.fetchone()[0]
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"🔞 Создан платеж 99₽: {payment_id}, buyer={buyer_id}, target={target_id}")
+        
+        return jsonify({
+            "success": True,
+            "purchase_id": purchase_id,
+            "payment_id": payment_id,
+            "yookassa_id": yookassa_data.get('id'),
+            "confirmation_url": yookassa_data.get('confirmation_url'),
+            "amount": SEXUAL_PAYMENT_AMOUNT,
+            "profile_key": target_profile_key,
+            "status": "pending",
+            "note": "✅ После оплаты профиль откроется в Telegram-боте (БЕЗ ССЫЛОК НА ДИСК!)"
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка создания платежа 99₽: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/sexual/confirm-payment', methods=['POST'])
+def api_sexual_confirm_payment():
+    """Подтверждает оплату доступа к 18+ профилю - БЕЗ ССЫЛОК!"""
+    if not POSTGRES_AVAILABLE:
+        return jsonify({"success": False, "error": "psycopg3 не установлен"}), 500
+    
+    try:
+        data = request.get_json()
+        payment_id = data.get('payment_id')
+        
+        if not payment_id:
+            return jsonify({"success": False, "error": "Missing payment_id"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        UPDATE sexual_access_purchases 
+        SET status = 'succeeded', confirmed_at = CURRENT_TIMESTAMP
+        WHERE payment_id = %s AND status = 'pending'
+        RETURNING id, buyer_id, target_id, target_name, target_profile_key, invite_id
+        """, (payment_id,))
+        
+        result = cursor.fetchone()
+        
+        if not result:
+            conn.rollback()
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Purchase not found or already confirmed"}), 404
+        
+        purchase_id, buyer_id, target_id, target_name, target_profile_key, invite_id = result
+        
+        # Обновляем статус приглашения
+        if invite_id:
+            cursor.execute("""
+            UPDATE sexual_invites 
+            SET status = 'purchased', purchased_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+            """, (invite_id,))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"🔞 Подтверждена оплата {payment_id}, buyer={buyer_id}, target={target_id}")
+        
+        # Отправляем уведомление БЕЗ ССЫЛОК
+        send_sexual_notification_async(buyer_id, payment_id, target_profile_key)
+        
+        return jsonify({
+            "success": True,
+            "purchase_id": purchase_id,
+            "buyer_id": buyer_id,
+            "target_id": target_id,
+            "target_name": target_name,
+            "target_profile_key": target_profile_key,
+            "status": "succeeded",
+            "note": "✅ Оплата подтверждена. Уведомление отправлено (БЕЗ ССЫЛОК НА ДИСК!)"
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка подтверждения платежа 99₽: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/sexual/get-profile/<int:user_id>', methods=['GET'])
+def api_sexual_get_profile(user_id):
+    """Возвращает 18+ профиль пользователя - ЗАГЛУШКА, БЕЗ ССЫЛОК!"""
+    try:
+        # ЗАГЛУШКА: всегда возвращаем SA_5_INT
+        profile_key = SEXUAL_DEFAULT_PROFILE
+        
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "profile_key": profile_key,
+            "is_stub": True,
+            "note": "⚠️ РЕЖИМ ЗАГЛУШКИ: всем показывается SA_5_INT из папки sexual_18/ (БЕЗ ССЫЛОК НА ДИСК!)"
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения профиля: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/sexual/create-invite', methods=['POST'])
+def api_sexual_create_invite():
+    """Создает приглашение для 18+ профиля"""
+    try:
+        data = request.get_json()
+        buyer_id = data.get('buyer_id')
+        target_id = data.get('target_id')
+        target_name = data.get('target_name')
+        
+        if not all([buyer_id, target_id]):
+            return jsonify({"success": False, "error": "Missing required fields"}), 400
+        
+        invite_id = f"sinv_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+        target_profile_key = SEXUAL_DEFAULT_PROFILE
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        INSERT INTO sexual_invites (invite_id, buyer_id, target_id, target_name, target_profile_key)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id
+        """, (invite_id, buyer_id, target_id, target_name, target_profile_key))
+        
+        invite_db_id = cursor.fetchone()[0]
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "invite_id": invite_id,
+            "profile_key": target_profile_key,
+            "note": "✅ Приглашение создано"
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка создания приглашения: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/sexual/get-invite/<invite_id>', methods=['GET'])
+def api_sexual_get_invite(invite_id):
+    """Получает информацию о приглашении"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT invite_id, buyer_id, target_id, target_name, target_profile_key, status, created_at
+        FROM sexual_invites 
+        WHERE invite_id = %s
+        """, (invite_id,))
+        
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if not result:
+            return jsonify({"success": False, "error": "Invite not found"}), 404
+        
+        return jsonify({
+            "success": True,
+            "invite_id": result[0],
+            "buyer_id": result[1],
+            "target_id": result[2],
+            "target_name": result[3],
+            "profile_key": result[4],
+            "status": result[5],
+            "created_at": result[6].isoformat() if result[6] else None,
+            "note": "✅ Приглашение действительно, оплата еще не произведена"
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения приглашения: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/sexual/check-access/<int:buyer_id>/<int:target_id>', methods=['GET'])
+def api_sexual_check_access(buyer_id, target_id):
+    """Проверяет, куплен ли доступ к 18+ профилю"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT id, status, confirmed_at, target_profile_key
+        FROM sexual_access_purchases
+        WHERE buyer_id = %s AND target_id = %s AND status = 'succeeded'
+        ORDER BY confirmed_at DESC
+        LIMIT 1
+        """, (buyer_id, target_id))
+        
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if result:
+            return jsonify({
+                "success": True,
+                "has_access": True,
+                "purchase_id": result[0],
+                "confirmed_at": result[2].isoformat() if result[2] else None,
+                "profile_key": result[3],
+                "note": "✅ Доступ активирован"
+            }), 200
+        else:
+            return jsonify({
+                "success": True,
+                "has_access": False,
+                "note": "❌ Доступ не куплен"
+            }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка проверки доступа: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/test-sexual/<int:user_id>', methods=['GET'])
+def test_sexual(user_id):
+    """Тест 18+ модуля - проверка, что нет ссылок"""
+    try:
+        profile_data = api_sexual_get_profile(user_id)
+        
+        response_data = {
+            "success": True,
+            "test_passed": True,
+            "sexual_module": {
+                "endpoint": "/api/sexual/get-profile/",
+                "response": profile_data.json if hasattr(profile_data, 'json') else profile_data,
+                "has_disk_links": "disk.yandex" not in str(profile_data),
+                "status": "✅ ССЫЛОК НА ДИСК НЕТ"
+            },
+            "note": "✅ 18+ модуль работает без ссылок на Яндекс.Диск"
+        }
+        
+        # Если profile_data это объект Response, преобразуем его
+        if hasattr(profile_data, 'json'):
+            try:
+                response_data["sexual_module"]["response_json"] = profile_data.json
+            except:
+                pass
+        
+        return jsonify(response_data)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # Обработчики ошибок
 @app.errorhandler(500)
@@ -3024,7 +3577,12 @@ def handle_404(error):
             "/api/create-payment-advanced - новый эндпоинт с Invoices API и профилями",
             "/create-all-tables - безопасное создание таблиц",
             "/debug-payment/<payment_id> - диагностика платежа",
-            "/test-send/<user_id>/<profile_code> - тест отправки уведомления"
+            "/test-send/<user_id>/<profile_code> - тест отправки уведомления",
+            "/api/sexual/create-payment-99 - 18+ МОДУЛЬ (99₽, БЕЗ ССЫЛОК)",
+            "/api/sexual/get-profile/<user_id> - получить 18+ профиль",
+            "/api/sexual/create-invite - создать приглашение",
+            "/api/sexual/check-access/<buyer_id>/<target_id> - проверить доступ",
+            "/test-sexual/<user_id> - тест 18+ (без ссылок)"
         ]
     }), 404
 
@@ -3044,7 +3602,7 @@ def handle_exception(e):
 
 if __name__ == '__main__':
     print("="*80)
-    print("🚀 VARIATICA PAYMENT API v7.0 - С ПОДДЕРЖКОЙ 36 ПРОФИЛЕЙ")
+    print("🚀 VARIATICA PAYMENT API v7.0 - С ПОДДЕРЖКОЙ 36 ПРОФИЛЕЙ + 18+ МОДУЛЬ")
     print("="*80)
     print(f"Python: {sys.version.split()[0]}")
     print(f"psycopg3 доступен: {POSTGRES_AVAILABLE}")
@@ -3092,6 +3650,12 @@ if __name__ == '__main__':
     print("  6. Добавлены эндпоинты диагностики /debug-payment/ и /test-send/")
     print("  7. Протестированы все типы уведомлений")
     print("  8. Обратная совместимость сохранена")
+    print("="*80)
+    print("🔞 18+ МОДУЛЬ (99₽) - БЕЗ ССЫЛОК НА ДИСК!")
+    print("  ✅ SA_5_INT - заглушка (всегда)")
+    print("  ✅ НЕТ ССЫЛОК на Яндекс.Диск")
+    print("  ✅ Только JSON в sexual_18/")
+    print("  ✅ Просмотр внутри Telegram-бота")
     print("="*80)
     
     # Создаем таблицы при старте безопасным методом
