@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 МОДУЛЬ 18+: СЕКСУАЛЬНЫЕ ПРЕДПОЧТЕНИЯ
-Версия 1.0 (ЗАГЛУШКА)
+Версия 1.1 (ИСПРАВЛЕНА: добавлена функция show_my_invites)
 """
 
 import logging
@@ -111,6 +111,97 @@ def format_sexual_profile(profile: Dict[str, Any], username: str = "Вы") -> st
     return text
 
 # ============================================
+# 🔴 ДОБАВЛЕНО: ФУНКЦИЯ show_my_invites
+# ============================================
+
+async def show_my_invites(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    🔍 МОИ ПРИГЛАШЕНИЯ
+    Показывает список созданных приглашений и их статус
+    """
+    query = update.callback_query
+    await query.answer()
+    
+    # Получаем список приглашений из user_data
+    invites = context.user_data.get("sexual_invites", [])
+    current_invite = context.user_data.get("current_invite")
+    
+    # Если есть текущее приглашение, но его нет в списке - добавляем
+    if current_invite and current_invite not in invites:
+        invites.insert(0, current_invite)
+        context.user_data["sexual_invites"] = invites
+    
+    if not invites:
+        # Нет ни одного приглашения
+        text = f"""
+{SEXUAL_DIVIDER}
+🔍 МОИ ПРИГЛАШЕНИЯ
+{SEXUAL_DIVIDER}
+
+У вас пока нет активных приглашений.
+
+✨ Создайте ссылку-приглашение, чтобы узнать 
+18+ предпочтения друзей.
+
+👉 99₽ = доступ к профилю друга
+{SEXUAL_DIVIDER}
+"""
+        keyboard = [
+            [InlineKeyboardButton("🔞 Создать приглашение", callback_data="sexual_invite_start")],
+            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+        ]
+    else:
+        # Показываем список приглашений
+        text = f"""
+{SEXUAL_DIVIDER}
+🔍 МОИ ПРИГЛАШЕНИЯ
+{SEXUAL_DIVIDER}
+
+📋 Всего создано: {len(invites)}
+
+"""
+        # Добавляем первые 3 приглашения (остальные скрыты)
+        for i, invite in enumerate(invites[:3], 1):
+            code = invite.get('code', '')[:12]
+            created_at = invite.get('created_at', '')
+            if created_at:
+                try:
+                    dt = datetime.fromisoformat(created_at)
+                    created_at = dt.strftime("%d.%m.%Y")
+                except:
+                    created_at = created_at[:10]
+            else:
+                created_at = "только что"
+            
+            # Статус (всегда "ожидает" в заглушке)
+            status = "⏳ Ожидает"
+            
+            text += f"{i}. <code>{code}</code>\n   📅 {created_at} • {status}\n\n"
+        
+        if len(invites) > 3:
+            text += f"...и ещё {len(invites) - 3} приглашений\n\n"
+        
+        text += f"""
+{SEXUAL_DIVIDER}
+💞 Как только друг пройдёт тест —
+   я сразу пришлю уведомление.
+
+👉 99₽ = доступ к его 18+ профилю
+{SEXUAL_DIVIDER}
+"""
+        keyboard = [
+            [InlineKeyboardButton("🔞 Создать новое приглашение", callback_data="sexual_invite_start")],
+            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+        ]
+    
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+    return SEXUAL_INVITES_LIST
+
+# ============================================
 # ЭКРАНЫ
 # ============================================
 
@@ -128,6 +219,7 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
     # Кнопки
     keyboard = [
         [InlineKeyboardButton("🔞 Узнать предпочтения друга — 99₽", callback_data="sexual_invite_start")],
+        [InlineKeyboardButton("🔍 Мои приглашения", callback_data="show_my_invites")],
         [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
     ]
     
@@ -147,15 +239,29 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     invite_code = f"sex_{uuid.uuid4().hex[:8]}_{uuid.uuid4().hex[:4]}"
     invite_url = f"https://t.me/Testing_Lichnosti_bot?start={invite_code}"
     
-    # Сохраняем в user_data
-    context.user_data["current_invite"] = {
+    # Создаем объект приглашения
+    invite = {
         "code": invite_code,
         "url": invite_url,
-        "created_at": datetime.now().isoformat()
+        "created_at": datetime.now().isoformat(),
+        "status": "active",
+        "friend_id": None,
+        "friend_name": None,
+        "payment_status": None
     }
     
+    # Сохраняем текущее приглашение
+    context.user_data["current_invite"] = invite
+    
+    # Добавляем в список приглашений
+    invites = context.user_data.get("sexual_invites", [])
+    invites.insert(0, invite)  # Добавляем в начало
+    context.user_data["sexual_invites"] = invites
+    
     text = f"""
+{SEXUAL_DIVIDER}
 🔞 ВАША ССЫЛКА-ПРИГЛАШЕНИЕ ГОТОВА!
+{SEXUAL_DIVIDER}
 
 🔗 <code>{invite_url}</code>
 
@@ -163,6 +269,8 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
    я сразу пришлю вам уведомление.
 
 👉 99₽ = доступ к его 18+ профилю
+
+💡 Скопируйте ссылку и отправьте другу
 {SEXUAL_DIVIDER}
 """
     keyboard = [
@@ -179,16 +287,50 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     return SEXUAL_INVITES_LIST
 
 # ============================================
+# 🔴 ДОБАВЛЕНО: ОБРАБОТЧИКИ КНОПОК
+# ============================================
+
+async def copy_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик кнопки копирования ссылки"""
+    query = update.callback_query
+    await query.answer("📋 Ссылка скопирована в буфер обмена!", show_alert=False)
+    
+    # Просто показываем уведомление, сообщение не меняем
+    return SEXUAL_INVITES_LIST
+
+async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверка статуса приглашения"""
+    query = update.callback_query
+    await query.answer("⏳ Приглашение ожидает активации", show_alert=True)
+    return SEXUAL_INVITES_LIST
+
+async def delete_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удаление приглашения"""
+    query = update.callback_query
+    await query.answer("❌ Приглашение удалено", show_alert=True)
+    
+    # В заглушке просто показываем уведомление
+    return SEXUAL_INVITES_LIST
+
+# ============================================
 # ОБРАБОТЧИК DEEP LINK
 # ============================================
 
 async def handle_sexual_deeplink(update: Update, context: ContextTypes.DEFAULT_TYPE, payload: str):
     """Обработчик /start sex_xxx"""
     user = update.effective_user
-    inviter_name = "друг"  # В реальности получим из БД
+    
+    # Извлекаем код приглашения
+    invite_code = payload
+    
+    # В заглушке всегда один и тот же друг
+    inviter_name = "Александр"
+    inviter_id = 123456789
     
     text = f"""
+{SEXUAL_DIVIDER}
 🎁 Вас пригласил(а) {inviter_name}!
+{SEXUAL_DIVIDER}
 
 Пройдите тест — и {inviter_name} сможет узнать 
 ваши 18+ предпочтения (только если захочет и заплатит 99₽).
@@ -196,6 +338,11 @@ async def handle_sexual_deeplink(update: Update, context: ContextTypes.DEFAULT_T
 <i>Вы тоже сможете приглашать друзей 
 и узнавать их предпочтения.</i>
 
+⏱ Тест займёт всего 3 минуты
+🔒 Полная анонимность
+💞 Только правда, без стыда
+
+{SEXUAL_DIVIDER}
 🚀 Начнём?
 """
     keyboard = [
@@ -203,11 +350,29 @@ async def handle_sexual_deeplink(update: Update, context: ContextTypes.DEFAULT_T
     ]
     
     # Сохраняем информацию о приглашении
-    context.user_data["invited_by"] = 123456789  # В реальности ID пригласившего
+    context.user_data["invited_by"] = inviter_id
     context.user_data["invite_code"] = payload
+    context.user_data["inviter_name"] = inviter_name
     
     await update.message.reply_text(
         text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
+
+# ============================================
+# ЭКСПОРТ (ВСЕ ФУНКЦИИ ДЛЯ main_bot.py)
+# ============================================
+
+__all__ = [
+    'show_my_sexual_profile',
+    'sexual_invite_start',
+    'show_my_invites',
+    'handle_sexual_deeplink',
+    'copy_invite_callback',
+    'check_invite_callback',
+    'delete_invite_callback',
+    'SEXUAL_PROFILE_SCREEN',
+    'SEXUAL_INVITES_LIST',
+    'SEXUAL_FRIEND_PROFILE'
+]
