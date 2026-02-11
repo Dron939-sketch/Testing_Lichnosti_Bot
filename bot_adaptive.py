@@ -2,7 +2,7 @@
 """
 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА: ПУТЬ К САМОПОЗНАНИЮ
 4 этапа адаптивного исследования + персональное описание профиля
-ВЕРСИЯ 3.3: ИСПРАВЛЕНИЕ ПРИМЕЧАНИЯ ДИЛТСА + ПОЛНАЯ ЗАМЕНА ЭТАПА 2 ПО ТЗ 3.0
+ВЕРСИЯ 3.4: ИСПРАВЛЕНИЕ КНОПКИ "НАЗАД К РЕЗУЛЬТАТАМ" + ЛОГИКИ ШАРИНГА
 """
 
 import logging
@@ -55,6 +55,31 @@ SHARE_TEXT = "Мне в руки попало особое зеркало. В н
 
 # Состояния ConversationHandler
 STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS, GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, DILTS_CLARIFICATION, PAYMENT_SCREEN = range(11)
+
+# ============================================
+# 🎁 ТЕКСТ ЭКРАНА ПОДАРКА
+# ============================================
+
+GIFT_SCREEN_TEXT = """
+⚔️ <b>ВАШ МЕЧ ГОТОВ!</b>
+
+📚 <b>Терапевтическая сказка «Мастер Меча»</b>
+
+Эта сказка работает именно с тем, что мешает вам
+расправить плечи на уровне убеждений.
+
+<i>Она не «ломает» старые установки,
+а создаёт пространство для новых —
+тех, что позволяют стоять прямо и легко.</i>
+
+💡 <b>Как читать для максимального эффекта:</b>
+1️⃣ Прочитайте перед сном
+2️⃣ Ищите в тексте «металл» (вашу истинную природу)
+3️⃣ Отмечайте «зазубрины» (ваши ограничения)
+4️⃣ Обращайте внимание на символы тяжести/лёгкости
+
+<i>Приятного чтения и лёгкости в плечах!</i> 🪶✨
+"""
 
 # ============================================
 # КОНСТАНТЫ ДЛЯ УПРОЩЕННОГО ПОИСКА
@@ -2176,11 +2201,16 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОКАЗА РЕЗУЛЬТАТОВ
 # ============================================
 
-async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_results_screen(
+    update: Update, 
+    context: ContextTypes.DEFAULT_TYPE,
+    force_shared_view: bool = False  # ✅ ДОБАВЛЕН ПАРАМЕТР ДЛЯ ПРИНУДИТЕЛЬНОГО ПОКАЗА КНОПКИ ПОДАРКА
+):
     """ЭКРАН РЕЗУЛЬТАТОВ - версия виртуального психолога с ПРИМЕЧАНИЕМ ДИЛТСА"""
     query = update.callback_query
     
-    has_shared = context.user_data.get("has_shared", False)
+    # ✅ ИСПРАВЛЕНО: поддержка принудительного показа версии с подарком
+    has_shared = context.user_data.get("has_shared", False) or force_shared_view
     profile_data = context.user_data.get("profile_data")
     
     if not profile_data:
@@ -2666,7 +2696,7 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
     
     try:
         await query.answer()
-    except Exception as e:
+    } catch Exception as e:
         logger.error(f"Ошибка при answer(): {e}")
     
     if context.user_data.get("processing", False):
@@ -3295,46 +3325,97 @@ async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(instruction_text, reply_markup=reply_markup, parse_mode="HTML")
     return GIFT_SCREEN
 
+# ============================================
+# ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ open_gift_screen
+# ============================================
+
 async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН: ПОКАЗ СКАЗКИ «МАСТЕР МЕЧА»"""
+    """
+    ИСПРАВЛЕНО: ЭКРАН С ПОДАРКОМ
+    1. Проверяет, поделился ли пользователь
+    2. Использует ссылку из переменной окружения
+    3. Корректный callback для возврата
+    """
     query = update.callback_query
     await query.answer()
     
-    GIFT_PDF_LINK = "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"
+    # ✅ ПРОВЕРКА: пользователь должен поделиться, чтобы увидеть подарок
+    if not context.user_data.get("has_shared", False):
+        await query.answer(
+            "❌ Сначала поделитесь зеркалом с друзьями, чтобы получить подарок!", 
+            show_alert=True
+        )
+        return await show_results_screen(update, context)
     
-    gift_text = (
-        f"⚔️ <b>ВАШ МЕЧ ГОТОВ!</b>\n\n"
-        f"📚 <b>Терапевтическая сказка «Мастер Меча»</b>\n\n"
-        f"Эта сказка работает именно с тем, что мешает вам\n"
-        f"расправить плечи на уровне убеждений.\n\n"
-        f"<i>Она не «ломает» старые установки,\n"
-        f"а создаёт пространство для новых —\n"
-        f"тех, что позволяют стоять прямо и легко.</i>\n\n"
-        f"💡 <b>Как читать для максимального эффекта:</b>\n"
-        f"1. Прочитайте перед сном\n"
-        f"2. Ищите в тексте «металл» (вашу истинную природу)\n"
-        f"3. Отмечайте «зазубрины» (ваши ограничения)\n"
-        f"4. Обращайте внимание на символы тяжести/лёгкости\n\n"
-        f"<i>Приятного чтения и лёгкости в плечах!</i> 🪶✨"
+    # ✅ ИСПРАВЛЕНО: ссылка из переменной окружения (не хардкод!)
+    GIFT_PDF_LINK = os.getenv(
+        "GIFT_PDF_LINK", 
+        "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"  # Значение по умолчанию
     )
     
+    # ✅ ИСПРАВЛЕНО: специальный callback для возврата ПОСЛЕ подарка
     keyboard = [
         [InlineKeyboardButton("⚔️ Открыть сказку «Мастер Меча»", url=GIFT_PDF_LINK)],
-        [InlineKeyboardButton("⬅️ Назад к результатам", callback_data="back_to_results")]
+        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results_after_gift")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(gift_text, reply_markup=reply_markup, parse_mode="HTML")
+    # ✅ Логирование получения подарка
+    logger.info(f"🎁 User {update.effective_user.id} opened gift (has_shared={context.user_data.get('has_shared', False)})")
+    
+    await query.edit_message_text(
+        GIFT_SCREEN_TEXT,  # ✅ использование константы
+        reply_markup=reply_markup, 
+        parse_mode="HTML"
+    )
+    
     return OPEN_GIFT_SCREEN
 
+# ============================================
+# ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ confirm_share
+# ============================================
+
 async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Подтверждение шаринга"""
+    """
+    ИСПРАВЛЕНО: Подтверждение шаринга - СРАЗУ показывает подарок
+    Больше НЕ возвращает на экран результатов
+    """
     query = update.callback_query
     await query.answer("✅ Спасибо за репост! Ваш бонус готов!")
     
+    # ✅ Устанавливаем флаг, что пользователь поделился
     context.user_data["has_shared"] = True
     
-    return await show_results_screen(update, context)
+    # ✅ ВАЖНО: Сразу показываем экран с подарком, а не результаты
+    return await open_gift_screen(update, context)
+
+# ============================================
+# ✅ НОВАЯ ФУНКЦИЯ: back_to_results_after_gift
+# ============================================
+
+async def back_to_results_after_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    НОВАЯ ФУНКЦИЯ: Возврат к результатам ПОСЛЕ просмотра подарка
+    Удаляет сообщение с подарком и отправляет результаты в НОВОМ сообщении
+    ЯВНО переключает состояние на RESULTS
+    """
+    query = update.callback_query
+    await query.answer("🔄 Возвращаюсь к результатам...")
+    
+    # ✅ 1. Удаляем сообщение с подарком (чтобы избежать дублирования)
+    try:
+        await query.message.delete()
+        logger.info(f"🎁 User {update.effective_user.id}: Удалено сообщение с подарком")
+    except Exception as e:
+        logger.warning(f"⚠️ User {update.effective_user.id}: Не удалось удалить сообщение с подарком: {e}")
+    
+    # ✅ 2. Отправляем результаты в НОВОМ сообщении
+    # force_shared_view=True гарантирует, что кнопка подарка будет видна
+    await show_results_screen(update, context, force_shared_view=True)
+    
+    # ✅ 3. ЯВНО возвращаем новый state
+    logger.info(f"🔄 User {update.effective_user.id}: OPEN_GIFT_SCREEN → RESULTS")
+    return RESULTS
 
 async def skip_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Пропуск шаринга"""
@@ -4001,19 +4082,28 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*60)
-    print("🧠 ЗАПУСК ВИРТУАЛЬНОГО ПСИХОЛОГА ВАРИАТИКА (ВЕРСИЯ 3.3)")
+    print("🧠 ЗАПУСК ВИРТУАЛЬНОГО ПСИХОЛОГА ВАРИАТИКА (ВЕРСИЯ 3.4)")
     print("="*60)
-    print("ВНЕДРЕНИЕ ТЗ 3.0:")
+    print("ВНЕДРЕНИЕ ТЗ 3.0 + ИСПРАВЛЕНИЕ КНОПКИ:")
     print("1. 🔴 ИСПРАВЛЕНО: Примечание Дилтса теперь отображается в результатах")
     print("2. 🔴 ИСПРАВЛЕНО: Зависания бота (добавлены обработчики start_stage_2/3/4)")
     print("3. 🟢 ВНЕДРЕНО: Мотивационные экраны после ЭТАПА 1 (Часть 3)")
     print("4. 🟢 ВНЕДРЕНО: Мотивационные экраны после ЭТАПА 2 (Часть 4)")
     print("5. 🟢 ВНЕДРЕНО: Мотивационные экраны после ЭТАПА 3 (Часть 5)")
     print("6. 🟢 ВНЕДРЕНО: Экран аналитики перед результатами (Часть 6)")
-    print("7. 🟢 ВНЕДРЕНО: ПОЛНАЯ ЗАМЕНА ЭТАПА 2 ПО ТЗ 3.0 (НОВЫЕ ВОПРОСЫ И ОТВЕТЫ)")
+    print("7. 🟢 ВНЕДРЕНО: ПОЛНАЯ ЗАМЕНА ЭТАПА 2 ПО ТЗ 3.0")
+    print("8. 🔴 ИСПРАВЛЕНО: Логика шаринга - подарок после 1 клика")
+    print("9. 🔴 ИСПРАВЛЕНО: Кнопка 'Назад к результатам' - удаление сообщения и переключение state")
     print("="*60)
     print("🔒 ФУНКЦИЯ get_profile_fallback() НЕ ИЗМЕНЕНА!")
     print("="*60)
+    
+    # Проверка переменной окружения для подарка
+    gift_link = os.getenv("GIFT_PDF_LINK")
+    if not gift_link:
+        logger.warning("⚠️ GIFT_PDF_LINK не установлена, используется ссылка по умолчанию")
+    else:
+        logger.info(f"🎁 GIFT_PDF_LINK загружена: {gift_link[:30]}...")
     
     # Проверка загрузки профилей
     print("🔍 ПРОВЕРКА ЗАГРУЗКИ ПРОФИЛЕЙ")
@@ -4088,6 +4178,8 @@ def main():
                 CallbackQueryHandler(buy_package_callback, pattern="^buy_package$"),
                 CallbackQueryHandler(restart_test, pattern="^restart_test$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                # ✅ НОВЫЙ ОБРАБОТЧИК для возврата после подарка
+                CallbackQueryHandler(back_to_results_after_gift, pattern="^back_to_results_after_gift$"),
                 CallbackQueryHandler(show_results_screen, pattern="^show_results$"),
                 CallbackQueryHandler(show_psychologist_conclusion, pattern="^psychologist_conclusion$"),
                 CallbackQueryHandler(skip_share, pattern="^skip_share$"),
@@ -4103,9 +4195,10 @@ def main():
                 CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
                 CallbackQueryHandler(buy_package_callback, pattern="^buy_package$")
             ],
+            # ✅ НОВАЯ СЕКЦИЯ - ИСПРАВЛЯЕТ ПРОБЛЕМУ С КНОПКОЙ "НАЗАД"!
             OPEN_GIFT_SCREEN: [
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(open_gift_screen, pattern="^open_gift$")
+                CallbackQueryHandler(back_to_results_after_gift, pattern="^back_to_results_after_gift$"),
+                CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
             ],
             PAYMENT_SCREEN: [
                 CallbackQueryHandler(check_payment_callback, pattern="^check_payment_"),
@@ -4122,7 +4215,8 @@ def main():
     
     logger.info("🧠 Виртуальный психолог Вариатика запущен!")
     logger.info("✅ ТЗ 3.0 ПОЛНОСТЬЮ ВНЕДРЕНО!")
-    logger.info("📋 Версия 3.3 - Исправлено примечание Дилтса + полная замена этапа 2")
+    logger.info("✅ ТЗ 2.0 ПОЛНОСТЬЮ ВНЕДРЕНО! Кнопка 'Назад к результатам' исправлена!")
+    logger.info("📋 Версия 3.4 - Исправлены логика шаринга и кнопка возврата")
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
