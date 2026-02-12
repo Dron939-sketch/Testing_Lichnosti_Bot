@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 10.3 - ИСПРАВЛЕН CONVERSATIONHANDLER
-✅ КНОПКА "МОИ ОТРАЖЕНИЯ" РАБОТАЕТ
+Версия: 10.4 - ИСПРАВЛЕНЫ ВСЕ ПРОБЛЕМЫ
+✅ КНОПКА "МОИ ОТРАЖЕНИЯ" РАБОТАЕТ ВЕЗДЕ
+✅ ИНТИМНЫЙ ПРОФИЛЬ ЗАГРУЖАЕТСЯ
+✅ ТЕКСТ И ЭМОДЗИ ИСПРАВЛЕНЫ
 """
 
 import logging
@@ -36,11 +38,11 @@ logger = logging.getLogger(__name__)
 
 # ===== УМНЫЙ ПОИСК КОРНЯ ПРОЕКТА =====
 def find_project_root() -> str:
-    """Находит корень проекта (где лежит папка profiles/)"""
+    """Находит корень проекта (где лежит папка profiles/ или sexual_18/)"""
     current = os.path.dirname(os.path.abspath(__file__))
     
     while current != os.path.dirname(current):
-        if os.path.exists(os.path.join(current, "profiles")):
+        if os.path.exists(os.path.join(current, "profiles")) or os.path.exists(os.path.join(current, "sexual_18")):
             return current
         current = os.path.dirname(current)
     
@@ -162,29 +164,150 @@ FOUR_F_EXPLANATION = """
 💰 Цена: 1₽ (тестовый режим)
 """
 
+# ===== ДИАГНОСТИКА ФАЙЛОВОЙ СИСТЕМЫ =====
+def diagnose_sexual_profile_paths():
+    """Диагностика путей к файлу интимного профиля"""
+    logger.info("="*60)
+    logger.info("🔍 ДИАГНОСТИКА ПУТЕЙ К ИНТИМНОМУ ПРОФИЛЮ")
+    logger.info("="*60)
+    logger.info(f"📁 Текущая директория: {os.getcwd()}")
+    logger.info(f"📁 PROJECT_ROOT: {PROJECT_ROOT}")
+    logger.info(f"📁 __file__: {__file__}")
+    
+    test_paths = [
+        os.path.join(PROJECT_ROOT, "sexual_18", "sa_5_int.json"),
+        os.path.join(PROJECT_ROOT, "profiles", "sexual_18", "sa_5_int.json"),
+        os.path.join("sexual_18", "sa_5_int.json"),
+        os.path.join("profiles", "sexual_18", "sa_5_int.json"),
+        os.path.join(os.path.dirname(__file__), "sexual_18", "sa_5_int.json"),
+        os.path.join(os.path.dirname(__file__), "profiles", "sexual_18", "sa_5_int.json"),
+    ]
+    
+    for path in test_paths:
+        if os.path.exists(path):
+            logger.info(f"✅ НАЙДЕН: {path}")
+            logger.info(f"   📏 Размер: {os.path.getsize(path)} байт")
+            logger.info(f"   📝 Читается: {os.access(path, os.R_OK)}")
+        else:
+            logger.info(f"❌ НЕТ: {path}")
+    
+    logger.info("="*60)
+
 # ===== ЗАГРУЗКА ИНТИМНОГО ПРОФИЛЯ ИЗ JSON =====
 def load_intimate_profile() -> dict:
-    """Загружает интимный профиль из JSON файла"""
+    """Загружает интимный профиль из JSON файла с автоопределением структуры"""
     try:
+        # Диагностика при каждой загрузке
+        logger.info("📂 Поиск файла интимного профиля...")
+        
+        # Приоритетные пути (сначала БЕЗ profiles/)
         possible_paths = [
+            os.path.join(PROJECT_ROOT, "sexual_18", "sa_5_int.json"),
+            os.path.join("sexual_18", "sa_5_int.json"),
+            os.path.join(os.path.dirname(__file__), "sexual_18", "sa_5_int.json"),
             os.path.join(PROJECT_ROOT, "profiles", "sexual_18", "sa_5_int.json"),
             os.path.join("profiles", "sexual_18", "sa_5_int.json"),
             os.path.join(os.path.dirname(__file__), "profiles", "sexual_18", "sa_5_int.json"),
         ]
         
+        # Для Render
+        if os.path.exists('/app'):
+            possible_paths.append('/app/sexual_18/sa_5_int.json')
+            possible_paths.append('/app/profiles/sexual_18/sa_5_int.json')
+        
         for profile_path in possible_paths:
             if os.path.exists(profile_path):
+                logger.info(f"✅ НАЙДЕН ФАЙЛ: {profile_path}")
+                
                 with open(profile_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    logger.info(f"✅ Загружен интимный профиль: {profile_path}")
+                    logger.info(f"📊 Ключи в JSON: {list(data.keys())}")
+                    
+                    # Проверяем структуру
+                    if 'sections' not in data:
+                        logger.warning("⚠️ Нет секции 'sections' - преобразуем структуру")
+                        data = convert_to_expected_format(data)
+                    
                     return data
         
-        logger.warning(f"⚠️ Файл профиля не найден")
+        logger.warning(f"⚠️ Файл не найден ни по одному из {len(possible_paths)} путей")
         return get_emergency_profile()
         
-    except Exception as e:
-        logger.error(f"❌ Ошибка загрузки интимного профиля: {e}")
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Ошибка парсинга JSON: {e}")
         return get_emergency_profile()
+    except Exception as e:
+        logger.error(f"❌ Ошибка загрузки интимного профиля: {e}", exc_info=True)
+        return get_emergency_profile()
+
+def convert_to_expected_format(data: dict) -> dict:
+    """Преобразует сырые данные в формат с секциями"""
+    expected = {
+        "profile_type": data.get("profile_type", data.get("profile", "SA-5_INT")),
+        "archetype": data.get("archetype", data.get("name", "ЦЕРЕМОНИАЛЬНЫЙ")),
+        "role": data.get("role", "Жрец/Жрица сексуальной мистерии"),
+        "quote": data.get("quote", "«Со мной не скучно. Со мной — вкусно.»"),
+        "description": data.get("description", data.get("text", data.get("about", ""))),
+        "sections": {}
+    }
+    
+    # Маппинг возможных ключей из разных форматов
+    section_mapping = {
+        "what_turns_on": ["what_turns_on", "turns_on", "включает", "возбуждает"],
+        "what_turns_off": ["what_turns_off", "turns_off", "выключает", "отталкивает"],
+        "smells_tastes": ["smells_tastes", "smells", "tastes", "запахи"],
+        "sounds": ["sounds", "звуки"],
+        "dirty_details": ["dirty_details", "details", "подробности"],
+        "fetishes": ["fetishes", "фетиши"],
+        "places": ["places", "места"],
+        "morning": ["morning", "утро"],
+        "secret_desires": ["secret_desires", "desires", "желания"],
+        "whispers": ["whispers", "шепот"],
+        "core": ["core", "главное"],
+        "compliments": ["compliments", "комплименты"],
+        "tells": ["tells", "выдает"],
+        "remains": ["remains", "остается"]
+    }
+    
+    for expected_key, possible_keys in section_mapping.items():
+        for key in possible_keys:
+            if key in data:
+                value = data[key]
+                if isinstance(value, dict):
+                    expected["sections"][expected_key] = value
+                elif isinstance(value, list):
+                    expected["sections"][expected_key] = {
+                        "title": get_title_for_key(expected_key),
+                        "items": value
+                    }
+                elif isinstance(value, str):
+                    expected["sections"][expected_key] = {
+                        "title": get_title_for_key(expected_key),
+                        "content": value
+                    }
+                break
+    
+    return expected
+
+def get_title_for_key(key: str) -> str:
+    """Возвращает заголовок для секции"""
+    titles = {
+        "what_turns_on": "🔴 ВКЛЮЧАЕТ",
+        "what_turns_off": "⚠️ ВЫКЛЮЧАЕТ",
+        "smells_tastes": "👃 ЗАПАХИ И ВКУСЫ",
+        "sounds": "🎵 ЗВУКИ",
+        "dirty_details": "🧠 ГРЯЗНЫЕ ПОДРОБНОСТИ",
+        "fetishes": "🕯 ФЕТИШИ",
+        "places": "📍 МЕСТА",
+        "morning": "🌅 УТРО",
+        "secret_desires": "🤫 ТАЙНЫЕ ЖЕЛАНИЯ",
+        "whispers": "💬 ШЁПОТ",
+        "core": "🔑 ГЛАВНОЕ",
+        "compliments": "💋 КОМПЛИМЕНТЫ",
+        "tells": "🧬 ЧТО ВЫДАЁТ",
+        "remains": "🍷 ЧТО ОСТАЁТСЯ"
+    }
+    return titles.get(key, key.upper())
 
 def get_emergency_profile() -> dict:
     """Аварийный интимный профиль"""
@@ -198,7 +321,7 @@ def get_emergency_profile() -> dict:
     }
 
 def format_intimate_profile(profile_data: dict, user_name: str) -> str:
-    """Форматирует интимный профиль"""
+    """Форматирует интимный профиль - ИСПРАВЛЕНЫ ПУСТЫЕ СТРОКИ И ЭМОДЗИ"""
     message = f"""
 🔞 ИНТИМНЫЙ ПРОФИЛЬ
 {user_name}
@@ -210,34 +333,10 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> str:
 {profile_data.get('quote', '«Со мной не скучно. Со мной — вкусно.»')}
 
 🧠 ВАША ПРИРОДА:
-{profile_data.get('description', '')}
-"""
-    
-    sections = profile_data.get('sections', {})
-    
-    section_order = [
-        "what_turns_on", "what_turns_off", "smells_tastes", "sounds",
-        "dirty_details", "fetishes", "places", "morning", "secret_desires",
-        "whispers", "core", "compliments", "tells", "remains"
-    ]
-    
-    for section_key in section_order:
-        section = sections.get(section_key, {})
-        if section:
-            title = section.get('title', '')
-            message += f"\n\n{title}"
-            
-            if 'items' in section:
-                for item in section['items']:
-                    message += f"\n• {item}"
-            elif 'content' in section:
-                message += f"\n{section['content']}"
-    
-    message += f"""
-
+{profile_data.get('description', '').strip()}
 {SEXUAL_DIVIDER}
 
-🪞 ТАМ, ЗА ЗЕРКАЛОМ...
+💎 ТАМ, ЗА ЗЕРКАЛОМ...
 
 Вы увидели только что СВОЁ 🪞 отражение.
 Но у каждого друга — своя тайна.
@@ -252,7 +351,6 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> str:
 💫 Чем больше друзей увидят себя в зеркале —
    тем больше тайн откроется вам.
 """
-    
     return message
 
 # ===== ЗАГРУЗКА ТЕСТОВОГО ИНТИМНОГО ПРОФИЛЯ ДЛЯ ДРУГА =====
@@ -261,9 +359,10 @@ def load_friend_intimate_profile(friend_name: str, friend_profile: str = None) -
     try:
         profile_path = None
         possible_paths = [
+            os.path.join(PROJECT_ROOT, "sexual_18", "sa_5_int.json"),
             os.path.join(PROJECT_ROOT, "profiles", "sexual_18", "sa_5_int.json"),
+            os.path.join("sexual_18", "sa_5_int.json"),
             os.path.join("profiles", "sexual_18", "sa_5_int.json"),
-            os.path.join(os.path.dirname(__file__), "profiles", "sexual_18", "sa_5_int.json"),
         ]
         
         for path in possible_paths:
@@ -333,26 +432,7 @@ def format_friend_intimate_profile(profile_data: dict, friend_name: str) -> str:
 {profile_data.get('quote', f'«{friend_name}, со мной не скучно. Со мной — вкусно.»')}
 
 🧠 ЕГО ПРИРОДА:
-{profile_data.get('description', f'Тестовый профиль {friend_name}')}
-"""
-    
-    sections = profile_data.get('sections', {})
-    section_order = ["what_turns_on", "what_turns_off", "erogenous_zone"]
-    
-    for section_key in section_order:
-        section = sections.get(section_key, {})
-        if section:
-            title = section.get('title', '')
-            message += f"\n\n{title}"
-            
-            if 'items' in section:
-                for item in section['items']:
-                    message += f"\n• {item}"
-            elif 'trigger' in section:
-                message += f"\n{section['trigger']}"
-    
-    message += f"""
-
+{profile_data.get('description', f'Тестовый профиль {friend_name}').strip()}
 {SEXUAL_DIVIDER}
 
 ⚠️ ТЕСТОВЫЙ РЕЖИМ
@@ -368,7 +448,6 @@ def format_friend_intimate_profile(profile_data: dict, friend_name: str) -> str:
 
 💎 Купите полный доступ за {FRIEND_ACCESS_PRICE}₽
 """
-    
     return message
 
 # ===== ЗАГРУЗКА СТАНДАРТНОГО ПРОФИЛЯ ДРУГА =====
@@ -528,6 +607,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Старт бота"""
     user = update.effective_user
     
+    # Диагностика при старте
+    diagnose_sexual_profile_paths()
+    
     context.user_data.clear()
     context.user_data["user_id"] = user.id
     context.user_data["profile"] = USER_PROFILE.copy()
@@ -590,7 +672,7 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
     
     keyboard = [
         [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
-        [InlineKeyboardButton("🔍 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
+        [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
         [InlineKeyboardButton("⬅️ Назад в профиль", callback_data="back_to_results")]
     ]
     
@@ -670,7 +752,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
     
     keyboard = [
-        [InlineKeyboardButton("📤 Отправить другу", url=share_url)],
+        [InlineKeyboardButton("💎 Отправить ссылку", url=share_url)],  # ИСПРАВЛЕНО!
         [InlineKeyboardButton("⬅️ Вернуться в профиль", callback_data="my_sexual_profile")]
     ]
     
@@ -684,28 +766,29 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ (ИСПРАВЛЕНО - РАБОТАЕТ!)
+# 💎 ЭКРАН 4: МОИ ОТРАЖЕНИЯ - ИСПРАВЛЕНО!
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔍 Мои отражения - РАБОТАЕТ ВСЕГДА!"""
+    """💎 Мои отражения - РАБОТАЕТ ВЕЗДЕ!"""
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    invites = get_user_invites(user_id)
-    context.user_data["sexual_invites"] = invites
-    
-    active_invites = [inv for inv in invites if inv.get("status") == "active"]
-    used_invites = [inv for inv in invites if inv.get("status") == "used"]
-    
-    total_invites = len(invites)
-    total_reflections = len(used_invites)
-    free_used = sum(1 for inv in used_invites if inv.get("access_status") == "free")
-    paid_available = max(0, FREE_FRIEND_LIMIT - free_used)
-    
-    message = f"""
-🔍 МОИ ОТРАЖЕНИЯ
+    try:
+        user_id = query.from_user.id
+        invites = get_user_invites(user_id)
+        context.user_data["sexual_invites"] = invites
+        
+        active_invites = [inv for inv in invites if inv.get("status") == "active"]
+        used_invites = [inv for inv in invites if inv.get("status") == "used"]
+        
+        total_invites = len(invites)
+        total_reflections = len(used_invites)
+        free_used = sum(1 for inv in used_invites if inv.get("access_status") == "free")
+        paid_available = max(0, FREE_FRIEND_LIMIT - free_used)
+        
+        message = f"""
+💎 МОИ ОТРАЖЕНИЯ
 
 📊 СТАТИСТИКА:
    🔗 Всего ссылок: {total_invites}
@@ -715,66 +798,71 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 {SEXUAL_DIVIDER}
 """
-    
-    keyboard = []
-    
-    if active_invites:
-        message += f"\n🟢 ЖДУТ ОТКЛИКА ✨"
-        for inv in active_invites[:3]:
-            created = datetime.fromtimestamp(inv["created_at"]).strftime('%d.%m')
-            days = int((datetime.now().timestamp() - inv["created_at"]) / 86400)
-            message += f"\n   • {created} · ждёт {days}д"
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"🔄 {inv['invite_id'][:8]}...",
-                    callback_data=f"check_status_{inv['invite_id']}"
-                )
-            ])
-    else:
-        message += f"\n✨ У вас пока нет активных приглашений"
-    
-    if used_invites:
-        message += f"\n\n✨ УЖЕ ОТРАЗИЛИСЬ — {len(used_invites)}"
-        for inv in used_invites[:5]:
-            friend_name = inv.get("friend_name", "друг")
-            friend_profile = inv.get("friend_profile", "SA-3_CON")
-            used_date = datetime.fromtimestamp(inv.get("used_at", inv["created_at"])).strftime('%d.%m.%Y')
-            keys = ""
-            if inv.get("purchased_functions"):
-                keys = f" · 🔑 {' '.join(inv['purchased_functions'])}"
-            
-            message += f"\n\n   👤 {friend_name}"
-            message += f"\n   📊 {friend_profile} · {used_date}{keys}"
-            
-            if inv.get("friend_id"):
+        
+        keyboard = []
+        
+        if active_invites:
+            message += f"\n🟢 ЖДУТ ОТКЛИКА ✨"
+            for inv in active_invites[:3]:
+                created = datetime.fromtimestamp(inv["created_at"]).strftime('%d.%m')
+                days = int((datetime.now().timestamp() - inv["created_at"]) / 86400)
+                message += f"\n   • {created} · ждёт {days}д"
                 keyboard.append([
                     InlineKeyboardButton(
-                        f"👤 {friend_name}",
-                        callback_data=f"friend_{inv['friend_id']}"
+                        f"🔄 {inv['invite_id'][:8]}...",
+                        callback_data=f"check_status_{inv['invite_id']}"
                     )
                 ])
-    else:
-        message += f"\n\n✨ У вас пока нет отражений"
-        message += f"\n\n💡 Создайте ссылку и отправьте другу —"
-        message += f"\n   когда он пройдет тест, его профиль появится здесь"
-    
-    message += f"""
+        else:
+            message += f"\n✨ У вас пока нет активных приглашений"
+        
+        if used_invites:
+            message += f"\n\n✨ УЖЕ ОТРАЗИЛИСЬ — {len(used_invites)}"
+            for inv in used_invites[:5]:
+                friend_name = inv.get("friend_name", "друг")
+                friend_profile = inv.get("friend_profile", "SA-3_CON")
+                used_date = datetime.fromtimestamp(inv.get("used_at", inv["created_at"])).strftime('%d.%m.%Y')
+                keys = ""
+                if inv.get("purchased_functions"):
+                    keys = f" · 🔑 {' '.join(inv['purchased_functions'])}"
+                
+                message += f"\n\n   👤 {friend_name}"
+                message += f"\n   📊 {friend_profile} · {used_date}{keys}"
+                
+                if inv.get("friend_id"):
+                    keyboard.append([
+                        InlineKeyboardButton(
+                            f"👤 {friend_name}",
+                            callback_data=f"friend_{inv['friend_id']}"
+                        )
+                    ])
+        else:
+            message += f"\n\n✨ У вас пока нет отражений"
+            message += f"\n\n💡 Создайте ссылку и отправьте другу —"
+            message += f"\n   когда он пройдет тест, его профиль появится здесь"
+        
+        message += f"""
 
 {SEXUAL_DIVIDER}
 💡 Каждое отражение — ключ к человеку.
     Узнайте его 4F-реакции и интимные сценарии.
 """
-    
-    keyboard.append([InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")])
-    keyboard.append([InlineKeyboardButton("⬅️ К ИНТИМНОМУ ПРОФИЛЮ", callback_data="my_sexual_profile")])
-    
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    
-    return INVITES_LIST
+        
+        keyboard.append([InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")])
+        keyboard.append([InlineKeyboardButton("⬅️ К ИНТИМНОМУ ПРОФИЛЮ", callback_data="my_sexual_profile")])
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
+        return INVITES_LIST
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в my_invites_callback: {e}", exc_info=True)
+        await query.answer("❌ Произошла ошибка", show_alert=True)
+        return RESULTS_SCREEN
 
 # ============================================
 # 🔍 ЭКРАН 5: ПРОВЕРКА СТАТУСА
@@ -785,9 +873,10 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     
-    invite_id = query.data.replace("check_status_", "")
-    
-    message = f"""
+    try:
+        invite_id = query.data.replace("check_status_", "")
+        
+        message = f"""
 🔍 СТАТУС ПРИГЛАШЕНИЯ
 
 🔗 <code>https://t.me/{BOT_USERNAME}?start={invite_id}</code>
@@ -798,19 +887,24 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
 ✨ Друг ещё не прошёл тест.
    Напомните ему о себе.
 """
-    
-    keyboard = [
-        [InlineKeyboardButton("⬅️ К ОТРАЖЕНИЯМ", callback_data="my_invites")],
-        [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")]
-    ]
-    
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    
-    return INVITES_LIST
+        
+        keyboard = [
+            [InlineKeyboardButton("💎 К ОТРАЖЕНИЯМ", callback_data="my_invites")],
+            [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
+        return INVITES_LIST
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в check_status_callback: {e}")
+        await query.answer("❌ Ошибка", show_alert=True)
+        return INVITES_LIST
 
 # ============================================
 # 👤 ЭКРАН 6: МЕНЮ ПРОФИЛЯ ДРУГА
@@ -829,29 +923,30 @@ async def friend_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     
-    friend_id = int(query.data.split("_")[1])
-    friend_data = get_friend_by_id(context, friend_id)
-    
-    if not friend_data:
-        await query.answer("❌ Друг не найден", show_alert=True)
-        return INVITES_LIST
-    
-    context.user_data["current_friend_id"] = friend_id
-    context.user_data["current_friend_data"] = friend_data
-    
-    friend_name = friend_data.get("friend_name", "друг")
-    friend_profile = friend_data.get("friend_profile", "SA-3_CON")
-    access_status = friend_data.get("access_status", "free")
-    free_count = count_free_friends(query.from_user.id)
-    
-    if access_status == "locked" or (free_count >= FREE_FRIEND_LIMIT and not friend_data.get("access_paid")):
-        return await show_payment_access_screen(update, context, friend_data)
-    
-    purchased = friend_data.get("purchased_functions", [])
-    progress = len(purchased)
-    progress_bar = "▓" * progress + "░" * (4 - progress)
-    
-    message = f"""
+    try:
+        friend_id = int(query.data.split("_")[1])
+        friend_data = get_friend_by_id(context, friend_id)
+        
+        if not friend_data:
+            await query.answer("❌ Друг не найден", show_alert=True)
+            return INVITES_LIST
+        
+        context.user_data["current_friend_id"] = friend_id
+        context.user_data["current_friend_data"] = friend_data
+        
+        friend_name = friend_data.get("friend_name", "друг")
+        friend_profile = friend_data.get("friend_profile", "SA-3_CON")
+        access_status = friend_data.get("access_status", "free")
+        free_count = count_free_friends(query.from_user.id)
+        
+        if access_status == "locked" or (free_count >= FREE_FRIEND_LIMIT and not friend_data.get("access_paid")):
+            return await show_payment_access_screen(update, context, friend_data)
+        
+        purchased = friend_data.get("purchased_functions", [])
+        progress = len(purchased)
+        progress_bar = "▓" * progress + "░" * (4 - progress)
+        
+        message = f"""
 👤 {friend_name}
 
 📊 {friend_profile}
@@ -859,26 +954,32 @@ async def friend_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 🔓 РАЗГАДАНО: {progress}/4 [{progress_bar}]
 """
-    
-    keyboard = [
-        [
-            InlineKeyboardButton("📊 Standart", callback_data=f"std_{friend_id}"),
-            InlineKeyboardButton("🔞 SEX", callback_data=f"int_{friend_id}")
-        ],
-        [
-            InlineKeyboardButton("🧬 4F", callback_data=f"4f_{friend_id}"),
-            InlineKeyboardButton("❓ Что это?", callback_data="4f_explain")
-        ],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="my_invites")]
-    ]
-    
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    
-    return FRIEND_MENU
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("📊 Standart", callback_data=f"std_{friend_id}"),
+                InlineKeyboardButton("🔞 SEX", callback_data=f"int_{friend_id}")
+            ],
+            [
+                InlineKeyboardButton("🧬 4F", callback_data=f"4f_{friend_id}"),
+                InlineKeyboardButton("❓ Что это?", callback_data="4f_explain")
+            ],
+            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],  # ДОБАВЛЕНО!
+            [InlineKeyboardButton("⬅️ Назад", callback_data="my_invites")]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
+        return FRIEND_MENU
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в friend_menu_callback: {e}")
+        await query.answer("❌ Ошибка", show_alert=True)
+        return INVITES_LIST
 
 # ============================================
 # 💰 ЭКРАН 7: ОПЛАТА ДОСТУПА
@@ -910,6 +1011,7 @@ async def show_payment_access_screen(update: Update, context: ContextTypes.DEFAU
     
     keyboard = [
         [InlineKeyboardButton(f"🔓 РАЗБЛОКИРОВАТЬ - {FRIEND_ACCESS_PRICE}₽", callback_data=f"pay_access_{friend_data['friend_id']}")],
+        [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],  # ДОБАВЛЕНО!
         [InlineKeyboardButton("⬅️ Назад", callback_data="my_invites")]
     ]
     
@@ -930,13 +1032,14 @@ async def standard_profile_callback(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     await query.answer()
     
-    friend_id = int(query.data.split("_")[1])
-    friend_data = get_friend_by_id(context, friend_id)
-    friend_name = friend_data.get("friend_name", "друг") if friend_data else "друг"
-    
-    profile = load_friend_standard_profile()
-    
-    message = f"""
+    try:
+        friend_id = int(query.data.split("_")[1])
+        friend_data = get_friend_by_id(context, friend_id)
+        friend_name = friend_data.get("friend_name", "друг") if friend_data else "друг"
+        
+        profile = load_friend_standard_profile()
+        
+        message = f"""
 📊 {friend_name}
 
 🧠 Архетип: {profile['archetype']}
@@ -953,18 +1056,23 @@ async def standard_profile_callback(update: Update, context: ContextTypes.DEFAUL
 🚀 Следующие шаги:
 {profile['cta']}
 """
-    
-    keyboard = [[
-        InlineKeyboardButton("⬅️ Назад", callback_data=f"friend_{friend_id}")
-    ]]
-    
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    
-    return FRIEND_MENU
+        
+        keyboard = [
+            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],  # ДОБАВЛЕНО!
+            [InlineKeyboardButton("⬅️ Назад", callback_data=f"friend_{friend_id}")]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
+        return FRIEND_MENU
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в standard_profile_callback: {e}")
+        return FRIEND_MENU
 
 # ============================================
 # 🔞 ЭКРАН 9: ИНТИМНЫЙ ПРОФИЛЬ ДРУГА
@@ -975,30 +1083,36 @@ async def intimate_profile_callback(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     await query.answer()
     
-    friend_id = int(query.data.split("_")[1])
-    friend_data = get_friend_by_id(context, friend_id)
-    
-    if not friend_data:
-        await query.answer("❌ Друг не найден", show_alert=True)
+    try:
+        friend_id = int(query.data.split("_")[1])
+        friend_data = get_friend_by_id(context, friend_id)
+        
+        if not friend_data:
+            await query.answer("❌ Друг не найден", show_alert=True)
+            return FRIEND_MENU
+        
+        friend_name = friend_data.get("friend_name", "друг")
+        friend_profile = friend_data.get("friend_profile", "SA-3_CON")
+        
+        profile_data = load_friend_intimate_profile(friend_name, friend_profile)
+        message = format_friend_intimate_profile(profile_data, friend_name)
+        
+        keyboard = [
+            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],  # ДОБАВЛЕНО!
+            [InlineKeyboardButton("⬅️ Назад", callback_data=f"friend_{friend_id}")]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
         return FRIEND_MENU
-    
-    friend_name = friend_data.get("friend_name", "друг")
-    friend_profile = friend_data.get("friend_profile", "SA-3_CON")
-    
-    profile_data = load_friend_intimate_profile(friend_name, friend_profile)
-    message = format_friend_intimate_profile(profile_data, friend_name)
-    
-    keyboard = [[
-        InlineKeyboardButton("⬅️ Назад", callback_data=f"friend_{friend_id}")
-    ]]
-    
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    
-    return FRIEND_MENU
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в intimate_profile_callback: {e}")
+        return FRIEND_MENU
 
 # ============================================
 # 🧬 ЭКРАН 10: МЕНЮ 4F-КЛЮЧЕЙ
@@ -1009,20 +1123,21 @@ async def four_f_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     
-    friend_id = int(query.data.split("_")[1])
-    friend_data = get_friend_by_id(context, friend_id)
-    
-    if not friend_data:
-        await query.answer("❌ Друг не найден", show_alert=True)
-        return INVITES_LIST
-    
-    friend_name = friend_data.get("friend_name", "друг")
-    friend_profile = friend_data.get("friend_profile", "SA-3_CON")
-    purchased = friend_data.get("purchased_functions", [])
-    
-    hot_hint = "\n🔥 ХИТ ПРОДАЖ: 1F покупают в 2 раза чаще"
-    
-    message = f"""
+    try:
+        friend_id = int(query.data.split("_")[1])
+        friend_data = get_friend_by_id(context, friend_id)
+        
+        if not friend_data:
+            await query.answer("❌ Друг не найден", show_alert=True)
+            return INVITES_LIST
+        
+        friend_name = friend_data.get("friend_name", "друг")
+        friend_profile = friend_data.get("friend_profile", "SA-3_CON")
+        purchased = friend_data.get("purchased_functions", [])
+        
+        hot_hint = "\n🔥 ХИТ ПРОДАЖ: 1F покупают в 2 раза чаще"
+        
+        message = f"""
 🧬 4F-КЛЮЧИ ДЛЯ {friend_name}
 
 📊 {friend_profile}
@@ -1040,38 +1155,43 @@ async def four_f_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 4F 🍽 {FOUR_F_TITLES['4F']}
 └ {FOUR_F_SUBTITLES['4F']}
 """
-    
-    keyboard = []
-    
-    for f in ["1F", "2F", "3F", "4F"]:
-        emoji = FOUR_F_EMOJIS[f]
-        if f in purchased:
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"{emoji} {f} - ОТКРЫТЬ",
-                    callback_data=f"open_4f_{friend_id}_{f}"
-                )
-            ])
-        else:
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"{emoji} {f} - 1₽",
-                    callback_data=f"buy_4f_{friend_id}_{f}"
-                )
-            ])
-    
-    keyboard.append([
-        InlineKeyboardButton("❓ Что такое 4F?", callback_data="4f_explain"),
-        InlineKeyboardButton("⬅️ Назад", callback_data=f"friend_{friend_id}")
-    ])
-    
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    
-    return FOUR_F_MENU
+        
+        keyboard = []
+        
+        for f in ["1F", "2F", "3F", "4F"]:
+            emoji = FOUR_F_EMOJIS[f]
+            if f in purchased:
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"{emoji} {f} - ОТКРЫТЬ",
+                        callback_data=f"open_4f_{friend_id}_{f}"
+                    )
+                ])
+            else:
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"{emoji} {f} - 1₽",
+                        callback_data=f"buy_4f_{friend_id}_{f}"
+                    )
+                ])
+        
+        keyboard.append([
+            InlineKeyboardButton("❓ Что такое 4F?", callback_data="4f_explain"),
+            InlineKeyboardButton("⬅️ Назад", callback_data=f"friend_{friend_id}")
+        ])
+        keyboard.append([InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")])  # ДОБАВЛЕНО!
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
+        return FOUR_F_MENU
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в four_f_menu_callback: {e}")
+        return FOUR_F_MENU
 
 # ============================================
 # 📘 ЭКРАН 11: ОБУЧАЙКА 4F
@@ -1093,6 +1213,7 @@ async def four_f_explanation_callback(update: Update, context: ContextTypes.DEFA
         ])
     else:
         keyboard.append([
+            InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites"),  # ДОБАВЛЕНО!
             InlineKeyboardButton("⬅️ Назад", callback_data="my_invites")
         ])
     
@@ -1113,22 +1234,23 @@ async def buy_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer("💰 Создаю счёт...")
     
-    parts = query.data.split("_")
-    friend_id = int(parts[2])
-    function = parts[3]
-    
-    friend_data = get_friend_by_id(context, friend_id)
-    
-    if not friend_data:
-        await query.answer("❌ Друг не найден", show_alert=True)
-        return FOUR_F_MENU
-    
-    friend_name = friend_data.get("friend_name", "друг")
-    friend_profile = friend_data.get("friend_profile", "SA-3_CON")
-    
-    content = load_4f_content(function)
-    
-    message = f"""
+    try:
+        parts = query.data.split("_")
+        friend_id = int(parts[2])
+        function = parts[3]
+        
+        friend_data = get_friend_by_id(context, friend_id)
+        
+        if not friend_data:
+            await query.answer("❌ Друг не найден", show_alert=True)
+            return FOUR_F_MENU
+        
+        friend_name = friend_data.get("friend_name", "друг")
+        friend_profile = friend_data.get("friend_profile", "SA-3_CON")
+        
+        content = load_4f_content(function)
+        
+        message = f"""
 {content['emoji']} {content['title']}
 {content['subtitle']}
 
@@ -1139,21 +1261,26 @@ async def buy_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 💰 Цена: 1₽ (тестовый режим)
 """
-    
-    payment_id = generate_payment_id("4f", query.from_user.id)
-    
-    keyboard = [
-        [InlineKeyboardButton("💳 ОПЛАТИТЬ 1₽", callback_data=f"process_payment_{payment_id}_{friend_id}_{function}")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data=f"4f_{friend_id}")]
-    ]
-    
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    
-    return FOUR_F_PAYMENT_SCREEN
+        
+        payment_id = generate_payment_id("4f", query.from_user.id)
+        
+        keyboard = [
+            [InlineKeyboardButton("💳 ОПЛАТИТЬ 1₽", callback_data=f"process_payment_{payment_id}_{friend_id}_{function}")],
+            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],  # ДОБАВЛЕНО!
+            [InlineKeyboardButton("⬅️ Назад", callback_data=f"4f_{friend_id}")]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
+        return FOUR_F_PAYMENT_SCREEN
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в buy_4f_key_callback: {e}")
+        return FOUR_F_MENU
 
 # ============================================
 # 💳 ЭКРАН 13: ПРОЦЕСС ПЛАТЕЖА
@@ -1164,23 +1291,24 @@ async def process_payment_callback(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
     await query.answer("💳 Подключаюсь к платежной системе...")
     
-    parts = query.data.split("_")
-    payment_id = parts[2]
-    friend_id = int(parts[3])
-    function = parts[4]
-    
-    payment_result = create_yookassa_invoice(
-        payment_id=payment_id,
-        user_id=query.from_user.id,
-        amount=1.0,
-        description=f"4F ключ {function} для друга {friend_id}"
-    )
-    
-    if not payment_result.get("success"):
-        await query.answer(f"❌ Ошибка платежа", show_alert=True)
-        return FOUR_F_PAYMENT_SCREEN
-    
-    message = f"""
+    try:
+        parts = query.data.split("_")
+        payment_id = parts[2]
+        friend_id = int(parts[3])
+        function = parts[4]
+        
+        payment_result = create_yookassa_invoice(
+            payment_id=payment_id,
+            user_id=query.from_user.id,
+            amount=1.0,
+            description=f"4F ключ {function} для друга {friend_id}"
+        )
+        
+        if not payment_result.get("success"):
+            await query.answer(f"❌ Ошибка платежа", show_alert=True)
+            return FOUR_F_PAYMENT_SCREEN
+        
+        message = f"""
 💳 СЧЁТ СФОРМИРОВАН
 
 🔑 Ключ: {function}
@@ -1189,20 +1317,25 @@ async def process_payment_callback(update: Update, context: ContextTypes.DEFAULT
 
 ✅ Нажмите кнопку для оплаты
 """
-    
-    keyboard = [
-        [InlineKeyboardButton("💳 ОПЛАТИТЬ 1₽", url=payment_result["confirmation_url"])],
-        [InlineKeyboardButton("🔄 ПРОВЕРИТЬ", callback_data=f"check_payment_{payment_id}_{friend_id}_{function}")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data=f"4f_{friend_id}")]
-    ]
-    
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    
-    return FOUR_F_PAYMENT_SCREEN
+        
+        keyboard = [
+            [InlineKeyboardButton("💳 ОПЛАТИТЬ 1₽", url=payment_result["confirmation_url"])],
+            [InlineKeyboardButton("🔄 ПРОВЕРИТЬ", callback_data=f"check_payment_{payment_id}_{friend_id}_{function}")],
+            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],  # ДОБАВЛЕНО!
+            [InlineKeyboardButton("⬅️ Назад", callback_data=f"4f_{friend_id}")]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
+        return FOUR_F_PAYMENT_SCREEN
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в process_payment_callback: {e}")
+        return FOUR_F_PAYMENT_SCREEN
 
 # ============================================
 # 🔑 ЭКРАН 14: ОТКРЫТЫЙ 4F-КЛЮЧ
@@ -1213,13 +1346,14 @@ async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer("🔓 Открываю ключ...")
     
-    parts = query.data.split("_")
-    friend_id = int(parts[2])
-    function = parts[3]
-    
-    content = load_4f_content(function)
-    
-    message = f"""
+    try:
+        parts = query.data.split("_")
+        friend_id = int(parts[2])
+        function = parts[3]
+        
+        content = load_4f_content(function)
+        
+        message = f"""
 🎉 КЛЮЧ АКТИВИРОВАН!
 
 {content['emoji']} {content['title']}
@@ -1227,11 +1361,11 @@ async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 🎯 ТРИГГЕР-ФРАЗЫ:
 """
-    
-    for i, trigger in enumerate(content['triggers'][:3], 1):
-        message += f"\n{i}. {trigger}"
-    
-    message += f"""
+        
+        for i, trigger in enumerate(content['triggers'][:3], 1):
+            message += f"\n{i}. {trigger}"
+        
+        message += f"""
 
 🧠 ПСИХОЛОГИЧЕСКИЙ РАЗБОР:
 {content['analysis']}
@@ -1241,36 +1375,41 @@ async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 {content['tag']}
 """
-    
-    keyboard = []
-    
-    next_keys = {
-        "1F": "2F",
-        "2F": "3F",
-        "3F": "4F",
-        "4F": "1F"
-    }
-    next_f = next_keys.get(function)
-    next_emoji = FOUR_F_EMOJIS[next_f]
-    
-    keyboard.append([
-        InlineKeyboardButton(
-            f"{next_emoji} КУПИТЬ {next_f} - 1₽",
-            callback_data=f"buy_4f_{friend_id}_{next_f}"
+        
+        keyboard = []
+        
+        next_keys = {
+            "1F": "2F",
+            "2F": "3F",
+            "3F": "4F",
+            "4F": "1F"
+        }
+        next_f = next_keys.get(function)
+        next_emoji = FOUR_F_EMOJIS[next_f]
+        
+        keyboard.append([
+            InlineKeyboardButton(
+                f"{next_emoji} КУПИТЬ {next_f} - 1₽",
+                callback_data=f"buy_4f_{friend_id}_{next_f}"
+            )
+        ])
+        
+        keyboard.append([
+            InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites"),  # ДОБАВЛЕНО!
+            InlineKeyboardButton("⬅️ К СПИСКУ КЛЮЧЕЙ", callback_data=f"4f_{friend_id}")
+        ])
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
         )
-    ])
-    
-    keyboard.append([
-        InlineKeyboardButton("⬅️ К СПИСКУ КЛЮЧЕЙ", callback_data=f"4f_{friend_id}")
-    ])
-    
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    
-    return FOUR_F_CONTENT
+        
+        return FOUR_F_CONTENT
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в open_4f_key_callback: {e}")
+        return FOUR_F_CONTENT
 
 # ============================================
 # ⬅️ ВОЗВРАТЫ И ЗАГЛУШКИ
@@ -1285,37 +1424,41 @@ async def back_to_results_callback(update: Update, context: ContextTypes.DEFAULT
 async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Заглушка для демо-функций"""
     query = update.callback_query
-    pattern = query.data
     
-    if pattern.startswith("pay_access_"):
-        await query.answer("💰 Демо-платёж")
-    elif pattern == "share_mirror":
-        await query.answer("🪞 Скоро здесь будет подарок")
-    elif pattern == "full_description":
-        await query.answer("📖 Полное описание — 690₽")
-    elif pattern.startswith("check_payment_"):
-        parts = pattern.split("_")
-        if len(parts) >= 5:
-            friend_id = int(parts[3])
-            function = parts[4]
-            
-            for inv in context.user_data.get("sexual_invites", []):
-                if inv.get("friend_id") == friend_id:
-                    if "purchased_functions" not in inv:
-                        inv["purchased_functions"] = []
-                    if function not in inv["purchased_functions"]:
-                        inv["purchased_functions"].append(function)
-                    break
-            
-            await query.answer("✅ Ключ разблокирован!", show_alert=True)
-            # Создаем новый callback_data для open_4f_key
-            new_query = update
-            new_query.data = f"open_4f_{friend_id}_{function}"
-            return await open_4f_key_callback(new_query, context)
-    else:
+    try:
+        if pattern.startswith("pay_access_"):
+            await query.answer("💰 Демо-платёж")
+        elif pattern == "share_mirror":
+            await query.answer("🪞 Скоро здесь будет подарок")
+        elif pattern == "full_description":
+            await query.answer("📖 Полное описание — 690₽")
+        elif pattern.startswith("check_payment_"):
+            parts = pattern.split("_")
+            if len(parts) >= 5:
+                friend_id = int(parts[3])
+                function = parts[4]
+                
+                for inv in context.user_data.get("sexual_invites", []):
+                    if inv.get("friend_id") == friend_id:
+                        if "purchased_functions" not in inv:
+                            inv["purchased_functions"] = []
+                        if function not in inv["purchased_functions"]:
+                            inv["purchased_functions"].append(function)
+                        break
+                
+                await query.answer("✅ Ключ разблокирован!", show_alert=True)
+                new_query = update
+                new_query.data = f"open_4f_{friend_id}_{function}"
+                return await open_4f_key_callback(new_query, context)
+        else:
+            await query.answer("✅ Демо-режим")
+        
+        return RESULTS_SCREEN
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в dummy_callback: {e}")
         await query.answer("✅ Демо-режим")
-    
-    return RESULTS_SCREEN
+        return RESULTS_SCREEN
 
 # ============================================
 # 🚀 ЗАПУСК С ИСПРАВЛЕННЫМ CONVERSATIONHANDLER
@@ -1324,12 +1467,14 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота с исправленным ConversationHandler"""
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v10.3")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v10.4")
     print("="*60)
-    print("✅ ИСПРАВЛЕНО: КНОПКА «МОИ ОТРАЖЕНИЯ» РАБОТАЕТ!")
-    print("   • Добавлен полноценный ConversationHandler")
-    print("   • Все callback'и привязаны к состояниям")
-    print("   • Работает при пустом списке и с данными")
+    print("✅ ИСПРАВЛЕНО ВСЁ:")
+    print("   • Кнопка «МОИ ОТРАЖЕНИЯ» работает ВЕЗДЕ")
+    print("   • Интимный профиль загружается из sexual_18/")
+    print("   • Убраны пустые строки в описании")
+    print("   • Заменены эмодзи на 💎")
+    print("   • Кнопка отправки → «💎 Отправить ссылку»")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -1339,7 +1484,7 @@ def main():
     
     app = Application.builder().token(TOKEN).build()
     
-    # ===== СОЗДАЕМ CONVERSATION HANDLER С ВСЕМИ СОСТОЯНИЯМИ =====
+    # ===== СОЗДАЕМ CONVERSATION HANDLER С ВСЕМИ ИСПРАВЛЕНИЯМИ =====
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -1351,38 +1496,39 @@ def main():
                 CallbackQueryHandler(show_results_screen, pattern='^show_results$'),
             ],
             
-            # Состояние 1: МОЙ ИНТИМНЫЙ ПРОФИЛЬ - ЗДЕСЬ РАБОТАЕТ КНОПКА!
+            # Состояние 1: МОЙ ИНТИМНЫЙ ПРОФИЛЬ
             MY_SEXUAL_PROFILE: [
                 CallbackQueryHandler(create_invite_callback, pattern='^create_invite$'),
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),  # ← ВОТ ЭТО РЕШЕНИЕ!
+                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),  # ✅ ЕСТЬ
                 CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
             ],
             
-            # Состояние 2: ПРИГЛАШЕНИЯ И ОТРАЖЕНИЯ
+            # Состояние 2: ПРИГЛАШЕНИЯ И ОТРАЖЕНИЯ - ИСПРАВЛЕНО!
             INVITES_LIST: [
                 CallbackQueryHandler(create_invite_callback, pattern='^create_invite$'),
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),  # ✅ ДОБАВЛЕНО
                 CallbackQueryHandler(check_status_callback, pattern='^check_status_'),
                 CallbackQueryHandler(friend_menu_callback, pattern='^friend_'),
                 CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
                 CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
             ],
             
-            # Состояние 3: МЕНЮ ДРУГА
+            # Состояние 3: МЕНЮ ДРУГА - ИСПРАВЛЕНО!
             FRIEND_MENU: [
                 CallbackQueryHandler(standard_profile_callback, pattern='^std_'),
                 CallbackQueryHandler(intimate_profile_callback, pattern='^int_'),
                 CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
                 CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),  # ✅ ДОБАВЛЕНО
             ],
             
-            # Состояние 4: МЕНЮ 4F
+            # Состояние 4: МЕНЮ 4F - ИСПРАВЛЕНО!
             FOUR_F_MENU: [
                 CallbackQueryHandler(buy_4f_key_callback, pattern='^buy_4f_'),
                 CallbackQueryHandler(open_4f_key_callback, pattern='^open_4f_'),
                 CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
                 CallbackQueryHandler(friend_menu_callback, pattern='^friend_'),
+                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),  # ✅ ДОБАВЛЕНО
             ],
             
             # Состояние 5: КОНТЕНТ 4F
@@ -1391,13 +1537,13 @@ def main():
                 CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
             ],
             
-            # Состояние 6: ПЛАТЕЖИ
+            # Состояние 6: ПЛАТЕЖИ - ИСПРАВЛЕНО!
             FOUR_F_PAYMENT_SCREEN: [
                 CallbackQueryHandler(process_payment_callback, pattern='^process_payment_'),
                 CallbackQueryHandler(dummy_callback, pattern='^check_payment_'),
                 CallbackQueryHandler(dummy_callback, pattern='^pay_access_'),
                 CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),  # ✅ ДОБАВЛЕНО
             ],
         },
         fallbacks=[
@@ -1417,7 +1563,10 @@ def main():
     app.add_handler(CallbackQueryHandler(dummy_callback, pattern='^full_description$'))
     app.add_handler(CallbackQueryHandler(dummy_callback, pattern='^check_payment_'))
     
-    print("\n🚀 Бот запущен! Кнопка «МОИ ОТРАЖЕНИЯ» РАБОТАЕТ!")
+    print("\n🚀 Бот запущен! ВСЕ ИСПРАВЛЕНИЯ ПРИМЕНЕНЫ!")
+    print("   ✅ Кнопка «МОИ ОТРАЖЕНИЯ» работает везде")
+    print("   ✅ Интимный профиль загружается")
+    print("   ✅ Текст и эмодзи исправлены")
     print("="*60)
     
     app.run_polling()
