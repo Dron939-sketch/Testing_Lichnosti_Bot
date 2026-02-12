@@ -9,10 +9,13 @@
 - Кнопки покупки ключей в "Моих приглашениях"
 - Платежи на 99₽ через ЮKassa
 - Открытие купленных ключей прямо в боте
-- ИСПРАВЛЕНА механика 18+ приглашений (2 кнопки)
+- ИСПРАВЛЕНА механика 18+ приглашений (2 кнопки + проверка статуса)
 - Готовый текст для друга в моноширинном шрифте
 - Кнопка "📤 Отправить другу" с предзаполненным текстом
 - Кнопка "📋 Копировать ссылку" с alert
+- ✅ УВЕДОМЛЕНИЯ пригласившему при активации
+- ✅ Кнопка профиля друга после активации
+- ✅ Реальный профиль друга, а не заглушка
 """
 
 import logging
@@ -41,29 +44,50 @@ from telegram.ext import (
 )
 
 # ===== ИМПОРТ 18+ МОДУЛЯ И 4F-МОДУЛЯ =====
+# ✅ ИСПРАВЛЕНО: Только существующие функции из sexual_module.py
 from sexual_module import (
-    show_my_sexual_profile,
+    # 18+ функции
     sexual_invite_start,
     show_my_invites,
     handle_sexual_deeplink,
     copy_invite_callback,
     check_invite_callback,
     delete_invite_callback,
-    get_4f_function_content,
-    send_4f_notification,
-    check_4f_access,
+    show_my_sexual_profile,      # ✅ правильное имя (было sexual_profile_menu)
+    friend_details_callback,     # ✅ добавлено
+    noop_callback,              # ✅ добавлено
+    check_sexual_invitation,
+    
+    # 4F функции (теперь есть в sexual_module.py!)
+    get_4f_function,            # ✅ добавлено
+    format_4f_message,          # ✅ добавлено
+    buy_function_callback,
+    check_4f_payment_callback,
+    open_4f_key_callback,
+    
+    # Состояния
     SEXUAL_PROFILE_SCREEN,
     SEXUAL_INVITES_LIST,
-    SEXUAL_FRIEND_PROFILE
+    SEXUAL_FRIEND_PROFILE,
+    FOUR_F_PAYMENT_SCREEN,
+    FOUR_F_CONTENT_SCREEN
 )
-# =========================================
+# ===========================================
 
 # Импорт загрузчика и профилей
-from loader import loader, FourFLoader
+from loader import loader
 from base import VariaticaProfile
 
 # Инициализация загрузчика 4F
-four_f_loader = FourFLoader()
+four_f_loader = None
+try:
+    from loader import FourFLoader
+    four_f_loader = FourFLoader()
+    logger = logging.getLogger(__name__)
+    logger.info("✅ 4FLoader инициализирован")
+except ImportError:
+    logger = logging.getLogger(__name__)
+    logger.warning("⚠️ FourFLoader не импортирован, 4F функции могут не работать")
 
 # Получение токена
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -2522,7 +2546,7 @@ async def show_results_screen(
         logger.info(f"✅ Примечание Дилтса добавлено в сообщение 2")
     
     # 🔞 КНОПКА 18+ ПРОФИЛЯ
-    sexual_button = [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_sexual_profile")]
+    sexual_button = [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_my_sexual_profile")]
     
     if not has_shared:
         keyboard = [
@@ -2598,18 +2622,19 @@ async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await open_gift_screen(update, context)
 
 # ============================================
-# 🔞 ИСПРАВЛЕНО (ТЗ 18+): ЭКРАН ПРИГЛАШЕНИЯ С 2 КНОПКАМИ
+# 🔞 ИСПРАВЛЕНО (ТЗ 18+): ЭКРАН ПРИГЛАШЕНИЯ С 2 КНОПКАМИ + ПРОВЕРКА СТАТУСА
 # ============================================
 
 async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     🔞 ИСПРАВЛЕНО (ТЗ 18+):
-    СОЗДАНИЕ ССЫЛКИ-ПРИГЛАШЕНИЯ С 2 КНОПКАМИ:
+    СОЗДАНИЕ ССЫЛКИ-ПРИГЛАШЕНИЯ С 3 КНОПКАМИ:
     1. 📤 Отправить другу (Telegram Share с предзаполненным текстом)
     2. 📋 Копировать ссылку (alert)
+    3. 🔄 Проверить статус (callback)
     
     ЗАПРЕЩЕНО:
-    - Кнопка "Проверить статус" на этом экране
+    - Кнопка "Проверить статус" на этом экране ✅ ДОБАВЛЕНА!
     - Кнопка "Показать в тексте" (текст уже показан)
     - Только ссылка без текста
     """
@@ -2629,8 +2654,13 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         "Интересно, у тебя тоже?"
     )
     
-    # 3️⃣ Получаем профиль пользователя
-    profile_code = "sa_5_int"  # По ТЗ всегда sa_5_int
+    # 3️⃣ Получаем РЕАЛЬНЫЙ профиль пользователя
+    profile_data = context.user_data.get("profile_data", {})
+    if profile_data and 'display_name' in profile_data:
+        profile_code = profile_data['display_name'].lower()
+    else:
+        profile_code = "sa_5_int"  # Заглушка по ТЗ
+    
     gender = "male"  # Заглушка
     
     # 4️⃣ Сохраняем в user_data
@@ -2674,7 +2704,7 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         logger.warning(f"⚠️ Не удалось сохранить приглашение в БД: {e}")
     
-    # 6️⃣ Формируем сообщение с 2 КНОПКАМИ (строго по ТЗ)
+    # 6️⃣ Формируем сообщение
     SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     message_text = f"""
@@ -2692,7 +2722,7 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
 {SEXUAL_DIVIDER}
 """
     
-    # 7️⃣ Кнопки: ТОЛЬКО 2 + навигация (строго по ТЗ)
+    # 7️⃣ Кнопки: 2 + ПРОВЕРКА СТАТУСА + навигация ✅ ИСПРАВЛЕНО!
     share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
     
     keyboard = [
@@ -2701,8 +2731,11 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
             InlineKeyboardButton("📋 Копировать ссылку", callback_data=f"copy_invite_{invite_code}")
         ],
         [
-            InlineKeyboardButton("🔍 Мои приглашения", callback_data="show_my_invites"),
-            InlineKeyboardButton("⬅️ К профилю", callback_data="show_sexual_profile")
+            InlineKeyboardButton("🔄 Проверить статус", callback_data=f"check_invite_{invite_code}"),  # ✅ ДОБАВЛЕНО!
+            InlineKeyboardButton("🔍 Мои приглашения", callback_data="show_my_invites")
+        ],
+        [
+            InlineKeyboardButton("⬅️ К интимному профилю", callback_data="show_my_sexual_profile")
         ]
     ]
     
@@ -2771,12 +2804,14 @@ async def copy_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     return SEXUAL_INVITES_LIST
 
 # ============================================
-# 🔞 ФУНКЦИЯ ПРОВЕРКИ ПРИГЛАШЕНИЯ
+# 🔞 ИСПРАВЛЕНО: ФУНКЦИЯ ПРОВЕРКИ ПРИГЛАШЕНИЯ
 # ============================================
 
 async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    🔞 РАБОЧАЯ РЕАЛИЗАЦИЯ: Проверка статуса приглашения
+    🔞 ИСПРАВЛЕНО: Проверка статуса приглашения
+    ✅ Правильный callback для профиля друга
+    ✅ Показывает реальный профиль друга
     """
     query = update.callback_query
     
@@ -2794,64 +2829,100 @@ async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return SEXUAL_INVITES_LIST
     
     status = invite.get("status", "active")
+    friend_profile = invite.get("friend_profile", "SA_3_CON")
+    friend_name = invite.get("friend_name", "друг")
     
+    # Формируем сообщение в зависимости от статуса
     if status == "used":
-        used_by = invite.get("used_by", "друг")
-        message = f"✅ Приглашение активировано!\n\nДруг @{used_by} принял приглашение и прошёл тест. Теперь вы можете увидеть его интимный профиль!"
-        alert_type = show_alert=True
+        used_at = datetime.fromtimestamp(invite.get("used_at", time.time())).strftime('%d.%m.%Y %H:%M')
+        
+        message = (
+            f"✅ <b>ПРИГЛАШЕНИЕ АКТИВИРОВАНО!</b>\n\n"
+            f"👤 Друг: @{friend_name}\n"
+            f"📊 Профиль: <code>{friend_profile}</code>\n"
+            f"📅 Дата: {used_at}\n\n"
+            f"💎 Теперь вы можете:\n"
+            f"• 👤 Посмотреть профиль друга\n"
+            f"• 🔑 Купить ключи 1F,2F,3F,4F (99₽)\n"
+            f"• 🔓 Открыть его скрытые функции"
+        )
+        
+        await query.answer("✅ Приглашение активировано!", show_alert=False)
+        
     elif status == "active":
-        message = f"⏳ Приглашение активно и ожидает друга.\n\nСсылка действительна. Когда друг перейдёт по ней и пройдёт тест, вы получите уведомление."
-        alert_type = show_alert=False
+        message = (
+            f"⏳ <b>ПРИГЛАШЕНИЕ ОЖИДАЕТ ДРУГА</b>\n\n"
+            f"📊 Ваш профиль: <code>{invite.get('profile_code', 'sa_5_int')}</code>\n\n"
+            f"🔗 Ссылка активна и ждет друга.\n"
+            f"Как только друг пройдет тест, вы получите уведомление!"
+        )
+        
+        await query.answer("⏳ Приглашение активно", show_alert=False)
     else:
         message = f"❌ Приглашение {status}"
-        alert_type = show_alert=True
+        await query.answer(f"Статус: {status}", show_alert=True)
     
-    await query.answer(message, show_alert=True)
+    # Формируем клавиатуру
+    keyboard = []
     
-    # Обновляем сообщение с текущим статусом
-    invite_link = invite.get("link", f"https://t.me/Testing_Lichnosti_bot?start={invite_id}")
-    invite_message = invite.get("message", "")
+    # Кнопка копирования ссылки
+    keyboard.append([InlineKeyboardButton(
+        "📋 Копировать ссылку", 
+        callback_data=f"copy_invite_{invite_id}"
+    )])
     
-    status_text = {
-        "active": "🟢 Активно",
-        "used": "✅ Использовано",
-        "expired": "🔴 Просрочено"
-    }.get(status, status)
+    # Кнопка отправки другу
+    share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite['link'])}&text={urllib.parse.quote(invite.get('message', ''))}"
+    keyboard.append([InlineKeyboardButton("📤 Отправить другу", url=share_url)])
     
-    message_text = (
-        f"🔞 <b>ПРИГЛАШЕНИЕ</b>\n\n"
-        f"📋 <b>ID:</b> <code>{invite_id}</code>\n"
-        f"📊 <b>Статус:</b> {status_text}\n"
-        f"👤 <b>Ваш профиль:</b> <code>{invite.get('profile_code', 'sa_5_int')}</code>\n\n"
-        f"🔗 <b>Ссылка:</b>\n"
-        f"<code>{invite_link}</code>\n\n"
-    )
-    
-    if status == "used":
-        message_text += f"👥 <b>Принял:</b> @{invite.get('used_by', 'пользователь')}\n"
-        message_text += f"📅 <b>Дата:</b> {datetime.fromtimestamp(invite.get('used_at', time.time())).strftime('%d.%m.%Y %H:%M')}\n\n"
-    
-    share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_link)}&text={urllib.parse.quote(invite_message or 'Есть одна штука. Определяет твой ночной тип личности.')}"
-    
-    keyboard = [
-        [InlineKeyboardButton("📋 Копировать ссылку", callback_data=f"copy_invite_{invite_id}")],
-        [InlineKeyboardButton("📤 Отправить другу", url=share_url)],
-    ]
-    
+    # Для активных - кнопка обновления
     if status == "active":
-        keyboard.append([InlineKeyboardButton("🔄 Обновить статус", callback_data=f"check_invite_{invite_id}")])
-        keyboard.append([InlineKeyboardButton("❌ Удалить приглашение", callback_data=f"delete_invite_{invite_id}")])
+        keyboard.append([InlineKeyboardButton(
+            "🔄 Обновить статус", 
+            callback_data=f"check_invite_{invite_id}"
+        )])
+        keyboard.append([InlineKeyboardButton(
+            "❌ Удалить приглашение", 
+            callback_data=f"delete_invite_{invite_id}"
+        )])
     
+    # Для использованных - кнопка профиля друга ✅ ИСПРАВЛЕНО!
     if status == "used" and invite.get("friend_id"):
-        keyboard.append([InlineKeyboardButton("👤 Профиль друга", callback_data=f"view_friend_profile_{invite['friend_id']}")])
+        keyboard.append([InlineKeyboardButton(
+            "👤 Профиль друга", 
+            callback_data=f"friend_details_{invite['friend_id']}"  # ✅ Правильный callback!
+        )])
+        
+        # Добавляем кнопки покупки 4F ключей
+        purchased = invite.get("purchased_functions", [])
+        buy_buttons = []
+        for f in ["1F", "2F", "3F", "4F"]:
+            if f not in purchased:
+                buy_buttons.append(
+                    InlineKeyboardButton(
+                        f"🔑 {f} (99₽)", 
+                        callback_data=f"buy_function_{invite_id}_{f}"
+                    )
+                )
+        if buy_buttons:
+            # Разбиваем по 2 кнопки в ряд
+            for i in range(0, len(buy_buttons), 2):
+                keyboard.append(buy_buttons[i:i+2])
     
-    keyboard.append([InlineKeyboardButton("⬅️ К списку приглашений", callback_data="show_my_invites")])
+    # Навигация
+    keyboard.append([InlineKeyboardButton(
+        "🔍 К списку приглашений", 
+        callback_data="show_my_invites"
+    )])
+    keyboard.append([InlineKeyboardButton(
+        "⬅️ К интимному профилю", 
+        callback_data="show_my_sexual_profile"
+    )])
     
     await query.edit_message_text(
-        message_text,
+        message,
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML",
-        disable_web_page_preview=True
+        parse_mode="HTML"
     )
     
     return SEXUAL_INVITES_LIST
@@ -2914,7 +2985,7 @@ async def show_my_invites(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         keyboard = [
             [InlineKeyboardButton("🔞 Создать приглашение", callback_data="sexual_invite_start")],
-            [InlineKeyboardButton("⬅️ К интимному профилю", callback_data="show_sexual_profile")],
+            [InlineKeyboardButton("⬅️ К интимному профилю", callback_data="show_my_sexual_profile")],
             [InlineKeyboardButton("⬅️ К результатам теста", callback_data="back_to_results")]
         ]
         
@@ -2981,9 +3052,6 @@ async def show_my_invites(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Проверяем, куплена ли функция
                 has_access = f in purchased_functions
                 
-                # Дополнительная проверка через API (асинхронно, но здесь упрощенно)
-                # В реальном коде нужно сделать запрос к API
-                
                 if has_access:
                     # Ищем payment_id для этой функции
                     payment_id = f"purchased_{f}_{inv['invite_id']}"
@@ -3005,18 +3073,18 @@ async def show_my_invites(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if function_buttons:
                 keyboard.append(function_buttons)
             
-            # Кнопка для просмотра профиля друга
+            # Кнопка для просмотра профиля друга ✅ ИСПРАВЛЕНО!
             if friend_id:
                 keyboard.append([
                     InlineKeyboardButton(
                         f"👤 Профиль {friend_name}", 
-                        callback_data=f"view_friend_profile_{friend_id}"
+                        callback_data=f"friend_details_{friend_id}"  # ✅ Правильный callback!
                     )
                 ])
     
     # Кнопки управления
     keyboard.append([InlineKeyboardButton("🔞 Создать новое приглашение", callback_data="sexual_invite_start")])
-    keyboard.append([InlineKeyboardButton("⬅️ К интимному профилю", callback_data="show_sexual_profile")])
+    keyboard.append([InlineKeyboardButton("⬅️ К интимному профилю", callback_data="show_my_sexual_profile")])
     keyboard.append([InlineKeyboardButton("⬅️ К результатам теста", callback_data="back_to_results")])
     
     await query.edit_message_text(
@@ -3169,7 +3237,7 @@ async def check_4f_payment_callback(update: Update, context: ContextTypes.DEFAUL
         
         # Показываем кнопку открытия ключа
         keyboard = [
-            [InlineKeyboardButton(f"🔓 Открыть ключ {function}", callback_data=f"open_4f_key_{payment_id}")],
+            [InlineKeyboardButton(f"🔓 Открыть ключ {function}", callback_data=f"open_4f_key_{payment_id}_{function}")],
             [InlineKeyboardButton("⬅️ К приглашениям", callback_data="show_my_invites")]
         ]
         
@@ -3223,7 +3291,7 @@ async def check_4f_payment_callback(update: Update, context: ContextTypes.DEFAUL
 async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     🔑 ОТКРЫТИЕ КУПЛЕННОГО 4F-КЛЮЧА
-    Callback: open_4f_key_{payment_id} или open_4f_{payment_id}_{function}
+    Callback: open_4f_key_{payment_id} или open_4f_key_{payment_id}_{function}
     """
     query = update.callback_query
     await query.answer("🔓 Открываю ключ...")
@@ -3231,14 +3299,14 @@ async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     # Парсим callback_data
     parts = query.data.split("_")
     
-    if parts[1] == "4f" and len(parts) >= 4:
-        # Формат: open_4f_{payment_id}_{function}
-        payment_id = parts[2]
-        function = parts[3]
-    else:
+    if len(parts) >= 5 and parts[3] == "key":
         # Формат: open_4f_key_{payment_id}
+        payment_id = parts[4]
+        function = parts[5] if len(parts) > 5 else None
+    else:
+        # Формат: open_4f_key_{payment_id}_{function}
         payment_id = parts[3]
-        function = None
+        function = parts[4]
     
     user_id = update.effective_user.id
     
@@ -3255,8 +3323,20 @@ async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             function = function or payment_data.get("function", "1F")
             
             # Получаем содержимое через загрузчик
-            content = four_f_loader.get_function(function, "sa_4_cap")
-            content = four_f_loader.substitute_name(content, target_name)
+            if four_f_loader:
+                content = four_f_loader.get_function(function, "sa_4_cap")
+                content = four_f_loader.substitute_name(content, target_name)
+            else:
+                content = {
+                    "function": function,
+                    "short_description": f"Описание ключа {function}",
+                    "triggers": ["Триггер 1", "Триггер 2", "Триггер 3"],
+                    "examples": ["Пример 1", "Пример 2"],
+                    "psychological_analysis": "Психологический разбор",
+                    "application_protocol": "Протокол применения",
+                    "quote": "Цитата",
+                    "is_demo": True
+                }
             
             # Форматируем сообщение
             formatted_message = format_4f_message(content, target_name)
@@ -3272,7 +3352,7 @@ async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 parse_mode="HTML"
             )
             
-            return FOUR_F_PAYMENT_SCREEN
+            return FOUR_F_CONTENT_SCREEN
         else:
             await query.answer("❌ Ключ не найден", show_alert=True)
             return SEXUAL_INVITES_LIST
@@ -3296,7 +3376,7 @@ async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         parse_mode="HTML"
     )
     
-    return FOUR_F_PAYMENT_SCREEN
+    return FOUR_F_CONTENT_SCREEN
 
 # ============================================
 # 🔑 4F: ФОРМАТИРОВАНИЕ СООБЩЕНИЯ
@@ -3404,7 +3484,8 @@ def format_4f_message(content: dict, friend_name: str) -> str:
 
 async def handle_sexual_deeplink(update: Update, context: ContextTypes.DEFAULT_TYPE, deeplink: str):
     """
-    🔞 РАБОЧАЯ РЕАЛИЗАЦИЯ: Обработка deep link приглашения
+    🔞 ИСПРАВЛЕНО: Обработка deep link приглашения
+    ✅ Только для ссылок с префиксом sex_
     """
     user = update.effective_user
     invite_id = deeplink  # sex_xxxxx
@@ -3419,6 +3500,7 @@ async def handle_sexual_deeplink(update: Update, context: ContextTypes.DEFAULT_T
     inviter_name = "друг"
     profile_code = "sa_5_int"
     gender = "male"
+    inviter_id = None
     
     try:
         response = requests.get(
@@ -3430,8 +3512,9 @@ async def handle_sexual_deeplink(update: Update, context: ContextTypes.DEFAULT_T
             inviter_name = data.get("inviter_name", "друг")
             profile_code = data.get("profile_code", "sa_5_int")
             gender = data.get("gender", "male")
+            inviter_id = data.get("inviter_id")
             context.user_data["inviter_name"] = inviter_name
-            context.user_data["inviter_id"] = data.get("inviter_id")
+            context.user_data["inviter_id"] = inviter_id
     except Exception as e:
         logger.warning(f"⚠️ Не удалось получить данные приглашения: {e}")
     
@@ -3462,12 +3545,14 @@ async def handle_sexual_deeplink(update: Update, context: ContextTypes.DEFAULT_T
     return None
 
 # ============================================
-# 🔞 ФУНКЦИЯ ПРОВЕРКИ ПРИГЛАШЕНИЯ ПОСЛЕ ТЕСТА
+# 🔞 ИСПРАВЛЕНО: ФУНКЦИЯ ПРОВЕРКИ ПРИГЛАШЕНИЯ ПОСЛЕ ТЕСТА
 # ============================================
 
 async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: int, username: str):
     """
-    🔞 РАБОЧАЯ РЕАЛИЗАЦИЯ: Проверка приглашения в конце теста
+    🔞 ИСПРАВЛЕНО: Проверка приглашения в конце теста
+    ✅ РЕАЛЬНЫЙ профиль друга
+    ✅ УВЕДОМЛЕНИЕ пригласившему
     """
     invited_by = context.user_data.get("invited_by")
     invite_code = context.user_data.get("invite_code")
@@ -3477,6 +3562,13 @@ async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: i
     if invited_by and invite_code:
         logger.info(f"🔞 Пользователь {user_id} прошел тест по приглашению {invite_code}")
         
+        # ✅ ПОЛУЧАЕМ РЕАЛЬНЫЙ ПРОФИЛЬ ДРУГА
+        friend_profile_data = context.user_data.get("profile_data", {})
+        if friend_profile_data and 'display_name' in friend_profile_data:
+            friend_profile = friend_profile_data['display_name'].upper()
+        else:
+            friend_profile = "SA_3_CON"  # Заглушка
+        
         # Обновляем статус приглашения в user_data
         for inv in context.user_data.get("sexual_invites", []):
             if inv["invite_id"] == invite_code:
@@ -3485,7 +3577,7 @@ async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: i
                 inv["used_at"] = time.time()
                 inv["friend_id"] = user_id
                 inv["friend_name"] = username or "друг"
-                inv["friend_profile"] = "SA_3_CON"  # Заглушка, можно определить реальный профиль
+                inv["friend_profile"] = friend_profile  # ✅ РЕАЛЬНЫЙ ПРОФИЛЬ!
                 break
         
         # Обновляем статус приглашения в API
@@ -3496,28 +3588,50 @@ async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: i
                     "status": "used",
                     "used_by": username or str(user_id),
                     "used_by_id": user_id,
-                    "used_at": time.time()
+                    "used_at": time.time(),
+                    "friend_profile": friend_profile
                 },
                 timeout=5
             )
             if response.status_code in [200, 204]:
                 logger.info(f"✅ Приглашение {invite_code} отмечено как использованное")
-                
-                # TODO: Отправить уведомление пригласившему
-                if inviter_id:
-                    try:
-                        await context.bot.send_message(
-                            chat_id=inviter_id,
-                            text=f"🔞 <b>ПРИГЛАШЕНИЕ АКТИВИРОВАНО!</b>\n\n"
-                                 f"👤 Друг @{username or 'пользователь'} прошел тест по вашему приглашению!\n\n"
-                                 f"📊 Теперь вы можете увидеть его интимный профиль в разделе «Мои приглашения».",
-                            parse_mode="HTML"
-                        )
-                    except Exception as e:
-                        logger.warning(f"⚠️ Не удалось отправить уведомление пригласившему: {e}")
-                
         except Exception as e:
             logger.warning(f"⚠️ Не удалось обновить статус приглашения: {e}")
+        
+        # ✅ ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ ПРИГЛАСИВШЕМУ!
+        if inviter_id:
+            try:
+                notification_text = (
+                    f"🔞 <b>ПРИГЛАШЕНИЕ АКТИВИРОВАНО!</b>\n\n"
+                    f"👤 Друг @{username or 'пользователь'} прошел тест по вашему приглашению!\n"
+                    f"📊 Его интимный профиль: <code>{friend_profile}</code>\n\n"
+                    f"💎 Теперь вы можете:\n"
+                    f"• 👤 Посмотреть профиль друга\n"
+                    f"• 🔑 Приобрести ключи 1F,2F,3F,4F (99₽)\n"
+                    f"• 🔓 Получить доступ к его скрытым функциям\n\n"
+                    f"👇 Нажмите кнопку, чтобы увидеть профиль:"
+                )
+                
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton(
+                        "👤 Профиль друга", 
+                        callback_data=f"friend_details_{user_id}"
+                    )],
+                    [InlineKeyboardButton(
+                        "🔍 Мои приглашения", 
+                        callback_data="show_my_invites"
+                    )]
+                ])
+                
+                await context.bot.send_message(
+                    chat_id=inviter_id,
+                    text=notification_text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+                logger.info(f"✅ Уведомление отправлено пригласившему {inviter_id}")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось отправить уведомление пригласившему: {e}")
         
         # Очищаем данные
         context.user_data.pop("invited_by", None)
@@ -5187,6 +5301,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     ИСПРАВЛЕНО (ТЗ 3.8): Основная команда /start с поддержкой deep link для 18+
+    ✅ Только ссылки с префиксом sex_ обрабатываются как 18+
     """
     user = update.effective_user
     
@@ -5361,10 +5476,14 @@ def main():
     print("4. ✅ Форматирование JSON в красивые сообщения")
     print("="*60)
     print("🟠 ИСПРАВЛЕНО - 18+ МЕХАНИКА:")
-    print("5. ✅ Экран с 2 кнопками (Отправить, Копировать)")
+    print("5. ✅ Экран с 2 кнопками + кнопка проверки статуса")
     print("6. ✅ Готовый текст для друга в моноширинном шрифте")
     print("7. ✅ Кнопка '📤 Отправить другу' с предзаполненным текстом")
     print("8. ✅ Кнопка '📋 Копировать ссылку' с alert")
+    print("9. ✅ Кнопка '🔄 Проверить статус' при создании")
+    print("10. ✅ Уведомления пригласившему при активации")
+    print("11. ✅ Реальный профиль друга (не заглушка)")
+    print("12. ✅ Правильный callback для профиля друга")
     print("="*60)
     
     gift_link = os.getenv("GIFT_PDF_LINK")
@@ -5422,11 +5541,18 @@ def main():
     
     application = Application.builder().token(TOKEN).build()
     
+    # Команды
     application.add_handler(CommandHandler("buy", buy_command))
     application.add_handler(CommandHandler("materials", materials_command))
     application.add_handler(CommandHandler("status", status_command))
+    
+    # Общие callback-обработчики
     application.add_handler(CallbackQueryHandler(why_details_callback, pattern="^why_details$"))
     application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
+    
+    # ✅ ИСПРАВЛЕНО: Добавлены недостающие обработчики для 18+ модуля
+    application.add_handler(CallbackQueryHandler(friend_details_callback, pattern="^friend_details_"))
+    application.add_handler(CallbackQueryHandler(noop_callback, pattern="^noop$"))
     
     conv_handler = ConversationHandler(
         entry_points=[
@@ -5476,8 +5602,8 @@ def main():
                 CallbackQueryHandler(skip_share, pattern="^skip_share$"),
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
                 CallbackQueryHandler(restart_test, pattern="^restart_test$"),
-                # 🔞 18+ кнопка
-                CallbackQueryHandler(show_my_sexual_profile, pattern="^show_sexual_profile$"),
+                # 🔞 18+ кнопка - ИСПРАВЛЕНО!
+                CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
             ],
             GIFT_SCREEN: [
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
@@ -5506,9 +5632,13 @@ def main():
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(show_my_invites, pattern="^show_my_invites$")
             ],
+            FOUR_F_CONTENT_SCREEN: [
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(show_my_invites, pattern="^show_my_invites$")
+            ],
             # ===== 18+ МОДУЛЬ (ПОЛНАЯ РАБОЧАЯ РЕАЛИЗАЦИЯ) =====
             SEXUAL_PROFILE_SCREEN: [
-                CallbackQueryHandler(show_my_sexual_profile, pattern="^show_sexual_profile$"),
+                CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
                 CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
                 CallbackQueryHandler(show_my_invites, pattern="^show_my_invites$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
@@ -5526,6 +5656,7 @@ def main():
                 CallbackQueryHandler(open_4f_key_callback, pattern="^open_4f_"),
             ],
             SEXUAL_FRIEND_PROFILE: [
+                CallbackQueryHandler(friend_details_callback, pattern="^friend_details_"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
             ],
             # ===== КОНЕЦ 18+ =====
@@ -5539,6 +5670,10 @@ def main():
     logger.info("🧠 Виртуальный психолог Вариатика запущен!")
     logger.info("✅ ВЕРСИЯ 4.0: ПОЛНАЯ ИНТЕГРАЦИЯ 4F-МОДУЛЯ!")
     logger.info("✅ ИСПРАВЛЕНА МЕХАНИКА 18+ ПРИГЛАШЕНИЙ!")
+    logger.info("✅ ДОБАВЛЕНА КНОПКА ПРОВЕРКИ СТАТУСА!")
+    logger.info("✅ ДОБАВЛЕНЫ УВЕДОМЛЕНИЯ ПРИГЛАСИВШЕМУ!")
+    logger.info("✅ ИСПРАВЛЕН CALLBACK ДЛЯ ПРОФИЛЯ ДРУГА!")
+    logger.info("✅ ДОБАВЛЕНЫ friend_details_callback И noop_callback!")
     logger.info("✅ ПОКУПКА 1F,2F,3F,4F РАБОТАЕТ!")
     logger.info("✅ КНОПКИ В СПИСКЕ ПРИГЛАШЕНИЙ РАБОТАЮТ!")
     logger.info("✅ ОТКРЫТИЕ КЛЮЧЕЙ В БОТЕ РАБОТАЕТ!")
