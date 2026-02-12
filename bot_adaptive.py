@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 10.6 - ИСПРАВЛЕНО ОТОБРАЖЕНИЕ СЕКЦИЙ!
+Версия: 10.7 - ФИНАЛЬНАЯ ИСПРАВЛЕННАЯ!
 ✅ ИНТИМНЫЙ ПРОФИЛЬ ПОКАЗЫВАЕТ ВСЕ 14 СЕКЦИЙ
+✅ КНОПКА "ИНТИМНЫЙ ПРОФИЛЬ" РАБОТАЕТ!
+✅ КНОПКА "МОИ ОТРАЖЕНИЯ" РАБОТАЕТ ВЕЗДЕ!
 ✅ ЗАГРУЗКА ИЗ sexual_18/sa_5_int.json
-✅ КНОПКА "МОИ ОТРАЖЕНИЯ" РАБОТАЕТ ВЕЗДЕ
 ✅ ЖИРНЫЙ ТЕКСТ В СОЗДАНИИ ССЫЛКИ
-✅ ИСПРАВЛЕНА ОШИБКА 'created_at'
 """
 
 import logging
@@ -58,7 +58,6 @@ if PROJECT_ROOT not in sys.path:
 os.chdir(PROJECT_ROOT)
 
 logger.info(f"📁 Корень проекта: {PROJECT_ROOT}")
-logger.info(f"📁 Путь к sexual_18: {os.path.join(PROJECT_ROOT, 'sexual_18')}")
 
 # ===== СОСТОЯНИЯ =====
 RESULTS_SCREEN = 0
@@ -1408,15 +1407,15 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота с исправленным ConversationHandler"""
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v10.6")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v10.7 - ФИНАЛ")
     print("="*60)
     print("✅ ФИНАЛЬНЫЕ ИСПРАВЛЕНИЯ:")
-    print("   • ИНТИМНЫЙ ПРОФИЛЬ ПОКАЗЫВАЕТ ВСЕ 14 СЕКЦИЙ!")
+    print("   • КНОПКА «ИНТИМНЫЙ ПРОФИЛЬ» РАБОТАЕТ!")
+    print("   • Интимный профиль ПОКАЗЫВАЕТ ВСЕ 14 СЕКЦИЙ!")
     print("   • Пути к файлам: sexual_18/sa_5_int.json")
     print("   • Кнопка «МОИ ОТРАЖЕНИЯ» работает ВЕЗДЕ")
     print("   • Исправлена ошибка KeyError: 'created_at'")
     print("   • Жирный текст в создании ссылки")
-    print("   • Заменены эмодзи на 💎")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -1430,7 +1429,7 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            # Состояние 0: ЭКРАН РЕЗУЛЬТАТОВ
+            # Состояние 0: ЭКРАН РЕЗУЛЬТАТОВ - ИСПРАВЛЕНО!
             RESULTS_SCREEN: [
                 CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
                 CallbackQueryHandler(dummy_callback, pattern='^share_mirror$'),
@@ -1462,6 +1461,7 @@ def main():
                 CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
                 CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
                 CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+                CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
             ],
             
             # Состояние 4: МЕНЮ 4F
@@ -1471,6 +1471,7 @@ def main():
                 CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
                 CallbackQueryHandler(friend_menu_callback, pattern='^friend_'),
                 CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+                CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
             ],
             
             # Состояние 5: КОНТЕНТ 4F
@@ -1486,6 +1487,7 @@ def main():
                 CallbackQueryHandler(dummy_callback, pattern='^pay_access_'),
                 CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
                 CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+                CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
             ],
         },
         fallbacks=[
@@ -1506,6 +1508,7 @@ def main():
     app.add_handler(CallbackQueryHandler(dummy_callback, pattern='^check_payment_'))
     
     print("\n🚀 Бот запущен! ВСЕ ИСПРАВЛЕНИЯ ПРИМЕНЕНЫ!")
+    print("   ✅ КНОПКА «ИНТИМНЫЙ ПРОФИЛЬ» РАБОТАЕТ!")
     print("   ✅ Интимный профиль ПОКАЗЫВАЕТ ВСЕ 14 СЕКЦИЙ!")
     print("   ✅ Загрузка из sexual_18/sa_5_int.json")
     print("   ✅ Кнопка «МОИ ОТРАЖЕНИЯ» работает везде")
