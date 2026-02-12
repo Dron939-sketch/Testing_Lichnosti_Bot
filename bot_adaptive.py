@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 10.5 - ФИНАЛЬНАЯ
-✅ ВСЕ ИСПРАВЛЕНИЯ ПРИМЕНЕНЫ
+Версия: 10.6 - ИСПРАВЛЕНО ОТОБРАЖЕНИЕ СЕКЦИЙ!
+✅ ИНТИМНЫЙ ПРОФИЛЬ ПОКАЗЫВАЕТ ВСЕ 14 СЕКЦИЙ
+✅ ЗАГРУЗКА ИЗ sexual_18/sa_5_int.json
 ✅ КНОПКА "МОИ ОТРАЖЕНИЯ" РАБОТАЕТ ВЕЗДЕ
-✅ ИНТИМНЫЙ ПРОФИЛЬ ЗАГРУЖАЕТСЯ
 ✅ ЖИРНЫЙ ТЕКСТ В СОЗДАНИИ ССЫЛКИ
-✅ НЕТ ОШИБКИ 'created_at'
+✅ ИСПРАВЛЕНА ОШИБКА 'created_at'
 """
 
 import logging
@@ -31,6 +31,8 @@ from telegram.ext import (
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "ВАШ_ТОКЕН_ЗДЕСЬ")
 BOT_USERNAME = "Testing_Lichnosti_bot"
 BOT_LINK = f"t.me/{BOT_USERNAME}"
+YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID", "ваш_shop_id")
+YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY", "ваш_secret_key")
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -56,6 +58,7 @@ if PROJECT_ROOT not in sys.path:
 os.chdir(PROJECT_ROOT)
 
 logger.info(f"📁 Корень проекта: {PROJECT_ROOT}")
+logger.info(f"📁 Путь к sexual_18: {os.path.join(PROJECT_ROOT, 'sexual_18')}")
 
 # ===== СОСТОЯНИЯ =====
 RESULTS_SCREEN = 0
@@ -188,11 +191,7 @@ def load_intimate_profile() -> dict:
                 with open(profile_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     logger.info(f"📊 Ключи в JSON: {list(data.keys())}")
-                    
-                    # Проверяем структуру
-                    if 'sections' not in data:
-                        logger.warning("⚠️ Конвертируем старый формат")
-                        data = convert_to_expected_format(data)
+                    logger.info(f"📋 Секции: {list(data.get('sections', {}).keys())}")
                     
                     return data
         
@@ -202,23 +201,6 @@ def load_intimate_profile() -> dict:
     except Exception as e:
         logger.error(f"❌ Ошибка загрузки интимного профиля: {e}")
         return get_emergency_profile()
-
-def convert_to_expected_format(data: dict) -> dict:
-    """Преобразует сырые данные в формат с секциями"""
-    expected = {
-        "profile_type": data.get("profile_type", data.get("profile", "SA-5_INT")),
-        "archetype": data.get("archetype", data.get("name", "ЦЕРЕМОНИАЛЬНЫЙ")),
-        "role": data.get("role", "Жрец/Жрица сексуальной мистерии"),
-        "quote": data.get("quote", "«Со мной не скучно. Со мной — вкусно.»"),
-        "description": data.get("description", data.get("text", data.get("about", ""))),
-        "sections": {}
-    }
-    
-    # Если секции уже есть в другом формате
-    if 'sections' in data:
-        expected['sections'] = data['sections']
-    
-    return expected
 
 def get_emergency_profile() -> dict:
     """Аварийный интимный профиль"""
@@ -232,7 +214,10 @@ def get_emergency_profile() -> dict:
     }
 
 def format_intimate_profile(profile_data: dict, user_name: str) -> str:
-    """Форматирует интимный профиль"""
+    """
+    ФОРМАТИРУЕТ ИНТИМНЫЙ ПРОФИЛЬ - ПОКАЗЫВАЕТ ВСЕ 14 СЕКЦИЙ!
+    """
+    # Начинаем с шапки
     message = f"""
 🔞 ИНТИМНЫЙ ПРОФИЛЬ
 {user_name}
@@ -245,6 +230,40 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> str:
 
 🧠 ВАША ПРИРОДА:
 {profile_data.get('description', '').strip()}
+"""
+    
+    # ===== ВАЖНО: ДОБАВЛЯЕМ ВСЕ 14 СЕКЦИЙ ИЗ JSON! =====
+    sections = profile_data.get('sections', {})
+    
+    if sections:
+        message += f"\n{SEXUAL_DIVIDER}\n"
+        
+        # Все секции в правильном порядке
+        section_order = [
+            "what_turns_on", "what_turns_off", "smells_tastes", "sounds",
+            "dirty_details", "fetishes", "places", "morning", "secret_desires",
+            "whispers", "core", "compliments", "tells", "remains"
+        ]
+        
+        for section_key in section_order:
+            section = sections.get(section_key)
+            if section:
+                # Заголовок секции
+                title = section.get('title', '')
+                if title:
+                    message += f"\n{title}\n"
+                
+                # Контент секции - 3 варианта
+                if 'items' in section and section['items']:
+                    for item in section['items']:
+                        message += f"• {item}\n"
+                elif 'content' in section and section['content']:
+                    message += f"{section['content']}\n"
+                elif 'trigger' in section and section['trigger']:
+                    message += f"{section['trigger']}\n"
+    
+    # Добавляем нижнюю часть
+    message += f"""
 {SEXUAL_DIVIDER}
 
 💎 ТАМ, ЗА ЗЕРКАЛОМ...
@@ -491,7 +510,7 @@ def init_test_data(user_id: int):
             "status": "used",
             "access_status": "free",
             "access_paid": False,
-            "created_at": yesterday,  # ✅ ДОБАВЛЕНО!
+            "created_at": yesterday,
             "used_at": current_time,
             "purchased_functions": []
         },
@@ -504,7 +523,7 @@ def init_test_data(user_id: int):
             "status": "used",
             "access_status": "free",
             "access_paid": False,
-            "created_at": yesterday,  # ✅ ДОБАВЛЕНО!
+            "created_at": yesterday,
             "used_at": yesterday,
             "purchased_functions": ["1F"]
         }
@@ -568,17 +587,18 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     return RESULTS_SCREEN
 
 # ============================================
-# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ
+# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ - ИСПРАВЛЕНО!
 # ============================================
 
 async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Мой интимный профиль"""
+    """🔞 Мой интимный профиль - ТЕПЕРЬ ПОКАЗЫВАЕТ ВСЕ 14 СЕКЦИЙ!"""
     query = update.callback_query
     await query.answer()
     
     user_name = query.from_user.first_name or "Пользователь"
     profile_data = load_intimate_profile()
     
+    # Форматируем с ВСЕМИ секциями
     message = format_intimate_profile(profile_data, user_name)
     
     keyboard = [
@@ -596,7 +616,7 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
     return MY_SEXUAL_PROFILE
 
 # ============================================
-# 🔗 ЭКРАН 3: СОЗДАНИЕ ПРИГЛАШЕНИЯ - ИСПРАВЛЕНО: ЖИРНЫЙ ТЕКСТ!
+# 🔗 ЭКРАН 3: СОЗДАНИЕ ПРИГЛАШЕНИЯ - С ЖИРНЫМ ТЕКСТОМ
 # ============================================
 
 async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -618,7 +638,6 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     
     current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
     
-    # ===== ИСПРАВЛЕНО: ЖИРНЫЙ ТЕКСТ С ПОМОЩЬЮ <b> =====
     text = f"""
 <b>🔞 ВАША ССЫЛКА ГОТОВА!</b>
 
@@ -643,7 +662,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         "message": invite_message,
         "profile_code": profile['display_name'],
         "status": "active",
-        "created_at": datetime.now().timestamp(),  # ✅ ОБЯЗАТЕЛЬНО!
+        "created_at": datetime.now().timestamp(),
         "opened_at": None,
         "opened_count": 0,
         "used_by": None,
@@ -671,14 +690,14 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     await query.edit_message_text(
         text,
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML",  # ВАЖНО: HTML для жирного текста!
+        parse_mode="HTML",
         disable_web_page_preview=True
     )
     
     return INVITES_LIST
 
 # ============================================
-# 💎 ЭКРАН 4: МОИ ОТРАЖЕНИЯ - ИСПРАВЛЕНО: БЕЗ ОШИБКИ 'created_at'
+# 💎 ЭКРАН 4: МОИ ОТРАЖЕНИЯ - ИСПРАВЛЕНО!
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -716,7 +735,6 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         if active_invites:
             message += f"\n🟢 ЖДУТ ОТКЛИКА ✨"
             for inv in active_invites[:3]:
-                # БЕЗОПАСНО получаем дату
                 created_ts = inv.get("created_at")
                 if created_ts:
                     created = datetime.fromtimestamp(created_ts).strftime('%d.%m')
@@ -737,7 +755,6 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 friend_name = inv.get("friend_name", "друг")
                 friend_profile = inv.get("friend_profile", "SA-3_CON")
                 
-                # ===== ИСПРАВЛЕНО: БЕЗОПАСНОЕ ПОЛУЧЕНИЕ ДАТЫ =====
                 timestamp = inv.get("used_at")
                 if not timestamp:
                     timestamp = inv.get("created_at")
@@ -1391,15 +1408,15 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота с исправленным ConversationHandler"""
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v10.5")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v10.6")
     print("="*60)
     print("✅ ФИНАЛЬНЫЕ ИСПРАВЛЕНИЯ:")
+    print("   • ИНТИМНЫЙ ПРОФИЛЬ ПОКАЗЫВАЕТ ВСЕ 14 СЕКЦИЙ!")
     print("   • Пути к файлам: sexual_18/sa_5_int.json")
     print("   • Кнопка «МОИ ОТРАЖЕНИЯ» работает ВЕЗДЕ")
     print("   • Исправлена ошибка KeyError: 'created_at'")
     print("   • Жирный текст в создании ссылки")
     print("   • Заменены эмодзи на 💎")
-    print("   • Кнопка «💎 Отправить ссылку»")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -1489,7 +1506,8 @@ def main():
     app.add_handler(CallbackQueryHandler(dummy_callback, pattern='^check_payment_'))
     
     print("\n🚀 Бот запущен! ВСЕ ИСПРАВЛЕНИЯ ПРИМЕНЕНЫ!")
-    print("   ✅ Интимный профиль загружается из sexual_18/")
+    print("   ✅ Интимный профиль ПОКАЗЫВАЕТ ВСЕ 14 СЕКЦИЙ!")
+    print("   ✅ Загрузка из sexual_18/sa_5_int.json")
     print("   ✅ Кнопка «МОИ ОТРАЖЕНИЯ» работает везде")
     print("   ✅ Исправлена ошибка 'created_at'")
     print("   ✅ Жирный текст в создании ссылки")
