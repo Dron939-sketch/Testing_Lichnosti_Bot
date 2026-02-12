@@ -42,12 +42,12 @@ logger = logging.getLogger(__name__)
     FOUR_F_PAYMENT_SCREEN,
     STANDARD_PROFILE_VIEW,
     INTIMATE_PROFILE_VIEW,
-    EDIT_PROFILE,              # Новое состояние
-    INVITE_STATISTICS,         # Новое состояние  
-    FRIEND_INTERACTION,        # Новое состояние
-    FOUR_F_KEY_MANAGEMENT,     # Новое состояние
-    PAYMENT_CONFIRMATION,      # Новое состояние
-    ADMIN_PANEL               # Новое состояние
+    EDIT_PROFILE,
+    INVITE_STATISTICS,
+    FRIEND_INTERACTION,
+    FOUR_F_KEY_MANAGEMENT,
+    PAYMENT_CONFIRMATION,
+    ADMIN_PANEL
 ) = range(15)
 
 # ============================================
@@ -389,7 +389,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
     ПОЛНОСТЬЮ ИСПРАВЛЕННЫЙ ОБРАБОТЧИК!
-    Кнопка работает ВО ВСЕХ состояниях и НИЧЕГО НЕ БЛОКИРУЕТ!
+    Кнопка работает ВО ВСЕХ состояниях!
     """
     
     # Получаем данные callback
@@ -482,7 +482,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         "opened_by": [],
         "opened_count": 0,
         "last_opened": None,
-        "profile_type": "intimate",  # или "standard"
+        "profile_type": "intimate",
         "max_uses": 10,
         "current_uses": 0
     }
@@ -508,9 +508,6 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     bot_username = (await context.bot.get_me()).username
     invite_link = f"https://t.me/{bot_username}?start=invite_{invite_id}"
     
-    # Генерируем QR код (эмуляция)
-    qr_code = "🟨⬛🟨⬛🟨\n⬛🟨⬛🟨⬛\n🟨⬛🟨⬛🟨"
-    
     message = f"""
 ✅ <b>ПРИГЛАШЕНИЕ СОЗДАНО!</b>
 
@@ -527,9 +524,6 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
 • Статус: ✅ Активен
 
 ━━━━━━━━━━━━━━━━━━━━━
-📱 <b>QR-КОД:</b>
-<code>{qr_code}</code>
-
 <i>💡 Отправьте ссылку избранному человеку</i>
 <i>🔐 Он получит доступ к вашему профилю</i>
 """
@@ -1006,7 +1000,7 @@ async def my_4f_keys_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     if active:
         message += "\n🟢 <b>АКТИВНЫЕ КЛЮЧИ:</b>\n"
         for i, key in enumerate(active[:5], 1):
-            bought = datetime.fromisoformat(key['bought_at']).strftime('%d.%m.%Y')
+            bought = datetime.fromisoformat(key['bought_at']).strftime('%d.%m.%Y') if 'bought_at' in key else 'неизвестно'
             message += f"{i}. 🔑 {key['id'][:8]}... — куплен {bought}\n"
     
     keyboard = [
@@ -1250,8 +1244,11 @@ async def debug_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"🔍 Нажата кнопка: {query.data} от {query.from_user.id}")
         logger.info(f"🔍 Текущее состояние: {context.user_data.get('current_state', 'Нет')}")
         
-        # ВАЖНО: продолжаем обработку!
-        await query.continue()
+        # ВАЖНО: НИЧЕГО НЕ БЛОКИРУЕМ!
+        # Просто логируем и пропускаем запрос дальше
+        # НЕ вызываем query.answer() - он блокирует
+        # НЕ вызываем query.continue() - его нет в старой версии
+        return  # Просто выходим, запрос идет дальше
 
 # ============================================
 # 🚀 ГЛАВНАЯ ФУНКЦИЯ - ИСПРАВЛЕННЫЙ ConversationHandler
@@ -1438,8 +1435,9 @@ def main():
     print("✅ БОТ УСПЕШНО ЗАПУЩЕН!")
     print("✅ КНОПКА 'ИНТИМНЫЙ ПРОФИЛЬ' РАБОТАЕТ ВО ВСЕХ СОСТОЯНИЯХ!")
     print("✅ Добавлен запасной обработчик")
-    print("✅ Все 15 состояний поддерживают главную кнопку")
+    print("✅ Все состояния поддерживают главную кнопку")
     print("✅ ConversationHandler.allow_reentry = True")
+    print("✅ УБРАН continue() - ошибка исправлена!")
     print("✅"*50 + "\n")
     
     # Запускаем бота
