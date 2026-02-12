@@ -2,7 +2,15 @@
 """
 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА: ПУТЬ К САМОПОЗНАНИЮ
 4 этапа адаптивного исследования + персональное описание профиля
-ВЕРСИЯ 3.6: ИСПРАВЛЕНИЕ ПРИМЕЧАНИЯ О РАСХОЖДЕНИИ И НАВИГАЦИОННЫХ КНОПОК
+ВЕРСИЯ 3.7: ИНТЕГРАЦИЯ 18+ МОДУЛЯ (ЗАГЛУШКА)
+
+🔞 НОВОЕ:
+- Кнопка "Мой интимный профиль" в результатах (вместо "Пройти заново")
+- Всегда показывает профиль sa_5_int
+- Создание ссылок-приглашений
+- Просмотр списка приглашений
+- Deep link обработка /start sex_xxx
+- Кнопка "Пройти заново" доступна на других экранах
 """
 
 import logging
@@ -17,6 +25,8 @@ import requests
 import base64
 import uuid
 from collections import Counter
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -27,6 +37,21 @@ from telegram.ext import (
     ContextTypes,
     ConversationHandler,
 )
+
+# ===== ИМПОРТ 18+ МОДУЛЯ =====
+from sexual_module import (
+    show_my_sexual_profile,
+    sexual_invite_start,
+    show_my_invites,
+    handle_sexual_deeplink,
+    copy_invite_callback,
+    check_invite_callback,
+    delete_invite_callback,
+    SEXUAL_PROFILE_SCREEN,
+    SEXUAL_INVITES_LIST,
+    SEXUAL_FRIEND_PROFILE
+)
+# =============================
 
 # Импорт загрузчика и профилей
 from loader import loader
@@ -938,7 +963,7 @@ PSYCHOLOGIST_TIPS = {
     ],
     "stage3": [
         "🧠 <i>Вспомните реальные реакции, а не идеальные</i>",
-        "🧠 <i>Автоматизмы — не хорошо и не плохо, это данные</i>",
+        "🧠 <i>Автоматизмы — не хорошо и не плохо,это данные</i>",
         "🧠 <i>Рефлексы показывают ваши глубинные программы</i>",
         "🧠 <i>Чем честнее, тем точнее будет ваш профиль</i>",
         "🧠 <i>Стратегии рождаются из осознания автоматизмов</i>",
@@ -2176,7 +2201,7 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_results_screen(update, context)
 
 # ============================================
-# 🔴 ИСПРАВЛЕНО (ТЗ 3.6): ЭКРАН РЕЗУЛЬТАТОВ
+# 🔴 ИСПРАВЛЕНО (ТЗ 3.7): ЭКРАН РЕЗУЛЬТАТОВ С 18+ КНОПКОЙ
 # ============================================
 
 async def show_results_screen(
@@ -2185,7 +2210,7 @@ async def show_results_screen(
     force_shared_view: bool = False
 ):
     """
-    ИСПРАВЛЕНО (ТЗ 3.6): ЭКРАН РЕЗУЛЬТАТОВ с примечанием о расхождении
+    ИСПРАВЛЕНО (ТЗ 3.7): ЭКРАН РЕЗУЛЬТАТОВ с 18+ кнопкой вместо "Пройти заново"
     """
     query = update.callback_query
     
@@ -2237,7 +2262,7 @@ async def show_results_screen(
     except Exception as e:
         logger.error(f"⚠️ Ошибка определения реального профиля: {e}")
     
-    # 🔥 ИСПРАВЛЕНО: ВСЕГДА пытаемся получить примечание
+    # 🔥 ПРИМЕЧАНИЕ О КОНФЛИКТЕ
     discrepancy_note = ""
     if actual_profile_key:
         discrepancy_note = get_discrepancy_note(profile_data, actual_profile_key)
@@ -2323,22 +2348,25 @@ async def show_results_screen(
         f"<i>Это только начало вашего пути к самопознанию.</i>\n\n"
     )
     
-    # 🔥 ИСПРАВЛЕНО: ВСЕГДА добавляем примечание, если оно есть
+    # 🔥 ПРИМЕЧАНИЕ О КОНФЛИКТЕ
     if discrepancy_note:
         message_2 += f"{discrepancy_note}"
         logger.info(f"✅ Примечание Дилтса добавлено в сообщение 2")
+    
+    # 🔞 КНОПКА 18+ ПРОФИЛЯ (вместо кнопки "Пройти заново")
+    sexual_button = [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_sexual_profile")]
     
     if not has_shared:
         keyboard = [
             [InlineKeyboardButton("🪞 Поделиться зеркалом", callback_data="get_gift")],
             [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
-            [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")]
+            sexual_button  # 🔞 вместо "Пройти заново"
         ]
     else:
         keyboard = [
             [InlineKeyboardButton("🎁 Получить сказку «Мастер Меча»", callback_data="open_gift")],
             [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
-            [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")]
+            sexual_button  # 🔞 вместо "Пройти заново"
         ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2531,7 +2559,7 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     keyboard = [
         [InlineKeyboardButton("🧠 Получить описание профиля за 690 ₽", callback_data="buy_package")],
-        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]  # ✅ КНОПКА ВОЗВРАТА
+        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2577,7 +2605,7 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         keyboard = [
             [InlineKeyboardButton("🔄 Попробовать снова", callback_data="buy_without_test")],
-            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]  # ✅ КНОПКА ВОЗВРАТА
+            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
         ]
         
         error_text = f"❌ *Ошибка при создании платежа:*\n`{error_msg}`"
@@ -2631,11 +2659,11 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             "• И другие\n"
         )
     
-    # ✅ ДОБАВЛЯЕМ КНОПКУ ВОЗВРАТА К РЕЗУЛЬТАТАМ
+    # КНОПКИ: оплата, проверка, возврат, меню
     keyboard = [
         [InlineKeyboardButton("💳 Оплатить 690 рублей", url=confirmation_url)],
         [InlineKeyboardButton("🔄 Проверить статус", callback_data=f"check_payment_{payment_id}")],
-        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")],  # 🔥 НОВАЯ КНОПКА
+        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")],
         [InlineKeyboardButton("🏠 В меню", callback_data="main_menu")]
     ]
     
@@ -3730,7 +3758,7 @@ async def buy_package_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     return await buy_command(update, context)
 
 async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Перезапуск теста"""
+    """Перезапуск теста - доступен на других экранах, но НЕ в результатах"""
     query = update.callback_query
     await query.answer()
     
@@ -3984,10 +4012,9 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
         )
         return PAYMENT_SCREEN
     
-    # ✅ ДОБАВЛЯЕМ КНОПКУ ВОЗВРАТА К РЕЗУЛЬТАТАМ
     keyboard = [
         [InlineKeyboardButton("📥 СКАЧАТЬ ПЕРСОНАЛЬНОЕ ОПИСАНИЕ", url=materials_link)],
-        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]  # 🔥 НОВАЯ КНОПКА
+        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
     ]
     
     await query.edit_message_text(
@@ -4150,7 +4177,79 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(message, parse_mode='Markdown')
 
 # ============================================
-# ФУНКЦИИ СТАРТА И ТЕСТА
+# 🔴 ИСПРАВЛЕНО (ТЗ 3.7): ФУНКЦИЯ СТАРТА С DEEP LINK
+# ============================================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    ИСПРАВЛЕНО (ТЗ 3.7): Основная команда /start с поддержкой deep link для 18+
+    """
+    user = update.effective_user
+    
+    # ===== 18+ DEEP LINK =====
+    if context.args and context.args[0].startswith("sex_"):
+        logger.info(f"🔞 18+ переход по ссылке: {context.args[0]}")
+        return await handle_sexual_deeplink(update, context, context.args[0])
+    # ===== КОНЕЦ 18+ =====
+    
+    current_state = context.user_data.get("conversation_state")
+    if current_state is not None:
+        await update.message.reply_text("🔄 Начинаем новое исследование...")
+        context.user_data.clear()
+    
+    welcome_text = (
+        f"{user.first_name}, привет! 👋\n\n"
+        f"🧠 Я — Виртуальный психолог Вариатика.\n\n"
+        f"🕒 За 15 минут узнаете о себе то, что обычно остаётся невидимым.\n"
+        f"👁️ Увидите скрытые паттерны, которые управляют вашими решениями.\n\n"
+        f"⚡ А главное — узнаете то, о себе знать действительно нужно.\n"
+        f"🎯 То, что даст точку опоры для роста.\n\n"
+        f"📊 Вас ждёт:\n\n"
+        f"1️⃣ Адаптивный тест (4 этапа)\n"
+        f"   ↳ Поймёте свой уникальный профиль\n\n"
+        f"2️⃣ Персональные материалы\n"
+        f"   ↳ Узнаете куда направлять усилия\n\n"
+        f"🚀 Начнём исследование?"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("🚀 Начать исследование →", callback_data="start_test")],
+        [InlineKeyboardButton("🤔 А зачем это вообще?", callback_data="why_details")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+    return None
+
+# ============================================
+# 🔴 ИСПРАВЛЕНО (ТЗ 3.7): ФУНКЦИЯ ПРОВЕРКИ ПРИГЛАШЕНИЯ
+# ============================================
+
+async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: int, username: str):
+    """
+    Проверяет, пришел ли пользователь по 18+ приглашению
+    Вызывается в конце теста
+    """
+    invited_by = context.user_data.get("invited_by")
+    invite_code = context.user_data.get("invite_code")
+    
+    if invited_by and invite_code:
+        logger.info(f"🔞 Пользователь {user_id} прошел тест по приглашению {invite_code}")
+        
+        # ЗАГЛУШКА: всегда SA_5_INT, male
+        friend_profile = "sa_5_int"
+        friend_gender = "male"
+        
+        # TODO: Отправить запрос в API для обновления статуса
+        # и уведомления пригласившего
+        
+        # Очищаем данные
+        context.user_data.pop("invited_by", None)
+        context.user_data.pop("invite_code", None)
+        context.user_data.pop("inviter_name", None)
+
+# ============================================
+# ФУНКЦИИ СТАРТА ТЕСТА
 # ============================================
 
 async def why_details_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4208,42 +4307,6 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     return await show_stage_1_intro(update, context)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    ИСПРАВЛЕНО (ТЗ 3.0): Основная команда /start с двумя кнопками
-    Завершает предыдущий диалог, если он есть
-    """
-    user = update.effective_user
-    
-    current_state = context.user_data.get("conversation_state")
-    if current_state is not None:
-        await update.message.reply_text("🔄 Начинаем новое исследование...")
-        context.user_data.clear()
-    
-    welcome_text = (
-        f"{user.first_name}, привет! 👋\n\n"
-        f"🧠 Я — Виртуальный психолог Вариатика.\n\n"
-        f"🕒 За 15 минут узнаете о себе то, что обычно остаётся невидимым.\n"
-        f"👁️ Увидите скрытые паттерны, которые управляют вашими решениями.\n\n"
-        f"⚡ А главное — узнаете то, о себе знать действительно нужно.\n"
-        f"🎯 То, что даст точку опоры для роста.\n\n"
-        f"📊 Вас ждёт:\n\n"
-        f"1️⃣ Адаптивный тест (4 этапа)\n"
-        f"   ↳ Поймёте свой уникальный профиль\n\n"
-        f"2️⃣ Персональные материалы\n"
-        f"   ↳ Узнаете куда направлять усилия\n\n"
-        f"🚀 Начнём исследование?"
-    )
-    
-    keyboard = [
-        [InlineKeyboardButton("🚀 Начать исследование →", callback_data="start_test")],
-        [InlineKeyboardButton("🤔 А зачем это вообще?", callback_data="why_details")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
-    return None
-
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена теста"""
     await update.message.reply_text(
@@ -4262,27 +4325,20 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*60)
-    print("🧠 ЗАПУСК ВИРТУАЛЬНОГО ПСИХОЛОГА ВАРИАТИКА (ВЕРСИЯ 3.6)")
+    print("🧠 ЗАПУСК ВИРТУАЛЬНОГО ПСИХОЛОГА ВАРИАТИКА (ВЕРСИЯ 3.7)")
     print("="*60)
-    print("ВНЕДРЕНИЕ ТЗ 3.6 - ИСПРАВЛЕНИЕ ПРИМЕЧАНИЯ И НАВИГАЦИИ")
+    print("🔞 ИНТЕГРАЦИЯ 18+ МОДУЛЯ - ЗАГЛУШКА")
     print("="*60)
     print("🔴 ВЫСОКИЙ ПРИОРИТЕТ - ИСПРАВЛЕНО:")
-    print("1. ✅ get_discrepancy_note() - ВСЕГДА возвращает примечание при наличии ЛЮБОГО суффикса")
-    print("2. ✅ back_to_results() - УДАЛЯЕТ сообщение, показывает ПОЛНЫЙ экран результатов, ВОЗВРАЩАЕТ RESULTS")
-    print("3. ✅ main_menu_callback() - ПОЛНЫЙ сброс user_data, УДАЛЕНИЕ сообщения, отправка ПРИВЕТСТВИЯ, ConversationHandler.END")
-    print("4. ✅ back_to_results_after_gift() - УДАЛЯЕТ сообщение с подарком, показывает ПОЛНЫЙ экран результатов")
+    print("1. ✅ Кнопка 'Мой интимный профиль' в результатах (вместо 'Пройти заново')")
+    print("2. ✅ Deep link обработка /start sex_xxx")
+    print("3. ✅ Функция check_sexual_invitation() для отслеживания приглашений")
+    print("4. ✅ Состояния SEXUAL_PROFILE_SCREEN, SEXUAL_INVITES_LIST, SEXUAL_FRIEND_PROFILE")
     print("="*60)
-    print("🟠 СРЕДНИЙ ПРИОРИТЕТ - ИСПРАВЛЕНО:")
-    print("5. ✅ show_package_screen() - ДОБАВЛЕНА кнопка 'Вернуться к результатам'")
-    print("6. ✅ show_payment_screen() - ДОБАВЛЕНА кнопка 'Вернуться к результатам'")
-    print("7. ✅ get_materials_callback_payment() - ДОБАВЛЕНА кнопка 'Вернуться к результатам'")
-    print("8. ✅ check_payment_callback() - ДОБАВЛЕНА кнопка 'Вернуться к результатам'")
-    print("="*60)
-    print("🟡 НИЗКИЙ ПРИОРИТЕТ - ИСПРАВЛЕНО:")
-    print("9. ✅ ВО ВСЕХ навигационных callback'ах ПЕРВЫМ действием удаляется сообщение")
-    print("10. ✅ НЕТ дублирования сообщений при возврате")
-    print("="*60)
-    print("🔒 ФУНКЦИЯ get_profile_fallback() НЕ ИЗМЕНЕНА!")
+    print("🟠 СРЕДНИЙ ПРИОРИТЕТ - СОХРАНЕНО:")
+    print("5. ✅ Кнопка 'Пройти заново' доступна на других экранах")
+    print("6. ✅ Все платежные функции работают без изменений")
+    print("7. ✅ get_profile_fallback() НЕ ИЗМЕНЕНА")
     print("="*60)
     
     gift_link = os.getenv("GIFT_PDF_LINK")
@@ -4310,6 +4366,15 @@ def main():
     print(f"🏪 YooKassa Shop ID: {YOOKASSA_SHOP_ID if YOOKASSA_SHOP_ID else '❌ НЕ УСТАНОВЛЕН'}")
     print(f"🔑 YooKassa Secret Key: {'✅ УСТАНОВЛЕН' if YOOKASSA_SECRET_KEY else '❌ НЕ УСТАНОВЛЕН'}")
     print("💰 Стоимость: 690 рублей")
+    print("="*30)
+    print("🔞 ПРОВЕРКА 18+ МОДУЛЯ")
+    print("="*30)
+    sexual_profile_path = "sexual_18/sa_5_int.json"
+    if os.path.exists(sexual_profile_path):
+        print(f"✅ 18+ профиль найден: {sexual_profile_path}")
+    else:
+        print(f"⚠️ 18+ профиль НЕ НАЙДЕН: {sexual_profile_path}")
+        print("   Будет использован аварийный профиль")
     print("="*30)
     print("🚀 Запускаю виртуального психолога...")
     
@@ -4361,13 +4426,14 @@ def main():
                 CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
                 CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
                 CallbackQueryHandler(buy_package_callback, pattern="^buy_package$"),
-                CallbackQueryHandler(restart_test, pattern="^restart_test$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(back_to_results_after_gift, pattern="^back_to_results_after_gift$"),
                 CallbackQueryHandler(show_results_screen, pattern="^show_results$"),
                 CallbackQueryHandler(show_psychologist_conclusion, pattern="^psychologist_conclusion$"),
                 CallbackQueryHandler(skip_share, pattern="^skip_share$"),
-                CallbackQueryHandler(confirm_share, pattern="^confirm_share$")
+                CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
+                # 🔞 18+ кнопка обрабатывается здесь
+                CallbackQueryHandler(show_my_sexual_profile, pattern="^show_sexual_profile$"),
             ],
             GIFT_SCREEN: [
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
@@ -4388,8 +4454,29 @@ def main():
                 CallbackQueryHandler(get_materials_callback_payment, pattern="^get_materials_"),
                 CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"),
                 CallbackQueryHandler(buy_without_test_callback, pattern="^buy_without_test$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")  # ✅ ДОБАВЛЕНО
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
             ],
+            # ===== 18+ МОДУЛЬ =====
+            SEXUAL_PROFILE_SCREEN: [
+                CallbackQueryHandler(show_my_sexual_profile, pattern="^show_sexual_profile$"),
+                CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
+                CallbackQueryHandler(show_my_invites, pattern="^show_my_invites$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(back_to_results_after_gift, pattern="^back_to_results_after_gift$"),
+            ],
+            SEXUAL_INVITES_LIST: [
+                CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
+                CallbackQueryHandler(show_my_invites, pattern="^show_my_invites$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                # Заглушки для будущих обработчиков
+                CallbackQueryHandler(copy_invite_callback, pattern="^copy_invite_"),
+                CallbackQueryHandler(check_invite_callback, pattern="^check_invite_"),
+                CallbackQueryHandler(delete_invite_callback, pattern="^delete_invite_"),
+            ],
+            SEXUAL_FRIEND_PROFILE: [
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+            ],
+            # ===== КОНЕЦ 18+ =====
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         allow_reentry=True
@@ -4398,10 +4485,11 @@ def main():
     application.add_handler(conv_handler)
     
     logger.info("🧠 Виртуальный психолог Вариатика запущен!")
-    logger.info("✅ ТЗ 3.6 ПОЛНОСТЬЮ ВНЕДРЕНО!")
-    logger.info("✅ ПРИМЕЧАНИЕ О РАСХОЖДЕНИИ ИСПРАВЛЕНО!")
-    logger.info("✅ НАВИГАЦИОННЫЕ КНОПКИ ИСПРАВЛЕНЫ!")
-    logger.info("📋 Версия 3.6 - ПОЛНАЯ СТАБИЛИЗАЦИЯ НАВИГАЦИИ")
+    logger.info("✅ ТЗ 3.7 ПОЛНОСТЬЮ ВНЕДРЕНО!")
+    logger.info("✅ 18+ МОДУЛЬ ИНТЕГРИРОВАН (ЗАГЛУШКА)!")
+    logger.info("✅ КНОПКА 'Мой интимный профиль' ЗАМЕНИЛА 'Пройти заново'!")
+    logger.info("✅ КНОПКА 'Пройти заново' ДОСТУПНА НА ДРУГИХ ЭКРАНАХ!")
+    logger.info("📋 Версия 3.7 - ПОЛНАЯ ИНТЕГРАЦИЯ 18+ МОДУЛЯ")
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
