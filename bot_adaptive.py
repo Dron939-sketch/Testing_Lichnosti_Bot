@@ -2,7 +2,7 @@
 """
 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА: ПУТЬ К САМОПОЗНАНИЮ
 4 этапа адаптивного исследования + персональное описание профиля
-ВЕРСИЯ 3.6.2: КРИТИЧЕСКИЕ ИСПРАВЛЕНИЯ ОБРАБОТЧИКОВ И ЭКРАНОВ
+ВЕРСИЯ 3.6.1: ПОЛНАЯ МОДЕРНИЗАЦИЯ ВСЕХ ЭКРАНОВ И ИСПРАВЛЕНИЕ back_to_results
 """
 
 import logging
@@ -32,17 +32,6 @@ from telegram.ext import (
 from loader import loader
 from base import VariaticaProfile
 
-# ===== 18+ МОДУЛЬ =====
-from sexual_module import (
-    show_my_sexual_profile,
-    sexual_invite_start,
-    show_my_invites,
-    handle_sexual_deeplink,
-    SEXUAL_PROFILE_SCREEN,
-    SEXUAL_INVITES_LIST,
-    SEXUAL_FRIEND_PROFILE
-)
-
 # Получение токена
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TOKEN:
@@ -59,169 +48,10 @@ logger = logging.getLogger(__name__)
 # 🔴 ТЗ 3.0: ЕДИНЫЙ ВИЗУАЛЬНЫЙ ШАБЛОН
 # ============================================
 
-DIVIDER = "━━━━━━━━━━━━━━━━━━━━"  # 20 символов, строго по ТЗ
+DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"  # 28 символов, без пробелов
 
 # ============================================
-# 🔴 ТЗ 2.0: ЗАГОЛОВКИ ЭТАПОВ (СТРОГО ПО ШАБЛОНУ)
-# ============================================
-
-STAGE_TITLES = {
-    1: "🧠 ЭТАП 1 • ВОСПРИЯТИЕ",
-    2: "🧠 ЭТАП 2 • МЫШЛЕНИЕ", 
-    3: "🧠 ЭТАП 3 • ПОВЕДЕНИЕ",
-    4: "🧠 ЭТАП 4 • ТОЧКА ОПОРЫ"
-}
-
-# ============================================
-# 🔴 ТЗ 2.0: ОПИСАНИЯ ЭТАПОВ (КРАТКО)
-# ============================================
-
-STAGE_DESCRIPTIONS = {
-    1: """
-Куда направлено ваше внимание по умолчанию?
-Вовне — к людям и событиям?
-Внутрь — к мыслям и состояниям?
-""",
-    2: """
-Как вы обрабатываете информацию?
-Ищете смыслы? Структуры? Решения?
-У каждого — свой ритм и способ.
-""",
-    3: """
-Что вы делаете «на автомате»?
-А когда есть время подумать?
-Ваши привычные способы реагировать.
-""",
-    4: """
-Где ваша точка опоры?
-Окружение? Действия? Навыки? Ценности?
-С чего легче начать изменения?
-"""
-}
-
-# ============================================
-# 🔴 ТЗ 2.0: КОНТЕНТ ДЛЯ ЭКРАНОВ "ПОДРОБНЕЕ"
-# ============================================
-
-STAGE_DETAILS_CONTENT = {
-    1: {
-        "bullets": """
-   • ВОВНЕ или ВНУТРИ — ваш фокус
-   • ОТНОШЕНИЯ или РЕСУРСЫ — зона тревоги""",
-        "types": """
-   SA  • Социальный      (вовне + люди)
-   IA  • Экзистенциальный (внутри + смыслы)
-   SP  • Инструментальный (вовне + ресурсы)
-   IP  • Аналитический   (внутри + порядок)""",
-        "questions": 8,
-        "time": "3 минуты"
-    },
-    2: {
-        "bullets": """
-   • Ваш ведущий режим мышления (1-9)
-   • Как выходите из тупиков
-   • Что вас разгоняет, а что тормозит""",
-        "types": """
-   1-3 • Накопление, поиск, сборка
-   4-6 • Пересмотр, владение, передача
-   7-9 • Понимание, управление, свобода""",
-        "questions": 8,
-        "time": "4 минуты"
-    },
-    3: {
-        "bullets": """
-   • Скорость ваших реакций
-   • Есть ли пауза между стимулом и ответом
-   • Можете ли выбирать, как реагировать""",
-        "types": """
-   🔄 Быстрый   — рефлекс
-   🔄 Привычный — автоматизм  
-   🔄 Гибкий    — пауза + выбор
-   🔄 Авторский — создаю новый способ""",
-        "questions": 8,
-        "time": "3 минуты"
-    },
-    4: {
-        "bullets": """
-   • Ваш естественный уровень опоры
-   • Где рассогласование тормозит движение
-   • С чего начать изменения""",
-        "types": """
-   ⚪ ОКРУЖЕНИЕ    — среда, условия
-   🔵 ПОВЕДЕНИЕ    — действия, привычки
-   🟢 СПОСОБНОСТИ — навыки, умения
-   🟡 ЦЕННОСТИ    — смыслы, мотивы
-   🟣 ИДЕНТИЧНОСТЬ — кто я""",
-        "questions": 8,
-        "time": "3 минуты"
-    }
-}
-
-# ============================================
-# 🔴 ТЗ 2.0: ЭКРАНЫ ВХОДА В ЭТАПЫ (НОВЫЙ ШАБЛОН)
-# ============================================
-
-def format_stage_entry_screen(stage_num: int) -> str:
-    """Форматирует экран входа в этап по единому шаблону"""
-    title = STAGE_TITLES.get(stage_num, f"🧠 ЭТАП {stage_num}")
-    description = STAGE_DESCRIPTIONS.get(stage_num, "").strip()
-    
-    time_map = {1: "3 минуты", 2: "4 минуты", 3: "3 минуты", 4: "3 минуты"}
-    questions_map = {1: 8, 2: 8, 3: 8, 4: 8}
-    
-    screen = f"""
-{title}
-{DIVIDER}
-
-{description}
-
-📌 {time_map.get(stage_num, '3 минуты')} • {questions_map.get(stage_num, 8)} вопросов
-
-▶️ НАЧАТЬ
-📘 ПОДРОБНЕЕ
-"""
-    return screen.strip()
-
-# ============================================
-# 🔴 ТЗ 2.0: ЭКРАНЫ "ПОДРОБНЕЕ" (НОВЫЙ ШАБЛОН)
-# ============================================
-
-def format_stage_details_screen(stage_num: int) -> str:
-    """Форматирует экран подробнее по единому шаблону"""
-    title = STAGE_TITLES.get(stage_num, f"🧠 ЭТАП {stage_num}")
-    content = STAGE_DETAILS_CONTENT.get(stage_num, {})
-    
-    screen = f"""
-{title}
-{DIVIDER}
-
-⚡ ЧТО УЗНАЕМ:{content.get('bullets', '')}
-
-🎯 ТИПЫ:{content.get('types', '')}
-
-📊 {content.get('questions', 8)} вопросов • {content.get('time', '3 минуты')}
-
-▶️ НАЧАТЬ
-◀️ НАЗАД
-"""
-    return screen.strip()
-
-# ============================================
-# 🔴 ТЗ 2.0: НОВЫЕ ЭКРАНЫ ВХОДА В ЭТАПЫ
-# ============================================
-
-STAGE1_INTRO_SCREEN_NEW = format_stage_entry_screen(1)
-STAGE2_INTRO_SCREEN_NEW = format_stage_entry_screen(2)
-STAGE3_INTRO_SCREEN_NEW = format_stage_entry_screen(3)
-STAGE4_INTRO_SCREEN_NEW = format_stage_entry_screen(4)
-
-STAGE1_DETAILS_SCREEN_NEW = format_stage_details_screen(1)
-STAGE2_DETAILS_SCREEN_NEW = format_stage_details_screen(2)
-STAGE3_DETAILS_SCREEN_NEW = format_stage_details_screen(3)
-STAGE4_DETAILS_SCREEN_NEW = format_stage_details_screen(4)
-
-# ============================================
-# 🎁 ТЕКСТ ЭКРАНА ПОДАРКА (СТАРЫЙ, НЕ ИСПОЛЬЗУЕМ)
+# 🎁 ТЕКСТ ЭКРАНА ПОДАРКА
 # ============================================
 
 GIFT_SCREEN_TEXT = """
@@ -243,69 +73,6 @@ GIFT_SCREEN_TEXT = """
 4️⃣ Обращайте внимание на символы тяжести/лёгкости
 
 <i>Приятного чтения и лёгкости в плечах!</i> 🪶✨
-"""
-
-# ============================================
-# 🔴 ТЗ 2.0: НОВЫЙ ТЕКСТ ЭКРАНА ПОДЕЛИТЬСЯ
-# ============================================
-
-SHARE_SCREEN_TEXT = f"""
-🪞 Дайте зеркало — получите меч
-
-Поделитесь с близкими.
-В благодарность — сказка «Мастер Меча».
-
-⚔️ Она снимает тяжесть с плеч
-на уровне убеждений.
-"""
-
-# ============================================
-# 🔴 ТЗ 2.0: НОВЫЙ ТЕКСТ ЭКРАНА ПОДАРКА
-# ============================================
-
-GIFT_SCREEN_TEXT_NEW = f"""
-⚔️ ВАШ МЕЧ ГОТОВ!
-
-📚 Терапевтическая сказка
-«Мастер Меча»
-
-💡 Читайте перед сном.
-Ищите «металл» — свою природу.
-Замечайте «зазубрины» — ограничения.
-
-🪶 Лёгкости в плечах!
-"""
-
-# ============================================
-# 🔴 ТЗ 2.0: НОВЫЙ ТЕКСТ ЭКРАНА ПОЛНОГО ОПИСАНИЯ
-# ============================================
-
-PACKAGE_SCREEN_TEXT = f"""
-📖 ПОЛНОЕ ОПИСАНИЕ
-
-Для вашего профиля {{profile_code}}:
-
-• 15+ страниц анализа
-• Ваши паттерны мышления
-• Точки роста и ограничения
-• Практические инструменты
-
-💰 690 ₽
-💳 Все способы оплаты
-"""
-
-# ============================================
-# 🔴 ТЗ 2.0: НОВЫЙ ТЕКСТ ЭКРАНА ПЛАТЕЖА
-# ============================================
-
-PAYMENT_SCREEN_TEXT = f"""
-💳 ПЛАТЁЖ СОЗДАН
-
-📊 Профиль: {{profile_code}}
-💰 Сумма: 690 ₽
-📋 ID: {{payment_id}}
-
-{{invoice_info}}
 """
 
 # ============================================
@@ -1139,7 +906,7 @@ CLARIFICATION_QUESTIONS = {
 }
 
 # ============================================
-# ПСИХОЛОГИЧЕСКИЕ ПОДСКАЗКИ
+# ПСИХОЛОГИЧЕСКИЕ ПОДСКАЗКИ (исправлены термины)
 # ============================================
 
 PSYCHOLOGIST_TIPS = {
@@ -1191,7 +958,7 @@ PSYCHOLOGIST_TIPS = {
 
 STAGE4_ANALYSIS_SCREEN = f"""
 {DIVIDER}
-🧠 ЭТАП 4 • ТОЧКА ОПОРЫ • ЗАВЕРШЁН
+🧠 ЭТАП 4 • ЦЕННОСТИ • ЗАВЕРШЁН
 {DIVIDER}
 
 🧠 АНАЛИЗИРУЮ ДАННЫЕ
@@ -1207,10 +974,12 @@ STAGE4_ANALYSIS_SCREEN = f"""
 {DIVIDER}
 
 ⏳ Пожалуйста, подождите несколько секунд...
+
+{DIVIDER}
 """
 
 # ============================================
-# 🔴 ТЗ 3.0: ЭКРАНЫ ВХОДА В ЭТАПЫ (СТАРЫЕ, НЕ УДАЛЯЕМ)
+# 🔴 ТЗ 3.0: ЭКРАНЫ ВХОДА В ЭТАПЫ (ЗАМЕНЕНЫ ПОЛНОСТЬЮ)
 # ============================================
 
 STAGE1_INTRO_SCREEN = f"""
@@ -1301,7 +1070,7 @@ STAGE4_INTRO_SCREEN = f"""
 """
 
 # ============================================
-# 🔴 ТЗ 3.0: ЭКРАНЫ «ПОДРОБНЕЕ» (СТАРЫЕ, НЕ УДАЛЯЕМ)
+# 🔴 ТЗ 3.0: ЭКРАНЫ «ПОДРОБНЕЕ» (ЗАМЕНЕНЫ ПОЛНОСТЬЮ)
 # ============================================
 
 STAGE1_DETAILS_SCREEN = f"""
@@ -1470,235 +1239,471 @@ STAGE4_DETAILS_SCREEN = f"""
 """
 
 # ============================================
-# 🔴 ТЗ 2.0: МИНИМАЛИСТИЧНЫЕ ЭКРАНЫ ОБРАТНОЙ СВЯЗИ
+# МОТИВАЦИОННЫЕ ЭКРАНЫ ОБРАТНОЙ СВЯЗИ (исправлены термины)
 # ============================================
 
 STAGE1_FEEDBACK = {
     "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": f"""
+{DIVIDER}
+🧠 ЭТАП 1 • КОНФИГУРАЦИЯ ВОСПРИЯТИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 1 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
+
+Внимание направлено туда, где пульсирует живое — люди, контакты, отношения.
+Эта настройка первой замечает смену настроения, паузу в разговоре, взгляд.
+Входящий сигнал: «кто рядом и что между нами».
+
 {DIVIDER}
 
-Ваше внимание направлено вовне, к людям и контактам.
-Это социально-аффилиативная конфигурация восприятия.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — исследование того, как мышление работает внутри этой настройки.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 2 — МЫШЛЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 2 — КОНФИГУРАЦИЯ МЫШЛЕНИЯ
 """,
     "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ": f"""
+{DIVIDER}
+🧠 ЭТАП 1 • КОНФИГУРАЦИЯ ВОСПРИЯТИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 1 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
+
+Внимание направлено внутрь, в слои собственных состояний и смыслов.
+Эта настройка не пропускает сигнал, пока он не будет понят, прочувствован, назван.
+Входящий сигнал: «что это значит для меня».
+
 {DIVIDER}
 
-Ваше внимание направлено внутрь, к смыслу и глубине.
-Это экзистенциально-рефлексивная конфигурация восприятия.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — исследование того, как мышление работает внутри этой настройки.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 2 — МЫШЛЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 2 — КОНФИГУРАЦИЯ МЫШЛЕНИЯ
 """,
     "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ": f"""
+{DIVIDER}
+🧠 ЭТАП 1 • КОНФИГУРАЦИЯ ВОСПРИЯТИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 1 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
+
+Внимание направлено на цели, ресурсы, препятствия и способы их преодоления.
+Эта настройка автоматически сканирует среду на предмет «что здесь можно сделать».
+Входящий сигнал: «как это использовать и что с этим делать».
+
 {DIVIDER}
 
-Ваше внимание направлено вовне, к целям и ресурсам.
-Это инструментально-достиженческая конфигурация восприятия.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — исследование того, как мышление работает внутри этой настройки.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 2 — МЫШЛЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 2 — КОНФИГУРАЦИЯ МЫШЛЕНИЯ
 """,
     "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ": f"""
+{DIVIDER}
+🧠 ЭТАП 1 • КОНФИГУРАЦИЯ ВОСПРИЯТИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 1 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
+
+Внимание направлено на закономерности, связи между фактами, логику устройства.
+Эта настройка не видит разрозненных событий — только элементы одной системы.
+Входящий сигнал: «как это устроено и по каким правилам работает».
+
 {DIVIDER}
 
-Ваше внимание направлено внутрь, к структурам и связям.
-Это структурно-аналитическая конфигурация восприятия.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — исследование того, как мышление работает внутри этой настройки.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 2 — МЫШЛЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 2 — КОНФИГУРАЦИЯ МЫШЛЕНИЯ
 """
 }
 
 STAGE2_FEEDBACK = {
     ("СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ", "1-3"): f"""
+{DIVIDER}
+🧠 ЭТАП 2 • КОНФИГУРАЦИЯ МЫШЛЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 2 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+
+Мышление внутри вашей системы восприятия настроено на поиск обратной связи.
+Его фокус: «как я соотношусь с другими, видим ли я, принят ли?»
+Оно собирает информацию через контакт и сверку с окружением.
+
 {DIVIDER}
 
-Ваш ведущий режим мышления — 1-3 (Накопление, поиск, сборка).
-Вы собираете информацию и ищете обратную связь от окружения.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — анализ привычных способов реагировать.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 3 — ПОВЕДЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 3 — КОНФИГУРАЦИЯ ПОВЕДЕНИЯ
 """,
     ("СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ", "4-6"): f"""
+{DIVIDER}
+🧠 ЭТАП 2 • КОНФИГУРАЦИЯ МЫШЛЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 2 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+
+Мышление внутри вашей системы восприятия настроено на различение типов связей.
+Где подлинный контакт, а где ритуал.
+Где поддержка, а где обслуживание чужих ожиданий.
+
 {DIVIDER}
 
-Ваш ведущий режим мышления — 4-6 (Пересмотр, владение, передача).
-Вы различаете подлинные связи и ритуалы.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — анализ привычных способов реагировать.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 3 — ПОВЕДЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 3 — КОНФИГУРАЦИЯ ПОВЕДЕНИЯ
 """,
     ("СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ", "7-9"): f"""
+{DIVIDER}
+🧠 ЭТАП 2 • КОНФИГУРАЦИЯ МЫШЛЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 2 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+
+Мышление внутри вашей системы восприятия настроено на видение системной динамики.
+Оно считывает роли, неписаные правила, групповую динамику.
+Контакт перестаёт быть поиском принятия — становится настройкой.
+
 {DIVIDER}
 
-Ваш ведущий режим мышления — 7-9 (Понимание, управление, свобода).
-Вы видите системную динамику и управляете контактом.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — анализ привычных способов реагировать.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 3 — ПОВЕДЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 3 — КОНФИГУРАЦИЯ ПОВЕДЕНИЯ
 """,
     ("ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ", "1-3"): f"""
+{DIVIDER}
+🧠 ЭТАП 2 • КОНФИГУРАЦИЯ МЫШЛЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 2 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+
+Мышление внутри вашей системы восприятия настроено на поиск смысла.
+Его фокус: «что стоит за этим фактом, событием, словом?»
+Оно не пропускает сигнал, пока не найдёт ему внутреннее соответствие.
+
 {DIVIDER}
 
-Ваш ведущий режим мышления — 1-3 (Накопление, поиск, сборка).
-Вы ищете смыслы и соответствие внутреннему миру.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — анализ привычных способов реагировать.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 3 — ПОВЕДЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 3 — КОНФИГУРАЦИЯ ПОВЕДЕНИЯ
 """,
     ("ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ", "4-6"): f"""
+{DIVIDER}
+🧠 ЭТАП 2 • КОНФИГУРАЦИЯ МЫШЛЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 2 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+
+Мышление внутри вашей системы восприятия настроено на различение подлинных и сконструированных смыслов.
+Где подлинное понимание, а где умозрительная конструкция.
+Где глубина, а где бесконечное уточнение без выхода.
+
 {DIVIDER}
 
-Ваш ведущий режим мышления — 4-6 (Пересмотр, владение, передача).
-Вы различаете подлинные и сконструированные смыслы.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — анализ привычных способов реагировать.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 3 — ПОВЕДЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 3 — КОНФИГУРАЦИЯ ПОВЕДЕНИЯ
 """,
     ("ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ", "7-9"): f"""
+{DIVIDER}
+🧠 ЭТАП 2 • КОНФИГУРАЦИЯ МЫШЛЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 2 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+
+Мышление внутри вашей системы восприятия настроено на наблюдение за тем, как конструируются смыслы.
+Оно замечает, как интерпретация создаёт реальность.
+Вопрос «что это значит» дополняется вопросом «какую реальность создаёт этот смысл».
+
 {DIVIDER}
 
-Ваш ведущий режим мышления — 7-9 (Понимание, управление, свобода).
-Вы наблюдаете, как интерпретация создаёт реальность.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — анализ привычных способов реагировать.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 3 — ПОВЕДЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 3 — КОНФИГУРАЦИЯ ПОВЕДЕНИЯ
 """,
     ("ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ", "1-3"): f"""
+{DIVIDER}
+🧠 ЭТАП 2 • КОНФИГУРАЦИЯ МЫШЛЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 2 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+
+Мышление внутри вашей системы восприятия настроено на поиск решений.
+Его фокус: «как это сделать, какой инструмент применить, какой план собрать?»
+Оно переводит любую задачу в операциональную плоскость.
+
 {DIVIDER}
 
-Ваш ведущий режим мышления — 1-3 (Накопление, поиск, сборка).
-Вы ищете решения и переводите задачи в операции.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — анализ привычных способов реагировать.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 3 — ПОВЕДЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 3 — КОНФИГУРАЦИЯ ПОВЕДЕНИЯ
 """,
     ("ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ", "4-6"): f"""
+{DIVIDER}
+🧠 ЭТАП 2 • КОНФИГУРАЦИЯ МЫШЛЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 2 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+
+Мышление внутри вашей системы восприятия настроено на различение цены достижений.
+Где реализация, а где истощение.
+Где цель, а где бег по беговой дорожке без финиша.
+
 {DIVIDER}
 
-Ваш ведущий режим мышления — 4-6 (Пересмотр, владение, передача).
-Вы различаете цену достижений и точку истощения.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — анализ привычных способов реагировать.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 3 — ПОВЕДЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 3 — КОНФИГУРАЦИЯ ПОВЕДЕНИЯ
 """,
     ("ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ", "7-9"): f"""
+{DIVIDER}
+🧠 ЭТАП 2 • КОНФИГУРАЦИЯ МЫШЛЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 2 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+
+Мышление внутри вашей системы восприятия настроено на видение траектории, а не отдельных целей.
+Оно различает стратегию и тактику, направление и скорость.
+Результат перестаёт быть точкой — становится маркером на пути.
+
 {DIVIDER}
 
-Ваш ведущий режим мышления — 7-9 (Понимание, управление, свобода).
-Вы видите траекторию, а не отдельные цели.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — анализ привычных способов реагировать.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 3 — ПОВЕДЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 3 — КОНФИГУРАЦИЯ ПОВЕДЕНИЯ
 """,
     ("СТРУКТУРНО-АНАЛИТИЧЕСКИЙ", "1-3"): f"""
+{DIVIDER}
+🧠 ЭТАП 2 • КОНФИГУРАЦИЯ МЫШЛЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 2 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+
+Мышление внутри вашей системы восприятия настроено на поиск закономерностей.
+Его фокус: «как это устроено, по каким правилам работает, куда включено?»
+Оно не видит разрозненных фактов — только элементы системы.
+
 {DIVIDER}
 
-Ваш ведущий режим мышления — 1-3 (Накопление, поиск, сборка).
-Вы ищете закономерности и системные связи.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — анализ привычных способов реагировать.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 3 — ПОВЕДЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 3 — КОНФИГУРАЦИЯ ПОВЕДЕНИЯ
 """,
     ("СТРУКТУРНО-АНАЛИТИЧЕСКИЙ", "4-6"): f"""
+{DIVIDER}
+🧠 ЭТАП 2 • КОНФИГУРАЦИЯ МЫШЛЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 2 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+
+Мышление внутри вашей системы восприятия настроено на различение живых и мёртвых структур.
+Где адаптивная система, а где ригидная схема.
+Где порядок, а где имитация порядка, не выдерживающая контакта с реальностью.
+
 {DIVIDER}
 
-Ваш ведущий режим мышления — 4-6 (Пересмотр, владение, передача).
-Вы различаете живые структуры и ригидные схемы.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — анализ привычных способов реагировать.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 3 — ПОВЕДЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 3 — КОНФИГУРАЦИЯ ПОВЕДЕНИЯ
 """,
     ("СТРУКТУРНО-АНАЛИТИЧЕСКИЙ", "7-9"): f"""
+{DIVIDER}
+🧠 ЭТАП 2 • КОНФИГУРАЦИЯ МЫШЛЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 2 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+
+Мышление внутри вашей системы восприятия настроено на создание рабочих моделей под задачу.
+Оно не ищет единственно верную структуру.
+Вместо этого — способность строить схемы, которые работают здесь и сейчас.
+
 {DIVIDER}
 
-Ваш ведущий режим мышления — 7-9 (Понимание, управление, свобода).
-Вы создаёте рабочие модели под конкретную задачу.
+🔍 ЧТО ДАЛЬШЕ?
+Следующий этап — анализ привычных способов реагировать.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 3 — ПОВЕДЕНИЕ
+▶️ ПЕРЕЙТИ К ЭТАПУ 3 — КОНФИГУРАЦИЯ ПОВЕДЕНИЯ
 """
 }
 
 STAGE3_FEEDBACK = {
     1: f"""
+{DIVIDER}
+🧠 ЭТАП 3 • КОНФИГУРАЦИЯ ПОВЕДЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 3 ЗАВЕРШЁН
+
+🔄 ПОВЕДЕНЧЕСКАЯ КОНФИГУРАЦИЯ
+
+Реакции разворачиваются на скорости рефлекса.
+Сигнал входит — действие выходит.
+Пауза между стимулом и ответом не предусмотрена архитектурой.
+
+Это конфигурация прямой проводимости.
+Она оптимальна для ситуаций, где скорость критичнее анализа.
+Решения принимаются до включения мышления — и это её штатный режим.
+
 {DIVIDER}
 
-Ваши реакции: быстрые, рефлекторные.
-Сигнал → ответ, без паузы на осознание.
+🔍 ЧТО ДАЛЬШЕ?
+Финальный этап — определение точки опоры.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 4 — ТОЧКА ОПОРЫ
+▶️ ПЕРЕЙТИ К ЭТАПУ 4 — КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
 """,
     2: f"""
+{DIVIDER}
+🧠 ЭТАП 3 • КОНФИГУРАЦИЯ ПОВЕДЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 3 ЗАВЕРШЁН
+
+🔄 ПОВЕДЕНЧЕСКАЯ КОНФИГУРАЦИЯ
+
+В конфигурации присутствует внутренний наблюдатель.
+Реакция уже состоялась — следом приходит её осознание.
+Мышление застаёт себя в момент, когда действие завершено.
+
+Это конфигурация с обратной связью.
+Быстрые реакции становятся видимыми, хотя ещё не управляемыми.
+Путь к изменению начинается с возможности заметить.
+
 {DIVIDER}
 
-Ваши реакции: привычные, с осознанием после.
-Вы замечаете автоматизмы, но пока не управляете ими.
+🔍 ЧТО ДАЛЬШЕ?
+Финальный этап — определение точки опоры.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 4 — ТОЧКА ОПОРЫ
+▶️ ПЕРЕЙТИ К ЭТАПУ 4 — КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
 """,
     4: f"""
+{DIVIDER}
+🧠 ЭТАП 3 • КОНФИГУРАЦИЯ ПОВЕДЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 3 ЗАВЕРШЁН
+
+🔄 ПОВЕДЕНЧЕСКАЯ КОНФИГУРАЦИЯ
+
+Между сигналом и ответом предусмотрена пауза.
+В этой паузе помещается выбор.
+Автоматические пути сохранены, но не активируются по умолчанию.
+
+Это конфигурация с пространством для решения.
+Реакция не отменена — она перестала быть безальтернативной.
+Поведение определяется контекстом, а не привычкой.
+
 {DIVIDER}
 
-Ваши реакции: гибкие, с паузой выбора.
-Автоматизмы не отменены, но перестали быть единственным вариантом.
+🔍 ЧТО ДАЛЬШЕ?
+Финальный этап — определение точки опоры.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 4 — ТОЧКА ОПОРЫ
+▶️ ПЕРЕЙТИ К ЭТАПУ 4 — КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
 """,
     6: f"""
+{DIVIDER}
+🧠 ЭТАП 3 • КОНФИГУРАЦИЯ ПОВЕДЕНИЯ • ЗАВЕРШЁН
+{DIVIDER}
+
 ✅ ЭТАП 3 ЗАВЕРШЁН
+
+🔄 ПОВЕДЕНЧЕСКАЯ КОНФИГУРАЦИЯ
+
+Быстрые реакции переведены в разряд инструментов.
+Они не исчезли и не подавлены — они доступны по запросу.
+Реакция становится опцией, а не принуждением.
+
+Это конфигурация с управляемой автоматикой.
+Старые привычки не мешают, но и не забыты — они ждут своего часа.
+Поведение конструируется под задачу, а не воспроизводит заученное.
+
 {DIVIDER}
 
-Ваши реакции: авторские, управляемые.
-Быстрые ответы — опция, а не принуждение.
+🔍 ЧТО ДАЛЬШЕ?
+Финальный этап — определение точки опоры.
 
 {DIVIDER}
 
-▶️ ПЕРЕЙТИ К ЭТАПУ 4 — ТОЧКА ОПОРЫ
+▶️ ПЕРЕЙТИ К ЭТАПУ 4 — КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
 """
 }
 
@@ -1717,11 +1722,8 @@ SHARE_TEXT = "Мне в руки попало особое зеркало. В н
 # Состояния ConversationHandler
 STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS, GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, DILTS_CLARIFICATION, PAYMENT_SCREEN = range(11)
 
-# ===== 18+ МОДУЛЬ =====
-SEXUAL_PROFILE_SCREEN, SEXUAL_INVITES_LIST, SEXUAL_FRIEND_PROFILE = range(11, 14)
-
 # ============================================
-# 🔴 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ============================================
 
 def calculate_progress(current: int, total: int) -> str:
@@ -1753,6 +1755,10 @@ def get_type_code(perception_type: str) -> str:
         "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ": "IP"
     }
     return type_map.get(perception_type, "SA")
+
+# ============================================
+# 🔴 ТЗ 3.0: ФУНКЦИЯ get_level_name() (ЗАМЕНЕНА ПОЛНОСТЬЮ)
+# ============================================
 
 def get_level_name(level_num):
     """Получаем название режима по номеру"""
@@ -1798,8 +1804,14 @@ def get_level_group(level: int) -> str:
     else:
         return "7-9"
 
+# ============================================
+# ФУНКЦИЯ ПРИМЕЧАНИЯ О РАСХОЖДЕНИИ
+# ============================================
+
 def get_discrepancy_note(profile_data: dict, actual_profile_key: str) -> str:
-    """ВСЕГДА возвращает примечание, если найден ЛЮБОЙ суффикс"""
+    """
+    ВСЕГДА возвращает примечание, если найден ЛЮБОЙ суффикс
+    """
     if not actual_profile_key:
         logger.warning("⚠️ get_discrepancy_note: actual_profile_key отсутствует")
         return ""
@@ -1835,7 +1847,9 @@ def get_discrepancy_note(profile_data: dict, actual_profile_key: str) -> str:
         return ""
 
 def calculate_thinking_level_by_scores(level_scores_dict):
-    """Определяет режим мышления (1-9) по системе баллов."""
+    """
+    Определяет режим мышления (1-9) по системе баллов.
+    """
     if not level_scores_dict:
         return 1
     
@@ -1853,7 +1867,10 @@ def calculate_thinking_level_by_scores(level_scores_dict):
     return min(max_levels)
 
 def calculate_final_level(stage2_level, stage3_scores):
-    """Финальный режим с приоритетом поведению, но с ограничением на резкие скачки."""
+    """
+    Финальный режим с приоритетом поведению,
+    но с ограничением на резкие скачки.
+    """
     if not stage3_scores:
         return stage2_level
     
@@ -1893,7 +1910,9 @@ def need_clarification_stage1(scores):
     return clarifications
 
 def need_clarification_stage2(level_scores_dict):
-    """Определяет, нужны ли уточнения после этапа 2."""
+    """
+    Определяет, нужны ли уточнения после этапа 2.
+    """
     if not level_scores_dict:
         return False
     
@@ -1915,7 +1934,9 @@ def need_clarification_stage2(level_scores_dict):
     return False
 
 def need_clarification_stage3(stage2_level, stage3_scores):
-    """Определяет, нужны ли уточнения после этапа 3."""
+    """
+    Определяет, нужны ли уточнения после этапа 3.
+    """
     if not stage3_scores or len(stage3_scores) < 4:
         return False
     
@@ -1935,7 +1956,9 @@ def need_clarification_stage4(dilts_answers):
     return False
 
 def check_profile_coherence(profile_level: int, dilts_level: str, actual_suffix: str = None) -> dict:
-    """Проверяет согласованность режима профиля и уровня Дилтса."""
+    """
+    Проверяет согласованность режима профиля и уровня Дилтса.
+    """
     expected_dilts_by_level = {
         1: ["ENVIRONMENT"],
         2: ["BEHAVIOR"],
@@ -1982,7 +2005,9 @@ def check_profile_coherence(profile_level: int, dilts_level: str, actual_suffix:
     }
 
 def clean_duplicate_headers(text: str, field_type: str) -> str:
-    """Убирает заголовки, которые уже есть в тексте профиля."""
+    """
+    Убирает заголовки, которые уже есть в тексте профиля.
+    """
     if not text:
         return ""
     
@@ -2036,7 +2061,10 @@ class ProfileNotFoundError(Exception):
     pass
 
 def get_profile_fallback(profile_data: dict) -> VariaticaProfile:
-    """УПРОЩЕННАЯ логика поиска профиля."""
+    """
+    УПРОЩЕННАЯ логика поиска профиля.
+    ПРИНЦИП: Игнорируем точный dilts_code, ищем по ТИПУ и РЕЖИМУ.
+    """
     type_code = profile_data.get('type_code', 'sa').lower()
     level = profile_data.get('level', 1)
     dilts_code = profile_data.get('dilts_code', 'def').lower()
@@ -2155,73 +2183,6 @@ def calculate_profile_final(context_data: dict) -> dict:
     }
 
 # ============================================
-# 🔴 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ФУНКЦИЯ make_callback
-# ============================================
-
-def make_callback(prefix: str, stage: int, question_idx: int, option_id: str, user_id: int) -> str:
-    """
-    ГЕНЕРИРУЕТ ПРАВИЛЬНЫЙ callback_data:
-    - Для stage1: stage1_0_a_USERID_TIMESTAMP
-    - Для stage2: stage2_0_1_USERID_TIMESTAMP (level - цифра)
-    - Для stage3: stage3_0_a_USERID_TIMESTAMP
-    - Для stage4: stage4_0_a_USERID_TIMESTAMP
-    - Для clarify: clarify_stage1_0_a_USERID_TIMESTAMP
-    """
-    timestamp = int(time.time())
-    return f"{prefix}_{question_idx}_{option_id}_{user_id}_{timestamp}"
-
-# ============================================
-# 🔴 ТЗ 2.0: ФУНКЦИЯ ФОРМАТИРОВАНИЯ ЭКРАНОВ
-# ============================================
-
-def format_screen(
-    title: str,
-    content: str,
-    show_divider_after_title: bool = True,
-    show_progress: tuple = None,
-    tip: str = None
-) -> str:
-    """
-    ЕДИНСТВЕННАЯ функция для форматирования ВСЕХ экранов.
-    НИКОГДА не добавляет линий перед заголовком и вокруг прогресс-бара.
-    """
-    parts = []
-    
-    # Заголовок (НИКОГДА нет линии сверху)
-    parts.append(title)
-    
-    # Разделитель после заголовка
-    if show_divider_after_title:
-        parts.append(DIVIDER)
-        parts.append("")
-    
-    # Контент
-    parts.append(content)
-    parts.append("")
-    
-    # Подсказка (если есть)
-    if tip:
-        parts.append(f"💭 {tip}")
-        parts.append("")
-    
-    # Прогресс (НИКОГДА нет линий вокруг)
-    if show_progress:
-        current, total = show_progress
-        percent = int((current / total) * 100)
-        filled = int(percent / 10)
-        bar = "█" * filled + "░" * (10 - filled)
-        parts.append(f"📊 {current}/{total}  {bar}  {percent}%")
-    
-    return "\n".join(parts).strip()
-
-async def safe_delete_message(message):
-    """Безопасное удаление сообщения с игнорированием ошибок."""
-    try:
-        await message.delete()
-    except Exception:
-        pass  # Игнорируем любые ошибки удаления
-
-# ============================================
 # 🔴 ТЗ 3.0: ЭКРАНЫ ВОПРОСОВ (НОВЫЙ ФОРМАТ)
 # ============================================
 
@@ -2235,27 +2196,41 @@ async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYP
         return await finish_stage_1(update, context)
     
     question = STAGE_1_QUESTIONS[current]
+    progress_percent = int(((current + 1) / len(STAGE_1_QUESTIONS)) * 100)
+    filled = int(progress_percent / 10)
+    bar = "█" * filled + "░" * (10 - filled)
     
     tip = PSYCHOLOGIST_TIPS["stage1"][min(current, len(PSYCHOLOGIST_TIPS["stage1"])-1)]
     
-    content = f"{question['text']}"
-    
-    question_text = format_screen(
-        title=STAGE_TITLES[1],
-        content=content,
-        show_divider_after_title=True,
-        show_progress=(current+1, len(STAGE_1_QUESTIONS)),
-        tip=tip
-    )
+    question_text = f"""
+{DIVIDER}
+🧠 ЭТАП 1 • КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
+{DIVIDER}
+
+❓ <b>{question['text']}</b>
+
+{DIVIDER}
+
+▫️ {question['options']['a']['text']}
+▫️ {question['options']['b']['text']}
+▫️ {question['options']['c']['text']}
+▫️ {question['options']['d']['text']}
+
+{tip}
+
+{DIVIDER}
+📊 {current+1}/{len(STAGE_1_QUESTIONS)}  {bar}  {progress_percent}%
+{DIVIDER}
+"""
     
     keyboard = []
     user_id = update.effective_user.id
+    timestamp = int(time.time())
     
     for option_id in ['a', 'b', 'c', 'd']:
-        text = question['options'][option_id]['text']
-        unique_callback = make_callback("stage1", 1, current, option_id, user_id)
+        unique_callback = f"stage1_{current}_{option_id}_{user_id}_{timestamp}"
         keyboard.append([
-            InlineKeyboardButton(f"▫️ {text}", callback_data=unique_callback)
+            InlineKeyboardButton(question['options'][option_id]['text'], callback_data=unique_callback)
         ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2307,26 +2282,40 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
         return await finish_stage_2(update, context)
     
     question = questions[current]
+    progress_percent = int(((current + 1) / len(questions)) * 100)
+    filled = int(progress_percent / 10)
+    bar = "█" * filled + "░" * (10 - filled)
     
     tip = PSYCHOLOGIST_TIPS["stage2"][min(current, len(PSYCHOLOGIST_TIPS["stage2"])-1)]
     
-    content = f"{question['text']}"
+    options_text = "\n".join([f"▫️ {text}" for text in question["options"].values()])
     
-    question_text = format_screen(
-        title=STAGE_TITLES[2],
-        content=content,
-        show_divider_after_title=True,
-        show_progress=(current+1, len(questions)),
-        tip=tip
-    )
+    question_text = f"""
+{DIVIDER}
+🧠 ЭТАП 2 • КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+{DIVIDER}
+
+❓ <b>{question['text']}</b>
+
+{DIVIDER}
+
+{options_text}
+
+{tip}
+
+{DIVIDER}
+📊 {current+1}/{len(questions)}  {bar}  {progress_percent}%
+{DIVIDER}
+"""
     
     keyboard = []
     user_id = update.effective_user.id
+    timestamp = int(time.time())
     
     for level_num, answer_text in question["options"].items():
-        unique_callback = make_callback("stage2", 2, current, level_num, user_id)
+        unique_callback = f"stage2_{current}_{level_num}_{user_id}_{timestamp}"
         keyboard.append([
-            InlineKeyboardButton(f"▫️ {answer_text}", callback_data=unique_callback)
+            InlineKeyboardButton(answer_text, callback_data=unique_callback)
         ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2374,26 +2363,40 @@ async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYP
         return await finish_stage_3(update, context)
     
     question = STAGE_3_QUESTIONS[current]
+    progress_percent = int(((current + 1) / len(STAGE_3_QUESTIONS)) * 100)
+    filled = int(progress_percent / 10)
+    bar = "█" * filled + "░" * (10 - filled)
     
     tip = PSYCHOLOGIST_TIPS["stage3"][min(current, len(PSYCHOLOGIST_TIPS["stage3"])-1)]
     
-    content = f"{question['text']}"
+    options_text = "\n".join([f"▫️ {option['text']}" for option in question["options"].values()])
     
-    question_text = format_screen(
-        title=STAGE_TITLES[3],
-        content=content,
-        show_divider_after_title=True,
-        show_progress=(current+1, len(STAGE_3_QUESTIONS)),
-        tip=tip
-    )
+    question_text = f"""
+{DIVIDER}
+🧠 ЭТАП 3 • КОНФИГУРАЦИЯ ПОВЕДЕНИЯ
+{DIVIDER}
+
+❓ <b>{question['text']}</b>
+
+{DIVIDER}
+
+{options_text}
+
+{tip}
+
+{DIVIDER}
+📊 {current+1}/{len(STAGE_3_QUESTIONS)}  {bar}  {progress_percent}%
+{DIVIDER}
+"""
     
     keyboard = []
     user_id = update.effective_user.id
+    timestamp = int(time.time())
     
     for option_id, option in question["options"].items():
-        unique_callback = make_callback("stage3", 3, current, option_id, user_id)
+        unique_callback = f"stage3_{current}_{option_id}_{user_id}_{timestamp}"
         keyboard.append([
-            InlineKeyboardButton(f"▫️ {option['text']}", callback_data=unique_callback)
+            InlineKeyboardButton(option["text"], callback_data=unique_callback)
         ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2441,26 +2444,40 @@ async def ask_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYP
         return await finish_stage_4(update, context)
     
     question = STAGE_4_QUESTIONS[current]
+    progress_percent = int(((current + 1) / len(STAGE_4_QUESTIONS)) * 100)
+    filled = int(progress_percent / 10)
+    bar = "█" * filled + "░" * (10 - filled)
     
     tip = PSYCHOLOGIST_TIPS["stage4"][min(current, len(PSYCHOLOGIST_TIPS["stage4"])-1)]
     
-    content = f"{question['text']}"
+    options_text = "\n".join([f"▫️ {option['text']}" for option in question["options"].values()])
     
-    question_text = format_screen(
-        title=STAGE_TITLES[4],
-        content=content,
-        show_divider_after_title=True,
-        show_progress=(current+1, len(STAGE_4_QUESTIONS)),
-        tip=tip
-    )
+    question_text = f"""
+{DIVIDER}
+🧠 ЭТАП 4 • КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ
+{DIVIDER}
+
+❓ <b>{question['text']}</b>
+
+{DIVIDER}
+
+{options_text}
+
+{tip}
+
+{DIVIDER}
+📊 {current+1}/{len(STAGE_4_QUESTIONS)}  {bar}  {progress_percent}%
+{DIVIDER}
+"""
     
     keyboard = []
     user_id = update.effective_user.id
+    timestamp = int(time.time())
     
     for option_id, option in question["options"].items():
-        unique_callback = make_callback("stage4", 4, current, option_id, user_id)
+        unique_callback = f"stage4_{current}_{option_id}_{user_id}_{timestamp}"
         keyboard.append([
-            InlineKeyboardButton(f"▫️ {option['text']}", callback_data=unique_callback)
+            InlineKeyboardButton(option["text"], callback_data=unique_callback)
         ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2515,7 +2532,7 @@ async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
-        STAGE1_INTRO_SCREEN_NEW.strip(), 
+        STAGE1_INTRO_SCREEN.strip(), 
         reply_markup=reply_markup, 
         parse_mode="HTML"
     )
@@ -2533,7 +2550,7 @@ async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
-        STAGE2_INTRO_SCREEN_NEW.strip(), 
+        STAGE2_INTRO_SCREEN.strip(), 
         reply_markup=reply_markup, 
         parse_mode="HTML"
     )
@@ -2551,7 +2568,7 @@ async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
-        STAGE3_INTRO_SCREEN_NEW.strip(), 
+        STAGE3_INTRO_SCREEN.strip(), 
         reply_markup=reply_markup, 
         parse_mode="HTML"
     )
@@ -2569,7 +2586,7 @@ async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
-        STAGE4_INTRO_SCREEN_NEW.strip(), 
+        STAGE4_INTRO_SCREEN.strip(), 
         reply_markup=reply_markup, 
         parse_mode="HTML"
     )
@@ -2591,7 +2608,7 @@ async def show_stage_1_details(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
-        STAGE1_DETAILS_SCREEN_NEW.strip(), 
+        STAGE1_DETAILS_SCREEN.strip(), 
         reply_markup=reply_markup, 
         parse_mode="HTML"
     )
@@ -2609,7 +2626,7 @@ async def show_stage_2_details(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
-        STAGE2_DETAILS_SCREEN_NEW.strip(), 
+        STAGE2_DETAILS_SCREEN.strip(), 
         reply_markup=reply_markup, 
         parse_mode="HTML"
     )
@@ -2627,7 +2644,7 @@ async def show_stage_3_details(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
-        STAGE3_DETAILS_SCREEN_NEW.strip(), 
+        STAGE3_DETAILS_SCREEN.strip(), 
         reply_markup=reply_markup, 
         parse_mode="HTML"
     )
@@ -2645,7 +2662,7 @@ async def show_stage_4_details(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
-        STAGE4_DETAILS_SCREEN_NEW.strip(), 
+        STAGE4_DETAILS_SCREEN.strip(), 
         reply_markup=reply_markup, 
         parse_mode="HTML"
     )
@@ -2708,362 +2725,11 @@ async def start_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await ask_stage_4_question(update, context)
 
 # ============================================
-# 🔴 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ОБРАБОТЧИКИ ОТВЕТОВ
-# ============================================
-
-async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ИСПРАВЛЕНО: Обработка ответа ЭТАПА 1"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Защита от дублирования callback
-    callback_signature = query.data
-    last_callback = context.user_data.get("last_callback", "")
-    if callback_signature == last_callback:
-        logger.debug(f"Повторный callback: {callback_signature}")
-        return STAGE_1
-    context.user_data["last_callback"] = callback_signature
-    
-    if context.user_data.get("processing", False):
-        return STAGE_1
-    
-    context.user_data["processing"] = True
-    
-    try:
-        # ПРАВИЛЬНЫЙ ПАРСИНГ: stage1_0_a_12345_1234567890
-        parts = query.data.split("_")
-        
-        if len(parts) < 5 or parts[0] != "stage1":
-            logger.error(f"Неверный формат callback: {query.data}")
-            return STAGE_1
-        
-        question_index = int(parts[1])      # Индекс вопроса
-        option_id = parts[2]                # БУКВА: a, b, c, d
-        
-        # Проверка дублей ответа
-        last_answered = context.user_data.get("stage1_last_answered", -1)
-        if question_index <= last_answered:
-            return STAGE_1
-        
-        # Получаем вопрос и опцию
-        question = STAGE_1_QUESTIONS[question_index]
-        selected_option = question["options"].get(option_id)
-        
-        if not selected_option:
-            logger.error(f"Опция {option_id} не найдена в вопросе {question_index}")
-            return STAGE_1
-        
-        # Начисляем баллы
-        if "scores" not in context.user_data:
-            context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
-        
-        for axis, score in selected_option.get("scores", {}).items():
-            context.user_data["scores"][axis] = context.user_data["scores"].get(axis, 0) + score
-        
-        logger.info(f"✅ Stage 1 Q{question_index} -> {option_id}")
-        
-        # Обновляем состояние
-        context.user_data["stage1_last_answered"] = question_index
-        context.user_data["stage1_current"] = question_index + 1
-        
-        return await ask_stage_1_question(update, context)
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}", exc_info=True)
-        return await ask_stage_1_question(update, context)
-    finally:
-        context.user_data["processing"] = False
-
-async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ИСПРАВЛЕНО: Обработка ответа ЭТАПА 2"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Защита от дублирования callback
-    callback_signature = query.data
-    last_callback = context.user_data.get("last_callback", "")
-    if callback_signature == last_callback:
-        logger.debug(f"Повторный callback: {callback_signature}")
-        return STAGE_2
-    context.user_data["last_callback"] = callback_signature
-    
-    if context.user_data.get("processing", False):
-        return STAGE_2
-    
-    context.user_data["processing"] = True
-    
-    try:
-        # ПРАВИЛЬНЫЙ ПАРСИНГ: stage2_0_1_12345_1234567890
-        parts = query.data.split("_")
-        
-        if len(parts) < 5 or parts[0] != "stage2":
-            logger.error(f"Неверный формат callback: {query.data}")
-            return STAGE_2
-        
-        question_index = int(parts[1])      # Индекс вопроса
-        selected_level = parts[2]           # ЦИФРА: 1,2,3,4,5
-        
-        # Проверка дублей ответа
-        last_answered = context.user_data.get("stage2_last_answered", -1)
-        if question_index <= last_answered:
-            return STAGE_2
-        
-        perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
-        
-        scoring_table = STAGE_2_SCORING.get(perception_type, {})
-        if question_index in scoring_table and selected_level in scoring_table[question_index]:
-            if "stage2_level_scores_dict" not in context.user_data:
-                context.user_data["stage2_level_scores_dict"] = {
-                    "1": 0, "2": 0, "3": 0, "4": 0, "5": 0,
-                    "6": 0, "7": 0, "8": 0, "9": 0
-                }
-            
-            points = scoring_table[question_index][selected_level]
-            context.user_data["stage2_level_scores_dict"][selected_level] += points
-            
-            logger.info(f"✅ Stage 2 Q{question_index} -> level={selected_level} (+{points})")
-        
-        # Обновляем состояние
-        context.user_data["stage2_last_answered"] = question_index
-        context.user_data["stage2_current"] = question_index + 1
-        
-        return await ask_stage_2_question(update, context)
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}", exc_info=True)
-        return await ask_stage_2_question(update, context)
-    finally:
-        context.user_data["processing"] = False
-
-async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ИСПРАВЛЕНО: Обработка ответа ЭТАПА 3"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Защита от дублирования callback
-    callback_signature = query.data
-    last_callback = context.user_data.get("last_callback", "")
-    if callback_signature == last_callback:
-        logger.debug(f"Повторный callback: {callback_signature}")
-        return STAGE_3
-    context.user_data["last_callback"] = callback_signature
-    
-    if context.user_data.get("processing", False):
-        return STAGE_3
-    
-    context.user_data["processing"] = True
-    
-    try:
-        # ПРАВИЛЬНЫЙ ПАРСИНГ: stage3_0_a_12345_1234567890
-        parts = query.data.split("_")
-        
-        if len(parts) < 5 or parts[0] != "stage3":
-            logger.error(f"Неверный формат callback: {query.data}")
-            return STAGE_3
-        
-        question_index = int(parts[1])      # Индекс вопроса
-        option_id = parts[2]                # БУКВА: a, b, c, d
-        
-        # Проверка дублей ответа
-        last_answered = context.user_data.get("stage3_last_answered", -1)
-        if question_index <= last_answered:
-            return STAGE_3
-        
-        question = STAGE_3_QUESTIONS[question_index]
-        selected_option = question["options"].get(option_id)
-        
-        if not selected_option:
-            logger.error(f"Опция {option_id} не найдена в вопросе {question_index}")
-            return STAGE_3
-        
-        level = selected_option.get("level", 1)
-        if "stage3_level_scores" not in context.user_data:
-            context.user_data["stage3_level_scores"] = []
-        context.user_data["stage3_level_scores"].append(level)
-        
-        logger.info(f"✅ Stage 3 Q{question_index} -> {option_id} (level={level})")
-        
-        # Обновляем состояние
-        context.user_data["stage3_last_answered"] = question_index
-        context.user_data["stage3_current"] = question_index + 1
-        
-        return await ask_stage_3_question(update, context)
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}", exc_info=True)
-        return await ask_stage_3_question(update, context)
-    finally:
-        context.user_data["processing"] = False
-
-async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ИСПРАВЛЕНО: Обработка ответа ЭТАПА 4"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Защита от дублирования callback
-    callback_signature = query.data
-    last_callback = context.user_data.get("last_callback", "")
-    if callback_signature == last_callback:
-        logger.debug(f"Повторный callback: {callback_signature}")
-        return STAGE_4
-    context.user_data["last_callback"] = callback_signature
-    
-    if context.user_data.get("processing", False):
-        return STAGE_4
-    
-    context.user_data["processing"] = True
-    
-    try:
-        # ПРАВИЛЬНЫЙ ПАРСИНГ: stage4_0_a_12345_1234567890
-        parts = query.data.split("_")
-        
-        if len(parts) < 5 or parts[0] != "stage4":
-            logger.error(f"Неверный формат callback: {query.data}")
-            return STAGE_4
-        
-        question_index = int(parts[1])      # Индекс вопроса
-        option_id = parts[2]                # БУКВА: a, b, c, d, e
-        
-        # Проверка дублей ответа
-        last_answered = context.user_data.get("stage4_last_answered", -1)
-        if question_index <= last_answered:
-            return STAGE_4
-        
-        question = STAGE_4_QUESTIONS[question_index]
-        selected_option = question["options"].get(option_id)
-        
-        if not selected_option:
-            logger.error(f"Опция {option_id} не найдена в вопросе {question_index}")
-            return STAGE_4
-        
-        dilts = selected_option.get("dilts", "ENVIRONMENT")
-        if "stage4_dilts_answers" not in context.user_data:
-            context.user_data["stage4_dilts_answers"] = []
-        context.user_data["stage4_dilts_answers"].append(dilts)
-        
-        logger.info(f"✅ Stage 4 Q{question_index} -> {option_id} (dilts={dilts})")
-        
-        # Обновляем состояние
-        context.user_data["stage4_last_answered"] = question_index
-        context.user_data["stage4_current"] = question_index + 1
-        
-        return await ask_stage_4_question(update, context)
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}", exc_info=True)
-        return await ask_stage_4_question(update, context)
-    finally:
-        context.user_data["processing"] = False
-
-async def handle_clarification_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ИСПРАВЛЕНО: Обработка ответа на уточняющий вопрос"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Защита от дублирования callback
-    callback_signature = query.data
-    last_callback = context.user_data.get("last_callback", "")
-    if callback_signature == last_callback:
-        logger.debug(f"Повторный callback: {callback_signature}")
-        return CLARIFICATION
-    context.user_data["last_callback"] = callback_signature
-    
-    if context.user_data.get("processing", False):
-        return CLARIFICATION
-    
-    context.user_data["processing"] = True
-    
-    try:
-        # ПРАВИЛЬНЫЙ ПАРСИНГ: clarify_stage1_0_a_12345_1234567890
-        parts = query.data.split("_")
-        
-        if len(parts) < 6:
-            logger.error(f"Неверный формат callback: {query.data}")
-            return CLARIFICATION
-        
-        prefix = parts[0]                   # clarify
-        clarification_stage = parts[1]      # stage1, stage2, stage3, stage4
-        current = int(parts[2])             # индекс вопроса
-        option_id = parts[3]               # БУКВА или ЦИФРА
-        
-        if clarification_stage == "stage1":
-            clarifications = context.user_data.get("stage1_clarifications", [])
-            if current < len(clarifications):
-                clarification_type = clarifications[current]
-                questions = CLARIFICATION_QUESTIONS.get(f"stage1_{clarification_type}", [])
-                if questions:
-                    question = questions[0]
-                    selected_option = question["options"].get(option_id)
-                    if selected_option:
-                        for axis, score in selected_option.get("scores", {}).items():
-                            if "scores" not in context.user_data:
-                                context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
-                            context.user_data["scores"][axis] = context.user_data["scores"].get(axis, 0) + score
-            
-            context.user_data["clarification_current"] = current + 1
-            return await ask_clarification_question(update, context)
-            
-        elif clarification_stage == "stage2":
-            questions = CLARIFICATION_QUESTIONS.get("stage2_borderline", [])
-            if current < len(questions):
-                question = questions[current]
-                
-                if "stage2_level_scores_dict" not in context.user_data:
-                    context.user_data["stage2_level_scores_dict"] = {
-                        "1": 0, "2": 0, "3": 0, "4": 0, "5": 0,
-                        "6": 0, "7": 0, "8": 0, "9": 0
-                    }
-                
-                if option_id in context.user_data["stage2_level_scores_dict"]:
-                    context.user_data["stage2_level_scores_dict"][option_id] += 3
-                    logger.info(f"✅ Stage 2 Clarification Q{current} -> level={option_id} (+3)")
-            
-            context.user_data["clarification_current"] = current + 1
-            return await ask_clarification_question(update, context)
-            
-        elif clarification_stage == "stage3":
-            questions = CLARIFICATION_QUESTIONS.get("stage3_discrepancy", [])
-            if current < len(questions):
-                question = questions[current]
-                
-                if "stage3_level_scores" not in context.user_data:
-                    context.user_data["stage3_level_scores"] = []
-                
-                context.user_data["stage3_level_scores"].append(int(option_id))
-                logger.info(f"✅ Stage 3 Clarification Q{current} -> level={option_id}")
-            
-            context.user_data["clarification_current"] = current + 1
-            return await ask_clarification_question(update, context)
-            
-        elif clarification_stage == "stage4":
-            questions = CLARIFICATION_QUESTIONS.get("stage4_tie", [])
-            if current < len(questions):
-                question = questions[current]
-                selected_option = question["options"].get(option_id)
-                if selected_option:
-                    dilts = selected_option.get("dilts", "ENVIRONMENT")
-                    if "stage4_dilts_answers" not in context.user_data:
-                        context.user_data["stage4_dilts_answers"] = []
-                    context.user_data["stage4_dilts_answers"].append(dilts)
-                    logger.info(f"✅ Stage 4 Clarification Q{current} -> dilts={dilts}")
-            
-            context.user_data["clarification_current"] = current + 1
-            return await ask_clarification_question(update, context)
-        
-        return CLARIFICATION
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}", exc_info=True)
-        return await ask_clarification_question(update, context)
-    finally:
-        context.user_data["processing"] = False
-
-# ============================================
-# ФУНКЦИИ ЗАВЕРШЕНИЯ ЭТАПОВ
+# ИСПРАВЛЕННЫЕ ФУНКЦИИ ЗАВЕРШЕНИЯ ЭТАПОВ
 # ============================================
 
 async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение ЭТАП 1"""
+    """Завершение ЭТАП 1 - МОТИВАЦИОННЫЙ ЭКРАН"""
     query = update.callback_query
     scores = context.user_data.get("scores", {})
     
@@ -3084,14 +2750,14 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     result_text = STAGE1_FEEDBACK.get(perception_type, STAGE1_FEEDBACK["СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ"])
     
-    keyboard = [[InlineKeyboardButton("▶️ ПЕРЕЙТИ К ЭТАПУ 2 — МЫШЛЕНИЕ", callback_data="show_stage_2_intro")]]
+    keyboard = [[InlineKeyboardButton("▶️ ПЕРЕЙТИ К ЭТАПУ 2 — КОНФИГУРАЦИЯ МЫШЛЕНИЯ", callback_data="show_stage_2_intro")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(result_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_2
 
 async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение ЭТАПА 2"""
+    """Завершение ЭТАПА 2 - МОТИВАЦИОННЫЙ ЭКРАН"""
     query = update.callback_query
     level_scores_dict = context.user_data.get("stage2_level_scores_dict", {"1": 0})
     
@@ -3116,14 +2782,14 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not result_text:
         result_text = STAGE2_FEEDBACK[("СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ", "1-3")]
     
-    keyboard = [[InlineKeyboardButton("▶️ ПЕРЕЙТИ К ЭТАПУ 3 — ПОВЕДЕНИЕ", callback_data="show_stage_3_intro")]]
+    keyboard = [[InlineKeyboardButton("▶️ ПЕРЕЙТИ К ЭТАПУ 3 — КОНФИГУРАЦИЯ ПОВЕДЕНИЯ", callback_data="show_stage_3_intro")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(result_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
     return STAGE_3
 
 async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение ЭТАПА 3"""
+    """Завершение ЭТАПА 3 - МОТИВАЦИОННЫЙ ЭКРАН"""
     query = update.callback_query
     
     stage2_level = context.user_data.get("thinking_level", 1)
@@ -3154,7 +2820,7 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     result_text = STAGE3_FEEDBACK.get(behavior_level, STAGE3_FEEDBACK[1])
     
-    keyboard = [[InlineKeyboardButton("▶️ ПЕРЕЙТИ К ЭТАПУ 4 — ТОЧКА ОПОРЫ", callback_data="show_stage_4_intro")]]
+    keyboard = [[InlineKeyboardButton("▶️ ПЕРЕЙТИ К ЭТАПУ 4 — КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ", callback_data="show_stage_4_intro")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(result_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
@@ -3185,8 +2851,720 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_results_screen(update, context)
 
 # ============================================
-# ФУНКЦИИ УТОЧНЯЮЩИХ ВОПРОСОВ
+# 🔴 ТЗ 3.6.1: ПОЛНОСТЬЮ ПЕРЕПИСАННАЯ ФУНКЦИЯ back_to_results
 # ============================================
+
+async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    ИСПРАВЛЕНО (ТЗ 3.6.1): ВСЕГДА показывает полный экран результатов с КНОПКАМИ
+    ОТПРАВЛЯЕТ ОДНО СООБЩЕНИЕ, НЕ ВЫЗЫВАЕТ show_results_screen
+    """
+    query = update.callback_query
+    await query.answer("🔄 Возвращаюсь к результатам...")
+    
+    # 2. Удалить текущее сообщение
+    try:
+        await query.message.delete()
+        logger.info(f"✅ User {update.effective_user.id}: Удалено сообщение при back_to_results")
+    except Exception as e:
+        logger.warning(f"⚠️ User {update.effective_user.id}: Не удалось удалить сообщение: {e}")
+    
+    # 3. Получить profile_data (или рассчитать)
+    profile_data = context.user_data.get("profile_data")
+    if not profile_data:
+        profile_data = calculate_profile_final(context.user_data)
+        context.user_data["profile_data"] = profile_data
+    
+    # 4. Получить profile через get_profile_fallback
+    try:
+        profile = get_profile_fallback(profile_data)
+    except ProfileNotFoundError as e:
+        error_text = (
+            f"{DIVIDER}\n"
+            f"🧠 <b>К сожалению, возникла техническая ошибка</b>\n"
+            f"{DIVIDER}\n\n"
+            f"Как ваш виртуальный психолог, я не смог обработать все данные.\n\n"
+            f"Попробуйте пройти исследование заново, чтобы я мог помочь вам лучше:\n"
+            f"/start\n\n"
+            f"<i>Приношу извинения за неудобства.</i>"
+        )
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=error_text.strip(),
+            parse_mode="HTML"
+        )
+        return RESULTS
+    
+    # 5. Получить profile_card
+    profile_card = get_card_description_from_profile(profile, profile_data)
+    context.user_data["profile_card"] = profile_card
+    
+    # 6. Получить actual_profile_key
+    actual_profile_key = None
+    try:
+        if hasattr(profile, 'key'):
+            actual_profile_key = profile.key.lower()
+            logger.info(f"🔍 Найден ключ профиля: {actual_profile_key}")
+            context.user_data["actual_profile_key"] = actual_profile_key
+        elif hasattr(profile, 'profile_name'):
+            actual_profile_key = profile.profile_name.lower()
+            context.user_data["actual_profile_key"] = actual_profile_key
+        else:
+            actual_profile_key = f"{profile_card.get('type_code', 'sa')}_{profile_card.get('level', 1)}_{profile_card.get('dilts_code', 'def')}".lower()
+            context.user_data["actual_profile_key"] = actual_profile_key
+        
+        parts = actual_profile_key.split('_')
+        if len(parts) >= 3:
+            profile_data['type_code'] = parts[0].upper()
+            profile_data['level'] = int(parts[1])
+            profile_data['dilts_code'] = parts[2].lower()
+            profile_data['display_name'] = actual_profile_key.upper()
+            context.user_data["profile_data"] = profile_data
+            logger.info(f"✅ Обновлен profile_data реальным профилем: {profile_data['display_name']}")
+            
+    except Exception as e:
+        logger.error(f"⚠️ Ошибка определения реального профиля: {e}")
+    
+    # 7. Получить discrepancy_note
+    discrepancy_note = ""
+    if actual_profile_key:
+        discrepancy_note = get_discrepancy_note(profile_data, actual_profile_key)
+        logger.info(f"📝 Примечание о расхождении: {'✅ Есть' if discrepancy_note else '❌ Нет'}")
+    
+    # 8. СФОРМИРОВАТЬ ЕДИНОЕ СООБЩЕНИЕ (СТРОГО ПО ШАБЛОНУ)
+    profile_header = profile_data.get('display_name', f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}")
+    raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
+    formatted_title = format_profile_title(raw_title, profile_header)
+    
+    # Заголовок профиля
+    profile_title_section = f"🎯 {formatted_title}"
+    
+    # Архетип
+    archetype_section = ""
+    archetype = profile_card.get('archetype', '')
+    if archetype:
+        archetype_section = f"{archetype}"
+    
+    # Цитата
+    quote_section = ""
+    quote = profile_card.get('quote', '')
+    if quote:
+        quote_section = f"💬 ЦИТАТА:\n{quote}"
+    
+    # ЭТО ВЫ, ЕСЛИ...
+    trigger_section = ""
+    trigger = profile_card.get('trigger', '')
+    if trigger:
+        if trigger.startswith('🔍 ЭТО ТЫ, ЕСЛИ...'):
+            trigger = trigger.replace('🔍 ЭТО ТЫ, ЕСЛИ...\n\n', '').replace('🔍 ЭТО ТЫ, ЕСЛИ...', '')
+        trigger_section = f"🔍 ЭТО ВЫ, ЕСЛИ...\n\n{trigger}"
+    
+    # СУТЬ ПРОБЛЕМЫ
+    pain_section = ""
+    pain = profile_card.get('pain', '')
+    if pain:
+        pain_lines = pain.strip().split('\n')
+        if pain_lines and any(h in pain_lines[0] for h in ['СУТЬ ПРОБЛЕМЫ:', 'СУТЬ ПРОБЛЕМЫ']):
+            pain = '\n'.join(pain_lines[1:]) if len(pain_lines) > 1 else ""
+        
+        if pain.strip():
+            pain_section = f"💔 СУТЬ ПРОБЛЕМЫ\n\n{pain.strip()}"
+    
+    # ПРАКТИЧЕСКИЙ ИНСТРУМЕНТ
+    tool_section = ""
+    tool = profile_card.get('immediate_tool', '')
+    if tool:
+        tool_lines = tool.strip().split('\n')
+        if tool_lines and any(h in tool_lines[0] for h in ['ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:', 'ПЕРВЫЙ ШАГ / ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:']):
+            tool = '\n'.join(tool_lines[1:]) if len(tool_lines) > 1 else ""
+        
+        if tool.strip():
+            tool_section = f"🛠 ПРАКТИЧЕСКИЙ ИНСТРУМЕНТ\n\n{tool.strip()}"
+    
+    # СЛЕДУЮЩИЕ ШАГИ
+    cta_section = ""
+    cta = profile_card.get('cta', '')
+    if cta:
+        cta_lines = cta.strip().split('\n')
+        if cta_lines and cta_lines[0].strip() == 'ЧТО ДАЛЬШЕ?':
+            cta = '\n'.join(cta_lines[1:]) if len(cta_lines) > 1 else ""
+        
+        if cta.strip():
+            cta_section = f"🚀 СЛЕДУЮЩИЕ ШАГИ\n\n{cta.strip()}"
+    
+    # Собираем полное сообщение
+    full_message_parts = []
+    
+    full_message_parts.append(DIVIDER)
+    full_message_parts.append("🧠 ВАШИ ПЕРВЫЕ ИНСАЙТЫ")
+    full_message_parts.append(DIVIDER)
+    full_message_parts.append("")
+    
+    full_message_parts.append("<i>Как ваш виртуальный психолог, я проанализировал ваши ответы.</i>")
+    full_message_parts.append("")
+    full_message_parts.append("Вот что я увидел:")
+    full_message_parts.append("")
+    full_message_parts.append("<i>На основе ваших ответов я вижу характерные паттерны мышления и поведения. Это хорошая отправная точка для самопознания.</i>")
+    full_message_parts.append("")
+    
+    full_message_parts.append(profile_title_section)
+    full_message_parts.append("")
+    
+    if archetype_section:
+        full_message_parts.append(archetype_section)
+        full_message_parts.append("")
+    
+    if quote_section:
+        full_message_parts.append(quote_section)
+        full_message_parts.append("")
+    
+    if trigger_section:
+        full_message_parts.append(trigger_section)
+        full_message_parts.append("")
+    
+    if pain_section:
+        full_message_parts.append(pain_section)
+        full_message_parts.append("")
+    
+    if tool_section:
+        full_message_parts.append(tool_section)
+        full_message_parts.append("")
+    
+    if cta_section:
+        full_message_parts.append(cta_section)
+        full_message_parts.append("")
+    
+    full_message_parts.append(DIVIDER)
+    full_message_parts.append("")
+    
+    full_message_parts.append("🧠 ЧТО ДАЛЬШЕ В НАШЕМ ПУТЕШЕСТВИИ?")
+    full_message_parts.append("")
+    full_message_parts.append("<i>Это только начало вашего пути к самопознанию.</i>")
+    full_message_parts.append("")
+    
+    if discrepancy_note:
+        full_message_parts.append(discrepancy_note.strip())
+    
+    full_message_parts.append(DIVIDER)
+    
+    full_message = "\n".join(full_message_parts)
+    
+    # 9. СФОРМИРОВАТЬ КЛАВИАТУРУ
+    has_shared = context.user_data.get("has_shared", False)
+    
+    if not has_shared:
+        keyboard = [
+            [InlineKeyboardButton("🪞 Поделиться зеркалом", callback_data="get_gift")],
+            [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
+            [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")]
+        ]
+    else:
+        keyboard = [
+            [InlineKeyboardButton("🎁 Получить сказку «Мастер Меча»", callback_data="open_gift")],
+            [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
+            [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")]
+        ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # 10. ОТПРАВИТЬ ОДНО СООБЩЕНИЕ
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=full_message.strip(),
+        reply_markup=reply_markup,
+        parse_mode="HTML"
+    )
+    
+    logger.info(f"🔄 User {update.effective_user.id}: back_to_results → RESULTS")
+    
+    # 11. ВЕРНУТЬ RESULTS
+    return RESULTS
+
+# ============================================
+# ОРИГИНАЛЬНЫЙ ЭКРАН РЕЗУЛЬТАТОВ (для первого показа)
+# ============================================
+
+async def show_results_screen(
+    update: Update, 
+    context: ContextTypes.DEFAULT_TYPE,
+    force_shared_view: bool = False
+):
+    """
+    ОРИГИНАЛЬНЫЙ ЭКРАН РЕЗУЛЬТАТОВ (только для первого показа)
+    """
+    query = update.callback_query
+    
+    has_shared = context.user_data.get("has_shared", False) or force_shared_view
+    profile_data = context.user_data.get("profile_data")
+    
+    if not profile_data:
+        profile_data = calculate_profile_final(context.user_data)
+        context.user_data["profile_data"] = profile_data
+    
+    try:
+        profile = get_profile_fallback(profile_data)
+    except ProfileNotFoundError as e:
+        error_text = (
+            f"{DIVIDER}\n"
+            f"🧠 <b>К сожалению, возникла техническая ошибка</b>\n"
+            f"{DIVIDER}\n\n"
+            f"Как ваш виртуальный психолог, я не смог обработать все данные.\n\n"
+            f"Попробуйте пройти исследование заново, чтобы я мог помочь вам лучше:\n"
+            f"/start\n\n"
+            f"<i>Приношу извинения за неудобства.</i>"
+        )
+        await query.edit_message_text(error_text.strip(), parse_mode="HTML")
+        return ConversationHandler.END
+    
+    profile_card = get_card_description_from_profile(profile, profile_data)
+    context.user_data["profile_card"] = profile_card
+    
+    actual_profile_key = None
+    try:
+        if hasattr(profile, 'key'):
+            actual_profile_key = profile.key.lower()
+            logger.info(f"🔍 Найден ключ профиля: {actual_profile_key}")
+            context.user_data["actual_profile_key"] = actual_profile_key
+        elif hasattr(profile, 'profile_name'):
+            actual_profile_key = profile.profile_name.lower()
+            context.user_data["actual_profile_key"] = actual_profile_key
+        else:
+            actual_profile_key = f"{profile_card.get('type_code', 'sa')}_{profile_card.get('level', 1)}_{profile_card.get('dilts_code', 'def')}".lower()
+            context.user_data["actual_profile_key"] = actual_profile_key
+        
+        parts = actual_profile_key.split('_')
+        if len(parts) >= 3:
+            profile_data['type_code'] = parts[0].upper()
+            profile_data['level'] = int(parts[1])
+            profile_data['dilts_code'] = parts[2].lower()
+            profile_data['display_name'] = actual_profile_key.upper()
+            context.user_data["profile_data"] = profile_data
+            logger.info(f"✅ Обновлен profile_data реальным профилем: {profile_data['display_name']}")
+            
+    except Exception as e:
+        logger.error(f"⚠️ Ошибка определения реального профиля: {e}")
+    
+    discrepancy_note = ""
+    if actual_profile_key:
+        discrepancy_note = get_discrepancy_note(profile_data, actual_profile_key)
+        logger.info(f"📝 Примечание о расхождении: {'✅ Есть' if discrepancy_note else '❌ Нет'}")
+    
+    profile_header = profile_data.get('display_name', f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}")
+    raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
+    formatted_title = format_profile_title(raw_title, profile_header)
+    
+    message_1_parts = []
+    message_1_parts.append(f"{DIVIDER}")
+    message_1_parts.append("🧠 <b>ВАШИ ПЕРВЫЕ ИНСАЙТЫ</b>")
+    message_1_parts.append(f"{DIVIDER}")
+    message_1_parts.append("")
+    message_1_parts.append("<i>Как ваш виртуальный психолог, я проанализировал ваши ответы.</i>")
+    message_1_parts.append("")
+    message_1_parts.append("Вот что я увидел:")
+    message_1_parts.append("")
+    message_1_parts.append("<i>На основе ваших ответов я вижу характерные паттерны мышления и поведения. Это хорошая отправная точка для самопознания.</i>")
+    message_1_parts.append("")
+    message_1_parts.append(f"<b>{formatted_title}</b>")
+    message_1_parts.append("")
+    
+    archetype = profile_card.get('archetype', '')
+    if archetype:
+        message_1_parts.append(f"<i>{archetype}</i>")
+        message_1_parts.append("")
+    
+    quote = profile_card.get('quote', '')
+    if quote:
+        message_1_parts.append(f"<b>💬 ЦИТАТА:</b>")
+        message_1_parts.append(f"{quote}")
+        message_1_parts.append("")
+    
+    trigger = profile_card.get('trigger', '')
+    if trigger:
+        if trigger.startswith('🔍 ЭТО ТЫ, ЕСЛИ...'):
+            trigger = trigger.replace('🔍 ЭТО ТЫ, ЕСЛИ...\n\n', '').replace('🔍 ЭТО ТЫ, ЕСЛИ...', '')
+        
+        message_1_parts.append(f"<b>🔍 ЭТО ВЫ, ЕСЛИ...</b>")
+        message_1_parts.append("")
+        message_1_parts.append(f"{trigger}")
+        message_1_parts.append("")
+    
+    pain = profile_card.get('pain', '')
+    if pain:
+        pain_lines = pain.strip().split('\n')
+        if pain_lines and any(h in pain_lines[0] for h in ['СУТЬ ПРОБЛЕМЫ:', 'СУТЬ ПРОБЛЕМЫ']):
+            pain = '\n'.join(pain_lines[1:]) if len(pain_lines) > 1 else ""
+        
+        if pain.strip():
+            message_1_parts.append(f"<b>💔 СУТЬ ПРОБЛЕМЫ</b>")
+            message_1_parts.append("")
+            message_1_parts.append(f"{pain.strip()}")
+    
+    message_1 = "\n".join(message_1_parts)
+    
+    await query.edit_message_text(message_1.strip(), parse_mode="HTML")
+    await asyncio.sleep(0.5)
+    
+    message_2_parts = []
+    
+    tool = profile_card.get('immediate_tool', '')
+    if tool:
+        tool_lines = tool.strip().split('\n')
+        if tool_lines and any(h in tool_lines[0] for h in ['ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:', 'ПЕРВЫЙ ШАГ / ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:']):
+            tool = '\n'.join(tool_lines[1:]) if len(tool_lines) > 1 else ""
+        
+        if tool.strip():
+            message_2_parts.append(f"<b>🛠 ПРАКТИЧЕСКИЙ ИНСТРУМЕНТ</b>")
+            message_2_parts.append("")
+            message_2_parts.append(f"<i>Что можно сделать прямо сейчас:</i>")
+            message_2_parts.append("")
+            message_2_parts.append(f"{tool.strip()}")
+            message_2_parts.append("")
+    
+    cta = profile_card.get('cta', '')
+    if cta:
+        cta_lines = cta.strip().split('\n')
+        if cta_lines and cta_lines[0].strip() == 'ЧТО ДАЛЬШЕ?':
+            cta = '\n'.join(cta_lines[1:]) if len(cta_lines) > 1 else ""
+        
+        if cta.strip():
+            message_2_parts.append(f"<b>🚀 СЛЕДУЮЩИЕ ШАГИ</b>")
+            message_2_parts.append("")
+            message_2_parts.append(f"{cta.strip()}")
+            message_2_parts.append("")
+    
+    message_2_parts.append(f"{DIVIDER}")
+    message_2_parts.append("")
+    
+    message_2_parts.append(f"🧠 <b>ЧТО ДАЛЬШЕ В НАШЕМ ПУТЕШЕСТВИИ?</b>")
+    message_2_parts.append("")
+    message_2_parts.append(f"<i>Это только начало вашего пути к самопознанию.</i>")
+    message_2_parts.append("")
+    
+    if discrepancy_note:
+        message_2_parts.append(f"{discrepancy_note}")
+        logger.info(f"✅ Примечание Дилтса добавлено в сообщение 2")
+    
+    message_2_parts.append(f"{DIVIDER}")
+    
+    message_2 = "\n".join(message_2_parts)
+    
+    if not has_shared:
+        keyboard = [
+            [InlineKeyboardButton("🪞 Поделиться зеркалом", callback_data="get_gift")],
+            [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
+            [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")]
+        ]
+    else:
+        keyboard = [
+            [InlineKeyboardButton("🎁 Получить сказку «Мастер Меча»", callback_data="open_gift")],
+            [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
+            [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")]
+        ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.message.reply_text(message_2.strip(), reply_markup=reply_markup, parse_mode="HTML")
+    
+    return RESULTS
+
+# ============================================
+# ОБРАБОТЧИКИ ОТВЕТОВ
+# ============================================
+
+async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ответа ЭТАПА 1"""
+    query = update.callback_query
+    
+    try:
+        await query.answer()
+    except Exception as e:
+        logger.error(f"Ошибка при answer(): {e}")
+    
+    if context.user_data.get("processing", False):
+        logger.debug(f"Пользователь {update.effective_user.id}: пропускаем повторное нажатие")
+        return STAGE_1
+    
+    context.user_data["processing"] = True
+    
+    try:
+        parts = query.data.split("_")
+        
+        if len(parts) < 3 or parts[0] != "stage1":
+            logger.error(f"Неверный формат callback: {query.data}")
+            return STAGE_1
+        
+        current = int(parts[1])
+        option_id = parts[2]
+        
+        last_answered = context.user_data.get("stage1_last_answered", -1)
+        if current <= last_answered:
+            logger.debug(f"Вопрос {current} уже отвечен, пропускаем")
+            return STAGE_1
+        
+        question = STAGE_1_QUESTIONS[current]
+        selected_option = question["options"].get(option_id)
+        
+        if not selected_option:
+            logger.error(f"Опция {option_id} не найдена в вопросе {current}")
+            return STAGE_1
+        
+        for axis, score in selected_option.get("scores", {}).items():
+            context.user_data["scores"][axis] += score
+        
+        logger.info(f"User {update.effective_user.id}: Stage 1 Q{current} -> {option_id}")
+        
+        context.user_data["stage1_last_answered"] = current
+        context.user_data["stage1_current"] = current + 1
+        
+        return await ask_stage_1_question(update, context)
+        
+    except Exception as e:
+        logger.error(f"Критическая ошибка в handle_stage_1_answer: {e}", exc_info=True)
+        return await ask_stage_1_question(update, context)
+    finally:
+        context.user_data["processing"] = False
+
+async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ответа ЭТАПА 2"""
+    query = update.callback_query
+    
+    try:
+        await query.answer()
+    except Exception as e:
+        logger.error(f"Ошибка при answer(): {e}")
+    
+    if context.user_data.get("processing", False):
+        logger.debug(f"Пользователь {update.effective_user.id}: пропускаем повторное нажатие")
+        return STAGE_2
+    
+    context.user_data["processing"] = True
+    
+    try:
+        parts = query.data.split("_")
+        if len(parts) < 3 or parts[0] != "stage2":
+            logger.error(f"Неверный формат callback: {query.data}")
+            return STAGE_2
+        
+        current = int(parts[1])
+        selected_level = parts[2]
+        
+        last_answered = context.user_data.get("stage2_last_answered", -1)
+        if current <= last_answered:
+            logger.debug(f"Вопрос {current} уже отвечен, пропускаем")
+            return STAGE_2
+        
+        perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
+        
+        scoring_table = STAGE_2_SCORING.get(perception_type, {})
+        if current in scoring_table and selected_level in scoring_table[current]:
+            if "stage2_level_scores_dict" not in context.user_data:
+                context.user_data["stage2_level_scores_dict"] = {
+                    "1": 0, "2": 0, "3": 0, "4": 0, "5": 0,
+                    "6": 0, "7": 0, "8": 0, "9": 0
+                }
+            
+            points = scoring_table[current][selected_level]
+            context.user_data["stage2_level_scores_dict"][selected_level] += points
+            
+            logger.info(f"User {update.effective_user.id}: Stage 2 Q{current} -> level={selected_level} (+{points} points)")
+        
+        context.user_data["stage2_last_answered"] = current
+        context.user_data["stage2_current"] = current + 1
+        return await ask_stage_2_question(update, context)
+        
+    except Exception as e:
+        logger.error(f"Критическая ошибка в handle_stage_2_answer: {e}", exc_info=True)
+        return await ask_stage_2_question(update, context)
+    finally:
+        context.user_data["processing"] = False
+
+async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ответа ЭТАПА 3"""
+    query = update.callback_query
+    
+    try:
+        await query.answer()
+    except Exception as e:
+        logger.error(f"Ошибка при answer(): {e}")
+    
+    if context.user_data.get("processing", False):
+        logger.debug(f"Пользователь {update.effective_user.id}: пропускаем повторное нажатие")
+        return STAGE_3
+    
+    context.user_data["processing"] = True
+    
+    try:
+        parts = query.data.split("_")
+        if len(parts) < 3 or parts[0] != "stage3":
+            logger.error(f"Неверный формат callback: {query.data}")
+            return STAGE_3
+        
+        current = int(parts[1])
+        option_id = parts[2]
+        
+        last_answered = context.user_data.get("stage3_last_answered", -1)
+        if current <= last_answered:
+            logger.debug(f"Вопрос {current} уже отвечен, пропускаем")
+            return STAGE_3
+        
+        question = STAGE_3_QUESTIONS[current]
+        selected_option = question["options"].get(option_id)
+        
+        if not selected_option:
+            return STAGE_3
+        
+        level = selected_option.get("level", 1)
+        context.user_data["stage3_level_scores"].append(level)
+        
+        logger.info(f"User {update.effective_user.id}: Stage 3 Q{current} -> {option_id} (level={level})")
+        
+        context.user_data["stage3_last_answered"] = current
+        context.user_data["stage3_current"] = current + 1
+        return await ask_stage_3_question(update, context)
+        
+    except Exception as e:
+        logger.error(f"Критическая ошибка в handle_stage_3_answer: {e}", exc_info=True)
+        return await ask_stage_3_question(update, context)
+    finally:
+        context.user_data["processing"] = False
+
+async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ответа ЭТАПА 4"""
+    query = update.callback_query
+    
+    try:
+        await query.answer()
+    except Exception as e:
+        logger.error(f"Ошибка при answer(): {e}")
+    
+    if context.user_data.get("processing", False):
+        logger.debug(f"Пользователь {update.effective_user.id}: пропускаем повторное нажатие")
+        return STAGE_4
+    
+    context.user_data["processing"] = True
+    
+    try:
+        parts = query.data.split("_")
+        if len(parts) < 3 or parts[0] != "stage4":
+            logger.error(f"Неверный формат callback: {query.data}")
+            return STAGE_4
+        
+        current = int(parts[1])
+        option_id = parts[2]
+        
+        last_answered = context.user_data.get("stage4_last_answered", -1)
+        if current <= last_answered:
+            logger.debug(f"Вопрос {current} уже отвечен, пропускаем")
+            return STAGE_4
+        
+        question = STAGE_4_QUESTIONS[current]
+        selected_option = question["options"].get(option_id)
+        
+        if not selected_option:
+            return STAGE_4
+        
+        dilts = selected_option.get("dilts", "ENVIRONMENT")
+        context.user_data["stage4_dilts_answers"].append(dilts)
+        
+        logger.info(f"User {update.effective_user.id}: Stage 4 Q{current} -> {option_id} (dilts={dilts})")
+        
+        context.user_data["stage4_last_answered"] = current
+        context.user_data["stage4_current"] = current + 1
+        return await ask_stage_4_question(update, context)
+        
+    except Exception as e:
+        logger.error(f"Критическая ошибка в handle_stage_4_answer: {e}", exc_info=True)
+        return await ask_stage_4_question(update, context)
+    finally:
+        context.user_data["processing"] = False
+
+async def handle_clarification_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ответа на уточняющий вопрос"""
+    query = update.callback_query
+    
+    try:
+        await query.answer()
+    except Exception as e:
+        logger.error(f"Ошибка при answer(): {e}")
+    
+    if context.user_data.get("processing", False):
+        logger.debug(f"Пользователь {update.effective_user.id}: пропускаем повторное нажатие")
+        return CLARIFICATION
+    
+    context.user_data["processing"] = True
+    
+    try:
+        parts = query.data.split("_")
+        if len(parts) < 4:
+            return CLARIFICATION
+        
+        clarification_stage = parts[1]
+        current = int(parts[2])
+        option_id = parts[3]
+        
+        if clarification_stage == "stage1":
+            clarifications = context.user_data.get("stage1_clarifications", [])
+            if current < len(clarifications):
+                clarification_type = clarifications[current]
+                questions = CLARIFICATION_QUESTIONS.get(f"stage1_{clarification_type}", [])
+                if questions:
+                    question = questions[0]
+                    selected_option = question["options"].get(option_id)
+                    if selected_option:
+                        for axis, score in selected_option.get("scores", {}).items():
+                            context.user_data["scores"][axis] += score
+            
+            context.user_data["clarification_current"] = current + 1
+            return await ask_clarification_question(update, context)
+            
+        elif clarification_stage == "stage2":
+            questions = CLARIFICATION_QUESTIONS.get("stage2_borderline", [])
+            if current < len(questions):
+                question = questions[current]
+                selected_level = option_id
+                
+                if "stage2_level_scores_dict" not in context.user_data:
+                    context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
+                
+                if selected_level in context.user_data["stage2_level_scores_dict"]:
+                    context.user_data["stage2_level_scores_dict"][selected_level] += 3
+            
+            context.user_data["clarification_current"] = current + 1
+            return await ask_clarification_question(update, context)
+            
+        elif clarification_stage == "stage3":
+            questions = CLARIFICATION_QUESTIONS.get("stage3_discrepancy", [])
+            if current < len(questions):
+                question = questions[current]
+                selected_level = option_id
+                
+                if "stage3_level_scores" not in context.user_data:
+                    context.user_data["stage3_level_scores"] = []
+                
+                context.user_data["stage3_level_scores"].append(int(selected_level))
+            
+            context.user_data["clarification_current"] = current + 1
+            return await ask_clarification_question(update, context)
+            
+        elif clarification_stage == "stage4":
+            questions = CLARIFICATION_QUESTIONS.get("stage4_tie", [])
+            if current < len(questions):
+                question = questions[current]
+                selected_option = question["options"].get(option_id)
+                if selected_option:
+                    dilts = selected_option.get("dilts", "ENVIRONMENT")
+                    context.user_data["stage4_dilts_answers"].append(dilts)
+            
+            context.user_data["clarification_current"] = current + 1
+            return await ask_clarification_question(update, context)
+        
+        return CLARIFICATION
+        
+    except Exception as e:
+        logger.error(f"Критическая ошибка в handle_clarification_answer: {e}", exc_info=True)
+        return await ask_clarification_question(update, context)
+    finally:
+        context.user_data["processing"] = False
 
 async def ask_clarification_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт уточняющий вопрос"""
@@ -3263,6 +3641,7 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
     
     keyboard = []
     user_id = update.effective_user.id
+    timestamp = int(time.time())
     
     for option_id in question["options"].keys():
         if isinstance(question["options"][option_id], dict):
@@ -3270,7 +3649,7 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
         else:
             button_text = question["options"][option_id]
         
-        unique_callback = make_callback(f"clarify_{clarification_stage}", 0, current, option_id, user_id)
+        unique_callback = f"clarify_{clarification_stage}_{current}_{option_id}_{user_id}_{timestamp}"
         keyboard.append([
             InlineKeyboardButton(button_text, callback_data=unique_callback)
         ])
@@ -3312,370 +3691,38 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
     return CLARIFICATION
 
 # ============================================
-# 🔴 ТЗ 2.0: ЭКРАН РЕЗУЛЬТАТОВ (ОДНО СООБЩЕНИЕ)
-# ============================================
-
-async def show_results_screen(
-    update: Update, 
-    context: ContextTypes.DEFAULT_TYPE
-):
-    """
-    ОРИГИНАЛЬНЫЙ ЭКРАН РЕЗУЛЬТАТОВ (ОДНО СООБЩЕНИЕ)
-    """
-    query = update.callback_query
-    
-    profile_data = context.user_data.get("profile_data")
-    
-    if not profile_data:
-        profile_data = calculate_profile_final(context.user_data)
-        context.user_data["profile_data"] = profile_data
-    
-    try:
-        profile = get_profile_fallback(profile_data)
-    except ProfileNotFoundError as e:
-        error_text = f"""
-{DIVIDER}
-🧠 <b>К сожалению, возникла техническая ошибка</b>
-{DIVIDER}
-
-Как ваш виртуальный психолог, я не смог обработать все данные.
-
-Попробуйте пройти исследование заново, чтобы я мог помочь вам лучше:
-/start
-
-<i>Приношу извинения за неудобства.</i>
-"""
-        await query.edit_message_text(error_text.strip(), parse_mode="HTML")
-        return RESULTS
-    
-    profile_card = get_card_description_from_profile(profile, profile_data)
-    context.user_data["profile_card"] = profile_card
-    
-    actual_profile_key = None
-    try:
-        if hasattr(profile, 'key'):
-            actual_profile_key = profile.key.lower()
-            context.user_data["actual_profile_key"] = actual_profile_key
-        elif hasattr(profile, 'profile_name'):
-            actual_profile_key = profile.profile_name.lower()
-            context.user_data["actual_profile_key"] = actual_profile_key
-        else:
-            actual_profile_key = f"{profile_card.get('type_code', 'sa')}_{profile_card.get('level', 1)}_{profile_card.get('dilts_code', 'def')}".lower()
-            context.user_data["actual_profile_key"] = actual_profile_key
-        
-        parts = actual_profile_key.split('_')
-        if len(parts) >= 3:
-            profile_data['type_code'] = parts[0].upper()
-            profile_data['level'] = int(parts[1])
-            profile_data['dilts_code'] = parts[2].lower()
-            profile_data['display_name'] = actual_profile_key.upper()
-            context.user_data["profile_data"] = profile_data
-            
-    except Exception as e:
-        logger.error(f"⚠️ Ошибка определения реального профиля: {e}")
-    
-    discrepancy_note = ""
-    if actual_profile_key:
-        discrepancy_note = get_discrepancy_note(profile_data, actual_profile_key)
-    
-    profile_header = profile_data.get('display_name', f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}")
-    raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
-    formatted_title = format_profile_title(raw_title, profile_header)
-    
-    archetype = profile_card.get('archetype', '')
-    quote = profile_card.get('quote', '')
-    
-    trigger = profile_card.get('trigger', '')
-    if trigger and trigger.startswith('🔍 ЭТО ТЫ, ЕСЛИ...'):
-        trigger = trigger.replace('🔍 ЭТО ТЫ, ЕСЛИ...\n\n', '').replace('🔍 ЭТО ТЫ, ЕСЛИ...', '')
-    
-    pain = profile_card.get('pain', '')
-    if pain:
-        pain_lines = pain.strip().split('\n')
-        if pain_lines and any(h in pain_lines[0] for h in ['СУТЬ ПРОБЛЕМЫ:', 'СУТЬ ПРОБЛЕМЫ']):
-            pain = '\n'.join(pain_lines[1:]) if len(pain_lines) > 1 else ""
-    
-    tool = profile_card.get('immediate_tool', '')
-    if tool:
-        tool_lines = tool.strip().split('\n')
-        if tool_lines and any(h in tool_lines[0] for h in ['ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:', 'ПЕРВЫЙ ШАГ / ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:']):
-            tool = '\n'.join(tool_lines[1:]) if len(tool_lines) > 1 else ""
-    
-    cta = profile_card.get('cta', '')
-    if cta:
-        cta_lines = cta.strip().split('\n')
-        if cta_lines and cta_lines[0].strip() == 'ЧТО ДАЛЬШЕ?':
-            cta = '\n'.join(cta_lines[1:]) if len(cta_lines) > 1 else ""
-    
-    # Формируем ЕДИНОЕ сообщение
-    result_parts = []
-    result_parts.append("🧠 ВАШ ПРОФИЛЬ")
-    result_parts.append(DIVIDER)
-    result_parts.append("")
-    result_parts.append(f"🎯 {formatted_title}")
-    result_parts.append("")
-    
-    if archetype:
-        result_parts.append(archetype)
-        result_parts.append("")
-    
-    if quote:
-        result_parts.append(f"💬 {quote}")
-        result_parts.append("")
-    
-    if trigger:
-        result_parts.append("🔍 ЭТО ВЫ, ЕСЛИ...")
-        result_parts.append("")
-        result_parts.append(trigger)
-        result_parts.append("")
-    
-    if pain:
-        result_parts.append("💔 СУТЬ ПРОБЛЕМЫ")
-        result_parts.append("")
-        result_parts.append(pain.strip())
-        result_parts.append("")
-    
-    if tool:
-        result_parts.append("🛠 ПРАКТИЧЕСКИЙ ИНСТРУМЕНТ")
-        result_parts.append("")
-        result_parts.append(tool.strip())
-        result_parts.append("")
-    
-    result_parts.append(DIVIDER)
-    result_parts.append("")
-    
-    if discrepancy_note:
-        result_parts.append(discrepancy_note.strip())
-    
-    if cta:
-        result_parts.append("🚀 СЛЕДУЮЩИЕ ШАГИ")
-        result_parts.append("")
-        result_parts.append(cta.strip())
-        result_parts.append("")
-    
-    result_parts.append(DIVIDER)
-    
-    full_message = "\n".join(result_parts)
-    
-    has_shared = context.user_data.get("has_shared", False)
-    
-    if not has_shared:
-        keyboard = [
-            [InlineKeyboardButton("🪞 Поделиться зеркалом", callback_data="get_gift")],
-            [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
-            [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")],
-            [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_sexual_profile")]
-        ]
-    else:
-        keyboard = [
-            [InlineKeyboardButton("⚔️ Получить сказку «Мастер Меча»", callback_data="open_gift")],
-            [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
-            [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")],
-            [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_sexual_profile")]
-        ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        full_message,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-    
-    await check_sexual_invitation(context, update.effective_user.id, update.effective_user.first_name)
-    
-    return RESULTS
-
-# ============================================
-# 🔴 ТЗ 3.6.1: ПОЛНОСТЬЮ ПЕРЕПИСАННАЯ ФУНКЦИЯ back_to_results
-# ============================================
-
-async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    ИСПРАВЛЕНО (ТЗ 3.6.1): ВСЕГДА показывает полный экран результатов с КНОПКАМИ
-    ОТПРАВЛЯЕТ ОДНО СООБЩЕНИЕ, НЕ ВЫЗЫВАЕТ show_results_screen
-    """
-    query = update.callback_query
-    await query.answer("🔄 Возвращаюсь к результатам...")
-    
-    try:
-        await query.message.delete()
-    except Exception:
-        pass
-    
-    profile_data = context.user_data.get("profile_data")
-    if not profile_data:
-        profile_data = calculate_profile_final(context.user_data)
-        context.user_data["profile_data"] = profile_data
-    
-    try:
-        profile = get_profile_fallback(profile_data)
-    except ProfileNotFoundError as e:
-        error_text = f"""
-{DIVIDER}
-🧠 <b>К сожалению, возникла техническая ошибка</b>
-{DIVIDER}
-
-Как ваш виртуальный психолог, я не смог обработать все данные.
-
-Попробуйте пройти исследование заново, чтобы я мог помочь вам лучше:
-/start
-
-<i>Приношу извинения за неудобства.</i>
-"""
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=error_text.strip(),
-            parse_mode="HTML"
-        )
-        return RESULTS
-    
-    profile_card = get_card_description_from_profile(profile, profile_data)
-    context.user_data["profile_card"] = profile_card
-    
-    actual_profile_key = None
-    try:
-        if hasattr(profile, 'key'):
-            actual_profile_key = profile.key.lower()
-            context.user_data["actual_profile_key"] = actual_profile_key
-        elif hasattr(profile, 'profile_name'):
-            actual_profile_key = profile.profile_name.lower()
-            context.user_data["actual_profile_key"] = actual_profile_key
-        else:
-            actual_profile_key = f"{profile_card.get('type_code', 'sa')}_{profile_card.get('level', 1)}_{profile_card.get('dilts_code', 'def')}".lower()
-            context.user_data["actual_profile_key"] = actual_profile_key
-        
-        parts = actual_profile_key.split('_')
-        if len(parts) >= 3:
-            profile_data['type_code'] = parts[0].upper()
-            profile_data['level'] = int(parts[1])
-            profile_data['dilts_code'] = parts[2].lower()
-            profile_data['display_name'] = actual_profile_key.upper()
-            context.user_data["profile_data"] = profile_data
-            
-    except Exception as e:
-        logger.error(f"⚠️ Ошибка определения реального профиля: {e}")
-    
-    discrepancy_note = ""
-    if actual_profile_key:
-        discrepancy_note = get_discrepancy_note(profile_data, actual_profile_key)
-    
-    profile_header = profile_data.get('display_name', f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}")
-    raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
-    formatted_title = format_profile_title(raw_title, profile_header)
-    
-    archetype = profile_card.get('archetype', '')
-    quote = profile_card.get('quote', '')
-    
-    trigger = profile_card.get('trigger', '')
-    if trigger and trigger.startswith('🔍 ЭТО ТЫ, ЕСЛИ...'):
-        trigger = trigger.replace('🔍 ЭТО ТЫ, ЕСЛИ...\n\n', '').replace('🔍 ЭТО ТЫ, ЕСЛИ...', '')
-    
-    pain = profile_card.get('pain', '')
-    if pain:
-        pain_lines = pain.strip().split('\n')
-        if pain_lines and any(h in pain_lines[0] for h in ['СУТЬ ПРОБЛЕМЫ:', 'СУТЬ ПРОБЛЕМЫ']):
-            pain = '\n'.join(pain_lines[1:]) if len(pain_lines) > 1 else ""
-    
-    tool = profile_card.get('immediate_tool', '')
-    if tool:
-        tool_lines = tool.strip().split('\n')
-        if tool_lines and any(h in tool_lines[0] for h in ['ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:', 'ПЕРВЫЙ ШАГ / ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:']):
-            tool = '\n'.join(tool_lines[1:]) if len(tool_lines) > 1 else ""
-    
-    cta = profile_card.get('cta', '')
-    if cta:
-        cta_lines = cta.strip().split('\n')
-        if cta_lines and cta_lines[0].strip() == 'ЧТО ДАЛЬШЕ?':
-            cta = '\n'.join(cta_lines[1:]) if len(cta_lines) > 1 else ""
-    
-    result_parts = []
-    result_parts.append("🧠 ВАШ ПРОФИЛЬ")
-    result_parts.append(DIVIDER)
-    result_parts.append("")
-    result_parts.append(f"🎯 {formatted_title}")
-    result_parts.append("")
-    
-    if archetype:
-        result_parts.append(archetype)
-        result_parts.append("")
-    
-    if quote:
-        result_parts.append(f"💬 {quote}")
-        result_parts.append("")
-    
-    if trigger:
-        result_parts.append("🔍 ЭТО ВЫ, ЕСЛИ...")
-        result_parts.append("")
-        result_parts.append(trigger)
-        result_parts.append("")
-    
-    if pain:
-        result_parts.append("💔 СУТЬ ПРОБЛЕМЫ")
-        result_parts.append("")
-        result_parts.append(pain.strip())
-        result_parts.append("")
-    
-    if tool:
-        result_parts.append("🛠 ПРАКТИЧЕСКИЙ ИНСТРУМЕНТ")
-        result_parts.append("")
-        result_parts.append(tool.strip())
-        result_parts.append("")
-    
-    result_parts.append(DIVIDER)
-    result_parts.append("")
-    
-    if discrepancy_note:
-        result_parts.append(discrepancy_note.strip())
-    
-    if cta:
-        result_parts.append("🚀 СЛЕДУЮЩИЕ ШАГИ")
-        result_parts.append("")
-        result_parts.append(cta.strip())
-        result_parts.append("")
-    
-    result_parts.append(DIVIDER)
-    
-    full_message = "\n".join(result_parts)
-    
-    has_shared = context.user_data.get("has_shared", False)
-    
-    if not has_shared:
-        keyboard = [
-            [InlineKeyboardButton("🪞 Поделиться зеркалом", callback_data="get_gift")],
-            [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
-            [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")],
-            [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_sexual_profile")]
-        ]
-    else:
-        keyboard = [
-            [InlineKeyboardButton("⚔️ Получить сказку «Мастер Меча»", callback_data="open_gift")],
-            [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
-            [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")],
-            [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_sexual_profile")]
-        ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=full_message,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-    
-    logger.info(f"🔄 User {update.effective_user.id}: back_to_results → RESULTS")
-    
-    return RESULTS
-
-# ============================================
-# 🔴 ТЗ 2.0: ФУНКЦИИ ПОДАРКОВ И ПАКЕТОВ (НОВЫЕ ТЕКСТЫ)
+# ФУНКЦИИ ПОДАРКОВ И ПАКЕТОВ
 # ============================================
 
 async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ЭКРАН: ДАЙТЕ ДРУГИМ ЗЕРКАЛО — ПОЛУЧИТЕ МЕЧ"""
     query = update.callback_query
     await query.answer()
+    
+    instruction_text = f"""
+{DIVIDER}
+🧠 ДАЙТЕ ДРУГИМ ЗЕРКАЛО — ПОЛУЧИТЕ МЕЧ
+{DIVIDER}
+
+Иногда самое полезное, что мы можем сделать для близких —
+дать им зеркало.
+
+<i>Поделитесь этим зеркалом с теми, кому оно может быть важно.</i>
+
+⚔️ <b>А в благодарность — получите свой Меч:</b>
+Терапевтическая сказка <b>«Мастер Меча»</b>
+
+📖 <b>Эта сказка работает с тем, что мешает вам
+«расправить плечи» на уровне убеждений.</b>
+
+Она мягко трансформирует те ограничивающие установки,
+которые создают невидимую тяжесть на ваших плечах.
+
+🔗 <i>Просто нажмите кнопку ниже —
+я подготовлю сообщение для друзей.</i>
+
+{DIVIDER}
+"""
     
     encoded_text = urllib.parse.quote(SHARE_TEXT)
     share_url = f"https://t.me/share/url?url={BOT_LINK}&text={encoded_text}"
@@ -3687,7 +3734,7 @@ async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(SHARE_SCREEN_TEXT.strip(), reply_markup=reply_markup, parse_mode="HTML")
+    await query.edit_message_text(instruction_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
     return GIFT_SCREEN
 
 async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3700,12 +3747,36 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Сначала поделитесь зеркалом с друзьями, чтобы получить подарок!", 
             show_alert=True
         )
-        return await show_results_screen(update, context)
+        return await show_results_screen(update, context, force_shared_view=True)
     
     GIFT_PDF_LINK = os.getenv(
         "GIFT_PDF_LINK", 
         "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA"
     )
+    
+    gift_text = f"""
+{DIVIDER}
+⚔️ <b>ВАШ МЕЧ ГОТОВ!</b>
+
+📚 <b>Терапевтическая сказка «Мастер Меча»</b>
+
+Эта сказка работает именно с тем, что мешает вам
+расправить плечи на уровне убеждений.
+
+<i>Она не «ломает» старые установки,
+а создаёт пространство для новых —
+тех, что позволяют стоять прямо и легко.</i>
+
+💡 <b>Как читать для максимального эффекта:</b>
+1️⃣ Прочитайте перед сном
+2️⃣ Ищите в тексте «металл» (вашу истинную природу)
+3️⃣ Отмечайте «зазубрины» (ваши ограничения)
+4️⃣ Обращайте внимание на символы тяжести/лёгкости
+
+<i>Приятного чтения и лёгкости в плечах!</i> 🪶✨
+
+{DIVIDER}
+"""
     
     keyboard = [
         [InlineKeyboardButton("⚔️ Открыть сказку «Мастер Меча»", url=GIFT_PDF_LINK)],
@@ -3713,10 +3784,10 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    logger.info(f"🎁 User {update.effective_user.id} opened gift")
+    logger.info(f"🎁 User {update.effective_user.id} opened gift (has_shared={context.user_data.get('has_shared', False)})")
     
     await query.edit_message_text(
-        GIFT_SCREEN_TEXT_NEW.strip(),
+        gift_text.strip(),
         reply_markup=reply_markup, 
         parse_mode="HTML"
     )
@@ -3724,15 +3795,19 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return OPEN_GIFT_SCREEN
 
 async def back_to_results_after_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат к результатам ПОСЛЕ просмотра подарка"""
+    """
+    Возврат к результатам ПОСЛЕ просмотра подарка
+    """
     query = update.callback_query
     await query.answer("🔄 Возвращаюсь к результатам...")
     
     try:
         await query.message.delete()
+        logger.info(f"🎁 User {update.effective_user.id}: Удалено сообщение с подарком")
     except Exception as e:
         logger.warning(f"⚠️ User {update.effective_user.id}: Не удалось удалить сообщение с подарком: {e}")
     
+    # ВАЖНО: вызываем back_to_results, а не show_results_screen
     return await back_to_results(update, context)
 
 async def skip_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3742,9 +3817,11 @@ async def skip_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         await query.message.delete()
+        logger.info(f"✅ User {update.effective_user.id}: Удалён экран шаринга")
     except Exception as e:
         logger.warning(f"⚠️ User {update.effective_user.id}: Не удалось удалить сообщение: {e}")
     
+    # ВАЖНО: вызываем back_to_results, а не show_results_screen
     return await back_to_results(update, context)
 
 async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3759,7 +3836,7 @@ async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    ЭКРАН: ПОЛНОЕ ОПИСАНИЕ ПРОФИЛЯ
+    ЭКРАН: ПОЛНОЕ ОПИСАНИЕ ПРОФИЛЯ ОТ ПСИХОЛОГА
     """
     query = update.callback_query
     await query.answer()
@@ -3768,10 +3845,35 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     if profile_data:
         profile_code = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
+        profile_info = f"\n📊 <b>Ваш профиль:</b> <code>{profile_code}</code>\n"
+        personal_note = f"\n<i>Это описание будет создано персонально для вас на основе ваших ответов.</i>"
     else:
-        profile_code = "SA_1_DEF"
+        profile_info = "\n📊 <b>Профиль:</b> будет определен после теста\n"
+        personal_note = f"\n<i>После теста я подготовлю персональное описание именно для вас.</i>"
     
-    package_text = PACKAGE_SCREEN_TEXT.format(profile_code=profile_code)
+    package_text = f"""
+{DIVIDER}
+🧠 <b>ПОЛНОЕ ОПИСАНИЕ ВАШЕГО ПРОФИЛЯ</b>
+{DIVIDER}
+
+<i>Как ваш виртуальный психолог, я подготовлю для вас:</i>
+
+• 📖 <b>Детальный анализ личности</b> (15+ страниц)
+• 🎯 <b>Ключевые паттерны поведения</b> с примерами
+• 🚀 <b>Точки роста</b> и рекомендации по развитию
+• ⚠️ <b>Потенциальные ограничения</b> и как их обходить
+• 💡 <b>Практические инструменты</b> для ежедневного применения
+• 🔍 <b>Сильные стороны</b> и как их использовать
+{profile_info}
+<b>Стоимость:</b> 690 ₽
+
+💳 <b>Все способы оплаты:</b> СБП, ЮMoney, банковские карты
+{personal_note}
+
+<b>Это ваше персональное руководство по самопознанию!</b>
+
+{DIVIDER}
+"""
     
     keyboard = [
         [InlineKeyboardButton("🧠 Получить описание профиля за 690 ₽", callback_data="buy_package")],
@@ -3800,12 +3902,56 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     return await start_test(update, context)
 
+async def show_psychologist_conclusion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Заключительное сообщение от психолога"""
+    query = update.callback_query
+    await query.answer()
+    
+    conclusion_text = f"""
+{DIVIDER}
+🧠 <b>БЛАГОДАРЮ ЗА ДОВЕРИЕ!</b>
+{DIVIDER}
+
+<i>Как ваш виртуальный психолог, я рад был помочь вам в начале пути самопознания.</i>
+
+<b>Что дальше?</b>
+
+1️⃣ <b>Используйте полученные инсайты</b>
+   ↳ Обращайте внимание на обнаруженные паттерны
+
+2️⃣ <b>Получите полное описание профиля</b>
+   ↳ Глубокий анализ от психолога
+   ↳ Конкретные рекомендации для вас
+
+3️⃣ <b>Возвращайтесь к исследованию через 3-6 месяцев</b>
+   ↳ Отслеживайте свой прогресс
+   ↳ Замечайте изменения в способах реагировать
+
+<i>Помните: самопознание — это путь, а не пункт назначения.</i>
+
+Всегда готов помочь,
+<b>Ваш виртуальный психолог Вариатика</b> 🧠
+
+{DIVIDER}
+"""
+    
+    keyboard = [
+        [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
+        [InlineKeyboardButton("🔄 Пройти исследование заново", callback_data="restart_test")],
+        [InlineKeyboardButton("🏠 В главное меню", callback_data="main_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(conclusion_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
+    
+    return RESULTS
+
 # ============================================
 # ФУНКЦИИ ПЛАТЕЖЕЙ
 # ============================================
 
 def generate_payment_id(prefix="buy", user_id=None) -> str:
-    """Генерирует уникальный ID платежа"""
+    """Генерирует уникальный ID платежа с user_id для уникальности"""
     timestamp = int(time.time())
     random_str = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=12))
     
@@ -4234,11 +4380,31 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("🏠 В меню", callback_data="main_menu")]
     ]
     
-    message_text = PAYMENT_SCREEN_TEXT.format(
-        profile_code=profile_code,
-        payment_id=payment_id,
-        invoice_info=invoice_info
-    )
+    message_text = f"""
+{DIVIDER}
+✅ <b>ПЛАТЕЖ СОЗДАН!</b>
+{DIVIDER}
+
+🧠 <b>Виртуальный психолог Вариатика</b>
+
+👤 <b>Клиент:</b> {user_name}
+📊 <b>Ваш профиль:</b> <code>{profile_code}</code>
+📋 <b>ID платежа:</b> <code>{payment_id}</code>
+💰 <b>Сумма:</b> 690 рублей
+{invoice_info}
+🔒 <b>Защита от дублей:</b> ✅ активна
+📊 <b>Профиль сохранен:</b> ✅ <code>{profile_code}</code>
+
+<b>Для оплаты нажмите кнопку ниже:</b>
+После успешной оплаты:
+1. Вы получите уведомление
+2. Ссылка на персональное описание профиля придет автоматически
+3. Профиль <code>{profile_code}</code> будет сохранен
+
+<i>Вы также можете вернуться к результатам исследования и продолжить позже.</i>
+
+{DIVIDER}
+"""
     
     if query:
         await query.edit_message_text(
@@ -4809,17 +4975,15 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     logger.info(f"✅ User {update.effective_user.id}: main_menu_callback → ConversationHandler.END")
     return ConversationHandler.END
 
-# ============================================
-# 🔴 ТЗ 2.0: ИСПРАВЛЕННЫЙ ЭКРАН "А ЗАЧЕМ ЭТО ВООБЩЕ?"
-# ============================================
-
 async def why_details_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ИСПРАВЛЕНО: Обработчик кнопки 'А зачем это вообще?' - УБРАНЫ ВСЕ DIVIDER"""
+    """Обработчик кнопки 'А зачем это вообще?'"""
     query = update.callback_query
     await query.answer()
     
     details_text = f"""
+{DIVIDER}
 🎭 Немного правды с юмором...
+{DIVIDER}
 
 Как говорится: 'Нет здоровых, есть не дообследованные!' 
 Я ваш виртуальный психолог — дообследую 😉
@@ -4845,9 +5009,11 @@ async def why_details_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 ⏱ 15 минут вместо лет терапии!
 Потому что в 21 веке даже самопознание должно быть эффективным!
+
+{DIVIDER}
 """
     
-    keyboard = [[InlineKeyboardButton("👌 Понятно. Начинаем →", callback_data="start_test")]]
+    keyboard = [[InlineKeyboardButton("👌 Понял(а). Начинаем →", callback_data="start_test")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(details_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
@@ -4872,11 +5038,6 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Основная команда /start"""
-    
-    if context.args and context.args[0].startswith("sex_"):
-        logger.info(f"🔞 18+ переход по ссылке: {context.args[0]}")
-        return await handle_sexual_deeplink(update, context, context.args[0])
-    
     user = update.effective_user
     
     current_state = context.user_data.get("conversation_state")
@@ -4937,41 +5098,35 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# ===== 18+ МОДУЛЬ: ФУНКЦИЯ ЗАВЕРШЕНИЯ ТЕСТА =====
-# ============================================
-
-async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: int, username: str):
-    """Проверяет, пришел ли пользователь по 18+ приглашению"""
-    
-    invited_by = context.user_data.get("invited_by")
-    invite_code = context.user_data.get("invite_code")
-    
-    if invited_by and invite_code:
-        logger.info(f"🔞 Пользователь {user_id} прошел тест по приглашению {invite_code}")
-        
-        friend_profile = "sa_5_int"
-        friend_gender = "male"
-        
-        context.user_data.pop("invited_by", None)
-        context.user_data.pop("invite_code", None)
-
-# ============================================
 # ГЛАВНАЯ ФУНКЦИЯ
 # ============================================
 
 def main():
     """Запуск бота"""
     print("\n" + "="*60)
-    print("🧠 ЗАПУСК ВИРТУАЛЬНОГО ПСИХОЛОГА ВАРИАТИКА (ВЕРСИЯ 3.6.2)")
+    print("🧠 ЗАПУСК ВИРТУАЛЬНОГО ПСИХОЛОГА ВАРИАТИКА (ВЕРСИЯ 3.6.1)")
     print("="*60)
-    print("🔴 КРИТИЧЕСКИЕ ИСПРАВЛЕНИЯ ОБРАБОТЧИКОВ И ЭКРАНОВ")
+    print("🔴 ТЗ 3.0: ПОЛНАЯ МОДЕРНИЗАЦИЯ ВСЕХ ЭКРАНОВ")
     print("="*60)
-    print("1. ✅ ИСПРАВЛЕН парсинг callback_data во всех handle_stage_X_answer")
-    print("2. ✅ ИСПРАВЛЕНА функция make_callback - правильный формат")
-    print("3. ✅ ИСПРАВЛЕН экран why_details_callback - УБРАНЫ все DIVIDER")
-    print("4. ✅ ИСПРАВЛЕН текст кнопки: '👌 Понятно. Начинаем →'")
-    print("5. ✅ ДОБАВЛЕНА защита от дублирования callback")
-    print("6. ✅ ПРОВЕРЕНЫ все экраны на лишние разделители")
+    print("1. ✅ ЕДИНЫЙ ВИЗУАЛЬНЫЙ ШАБЛОН - DIVIDER во ВСЕХ экранах")
+    print("2. ✅ ТЕРМИНОЛОГИЧЕСКИЙ СЛОВАРЬ - ЗАМЕНЕНЫ ВСЕ запрещенные термины")
+    print("3. ✅ ЭМОДЗИ-ЯКОРИ - ЕДИНАЯ система во всех экранах")
+    print("4. ✅ ЭКРАНЫ ВХОДА В ЭТАПЫ - ЗАМЕНЕНЫ на утвержденные шаблоны")
+    print("5. ✅ ЭКРАНЫ «ПОДРОБНЕЕ» - ЗАМЕНЕНЫ на утвержденные шаблоны")
+    print("6. ✅ ЭКРАНЫ ВОПРОСОВ - НОВЫЙ ФОРМАТ (❓, ▫️, 💭, 📊)")
+    print("7. ✅ ЭКРАН ЭТАП 4 → РЕЗУЛЬТАТЫ - ЗАМЕНЕН на утвержденный")
+    print("8. ✅ ФУНКЦИЯ get_level_name() - ЗАМЕНЕНА (НАКОПЛЕНИЕ, ПОИСК, ...)")
+    print("9. ✅ ПРОМЕЖУТОЧНЫЕ ЭКРАНЫ - ДОБАВЛЕНЫ разделители, 🔍, ▶️")
+    print("="*60)
+    print("🔴 ТЗ 3.6.1: ИСПРАВЛЕНИЕ ФУНКЦИИ back_to_results")
+    print("="*60)
+    print("1. ✅ ОТПРАВЛЯЕТ ОДНО цельное сообщение с полным описанием")
+    print("2. ✅ НЕ ВЫЗЫВАЕТ show_results_screen")
+    print("3. ✅ УДАЛЯЕТ старое сообщение")
+    print("4. ✅ КНОПКИ внутри этого же сообщения")
+    print("5. ✅ РАБОТАЕТ из ЛЮБОГО экрана")
+    print("="*60)
+    print("🔒 ФУНКЦИЯ get_profile_fallback() НЕ ИЗМЕНЕНА!")
     print("="*60)
     
     gift_link = os.getenv("GIFT_PDF_LINK")
@@ -5054,6 +5209,7 @@ def main():
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(back_to_results_after_gift, pattern="^back_to_results_after_gift$"),
                 CallbackQueryHandler(show_results_screen, pattern="^show_results$"),
+                CallbackQueryHandler(show_psychologist_conclusion, pattern="^psychologist_conclusion$"),
                 CallbackQueryHandler(skip_share, pattern="^skip_share$"),
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$")
             ],
@@ -5078,24 +5234,6 @@ def main():
                 CallbackQueryHandler(buy_without_test_callback, pattern="^buy_without_test$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
             ],
-            SEXUAL_PROFILE_SCREEN: [
-                CallbackQueryHandler(show_my_sexual_profile, pattern="^show_sexual_profile$"),
-                CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
-                CallbackQueryHandler(show_my_invites, pattern="^show_my_invites$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results_after_gift$"),
-            ],
-            SEXUAL_INVITES_LIST: [
-                CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
-                CallbackQueryHandler(show_my_invites, pattern="^show_my_invites$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(lambda u,c: None, pattern="^check_invite_"),
-                CallbackQueryHandler(lambda u,c: None, pattern="^copy_invite_"),
-                CallbackQueryHandler(lambda u,c: None, pattern="^delete_invite_"),
-            ],
-            SEXUAL_FRIEND_PROFILE: [
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-            ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         allow_reentry=True
@@ -5104,18 +5242,9 @@ def main():
     application.add_handler(conv_handler)
     
     logger.info("🧠 Виртуальный психолог Вариатика запущен!")
-    logger.info("✅ ВЕРСИЯ 3.6.2 - КРИТИЧЕСКИЕ ИСПРАВЛЕНИЯ ВНЕДРЕНЫ!")
-    logger.info("📋 ЧЕК-ЛИСТ ВЫПОЛНЕН:")
-    logger.info("   ✅ handle_stage_1_answer - парсит parts[2] как option_id (a/b/c/d)")
-    logger.info("   ✅ handle_stage_2_answer - парсит parts[2] как level (1-9)")
-    logger.info("   ✅ handle_stage_3_answer - парсит parts[2] как option_id (a/b/c/d)")
-    logger.info("   ✅ handle_stage_4_answer - парсит parts[2] как option_id (a/b/c/d)")
-    logger.info("   ✅ make_callback - генерирует правильный формат")
-    logger.info("   ✅ ask_stage_1_question - вызывает make_callback с option_id = 'a','b','c','d'")
-    logger.info("   ✅ ask_stage_2_question - вызывает make_callback с level_num как строкой")
-    logger.info("   ✅ why_details_callback - УБРАНЫ все DIVIDER")
-    logger.info("   ✅ why_details_callback - Кнопка '👌 Понятно. Начинаем →'")
-    logger.info("   ✅ ДОБАВЛЕНА защита от дублей во все обработчики")
+    logger.info("✅ ТЗ 3.0 ПОЛНОСТЬЮ ВНЕДРЕНО!")
+    logger.info("✅ ТЗ 3.6.1 ПОЛНОСТЬЮ ВНЕДРЕНО!")
+    logger.info("📋 Версия 3.6.1 - ПОЛНАЯ МОДЕРНИЗАЦИЯ ЭКРАНОВ И ИСПРАВЛЕНИЕ back_to_results")
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
