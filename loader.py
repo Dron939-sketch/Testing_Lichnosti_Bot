@@ -1,13 +1,373 @@
 """
 Загрузчик профилей из файловой системы
 ИСПРАВЛЕННАЯ ВЕРСИЯ - поиск по типу и уровню, игнорируя суффикс Дилтса
+
+ДОБАВЛЕНО: 🟦 4F-МОДУЛЬ - загрузчик JSON-функций для интимных ключей
+Версия: 1.0 (18+ интеграция)
 """
 
 import os
 import sys
+import json
 import importlib.util
 import traceback
+from typing import Dict, Any, Optional, List
+from functools import lru_cache
 from base import VariaticaProfile
+
+# ============================================
+# 🟦 4F-МОДУЛЬ: ЗАГРУЗЧИК JSON-ФУНКЦИЙ
+# ============================================
+
+class FourFLoader:
+    """
+    Загрузчик 4F-функций из JSON-файлов
+    
+    Структура папок:
+    профили/4F/
+    ├── 1F/
+    │   ├── sa_4_cap.json      (🔥 живой демо-ключ для всех)
+    │   └── default.json       (заглушка)
+    ├── 2F/
+    │   ├── sa_4_cap.json      (🍽 живой демо-ключ для всех)
+    │   └── default.json       (заглушка)
+    ├── 3F/
+    │   ├── sa_4_cap.json      (⚡ живой демо-ключ для всех)
+    │   └── default.json       (заглушка)
+    └── 4F/
+        ├── sa_4_cap.json      (💡 живой демо-ключ для всех)
+        └── default.json       (заглушка)
+    
+    ⚠️ MVP: ВСЕГДА используем sa_4_cap.json для всех покупок!
+    """
+    
+    # Эмодзи для каждой функции
+    FUNCTION_EMOJI = {
+        "1F": "🔥",
+        "2F": "🍽",
+        "3F": "⚡",
+        "4F": "💡"
+    }
+    
+    # Названия функций
+    FUNCTION_NAMES = {
+        "1F": "КЛЮЧ ВОЗБУЖДЕНИЯ",
+        "2F": "КЛЮЧ НАСЫЩЕНИЯ",
+        "3F": "КЛЮЧ РАЗРЯДКИ",
+        "4F": "КЛЮЧ ИНТЕГРАЦИИ"
+    }
+    
+    # Цвета/эмодзи для демо-режима
+    DEMO_EMOJI = {
+        "1F": "🔥",
+        "2F": "🍽",
+        "3F": "⚡",
+        "4F": "💡"
+    }
+    
+    def __init__(self, base_path: str = "профили/4F"):
+        """
+        Инициализация загрузчика 4F-функций
+        
+        Args:
+            base_path: Базовая директория с 4F-функциями
+        """
+        self.base_path = base_path
+        self.cache = {}
+        self.ensure_directory_structure()
+    
+    def ensure_directory_structure(self):
+        """Создаёт структуру папок 4F, если её нет"""
+        functions = ["1F", "2F", "3F", "4F"]
+        
+        for func in functions:
+            func_path = os.path.join(self.base_path, func)
+            if not os.path.exists(func_path):
+                os.makedirs(func_path, exist_ok=True)
+                print(f"📁 Создана папка: {func_path}")
+        
+        print(f"✅ 4F-структура проверена: {self.base_path}")
+    
+    @lru_cache(maxsize=32)
+    def _load_json_file(self, file_path: str) -> Dict[str, Any]:
+        """
+        Загружает JSON-файл с кэшированием
+        
+        Args:
+            file_path: Путь к JSON-файлу
+            
+        Returns:
+            Dict: Содержимое JSON-файла
+        """
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            # Пробуем загрузить default.json
+            dir_path = os.path.dirname(file_path)
+            default_path = os.path.join(dir_path, "default.json")
+            
+            try:
+                with open(default_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except FileNotFoundError:
+                # Создаём базовую заглушку
+                return self._create_default_content(file_path)
+        except json.JSONDecodeError as e:
+            print(f"❌ Ошибка парсинга JSON {file_path}: {e}")
+            return self._create_default_content(file_path)
+    
+    def _create_default_content(self, file_path: str) -> Dict[str, Any]:
+        """
+        Создаёт базовое содержимое для отсутствующего файла
+        
+        Args:
+            file_path: Путь к файлу (для определения функции)
+            
+        Returns:
+            Dict: Базовая заглушка
+        """
+        # Извлекаем название функции из пути
+        path_parts = file_path.split(os.sep)
+        function = "1F"
+        
+        for part in path_parts:
+            if part in ["1F", "2F", "3F", "4F"]:
+                function = part
+                break
+        
+        emoji = self.FUNCTION_EMOJI.get(function, "🔑")
+        name = self.FUNCTION_NAMES.get(function, "КЛЮЧ")
+        
+        return {
+            "success": True,
+            "function": function,
+            "profile_key": "sa_4_cap",
+            "source_profile": "sa_4_cap",
+            "is_demo": True,
+            "demo_notice": f"⚠️ Это демо-версия ключа {function}. Полная версия содержит 3x больше контента и персональные рекомендации.",
+            "content": {
+                "title": f"{emoji} {function}: {name}",
+                "for": "У профиля SA-4_CAP «{friend_name}»",
+                "short_description": f"Демо-версия ключа {function}. Приобретите полную версию для получения доступа ко всем материалам.",
+                "triggers": [
+                    "Пример триггер-фразы 1",
+                    "Пример триггер-фразы 2",
+                    "Пример триггер-фразы 3"
+                ],
+                "examples": [
+                    "Пример применения 1",
+                    "Пример применения 2"
+                ],
+                "quote": "«Это демо-версия. Полная версия содержит уникальный контент.»"
+            },
+            "demo_limitation": {
+                "title": f"📌 В ПОЛНОЙ ВЕРСИИ {function}:",
+                "content": [
+                    "✓ 10+ точных триггер-фраз",
+                    "✓ Психологический разбор каждой фразы",
+                    "✓ Протокол применения в разных контекстах",
+                    "✓ Анти-паттерны и как их избежать",
+                    "✓ Персональные рекомендации"
+                ],
+                "price": 99,
+                "upgrade_command": f"/buy_function_{function}_full"
+            }
+        }
+    
+    def get_function(self, function: str, profile_key: str = "sa_4_cap") -> Dict[str, Any]:
+        """
+        Получить содержимое 4F-функции
+        
+        ⚠️ MVP: ВСЕГДА используем sa_4_cap.json для всех покупок!
+        
+        Args:
+            function: 1F, 2F, 3F, 4F
+            profile_key: sa_4_cap (игнорируется, всегда sa_4_cap)
+            
+        Returns:
+            Dict: Содержимое функции
+        """
+        # Нормализуем название функции
+        function = function.upper()
+        if function not in ["1F", "2F", "3F", "4F"]:
+            function = "1F"
+        
+        # ⚠️ MVP: ВСЕГДА используем sa_4_cap.json
+        target_profile = "sa_4_cap"
+        
+        # Формируем путь к файлу
+        file_path = os.path.join(self.base_path, function, f"{target_profile}.json")
+        
+        # Загружаем содержимое
+        content = self._load_json_file(file_path)
+        
+        # Добавляем метаданные
+        content["function"] = function
+        content["profile_key"] = profile_key
+        content["source_profile"] = target_profile
+        content["is_demo"] = content.get("is_demo", True)
+        
+        # Добавляем demo_notice, если его нет
+        if "demo_notice" not in content:
+            emoji = self.DEMO_EMOJI.get(function, "🔑")
+            content["demo_notice"] = f"{emoji} Это демо-версия. Полная версия содержит 3x больше контента и стоит 99₽."
+        
+        return content
+    
+    def substitute_name(self, content: Dict[str, Any], friend_name: str) -> Dict[str, Any]:
+        """
+        Рекурсивно заменить {friend_name} на имя друга во всех строках
+        
+        Args:
+            content: Словарь с контентом
+            friend_name: Имя друга для подстановки
+            
+        Returns:
+            Dict: Контент с подставленным именем
+        """
+        if not friend_name:
+            friend_name = "Друг"
+        
+        def replace_recursive(obj):
+            if isinstance(obj, dict):
+                return {k: replace_recursive(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [replace_recursive(item) for item in obj]
+            elif isinstance(obj, str):
+                # Заменяем все вхождения {friend_name}
+                return obj.replace("{friend_name}", friend_name)
+            else:
+                return obj
+        
+        return replace_recursive(content)
+    
+    def get_demo_notice(self, function: str, price: int = 99) -> Dict[str, Any]:
+        """
+        Возвращает демо-уведомление для непокупленных ключей
+        
+        Args:
+            function: 1F, 2F, 3F, 4F
+            price: Цена полной версии
+            
+        Returns:
+            Dict: Демо-уведомление
+        """
+        function = function.upper()
+        emoji = self.DEMO_EMOJI.get(function, "🔑")
+        name = self.FUNCTION_NAMES.get(function, "КЛЮЧ")
+        
+        return {
+            "title": f"{emoji} ДЕМО-ВЕРСИЯ {function}",
+            "notice": f"⚠️ Вы используете демо-версию ключа {function}.",
+            "limitations": [
+                "❌ Только 3 примера триггер-фраз",
+                "❌ Нет психологического разбора",
+                "❌ Нет протокола применения",
+                "❌ Нет персональных рекомендаций"
+            ],
+            "upgrade": {
+                "price": price,
+                "emoji": emoji,
+                "text": f"💰 Приобрести полную версию за {price}₽",
+                "features": [
+                    "✓ 10+ точных триггер-фраз",
+                    "✓ Психологический разбор",
+                    "✓ Протокол применения",
+                    "✓ Персональные рекомендации"
+                ]
+            }
+        }
+    
+    def validate_function_file(self, function: str, profile_key: str = "sa_4_cap") -> bool:
+        """
+        Проверяет существование файла функции
+        
+        Args:
+            function: 1F, 2F, 3F, 4F
+            profile_key: sa_4_cap, default
+            
+        Returns:
+            bool: Существует ли файл
+        """
+        function = function.upper()
+        file_path = os.path.join(self.base_path, function, f"{profile_key}.json")
+        
+        if os.path.exists(file_path):
+            return True
+        
+        # Проверяем default.json
+        default_path = os.path.join(self.base_path, function, "default.json")
+        return os.path.exists(default_path)
+    
+    def get_all_functions(self) -> List[str]:
+        """
+        Возвращает список всех доступных 4F-функций
+        
+        Returns:
+            List[str]: Список функций
+        """
+        functions = []
+        
+        if not os.path.exists(self.base_path):
+            return functions
+        
+        for func in ["1F", "2F", "3F", "4F"]:
+            func_path = os.path.join(self.base_path, func)
+            if os.path.exists(func_path):
+                functions.append(func)
+        
+        return functions
+    
+    def debug_4f_functions(self):
+        """Отладочная информация о 4F-функциях"""
+        print("\n" + "="*50)
+        print("🔑 4F-ФУНКЦИИ: ДИАГНОСТИКА")
+        print("="*50)
+        
+        # Проверяем наличие папок
+        functions = self.get_all_functions()
+        print(f"📁 Доступные функции: {functions}")
+        
+        for function in ["1F", "2F", "3F", "4F"]:
+            print(f"\n{self.FUNCTION_EMOJI.get(function, '🔑')} {function}:")
+            
+            # Проверяем sa_4_cap.json
+            sa_path = os.path.join(self.base_path, function, "sa_4_cap.json")
+            if os.path.exists(sa_path):
+                size = os.path.getsize(sa_path)
+                print(f"  ✅ sa_4_cap.json ({size} байт)")
+                
+                # Пробуем загрузить
+                try:
+                    content = self.get_function(function, "sa_4_cap")
+                    if content.get("is_demo"):
+                        print(f"     📊 Режим: ДЕМО")
+                    else:
+                        print(f"     📊 Режим: ПОЛНЫЙ")
+                    
+                    # Проверяем структуру
+                    if "content" in content:
+                        triggers = content["content"].get("triggers", [])
+                        print(f"     🎯 Триггеров: {len(triggers)}")
+                except Exception as e:
+                    print(f"     ❌ Ошибка загрузки: {e}")
+            else:
+                print(f"  ❌ sa_4_cap.json НЕ НАЙДЕН")
+            
+            # Проверяем default.json
+            default_path = os.path.join(self.base_path, function, "default.json")
+            if os.path.exists(default_path):
+                print(f"  ✅ default.json")
+            else:
+                print(f"  ⚠️ default.json НЕ НАЙДЕН (будет создана заглушка)")
+        
+        print("\n" + "="*50)
+
+
+# ============================================
+# 🧠 ОСНОВНОЙ ЗАГРУЗЧИК ПРОФИЛЕЙ
+# ============================================
 
 class ProfileLoader:
     """Загрузчик профилей из файлов"""
@@ -491,6 +851,63 @@ class ProfileLoader:
         search_key = f"{type_upper}_{level}_{dilts_suffix}" if dilts_suffix else base_key
         return self._smart_profile_search(search_key)
     
+    def get_4f_profile_info(self, profile_key: str) -> Dict[str, Any]:
+        """
+        Получает информацию о профиле для 4F-ключа
+        Возвращает type_code, level, dilts_code
+        
+        Args:
+            profile_key: Ключ профиля (например, "sa_3_con" или "SA_3")
+            
+        Returns:
+            Dict: Информация о профиле
+        """
+        profile = self.get_profile(profile_key)
+        
+        if not profile:
+            # Возвращаем базовую информацию
+            return {
+                "type_code": "SA",
+                "level": 4,
+                "dilts_code": "cap",
+                "profile_key": "sa_4_cap",
+                "display_name": "SA_4_CAP"
+            }
+        
+        # Пытаемся получить реальный ключ профиля
+        actual_key = getattr(profile, 'key', profile_key)
+        
+        # Разбираем ключ
+        parts = actual_key.split('_')
+        
+        if len(parts) >= 3:
+            type_code = parts[0].upper()
+            try:
+                level = int(parts[1])
+            except ValueError:
+                level = 4
+            
+            dilts_code = parts[2].lower() if len(parts) > 2 else 'cap'
+        elif len(parts) == 2:
+            type_code = parts[0].upper()
+            try:
+                level = int(parts[1])
+            except ValueError:
+                level = 4
+            dilts_code = 'cap'
+        else:
+            type_code = "SA"
+            level = 4
+            dilts_code = "cap"
+        
+        return {
+            "type_code": type_code,
+            "level": level,
+            "dilts_code": dilts_code,
+            "profile_key": f"{type_code.lower()}_{level}_{dilts_code}",
+            "display_name": f"{type_code}_{level}_{dilts_code.upper()}"
+        }
+    
     def get_all_profiles(self) -> list:
         """
         Возвращает список всех уникальных ключей профилей
@@ -555,10 +972,23 @@ class ProfileLoader:
         print(f"\n✅ Все 36 профилей загружены!")
         return True
 
-# Создаём глобальный экземпляр загрузчика
+
+# ============================================
+# 🌍 ГЛОБАЛЬНЫЕ ЭКЗЕМПЛЯРЫ ЗАГРУЗЧИКОВ
+# ============================================
+
+# Основной загрузчик психологических профилей
 loader = ProfileLoader()
 
-# Функции для удобного импорта
+# Загрузчик 4F-функций
+four_f_loader = FourFLoader()
+
+
+# ============================================
+# 📦 ФУНКЦИИ ДЛЯ УДОБНОГО ИМПОРТА
+# ============================================
+
+# ----- Функции для работы с психологическими профилями -----
 def get_profile(profile_key: str) -> VariaticaProfile:
     """Получает профиль по ключу"""
     return loader.get_profile(profile_key)
@@ -583,7 +1013,78 @@ def check_all_profiles() -> bool:
     """Проверяет наличие всех 36 профилей"""
     return loader.check_all_profiles_loaded()
 
-# Вспомогательная функция для отладки
+def get_4f_profile_info(profile_key: str) -> dict:
+    """Получает информацию о профиле для 4F-ключа"""
+    return loader.get_4f_profile_info(profile_key)
+
+
+# ----- Функции для работы с 4F-ключами -----
+def get_4f_function(function: str, profile_key: str = "sa_4_cap") -> dict:
+    """
+    Получить содержимое 4F-функции
+    
+    Args:
+        function: 1F, 2F, 3F, 4F
+        profile_key: Игнорируется, всегда sa_4_cap (MVP)
+        
+    Returns:
+        dict: Содержимое функции
+    """
+    return four_f_loader.get_function(function, profile_key)
+
+def substitute_friend_name(content: dict, friend_name: str) -> dict:
+    """
+    Подставить имя друга в контент 4F-функции
+    
+    Args:
+        content: Словарь с контентом
+        friend_name: Имя друга
+        
+    Returns:
+        dict: Контент с подставленным именем
+    """
+    return four_f_loader.substitute_name(content, friend_name)
+
+def get_4f_demo_notice(function: str, price: int = 99) -> dict:
+    """
+    Получить демо-уведомление для 4F-функции
+    
+    Args:
+        function: 1F, 2F, 3F, 4F
+        price: Цена полной версии
+        
+    Returns:
+        dict: Демо-уведомление
+    """
+    return four_f_loader.get_demo_notice(function, price)
+
+def get_all_4f_functions() -> list:
+    """
+    Получить список всех доступных 4F-функций
+    
+    Returns:
+        list: Список функций
+    """
+    return four_f_loader.get_all_functions()
+
+def validate_4f_function(function: str, profile_key: str = "sa_4_cap") -> bool:
+    """
+    Проверить существование файла 4F-функции
+    
+    Args:
+        function: 1F, 2F, 3F, 4F
+        profile_key: sa_4_cap, default
+        
+    Returns:
+        bool: Существует ли файл
+    """
+    return four_f_loader.validate_function_file(function, profile_key)
+
+
+# ============================================
+# 🐛 ОТЛАДОЧНЫЕ ФУНКЦИИ
+# ============================================
+
 def debug_profile_loading():
     """Функция для отладки загрузки профилей"""
     print("\n" + "="*60)
@@ -648,7 +1149,31 @@ def debug_profile_loading():
         else:
             print(f"  ❌ {type_code}_{level}_{suffix} → НЕ НАЙДЕН")
     
+    # Тестируем 4F-функцию
+    print("\n🔑 ТЕСТИРУЕМ get_4f_profile_info():")
+    test_profiles = ["sa_3_con", "SA_3", "sp_4_val", "ia_2"]
+    
+    for test_profile in test_profiles:
+        info = get_4f_profile_info(test_profile)
+        print(f"  {test_profile:12} → {info['display_name']} (уровень {info['level']})")
+    
     print("="*60)
 
-if __name__ == "__main__":
+
+def debug_4f_functions():
+    """Функция для отладки 4F-функций"""
+    four_f_loader.debug_4f_functions()
+
+
+def debug_all():
+    """Полная отладка всех систем"""
     debug_profile_loading()
+    debug_4f_functions()
+
+
+# ============================================
+# 🚀 ЗАПУСК ПРИ ПРЯМОМ ВЫПОЛНЕНИИ
+# ============================================
+
+if __name__ == "__main__":
+    debug_all()
