@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 МОДУЛЬ 18+: СЕКСУАЛЬНЫЕ ПРЕДПОЧТЕНИЯ
-Версия 1.1 (ИСПРАВЛЕНА: добавлена функция show_my_invites)
+Версия 1.2 (ИСПРАВЛЕНА: добавлен готовый текст для друга)
 """
 
 import logging
@@ -111,7 +111,109 @@ def format_sexual_profile(profile: Dict[str, Any], username: str = "Вы") -> st
     return text
 
 # ============================================
-# 🔴 ДОБАВЛЕНО: ФУНКЦИЯ show_my_invites
+# ЭКРАН: МОЙ ИНТИМНЫЙ ПРОФИЛЬ
+# ============================================
+
+async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """🔞 Мой интимный профиль (ЗАГЛУШКА)"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Загружаем профиль-заглушку
+    profile = load_sexual_profile()
+    
+    # Форматируем текст
+    text = format_sexual_profile(profile, update.effective_user.first_name)
+    
+    # Кнопки
+    keyboard = [
+        [InlineKeyboardButton("🔞 Узнать предпочтения друга — 99₽", callback_data="sexual_invite_start")],
+        [InlineKeyboardButton("🔍 Мои приглашения", callback_data="show_my_invites")],
+        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+    ]
+    
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+    return SEXUAL_PROFILE_SCREEN
+
+# ============================================
+# 🔥 ЭКРАН: СОЗДАНИЕ ПРИГЛАШЕНИЯ + ТЕКСТ ДЛЯ ДРУГА
+# ============================================
+
+async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """🔞 Создание ссылки-приглашения + готовый текст для друга"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Генерируем уникальный код
+    invite_code = f"sex_{uuid.uuid4().hex[:8]}_{uuid.uuid4().hex[:4]}"
+    invite_url = f"https://t.me/Testing_Lichnosti_bot?start={invite_code}"
+    
+    # 🔥 ТЕКСТ ДЛЯ ДРУГА (универсальный, без пола, без скобок)
+    invite_message = (
+        "Есть одна штука.\n"
+        "Определяет твой ночной тип личности.\n"
+        "У меня — совпало процентов на 90.\n"
+        f"{invite_url}\n\n"
+        "Интересно, у тебя тоже?"
+    )
+    
+    # Создаем объект приглашения
+    invite = {
+        "code": invite_code,
+        "url": invite_url,
+        "message": invite_message,  # ✅ Сохраняем текст для истории
+        "created_at": datetime.now().isoformat(),
+        "status": "active",
+        "friend_id": None,
+        "friend_name": None,
+        "payment_status": None
+    }
+    
+    # Сохраняем текущее приглашение
+    context.user_data["current_invite"] = invite
+    
+    # Добавляем в список приглашений
+    invites = context.user_data.get("sexual_invites", [])
+    invites.insert(0, invite)
+    context.user_data["sexual_invites"] = invites
+    
+    # 🔥 ЭКРАН С ГОТОВЫМ ТЕКСТОМ
+    text = f"""
+{SEXUAL_DIVIDER}
+🔞 ВАША ССЫЛКА-ПРИГЛАШЕНИЕ ГОТОВА!
+{SEXUAL_DIVIDER}
+
+🔗 <code>{invite_url}</code>
+
+💬 ГОТОВЫЙ ТЕКСТ ДЛЯ ДРУГА:
+<code>{invite_message}</code>
+
+✨ Просто скопируй всё сообщение целиком
+   и отправь другу.
+
+👉 99₽ = доступ к его 18+ профилю
+{SEXUAL_DIVIDER}
+"""
+    
+    keyboard = [
+        [InlineKeyboardButton("📋 Копировать ссылку", callback_data=f"copy_invite_{invite_code}")],
+        [InlineKeyboardButton("🔍 Мои приглашения", callback_data="show_my_invites")],
+        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+    ]
+    
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+    return SEXUAL_INVITES_LIST
+
+# ============================================
+# ЭКРАН: МОИ ПРИГЛАШЕНИЯ
 # ============================================
 
 async def show_my_invites(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -202,100 +304,13 @@ async def show_my_invites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return SEXUAL_INVITES_LIST
 
 # ============================================
-# ЭКРАНЫ
-# ============================================
-
-async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Мой интимный профиль (ЗАГЛУШКА)"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Загружаем профиль-заглушку
-    profile = load_sexual_profile()
-    
-    # Форматируем текст
-    text = format_sexual_profile(profile, update.effective_user.first_name)
-    
-    # Кнопки
-    keyboard = [
-        [InlineKeyboardButton("🔞 Узнать предпочтения друга — 99₽", callback_data="sexual_invite_start")],
-        [InlineKeyboardButton("🔍 Мои приглашения", callback_data="show_my_invites")],
-        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
-    ]
-    
-    await query.edit_message_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    return SEXUAL_PROFILE_SCREEN
-
-async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Создание ссылки-приглашения"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Генерируем уникальный код
-    invite_code = f"sex_{uuid.uuid4().hex[:8]}_{uuid.uuid4().hex[:4]}"
-    invite_url = f"https://t.me/Testing_Lichnosti_bot?start={invite_code}"
-    
-    # Создаем объект приглашения
-    invite = {
-        "code": invite_code,
-        "url": invite_url,
-        "created_at": datetime.now().isoformat(),
-        "status": "active",
-        "friend_id": None,
-        "friend_name": None,
-        "payment_status": None
-    }
-    
-    # Сохраняем текущее приглашение
-    context.user_data["current_invite"] = invite
-    
-    # Добавляем в список приглашений
-    invites = context.user_data.get("sexual_invites", [])
-    invites.insert(0, invite)  # Добавляем в начало
-    context.user_data["sexual_invites"] = invites
-    
-    text = f"""
-{SEXUAL_DIVIDER}
-🔞 ВАША ССЫЛКА-ПРИГЛАШЕНИЕ ГОТОВА!
-{SEXUAL_DIVIDER}
-
-🔗 <code>{invite_url}</code>
-
-✨ Как только друг пройдёт тест — 
-   я сразу пришлю вам уведомление.
-
-👉 99₽ = доступ к его 18+ профилю
-
-💡 Скопируйте ссылку и отправьте другу
-{SEXUAL_DIVIDER}
-"""
-    keyboard = [
-        [InlineKeyboardButton("📋 Копировать ссылку", callback_data=f"copy_invite_{invite_code}")],
-        [InlineKeyboardButton("🔍 Мои приглашения", callback_data="show_my_invites")],
-        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
-    ]
-    
-    await query.edit_message_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    return SEXUAL_INVITES_LIST
-
-# ============================================
-# 🔴 ДОБАВЛЕНО: ОБРАБОТЧИКИ КНОПОК
+# ОБРАБОТЧИКИ КНОПОК
 # ============================================
 
 async def copy_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик кнопки копирования ссылки"""
     query = update.callback_query
     await query.answer("📋 Ссылка скопирована в буфер обмена!", show_alert=False)
-    
-    # Просто показываем уведомление, сообщение не меняем
     return SEXUAL_INVITES_LIST
 
 async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -308,8 +323,6 @@ async def delete_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     """Удаление приглашения"""
     query = update.callback_query
     await query.answer("❌ Приглашение удалено", show_alert=True)
-    
-    # В заглушке просто показываем уведомление
     return SEXUAL_INVITES_LIST
 
 # ============================================
