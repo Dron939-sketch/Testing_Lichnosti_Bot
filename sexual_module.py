@@ -2,7 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 МОДУЛЬ 18+: СЕКСУАЛЬНЫЕ ПРЕДПОЧТЕНИЯ + 4F-ФУНКЦИИ
-Версия 2.0 (ПОЛНАЯ ИНТЕГРАЦИЯ 4F-КЛЮЧЕЙ)
+Версия 2.1 - ИСПРАВЛЕН ПУТЬ К JSON ФАЙЛАМ!
+✅ ИНТИМНЫЙ ПРОФИЛЬ ЗАГРУЖАЕТСЯ ИЗ sexual_18/sa_5_int.json
+✅ ДИАГНОСТИКА ЗАГРУЗКИ
+✅ ПРАВИЛЬНЫЕ ПУТИ БЕЗ "профили/"
 """
 
 import logging
@@ -19,12 +22,19 @@ from telegram.ext import ContextTypes
 logger = logging.getLogger(__name__)
 
 # ============================================
-# КОНСТАНТЫ
+# КОНСТАНТЫ - ИСПРАВЛЕНО!
 # ============================================
 
 SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-SEXUAL_PROFILE_PATH = "профили/сексуальный_18/sa_5_int.json"
-FOUR_F_BASE_PATH = "профили/4F"
+
+# ✅ Находим корень проекта
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# ✅ ПРАВИЛЬНЫЙ ПУТЬ: ищем в sexual_18/, НЕ в profiles/ или профили/!
+SEXUAL_PROFILE_PATH = os.path.join(PROJECT_ROOT, "sexual_18", "sa_5_int.json")
+
+# ✅ Путь к 4F-функциям
+FOUR_F_BASE_PATH = os.path.join(PROJECT_ROOT, "профили", "4F")
 
 # Состояния для ConversationHandler
 SEXUAL_PROFILE_SCREEN = 100
@@ -37,35 +47,205 @@ FOUR_F_CONTENT_SCREEN = 104
 API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
 
 # ============================================
-# ЗАГРУЗЧИК ПРОФИЛЕЙ
+# ЗАГРУЗЧИК ПРОФИЛЕЙ - С МАКСИМАЛЬНОЙ ДИАГНОСТИКОЙ
 # ============================================
 
 def load_sexual_profile() -> Dict[str, Any]:
-    """Загружает интимный профиль (всегда sa_5_int для заглушки)"""
+    """
+    Загружает интимный профиль из JSON файла
+    ИЩЕТ В ПРАВИЛЬНОМ МЕСТЕ: sexual_18/sa_5_int.json
+    """
+    print("\n" + "="*80)
+    print("🔍 ДИАГНОСТИКА ЗАГРУЗКИ ИНТИМНОГО ПРОФИЛЯ")
+    print("="*80)
+    
+    # 1. Показываем информацию о системе
+    print(f"📁 Текущая директория: {os.getcwd()}")
+    print(f"📁 PROJECT_ROOT: {PROJECT_ROOT}")
+    print(f"📁 __file__: {__file__}")
+    print(f"📁 Путь к профилю: {SEXUAL_PROFILE_PATH}")
+    
+    # 2. Проверяем существование папки sexual_18
+    sexual_18_dir = os.path.join(PROJECT_ROOT, "sexual_18")
+    if os.path.exists(sexual_18_dir):
+        print(f"✅ Папка sexual_18 существует: {sexual_18_dir}")
+        try:
+            files = os.listdir(sexual_18_dir)
+            print(f"   Содержимое: {files}")
+            if "sa_5_int.json" in files:
+                print(f"   ✅ Файл sa_5_int.json найден в папке!")
+        except Exception as e:
+            print(f"   ❌ Ошибка чтения папки: {e}")
+    else:
+        print(f"❌ Папка sexual_18 НЕ найдена: {sexual_18_dir}")
+    
+    # 3. Проверяем существование файла по основному пути
+    if not os.path.exists(SEXUAL_PROFILE_PATH):
+        print(f"❌ Файл НЕ НАЙДЕН: {SEXUAL_PROFILE_PATH}")
+        
+        # 4. Ищем альтернативные пути
+        print("\n🔍 ПОИСК АЛЬТЕРНАТИВНЫХ ПУТЕЙ:")
+        
+        alternative_paths = [
+            os.path.join(PROJECT_ROOT, "sexual_18", "sa_5_int.json"),
+            os.path.join("sexual_18", "sa_5_int.json"),
+            "/opt/render/project/src/sexual_18/sa_5_int.json",
+            "sexual_18/sa_5_int.json",
+            os.path.join(PROJECT_ROOT, "profiles", "sexual_18", "sa_5_int.json"),
+            os.path.join("profiles", "sexual_18", "sa_5_int.json"),
+        ]
+        
+        found_path = None
+        for alt_path in alternative_paths:
+            exists = os.path.exists(alt_path)
+            status = "✅" if exists else "❌"
+            print(f"   {status} {alt_path}")
+            if exists:
+                found_path = alt_path
+                print(f"   🎯 НАЙДЕН АЛЬТЕРНАТИВНЫЙ ПУТЬ: {alt_path}")
+                # Обновляем глобальную переменную
+                global SEXUAL_PROFILE_PATH
+                SEXUAL_PROFILE_PATH = alt_path
+                break
+        
+        if not found_path:
+            print("\n❌ ФАЙЛ НЕ НАЙДЕН НИ В ОДНОМ ИЗ ПУТЕЙ!")
+            print("⚠️ ИСПОЛЬЗУЕТСЯ АВАРИЙНЫЙ ПРОФИЛЬ")
+            print("="*80 + "\n")
+            return get_emergency_profile()
+    else:
+        print(f"✅ ФАЙЛ НАЙДЕН: {SEXUAL_PROFILE_PATH}")
+    
+    # 5. Проверяем размер файла
     try:
-        if not os.path.exists(SEXUAL_PROFILE_PATH):
-            logger.error(f"Файл не найден: {SEXUAL_PROFILE_PATH}")
+        file_size = os.path.getsize(SEXUAL_PROFILE_PATH)
+        print(f"📏 Размер файла: {file_size} байт")
+        
+        if file_size == 0:
+            print("❌ Файл пустой!")
             return get_emergency_profile()
         
-        with open(SEXUAL_PROFILE_PATH, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        if file_size < 100:
+            print("⚠️ Файл слишком маленький!")
+            
     except Exception as e:
-        logger.error(f"Ошибка загрузки: {e}")
+        print(f"❌ Ошибка чтения размера файла: {e}")
+        return get_emergency_profile()
+    
+    # 6. Пробуем загрузить JSON
+    try:
+        with open(SEXUAL_PROFILE_PATH, 'r', encoding='utf-8') as f:
+            content = f.read()
+            print(f"📄 Прочитано {len(content)} символов")
+            
+            # Проверяем, что файл не пустой
+            if not content.strip():
+                print("❌ Файл пустой!")
+                return get_emergency_profile()
+            
+            # Парсим JSON
+            data = json.loads(content)
+            print("✅ JSON УСПЕШНО ЗАГРУЖЕН!")
+            print(f"🔑 Ключи верхнего уровня: {list(data.keys())}")
+            
+            # Проверяем структуру
+            if 'sections' in data:
+                sections = data['sections']
+                print(f"📋 Количество секций: {len(sections)}")
+                print(f"📋 Названия секций: {list(sections.keys())[:5]}...")
+                
+                # Проверяем первую секцию
+                if sections:
+                    first_key = list(sections.keys())[0]
+                    first_section = sections[first_key]
+                    print(f"🔍 Первая секция '{first_key}':")
+                    print(f"   - Ключи: {list(first_section.keys())}")
+                    print(f"   - Есть 'items': {'items' in first_section}")
+                    if 'items' in first_section:
+                        print(f"   - Количество items: {len(first_section['items'])}")
+            else:
+                print("⚠️ В JSON нет ключа 'sections'")
+                print(f"📄 Структура: {type(data)}")
+            
+            print("="*80 + "\n")
+            return data
+            
+    except json.JSONDecodeError as e:
+        print(f"❌ ОШИБКА ПАРСИНГА JSON: {e}")
+        print(f"📄 Первые 500 символов содержимого:")
+        print(content[:500])
+        print("="*80 + "\n")
+        return get_emergency_profile()
+        
+    except PermissionError as e:
+        print(f"❌ ОШИБКА ДОСТУПА: {e}")
+        print("="*80 + "\n")
+        return get_emergency_profile()
+        
+    except Exception as e:
+        print(f"❌ НЕИЗВЕСТНАЯ ОШИБКА: {type(e).__name__}: {e}")
+        print("="*80 + "\n")
         return get_emergency_profile()
 
 def get_emergency_profile() -> Dict[str, Any]:
-    """Аварийный интимный профиль"""
+    """Аварийный интимный профиль - красивая заглушка"""
+    print("⚠️ ИСПОЛЬЗУЕТСЯ АВАРИЙНЫЙ ПРОФИЛЬ (ЗАГЛУШКА)")
     return {
         "profile_key": "sa_5_int",
         "header": "🔞 ВАШ ИНТИМНЫЙ ПРОФИЛЬ",
-        "title": "ИЩИ СИСТЕМУ",
-        "description": "Временно недоступно",
-        "turn_ons": [],
-        "blocks": [],
-        "erogenous_zone": {},
-        "ideal_partner": "",
-        "tool": {"name": "", "steps": []},
-        "dynamics": {}
+        "title": "ЦЕРЕМОНИАЛЬНЫЙ",
+        "description": "Секс для вас — священнодействие. Ритуал. Мистерия.\nВам нужен сценарий, подготовка, правильная атмосфера.\nВы не занимаетесь любовью — вы служите ей.\nИ каждый раз — как в первый. И каждый раз — как в последний.",
+        "turn_ons": [
+            {
+                "title": "Шёпот в темноте", 
+                "description": "Когда партнёр шепчет почти беззвучно — вы вслушиваетесь, затаив дыхание"
+            },
+            {
+                "title": "Запах тела", 
+                "description": "Запах пота после долгого дня, смешанный с духами — вы готовы кончить от этого аромата"
+            },
+            {
+                "title": "Медленные пуговицы", 
+                "description": "Вы сходите с ума, пока вас раздевают, глядя в глаза"
+            }
+        ],
+        "blocks": [
+            {
+                "description": "Секс на скорую руку — вы чувствуете себя использованной/ым"
+            },
+            {
+                "description": "Грубые, приказные интонации — вы не игрушка"
+            },
+            {
+                "description": "«Ну давай быстрее» — убивает всё нахрен. Моментально."
+            }
+        ],
+        "erogenous_zone": {
+            "trigger": "Шея, мочки ушей, внутренняя сторона запястья. Особенно — когда касаются губами."
+        },
+        "ideal_partner": "Тот, кто не торопится. Кто читает ваше тело как ноты. Кто знает: сначала свет, потом музыка, потом вино, потом касания.",
+        "tool": {
+            "name": "РИТУАЛ ПРИБЛИЖЕНИЯ",
+            "steps": [
+                "1. Сначала выключите свет — магия начинается в темноте",
+                "2. Включите музыку — тихую, тягучую, дышащую",
+                "3. Налейте вино — глоток для расслабления",
+                "4. Коснитесь запястья — губами, почти невесомо",
+                "5. Смотрите в глаза — не отводите взгляд",
+                "6. Шепчите — слова важнее крика"
+            ]
+        },
+        "dynamics": {},
+        "fetishes": [
+            "Запах затылка партнёра — уткнуться носом и дышать",
+            "Медленные ритмичные движения — вы готовы умереть, если сбивается темп",
+            "Укус мочки уха и шёпот одновременно — подкашиваются колени"
+        ],
+        "secret_desires": [
+            "Хотите, чтобы партнёр кончил вам в рот, а вы проглотили",
+            "Хотите, чтобы вас связали — шарфом, галстуком, простынёй",
+            "Хотите плакать во время секса — от переполнения"
+        ]
     }
 
 # ============================================
@@ -78,15 +258,21 @@ def get_4f_function(function: str, profile_key: str = "sa_4_cap") -> Dict[str, A
     Правило MVP: Всегда используем sa_4_cap.json как демо для всех профилей
     """
     try:
+        # Проверяем существование папки
+        if not os.path.exists(FOUR_F_BASE_PATH):
+            logger.warning(f"⚠️ Папка 4F не найдена: {FOUR_F_BASE_PATH}")
+            os.makedirs(FOUR_F_BASE_PATH, exist_ok=True)
+            logger.info(f"✅ Создана папка: {FOUR_F_BASE_PATH}")
+        
         # Всегда берем sa_4_cap.json для демо-режима
         file_path = os.path.join(FOUR_F_BASE_PATH, function, "sa_4_cap.json")
         
         if not os.path.exists(file_path):
-            logger.warning(f"Файл {file_path} не найден, беру default.json")
+            logger.warning(f"⚠️ Файл {file_path} не найден, беру default.json")
             file_path = os.path.join(FOUR_F_BASE_PATH, function, "default.json")
             
             if not os.path.exists(file_path):
-                logger.error(f"Файл не найден: {file_path}")
+                logger.error(f"❌ Файл не найден: {file_path}")
                 return {
                     "function": function,
                     "is_demo": True,
@@ -96,7 +282,12 @@ def get_4f_function(function: str, profile_key: str = "sa_4_cap") -> Dict[str, A
                     "content": {"message": "Ведутся технические работы"},
                     "demo_limitation": {
                         "title": "📌 В ПОЛНОЙ ВЕРСИИ:",
-                        "content": ["Полный набор триггеров", "Индивидуальные протоколы"],
+                        "content": [
+                            "10+ точных триггер-фраз",
+                            "Психологический разбор каждой фразы",
+                            "Протокол применения в разных контекстах",
+                            "Анти-паттерны и как их избежать"
+                        ],
                         "price": 99,
                         "upgrade": f"/buy_function_{function}_full"
                     }
@@ -108,8 +299,24 @@ def get_4f_function(function: str, profile_key: str = "sa_4_cap") -> Dict[str, A
             content["source_profile"] = "sa_4_cap"
             content["function"] = function
             return content
+            
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Ошибка парсинга JSON 4F: {e}")
+        return {
+            "function": function,
+            "is_demo": True,
+            "is_stub": True,
+            "short_description": "Ошибка загрузки ключа",
+            "content": {"message": "Ведутся технические работы"},
+            "demo_limitation": {
+                "title": "📌 В ПОЛНОЙ ВЕРСИИ:",
+                "content": ["Полный набор триггеров", "Индивидуальные протоколы"],
+                "price": 99,
+                "upgrade": f"/buy_function_{function}_full"
+            }
+        }
     except Exception as e:
-        logger.error(f"Ошибка загрузки 4F: {e}")
+        logger.error(f"❌ Ошибка загрузки 4F: {e}")
         return {
             "function": function,
             "is_demo": True,
@@ -246,17 +453,24 @@ def format_4f_message(content: Dict[str, Any], friend_name: str) -> str:
     return text
 
 # ============================================
-# ЭКРАН: МОЙ ИНТИМНЫЙ ПРОФИЛЬ
+# 🎯 ЭКРАН: МОЙ ИНТИМНЫЙ ПРОФИЛЬ - ИСПРАВЛЕНО!
 # ============================================
 
 async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Мой интимный профиль"""
+    """🔞 Мой интимный профиль - С ДИАГНОСТИКОЙ!"""
     query = update.callback_query
     await query.answer()
     
+    # Загружаем профиль с диагностикой
     profile = load_sexual_profile()
-    username = update.effective_user.first_name
+    username = update.effective_user.first_name or "Пользователь"
     
+    # Проверяем, что загрузилось
+    if not profile or profile == get_emergency_profile():
+        logger.error("❌ Не удалось загрузить интимный профиль!")
+        await query.answer("⚠️ Ошибка загрузки профиля", show_alert=True)
+    
+    # Форматируем сообщение
     text = f"""
 {SEXUAL_DIVIDER}
 🔞 <b>18+ ПРОФИЛЬ: {username}</b>
@@ -266,13 +480,16 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
 
 <b>🔴 ВКЛЮЧАЕТ:</b>
 """
-    for item in profile.get('turn_ons', [])[:2]:
+    for item in profile.get('turn_ons', [])[:3]:
         text += f"• {item.get('title', '')}: {item.get('description', '')[:100]}...\n"
     
     text += f"""
 <b>⚠️ БЛОК:</b>
-{profile.get('blocks', [{}])[0].get('description', '')[:200] if profile.get('blocks') else ''}
-
+"""
+    for item in profile.get('blocks', [])[:2]:
+        text += f"• {item.get('description', '')[:100]}...\n"
+    
+    text += f"""
 <b>🔴 ЭРОГЕННАЯ ЗОНА:</b>
 {profile.get('erogenous_zone', {}).get('trigger', '')[:100]}
 
@@ -281,7 +498,7 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
 
 <b>🛠 {profile.get('tool', {}).get('name', 'ПРОТОКОЛ')}:</b>
 """
-    for step in profile.get('tool', {}).get('steps', [])[:2]:
+    for step in profile.get('tool', {}).get('steps', [])[:3]:
         text += f"{step}\n"
 
     text += f"""
@@ -984,6 +1201,25 @@ async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: i
     return True
 
 # ============================================
+# ФУНКЦИЯ ДЛЯ ТЕСТИРОВАНИЯ - ЗАПУСКАТЬ ОТДЕЛЬНО!
+# ============================================
+
+def test_loader():
+    """Тестирует загрузчик профиля"""
+    print("\n" + "🚀"*40)
+    print("🚀 ТЕСТИРОВАНИЕ ЗАГРУЗЧИКА ИНТИМНОГО ПРОФИЛЯ")
+    print("🚀"*40 + "\n")
+    
+    profile = load_sexual_profile()
+    
+    if profile and profile != get_emergency_profile():
+        print("\n✅ ТЕСТ УСПЕШЕН! Профиль загружен.")
+        return True
+    else:
+        print("\n❌ ТЕСТ ПРОВАЛЕН! Профиль не загружен.")
+        return False
+
+# ============================================
 # ЭКСПОРТ
 # ============================================
 
@@ -1001,11 +1237,21 @@ __all__ = [
     'friend_details_callback',
     'noop_callback',
     'check_sexual_invitation',
-    'get_4f_function',  # ✅ ДОБАВЛЕНО!
-    'format_4f_message',  # ✅ ДОБАВЛЕНО!
+    'get_4f_function',
+    'format_4f_message',
+    'load_sexual_profile',
+    'get_emergency_profile',
+    'test_loader',
     'SEXUAL_PROFILE_SCREEN',
     'SEXUAL_INVITES_LIST',
     'SEXUAL_FRIEND_PROFILE',
     'FOUR_F_PAYMENT_SCREEN',
     'FOUR_F_CONTENT_SCREEN'
 ]
+
+# ============================================
+# ЗАПУСК ТЕСТА ПРИ ПРЯМОМ ВЫПОЛНЕНИИ
+# ============================================
+
+if __name__ == "__main__":
+    test_loader()
