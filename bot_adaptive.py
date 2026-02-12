@@ -1,11 +1,32 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 10.1-final - ИСПРАВЛЕНИЯ: ПУТЬ К JSON, РАЗДЕЛИТЕЛЬ, МОИ ОТРАЖЕНИЯ, ПРОФИЛЬ ДРУГА
+Версия: 10.2 - ИСПРАВЛЕНИЯ ПО ТЗ:
+1. 🔹 ЭКРАН СОЗДАНИЯ ССЫЛКИ:
+   - Заголовок одной строкой: "🔞 ВАША ССЫЛКА ГОТОВА!"
+   - В ТЕКСТЕ СООБЩЕНИЯ удалена дублирующаяся ссылка
+   - Убрана строка "ОСТАЛОСЬ ТОЛЬКО ОТПРАВИТЬ ⬇️"
+   - Кнопки: только "📤 Отправить другу" и "⬅️ Вернуться в профиль"
+
+2. 🔹 ФОРМАТИРОВАНИЕ ИНТИМНОГО ПРОФИЛЯ:
+   - Разделитель длиннее (20 черточек)
+   - Разделитель на отдельной строке, рассекает абзацы
+   - Правильный отступ перед "🪞 ТАМ, ЗА ЗЕРКАЛОМ..."
+
+3. 🔹 КНОПКА "МОИ ОТРАЖЕНИЯ":
+   - Работает всегда, даже при пустом списке
+   - Корректно показывает статистику 0/2
+   - Нет ошибок при отсутствии данных
+
+4. 🔹 УМНЫЙ ПОИСК JSON:
+   - Автоматическое определение корня проекта
+   - Поиск файла profiles/sexual_18/sa_5_int.json в разных местах
+   - Работает из любой директории запуска
 """
 
 import logging
 import os
+import sys
 import uuid
 import json
 import urllib.parse
@@ -32,6 +53,31 @@ YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY", "ваш_secret_key")
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ===== УМНЫЙ ПОИСК КОРНЯ ПРОЕКТА =====
+def find_project_root() -> str:
+    """Находит корень проекта (где лежит папка profiles/)"""
+    # Начинаем с директории текущего файла
+    current = os.path.dirname(os.path.abspath(__file__))
+    
+    # Поднимаемся вверх, пока не найдем папку profiles или не дойдем до корня диска
+    while current != os.path.dirname(current):
+        if os.path.exists(os.path.join(current, "profiles")):
+            return current
+        current = os.path.dirname(current)
+    
+    # Если не нашли, возвращаем текущую директорию
+    return os.path.dirname(os.path.abspath(__file__))
+
+# Устанавливаем корень проекта в PATH и меняем рабочую директорию
+PROJECT_ROOT = find_project_root()
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+os.chdir(PROJECT_ROOT)
+
+logger.info(f"📁 Корень проекта: {PROJECT_ROOT}")
+logger.info(f"📁 Рабочая директория: {os.getcwd()}")
+logger.info(f"📁 Папка profiles: {os.path.join(PROJECT_ROOT, 'profiles')}")
+
 # ===== СОСТОЯНИЯ =====
 RESULTS_SCREEN = 0
 MY_SEXUAL_PROFILE = 1
@@ -42,7 +88,7 @@ FOUR_F_CONTENT = 5
 FOUR_F_PAYMENT_SCREEN = 6
 
 # ===== КОНСТАНТЫ =====
-SEXUAL_DIVIDER = "━━━━━━━━━━"  # 10 черточек
+SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━━━"  # 20 черточек
 FREE_FRIEND_LIMIT = 2
 FRIEND_ACCESS_PRICE = 99
 FOUR_F_PRICE = 1  # ТЕСТОВЫЙ РЕЖИМ - 1 РУБЛЬ
@@ -141,41 +187,49 @@ FOUR_F_EXPLANATION = """
 💰 Цена: 1₽ (тестовый режим)
 """
 
-# ===== ЗАГРУЗКА ИНТИМНОГО ПРОФИЛЯ ИЗ JSON =====
+# ===== ЗАГРУЗКА ИНТИМНОГО ПРОФИЛЯ ИЗ JSON (УМНЫЙ ПОИСК) =====
 def load_intimate_profile() -> dict:
-    """Загружает интимный профиль из JSON файла"""
+    """Загружает интимный профиль из JSON файла с умным поиском пути"""
     try:
-        # ИСПРАВЛЕНО: profiles вместо профили (латиница)
-        profile_path = os.path.join("profiles", "sexual_18", "sa_5_int.json")
+        # Возможные пути для поиска файла
+        possible_paths = [
+            # Относительно корня проекта
+            os.path.join(PROJECT_ROOT, "profiles", "sexual_18", "sa_5_int.json"),
+            # Относительно текущей директории
+            os.path.join("profiles", "sexual_18", "sa_5_int.json"),
+            # Относительно директории скрипта
+            os.path.join(os.path.dirname(__file__), "profiles", "sexual_18", "sa_5_int.json"),
+            # На уровень выше
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "profiles", "sexual_18", "sa_5_int.json"),
+        ]
         
-        if os.path.exists(profile_path):
-            with open(profile_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                logger.info(f"✅ Загружен интимный профиль: {profile_path}")
-                return data
-        else:
-            logger.warning(f"⚠️ Файл профиля не найден: {profile_path}")
-            # Заглушка
-            return {
-                "profile_type": "SA-5_INT",
-                "archetype": "ЦЕРЕМОНИАЛЬНЫЙ",
-                "role": "Жрец/Жрица сексуальной мистерии",
-                "quote": "«Со мной не скучно. Со мной — вкусно.»",
-                "description": "Секс для вас — священнодействие. Ритуал. Мистерия.\nВам нужен сценарий, подготовка, правильная атмосфера.\nВы не занимаетесь любовью — вы служите ей.\nИ каждый раз — как в первый. И каждый раз — как в последний.",
-                "sections": {}
-            }
+        for profile_path in possible_paths:
+            if os.path.exists(profile_path):
+                with open(profile_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    logger.info(f"✅ Загружен интимный профиль: {profile_path}")
+                    return data
+        
+        logger.warning(f"⚠️ Файл профиля не найден. Искали в: {possible_paths}")
+        return get_emergency_profile()
+        
     except Exception as e:
         logger.error(f"❌ Ошибка загрузки интимного профиля: {e}")
-        return {
-            "profile_type": "SA-5_INT",
-            "archetype": "ЦЕРЕМОНИАЛЬНЫЙ",
-            "quote": "«Со мной не скучно. Со мной — вкусно.»",
-            "description": "Ваш интимный профиль",
-            "sections": {}
-        }
+        return get_emergency_profile()
+
+def get_emergency_profile() -> dict:
+    """Аварийный интимный профиль, если JSON не найден"""
+    return {
+        "profile_type": "SA-5_INT",
+        "archetype": "ЦЕРЕМОНИАЛЬНЫЙ",
+        "role": "Жрец/Жрица сексуальной мистерии",
+        "quote": "«Со мной не скучно. Со мной — вкусно.»",
+        "description": "Секс для вас — священнодействие. Ритуал. Мистерия.\nВам нужен сценарий, подготовка, правильная атмосфера.\nВы не занимаетесь любовью — вы служите ей.\nИ каждый раз — как в первый. И каждый раз — как в последний.",
+        "sections": {}
+    }
 
 def format_intimate_profile(profile_data: dict, user_name: str) -> str:
-    """Форматирует интимный профиль для отображения в Telegram"""
+    """Форматирует интимный профиль для отображения в Telegram (ИСПРАВЛЕННЫЙ РАЗДЕЛИТЕЛЬ)"""
     
     message = f"""
 🔞 ИНТИМНЫЙ ПРОФИЛЬ
@@ -212,10 +266,12 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> str:
             elif 'content' in section:
                 message += f"\n{section['content']}"
     
-    # ИСПРАВЛЕНО: Разделитель в одной строке с заголовком
+    # ИСПРАВЛЕНО: Разделитель на отдельной строке, длиннее, с отступами
     message += f"""
 
-{SEXUAL_DIVIDER} 🪞 ТАМ, ЗА ЗЕРКАЛОМ...
+{SEXUAL_DIVIDER}
+
+🪞 ТАМ, ЗА ЗЕРКАЛОМ...
 
 Вы увидели только что СВОЁ 🪞 отражение.
 Но у каждого друга — своя тайна.
@@ -241,9 +297,19 @@ def load_friend_intimate_profile(friend_name: str, friend_profile: str = None) -
     """
     try:
         # Загружаем тот же JSON, что и для своего профиля
-        profile_path = os.path.join("profiles", "sexual_18", "sa_5_int.json")
+        profile_path = None
+        possible_paths = [
+            os.path.join(PROJECT_ROOT, "profiles", "sexual_18", "sa_5_int.json"),
+            os.path.join("profiles", "sexual_18", "sa_5_int.json"),
+            os.path.join(os.path.dirname(__file__), "profiles", "sexual_18", "sa_5_int.json"),
+        ]
         
-        if os.path.exists(profile_path):
+        for path in possible_paths:
+            if os.path.exists(path):
+                profile_path = path
+                break
+        
+        if profile_path:
             with open(profile_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 
@@ -257,7 +323,7 @@ def load_friend_intimate_profile(friend_name: str, friend_profile: str = None) -
                 logger.info(f"✅ Загружен тестовый интимный профиль для друга {friend_name}")
                 return data
         else:
-            logger.warning(f"⚠️ Файл профиля не найден: {profile_path}")
+            logger.warning(f"⚠️ Файл профиля не найден, использую аварийный")
             return get_friend_emergency_profile(friend_name)
             
     except Exception as e:
@@ -336,7 +402,9 @@ def format_friend_intimate_profile(profile_data: dict, friend_name: str) -> str:
     # Добавляем дисклеймер о тестовом режиме
     message += f"""
 
-{SEXUAL_DIVIDER} ⚠️ ТЕСТОВЫЙ РЕЖИМ
+{SEXUAL_DIVIDER}
+
+⚠️ ТЕСТОВЫЙ РЕЖИМ
 
 Это демо-профиль на основе SA-5_INT.
 В реальном режиме здесь будут персональные данные {friend_name}.
@@ -466,10 +534,12 @@ def count_free_friends(user_id: int) -> int:
     return len([inv for inv in invites if inv.get("status") == "used" and inv.get("access_status") == "free"])
 
 def init_test_data(user_id: int):
+    """Инициализирует тестовые данные, если их нет"""
     invites = get_user_invites(user_id)
-    if len(invites) >= 2:
+    if len(invites) > 0:
         return
     
+    # Только если совсем пусто - добавляем тестовые данные
     test_friends = [
         {
             "invite_id": f"test_free_1_{user_id}",
@@ -498,6 +568,7 @@ def init_test_data(user_id: int):
     ]
     
     invites.extend(test_friends)
+    logger.info(f"✅ Инициализированы тестовые данные для user_id={user_id}")
 
 # ============================================
 # 🧠 ЭКРАН 1: РЕЗУЛЬТАТЫ
@@ -511,7 +582,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["user_id"] = user.id
     context.user_data["profile"] = USER_PROFILE.copy()
     
-    init_test_data(user.id)
+    # Инициализируем invites
     context.user_data["sexual_invites"] = get_user_invites(user.id)
     
     return await show_results_screen(update, context)
@@ -582,11 +653,11 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
     return MY_SEXUAL_PROFILE
 
 # ============================================
-# 🔗 ЭКРАН 3: СОЗДАНИЕ ПРИГЛАШЕНИЯ (НОВЫЙ ДИЗАЙН - ТОЧНО ПО ТЗ)
+# 🔗 ЭКРАН 3: СОЗДАНИЕ ПРИГЛАШЕНИЯ (ИСПРАВЛЕНО ПО ТЗ)
 # ============================================
 
 async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Создание ссылки-приглашения (ФИНАЛЬНЫЙ ДИЗАЙН ПО ТЗ)"""
+    """🔞 Создание ссылки-приглашения (ИСПРАВЛЕНО: одна ссылка, компактный заголовок, 2 кнопки)"""
     query = update.callback_query
     await query.answer()
     
@@ -596,21 +667,20 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     invite_code = f"sex_{uuid.uuid4().hex[:8]}_{uuid.uuid4().hex[:4]}"
     invite_url = f"https://t.me/{BOT_USERNAME}?start={invite_code}"
     
-    # 2. ТЕКСТ ДЛЯ ДРУГА - ИЗМЕНЕНА ТОЛЬКО ОДНА СТРОКА! (по ТЗ)
+    # 2. ТЕКСТ ДЛЯ ДРУГА - ТОЛЬКО ОДНА ССЫЛКА В КОНЦЕ! (дубль УДАЛЕН)
     invite_message = (
         "Есть одна штука.\n"
         "Определяет твой ночной тип личности.\n"
-        "У меня — совпало процентов на 90.\n"
-        f"{invite_url}\n\n"
+        "У меня — совпало процентов на 90.\n\n"
         "Интересно, у тебя тоже?"
     )
     
     # 3. Текущее время
     current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
     
-    # 4. НОВЫЙ ТЕКСТ ЭКРАНА (ТОЧНО ПО МАКЕТУ ИЗ ТЗ)
+    # 4. ИСПРАВЛЕННЫЙ ТЕКСТ ЭКРАНА (по ТЗ)
     text = f"""
-🔞  ВАША ССЫЛКА-ПРИГЛАШЕНИЕ ГОТОВА!  🔞 
+🔞 ВАША ССЫЛКА ГОТОВА!
 
 🔗 <code>{invite_url}</code>
 
@@ -625,8 +695,6 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
 🎯 Через 15 минут после теста
    вы увидите его 18+ профиль.
    То, что скрывается даже от близких.
-
- ОСТАЛОСЬ ТОЛЬКО ОТПРАВИТЬ  ⬇️
 """
     
     # 5. Сохраняем приглашение
@@ -650,17 +718,20 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     invites = context.user_data.setdefault("sexual_invites", [])
     invites.insert(0, invite_data)
     
-    # 6. КНОПКИ - БЕЗ ИЗМЕНЕНИЙ! (НЕ ТРОГАТЬ ПО ТЗ)
+    # Сохраняем в глобальное хранилище
+    user_id = query.from_user.id
+    global_invites = get_user_invites(user_id)
+    global_invites.insert(0, invite_data)
+    
+    # 6. КНОПКИ - ТОЛЬКО ДВЕ! (по ТЗ)
     share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
     
     keyboard = [
         [
-            InlineKeyboardButton("📤 Отправить другу", url=share_url),
-            InlineKeyboardButton("📋 Копировать ссылку", callback_data=f"copy_invite_{invite_code}")
+            InlineKeyboardButton("📤 Отправить другу", url=share_url)
         ],
         [
-            InlineKeyboardButton("🔍 Мои приглашения", callback_data="my_invites"),
-            InlineKeyboardButton("⬅️ К профилю", callback_data="my_sexual_profile")
+            InlineKeyboardButton("⬅️ Вернуться в профиль", callback_data="my_sexual_profile")
         ]
     ]
     
@@ -674,27 +745,24 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ (ИСПРАВЛЕНО)
+# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ (ИСПРАВЛЕНО - РАБОТАЕТ ВСЕГДА)
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔍 Мои отражения - список приглашений"""
+    """🔍 Мои отражения - работает ВСЕГДА, даже при пустом списке"""
     query = update.callback_query
     await query.answer()
     
     user_id = query.from_user.id
     
-    # ✅ ИСПРАВЛЕНО: инициализируем тестовые данные
-    init_test_data(user_id)
-    
-    # ✅ Загружаем свежие данные
+    # Получаем или создаем invites
     invites = get_user_invites(user_id)
     context.user_data["sexual_invites"] = invites
     
+    # Подсчитываем статистику (работает даже с пустым списком)
     active_invites = [inv for inv in invites if inv.get("status") == "active"]
     used_invites = [inv for inv in invites if inv.get("status") == "used"]
     
-    # ✅ ИСПРАВЛЕНО: Добавлена статистика
     total_invites = len(invites)
     total_reflections = len(used_invites)
     free_used = sum(1 for inv in used_invites if inv.get("access_status") == "free")
@@ -726,6 +794,8 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                     callback_data=f"check_status_{inv['invite_id']}"
                 )
             ])
+    else:
+        message += f"\n✨ У вас пока нет активных приглашений"
     
     if used_invites:
         message += f"\n\n✨ УЖЕ ОТРАЗИЛИСЬ — {len(used_invites)}"
@@ -747,6 +817,10 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                         callback_data=f"friend_{inv['friend_id']}"
                     )
                 ])
+    else:
+        message += f"\n\n✨ У вас пока нет отражений"
+        message += f"\n\n💡 Создайте ссылку и отправьте другу —"
+        message += f"\n   когда он пройдет тест, его профиль появится здесь"
     
     message += f"""
 
@@ -803,18 +877,16 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
     return INVITES_LIST
 
 # ============================================
-# 📋 ЭКРАН: КОПИРОВАНИЕ ССЫЛКИ
-# ============================================
-
-async def copy_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """📋 Копирование ссылки (заглушка)"""
-    query = update.callback_query
-    await query.answer("✅ Ссылка скопирована!", show_alert=False)
-    return INVITES_LIST
-
-# ============================================
 # 👤 ЭКРАН 6: МЕНЮ ПРОФИЛЯ ДРУГА
 # ============================================
+
+def get_friend_by_id(context: ContextTypes.DEFAULT_TYPE, friend_id: int) -> Optional[dict]:
+    """Утилита для поиска друга по ID"""
+    invites = context.user_data.get("sexual_invites", [])
+    return next(
+        (inv for inv in invites if inv.get("friend_id") == friend_id),
+        None
+    )
 
 async def friend_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """👤 МЕНЮ ПРОФИЛЯ ДРУГА"""
@@ -823,11 +895,7 @@ async def friend_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     
     friend_id = int(query.data.split("_")[1])
     
-    friend_data = None
-    for inv in context.user_data.get("sexual_invites", []):
-        if inv.get("friend_id") == friend_id:
-            friend_data = inv
-            break
+    friend_data = get_friend_by_id(context, friend_id)
     
     if not friend_data:
         await query.answer("❌ Друг не найден", show_alert=True)
@@ -928,12 +996,8 @@ async def standard_profile_callback(update: Update, context: ContextTypes.DEFAUL
     await query.answer()
     
     friend_id = int(query.data.split("_")[1])
-    friend_name = "друг"
-    
-    for inv in context.user_data.get("sexual_invites", []):
-        if inv.get("friend_id") == friend_id:
-            friend_name = inv.get("friend_name", "друг")
-            break
+    friend_data = get_friend_by_id(context, friend_id)
+    friend_name = friend_data.get("friend_name", "друг") if friend_data else "друг"
     
     profile = load_friend_standard_profile()
     
@@ -968,22 +1032,17 @@ async def standard_profile_callback(update: Update, context: ContextTypes.DEFAUL
     return FRIEND_MENU
 
 # ============================================
-# 🔞 ЭКРАН 9: ИНТИМНЫЙ ПРОФИЛЬ ДРУГА (ИСПРАВЛЕНО)
+# 🔞 ЭКРАН 9: ИНТИМНЫЙ ПРОФИЛЬ ДРУГА
 # ============================================
 
 async def intimate_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Интимный профиль друга (ТЕСТОВЫЙ РЕЖИМ - всегда SA-5_INT)"""
+    """🔞 Интимный профиль друга (ТЕСТОВЫЙ РЕЖИМ)"""
     query = update.callback_query
     await query.answer()
     
     friend_id = int(query.data.split("_")[1])
     
-    # Ищем данные друга
-    friend_data = None
-    for inv in context.user_data.get("sexual_invites", []):
-        if inv.get("friend_id") == friend_id:
-            friend_data = inv
-            break
+    friend_data = get_friend_by_id(context, friend_id)
     
     if not friend_data:
         await query.answer("❌ Друг не найден", show_alert=True)
@@ -992,10 +1051,7 @@ async def intimate_profile_callback(update: Update, context: ContextTypes.DEFAUL
     friend_name = friend_data.get("friend_name", "друг")
     friend_profile = friend_data.get("friend_profile", "SA-3_CON")
     
-    # ✅ ИСПРАВЛЕНО: Загружаем тестовый интимный профиль (всегда sa_5_int)
     profile_data = load_friend_intimate_profile(friend_name, friend_profile)
-    
-    # ✅ Форматируем для друга
     message = format_friend_intimate_profile(profile_data, friend_name)
     
     keyboard = [[
@@ -1021,11 +1077,7 @@ async def four_f_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     
     friend_id = int(query.data.split("_")[1])
     
-    friend_data = None
-    for inv in context.user_data.get("sexual_invites", []):
-        if inv.get("friend_id") == friend_id:
-            friend_data = inv
-            break
+    friend_data = get_friend_by_id(context, friend_id)
     
     if not friend_data:
         await query.answer("❌ Друг не найден", show_alert=True)
@@ -1137,11 +1189,7 @@ async def buy_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     friend_id = int(parts[2])
     function = parts[3]
     
-    friend_data = None
-    for inv in context.user_data.get("sexual_invites", []):
-        if inv.get("friend_id") == friend_id:
-            friend_data = inv
-            break
+    friend_data = get_friend_by_id(context, friend_id)
     
     if not friend_data:
         await query.answer("❌ Друг не найден", show_alert=True)
@@ -1351,22 +1399,26 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v10.1")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v10.2")
     print("="*60)
-    print("✅ ИСПРАВЛЕНИЯ:")
-    print("   • Путь к JSON: profiles/sexual_18/sa_5_int.json")
-    print("   • Разделитель: ━━━━━━━━━━ 🪞 ТАМ, ЗА ЗЕРКАЛОМ...")
-    print("   • Текст: «Вы увидели только что СВОЁ 🪞 отражение»")
-    print("   • Кнопка «Мои отражения» - ИСПРАВЛЕНА!")
-    print("   • Интимный профиль друга - ТЕСТОВЫЙ РЕЖИМ")
-    print("="*60)
-    print("✅ Экран создания ссылки - НОВЫЙ ДИЗАЙН ПО ТЗ")
-    print("   • Заголовок с двойными пробелами 🔞  🔞")
-    print("   • Текст: «У меня — совпало процентов на 90»")
-    print("   • Разделитель: ━━━━━━━━━━")
-    print("   • Статус: 🟢 АКТИВНО • ожидание")
-    print("   • Дата: 📅 с временем")
-    print("   • Кнопки НЕ ТРОНУТЫ (строго по ТЗ)")
+    print("✅ ИСПРАВЛЕНИЯ ПО ТЗ:")
+    print("   🔹 ЭКРАН СОЗДАНИЯ ССЫЛКИ:")
+    print("      • Заголовок: «🔞 ВАША ССЫЛКА ГОТОВА!» (одна строка)")
+    print("      • Удалена дублирующаяся ссылка из сообщения")
+    print("      • Убрана строка «ОСТАЛОСЬ ТОЛЬКО ОТПРАВИТЬ ⬇️»")
+    print("      • Кнопки: только «📤 Отправить другу» и «⬅️ Вернуться в профиль»")
+    print("   🔹 ФОРМАТИРОВАНИЕ ПРОФИЛЯ:")
+    print("      • Разделитель: 20 черточек (было 10)")
+    print("      • Разделитель на отдельной строке")
+    print("      • Правильные отступы перед «🪞 ТАМ, ЗА ЗЕРКАЛОМ...»")
+    print("   🔹 КНОПКА «МОИ ОТРАЖЕНИЯ»:")
+    print("      • Работает ВСЕГДА, даже при пустом списке")
+    print("      • Корректная статистика 0/2")
+    print("      • Информативные сообщения для пустого состояния")
+    print("   🔹 УМНЫЙ ПОИСК JSON:")
+    print(f"      • Корень проекта: {PROJECT_ROOT}")
+    print("      • Автоматический поиск файла в 4+ локациях")
+    print("      • Работает из любой директории")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -1391,9 +1443,8 @@ def main():
     app.add_handler(CallbackQueryHandler(my_sexual_profile_callback, pattern="^my_sexual_profile$"))
     app.add_handler(CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"))
     app.add_handler(CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"))
-    app.add_handler(CallbackQueryHandler(copy_invite_callback, pattern="^copy_invite_"))
     
-    # Приглашения
+    # Приглашения (убрана кнопка copy_invite)
     app.add_handler(CallbackQueryHandler(check_status_callback, pattern="^check_status_"))
     
     # Профиль друга
