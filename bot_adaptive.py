@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 10.0-final - JSON + НОВЫЙ ДИЗАЙН ПРИГЛАШЕНИЯ
+Версия: 10.1-final - ИСПРАВЛЕНИЯ: ПУТЬ К JSON, РАЗДЕЛИТЕЛЬ, МОИ ОТРАЖЕНИЯ, ПРОФИЛЬ ДРУГА
 """
 
 import logging
@@ -42,6 +42,7 @@ FOUR_F_CONTENT = 5
 FOUR_F_PAYMENT_SCREEN = 6
 
 # ===== КОНСТАНТЫ =====
+SEXUAL_DIVIDER = "━━━━━━━━━━"  # 10 черточек
 FREE_FRIEND_LIMIT = 2
 FRIEND_ACCESS_PRICE = 99
 FOUR_F_PRICE = 1  # ТЕСТОВЫЙ РЕЖИМ - 1 РУБЛЬ
@@ -144,7 +145,8 @@ FOUR_F_EXPLANATION = """
 def load_intimate_profile() -> dict:
     """Загружает интимный профиль из JSON файла"""
     try:
-        profile_path = os.path.join("профили", "sexual_18", "sa_5_int.json")
+        # ИСПРАВЛЕНО: profiles вместо профили (латиница)
+        profile_path = os.path.join("profiles", "sexual_18", "sa_5_int.json")
         
         if os.path.exists(profile_path):
             with open(profile_path, 'r', encoding='utf-8') as f:
@@ -210,11 +212,12 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> str:
             elif 'content' in section:
                 message += f"\n{section['content']}"
     
-    message += """
+    # ИСПРАВЛЕНО: Разделитель в одной строке с заголовком
+    message += f"""
 
-🔮 ТАМ, ЗА ЗЕРКАЛОМ...
+{SEXUAL_DIVIDER} 🪞 ТАМ, ЗА ЗЕРКАЛОМ...
 
-Вы видите только СВОЁ отражение.
+Вы увидели только что СВОЁ 🪞 отражение.
 Но у каждого друга — своя тайна.
 Свои сценарии. Свои триггеры. Свои желания.
 
@@ -226,6 +229,125 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> str:
 
 💫 Чем больше друзей увидят себя в зеркале —
    тем больше тайн откроется вам.
+"""
+    
+    return message
+
+# ===== ЗАГРУЗКА ТЕСТОВОГО ИНТИМНОГО ПРОФИЛЯ ДЛЯ ДРУГА =====
+def load_friend_intimate_profile(friend_name: str, friend_profile: str = None) -> dict:
+    """
+    Загружает интимный профиль ДРУГА (тестовый режим - всегда sa_5_int)
+    Подставляет имя друга в текст профиля
+    """
+    try:
+        # Загружаем тот же JSON, что и для своего профиля
+        profile_path = os.path.join("profiles", "sexual_18", "sa_5_int.json")
+        
+        if os.path.exists(profile_path):
+            with open(profile_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                
+                # Меняем тип профиля на "ТЕСТОВЫЙ"
+                data["profile_type"] = f"ТЕСТ-{friend_profile or 'SA-5_INT'}"
+                
+                # Добавляем метаданные о друге
+                data["friend_name"] = friend_name
+                data["is_test_profile"] = True
+                
+                logger.info(f"✅ Загружен тестовый интимный профиль для друга {friend_name}")
+                return data
+        else:
+            logger.warning(f"⚠️ Файл профиля не найден: {profile_path}")
+            return get_friend_emergency_profile(friend_name)
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка загрузки интимного профиля друга: {e}")
+        return get_friend_emergency_profile(friend_name)
+
+def get_friend_emergency_profile(friend_name: str) -> dict:
+    """Аварийный интимный профиль для друга"""
+    return {
+        "profile_type": "SA-5_INT (ТЕСТ)",
+        "archetype": "ЦЕРЕМОНИАЛЬНЫЙ",
+        "quote": f"«{friend_name}, со мной не скучно. Со мной — вкусно.»",
+        "description": f"Тестовый интимный профиль для {friend_name}.\nВ реальном режиме здесь будут его персональные данные.",
+        "sections": {
+            "what_turns_on": {
+                "title": "🔴 ВКЛЮЧАЕТ",
+                "items": [
+                    "Долгие прелюдии (тестовые данные)",
+                    "Ролевые игры",
+                    "Шёпот на ухо",
+                    "Визуальный контакт",
+                    "Неожиданные касания"
+                ]
+            },
+            "what_turns_off": {
+                "title": "⚠️ ВЫКЛЮЧАЕТ",
+                "items": [
+                    "Спешка",
+                    "Отсутствие атмосферы",
+                    "Прямолинейность",
+                    "Фастфуд-секс"
+                ]
+            },
+            "erogenous_zone": {
+                "title": "🔴 ЭРОГЕННАЯ ЗОНА",
+                "trigger": "Шея, мочки ушей, внутренняя сторона запястья"
+            }
+        },
+        "is_test_profile": True
+    }
+
+def format_friend_intimate_profile(profile_data: dict, friend_name: str) -> str:
+    """Форматирует интимный профиль ДРУГА для отображения"""
+    
+    message = f"""
+🔞 ИНТИМНЫЙ ПРОФИЛЬ ДРУГА
+👤 {friend_name}
+
+📊 Тип: {profile_data.get('profile_type', 'ТЕСТ-5_INT')}
+🧠 Архетип: {profile_data.get('archetype', 'ЦЕРЕМОНИАЛЬНЫЙ')}
+
+💬 ЦИТАТА:
+{profile_data.get('quote', f'«{friend_name}, со мной не скучно. Со мной — вкусно.»')}
+
+🧠 ЕГО ПРИРОДА:
+{profile_data.get('description', f'Тестовый профиль {friend_name}')}
+"""
+    
+    sections = profile_data.get('sections', {})
+    
+    # Добавляем основные секции
+    section_order = ["what_turns_on", "what_turns_off", "erogenous_zone"]
+    
+    for section_key in section_order:
+        section = sections.get(section_key, {})
+        if section:
+            title = section.get('title', '')
+            message += f"\n\n{title}"
+            
+            if 'items' in section:
+                for item in section['items']:
+                    message += f"\n• {item}"
+            elif 'trigger' in section:
+                message += f"\n{section['trigger']}"
+    
+    # Добавляем дисклеймер о тестовом режиме
+    message += f"""
+
+{SEXUAL_DIVIDER} ⚠️ ТЕСТОВЫЙ РЕЖИМ
+
+Это демо-профиль на основе SA-5_INT.
+В реальном режиме здесь будут персональные данные {friend_name}.
+
+✅ Что появится в боевом режиме:
+   • Его реальные триггеры
+   • Индивидуальные сценарии
+   • Точные эрогенные зоны
+   • Секретные желания
+
+💎 Купите полный доступ за {FRIEND_ACCESS_PRICE}₽
 """
     
     return message
@@ -478,7 +600,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     invite_message = (
         "Есть одна штука.\n"
         "Определяет твой ночной тип личности.\n"
-        "У меня — совпало процентов на 90.\n"  # ✅ "Я прошёл" → "У меня"
+        "У меня — совпало процентов на 90.\n"
         f"{invite_url}\n\n"
         "Интересно, у тебя тоже?"
     )
@@ -495,10 +617,10 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
 💬 ТЕКСТ СООБЩЕНИЯ:
 {invite_message}
 
-━━━━━━━━━━
+{SEXUAL_DIVIDER}
 🟢 АКТИВНО • ожидание
 📅 {current_time}
-━━━━━━━━━━
+{SEXUAL_DIVIDER}
 
 🎯 Через 15 минут после теста
    вы увидите его 18+ профиль.
@@ -552,7 +674,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ
+# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ (ИСПРАВЛЕНО)
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -560,34 +682,53 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     
-    invites = context.user_data.get("sexual_invites", [])
+    user_id = query.from_user.id
+    
+    # ✅ ИСПРАВЛЕНО: инициализируем тестовые данные
+    init_test_data(user_id)
+    
+    # ✅ Загружаем свежие данные
+    invites = get_user_invites(user_id)
+    context.user_data["sexual_invites"] = invites
     
     active_invites = [inv for inv in invites if inv.get("status") == "active"]
     used_invites = [inv for inv in invites if inv.get("status") == "used"]
     
+    # ✅ ИСПРАВЛЕНО: Добавлена статистика
+    total_invites = len(invites)
+    total_reflections = len(used_invites)
+    free_used = sum(1 for inv in used_invites if inv.get("access_status") == "free")
+    paid_available = max(0, FREE_FRIEND_LIMIT - free_used)
+    
     message = f"""
 🔍 МОИ ОТРАЖЕНИЯ
 
-🔗 ВСЕГО СОЗДАНО: {len(invites)}
+📊 СТАТИСТИКА:
+   🔗 Всего ссылок: {total_invites}
+   ✨ Отражений: {total_reflections}
+   💎 Бесплатных: {free_used}/{FREE_FRIEND_LIMIT}
+   🔓 Доступно: {paid_available}
+
+{SEXUAL_DIVIDER}
 """
     
     keyboard = []
     
     if active_invites:
-        message += f"\n\n🟢 ЖДУТ ОТКЛИКА ✨"
+        message += f"\n🟢 ЖДУТ ОТКЛИКА ✨"
         for inv in active_invites[:3]:
             created = datetime.fromtimestamp(inv["created_at"]).strftime('%d.%m')
             days = int((datetime.now().timestamp() - inv["created_at"]) / 86400)
             message += f"\n   • {created} · ждёт {days}д"
             keyboard.append([
                 InlineKeyboardButton(
-                    f"🔄 Проверить статус ({inv['invite_id'][:8]}...)",
+                    f"🔄 {inv['invite_id'][:8]}...",
                     callback_data=f"check_status_{inv['invite_id']}"
                 )
             ])
     
     if used_invites:
-        message += f"\n\n✅ ОТРАЗИЛИСЬ 🎉"
+        message += f"\n\n✨ УЖЕ ОТРАЗИЛИСЬ — {len(used_invites)}"
         for inv in used_invites[:5]:
             friend_name = inv.get("friend_name", "друг")
             friend_profile = inv.get("friend_profile", "SA-3_CON")
@@ -607,8 +748,15 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                     )
                 ])
     
+    message += f"""
+
+{SEXUAL_DIVIDER}
+💡 Каждое отражение — ключ к человеку.
+    Узнайте его 4F-реакции и интимные сценарии.
+"""
+    
     keyboard.append([InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")])
-    keyboard.append([InlineKeyboardButton("⬅️ Вернуться в 18", callback_data="my_sexual_profile")])
+    keyboard.append([InlineKeyboardButton("⬅️ К ИНТИМНОМУ ПРОФИЛЮ", callback_data="my_sexual_profile")])
     
     await query.edit_message_text(
         message,
@@ -820,32 +968,35 @@ async def standard_profile_callback(update: Update, context: ContextTypes.DEFAUL
     return FRIEND_MENU
 
 # ============================================
-# 🔞 ЭКРАН 9: ИНТИМНЫЙ ПРОФИЛЬ ДРУГА
+# 🔞 ЭКРАН 9: ИНТИМНЫЙ ПРОФИЛЬ ДРУГА (ИСПРАВЛЕНО)
 # ============================================
 
 async def intimate_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Интимный профиль друга"""
+    """🔞 Интимный профиль друга (ТЕСТОВЫЙ РЕЖИМ - всегда SA-5_INT)"""
     query = update.callback_query
     await query.answer()
     
     friend_id = int(query.data.split("_")[1])
-    friend_name = "друг"
-    friend_profile = "SA-3_CON"
     
+    # Ищем данные друга
+    friend_data = None
     for inv in context.user_data.get("sexual_invites", []):
         if inv.get("friend_id") == friend_id:
-            friend_name = inv.get("friend_name", "друг")
-            friend_profile = inv.get("friend_profile", "SA-3_CON")
+            friend_data = inv
             break
     
-    message = f"""
-🔞 {friend_name}
-
-📊 {friend_profile}
-
-⏳ Скоро здесь будет его интимный профиль.
-   Мы работаем над персонализацией.
-"""
+    if not friend_data:
+        await query.answer("❌ Друг не найден", show_alert=True)
+        return FRIEND_MENU
+    
+    friend_name = friend_data.get("friend_name", "друг")
+    friend_profile = friend_data.get("friend_profile", "SA-3_CON")
+    
+    # ✅ ИСПРАВЛЕНО: Загружаем тестовый интимный профиль (всегда sa_5_int)
+    profile_data = load_friend_intimate_profile(friend_name, friend_profile)
+    
+    # ✅ Форматируем для друга
+    message = format_friend_intimate_profile(profile_data, friend_name)
     
     keyboard = [[
         InlineKeyboardButton("⬅️ Назад", callback_data=f"friend_{friend_id}")
@@ -1200,19 +1351,22 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v10.0")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v10.1")
     print("="*60)
-    print("✅ Загрузка интимного профиля: sexual_18/sa_5_int.json")
-    print("✅ Кнопка: «🔞 Интимный профиль» (без 18+)")
+    print("✅ ИСПРАВЛЕНИЯ:")
+    print("   • Путь к JSON: profiles/sexual_18/sa_5_int.json")
+    print("   • Разделитель: ━━━━━━━━━━ 🪞 ТАМ, ЗА ЗЕРКАЛОМ...")
+    print("   • Текст: «Вы увидели только что СВОЁ 🪞 отражение»")
+    print("   • Кнопка «Мои отражения» - ИСПРАВЛЕНА!")
+    print("   • Интимный профиль друга - ТЕСТОВЫЙ РЕЖИМ")
+    print("="*60)
     print("✅ Экран создания ссылки - НОВЫЙ ДИЗАЙН ПО ТЗ")
     print("   • Заголовок с двойными пробелами 🔞  🔞")
     print("   • Текст: «У меня — совпало процентов на 90»")
-    print("   • Разделитель: ━━━━━━━━━━ (10 черточек)")
+    print("   • Разделитель: ━━━━━━━━━━")
     print("   • Статус: 🟢 АКТИВНО • ожидание")
-    print("   • Дата: 📅 {current_time}")
-    print("   • Текст: Через 15 минут после теста...")
-    print("   • Фраза: То, что скрывается даже от близких.")
-    print("✅ КНОПКИ НЕ ТРОНУТЫ (строго по ТЗ)")
+    print("   • Дата: 📅 с временем")
+    print("   • Кнопки НЕ ТРОНУТЫ (строго по ТЗ)")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -1240,8 +1394,6 @@ def main():
     app.add_handler(CallbackQueryHandler(copy_invite_callback, pattern="^copy_invite_"))
     
     # Приглашения
-    app.add_handler(CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"))
-    app.add_handler(CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"))
     app.add_handler(CallbackQueryHandler(check_status_callback, pattern="^check_status_"))
     
     # Профиль друга
@@ -1261,13 +1413,6 @@ def main():
     app.add_handler(CallbackQueryHandler(dummy_callback, pattern="^pay_access_"))
     
     print("\n🚀 Бот запущен!")
-    print("\n📱 ПРОВЕРЬ ЭКРАН СОЗДАНИЯ ССЫЛКИ:")
-    print("  • Заголовок с двойными эмодзи 🔞  🔞")
-    print("  • Текст: «У меня — совпало процентов на 90»")
-    print("  • Разделитель: ━━━━━━━━━━")
-    print("  • Статус: 🟢 АКТИВНО • ожидание")
-    print("  • Дата: 📅 с временем")
-    print("  • Кнопки: Отправить, Копировать, Мои, К профилю")
     print("="*60)
     
     app.run_polling()
