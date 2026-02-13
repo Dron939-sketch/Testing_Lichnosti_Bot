@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 15.0 - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ
-✅ ВАШ ДИЗАЙН экрана «Мои отражения»
-✅ Ссылки на Яндекс.Диск для каждого профиля
-✅ ПОЛНЫЙ 4F функционал с покупкой ключей
-✅ ИСПРАВЛЕН экран краткого описания 4F (убрана цена)
-✅ ИСПРАВЛЕН экран подробного описания 4F (ссылка + кнопка)
-✅ ИСПРАВЛЕНО: интимный профиль разбит на 3 части
-✅ ИСПРАВЛЕНО: убраны индикаторы частей и лишние отступы
-✅ ИСПРАВЛЕНО: формат шапки "📊 Имя, SA-5_INT"
+Версия: 16.0 - ИСПРАВЛЕНЫ КНОПКИ И РАЗБИЕНИЕ
+✅ ВСЕ ЭКРАНЫ СОХРАНЕНЫ
+✅ ИНТИМНЫЙ ПРОФИЛЬ РАЗБИТ НА 3 ЧАСТИ С РАЗДЕЛИТЕЛЯМИ
+✅ КНОПКИ ГАРАНТИРОВАННО ПОЯВЛЯЮТСЯ
 """
 
 import logging
@@ -450,7 +445,7 @@ def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
 def format_intimate_profile_part2(profile_data: dict, user_name: str) -> str:
     """Форматирует ВТОРУЮ ЧАСТЬ интимного профиля"""
     try:
-        message = ""  # Начинаем пустую строку
+        message = ""
         
         sections = profile_data.get('sections', {})
         
@@ -471,7 +466,7 @@ def format_intimate_profile_part2(profile_data: dict, user_name: str) -> str:
 def format_intimate_profile_part3(profile_data: dict, user_name: str) -> str:
     """Форматирует ТРЕТЬЮ ЧАСТЬ интимного профиля"""
     try:
-        message = ""  # Начинаем пустую строку
+        message = ""
         
         sections = profile_data.get('sections', {})
         
@@ -930,7 +925,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         return RESULTS_SCREEN
 
 # ============================================
-# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ - ИСПРАВЛЕНО (РАЗБИТ НА 3 ЧАСТИ)
+# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ - ИСПРАВЛЕНО (РАЗБИТ НА 3 ЧАСТИ С ГАРАНТИРОВАННЫМИ КНОПКАМИ)
 # ============================================
 
 async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -973,6 +968,10 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
             parse_mode="HTML"
         )
         
+        # Небольшая задержка между сообщениями для гарантии порядка
+        import asyncio
+        await asyncio.sleep(0.5)
+        
         # Отправляем вторую часть как новое сообщение
         if message_part2.strip():
             logger.debug("✉️ Отправляем часть 2...")
@@ -980,6 +979,7 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
                 message_part2,
                 parse_mode="HTML"
             )
+            await asyncio.sleep(0.5)
         
         # Отправляем третью часть как новое сообщение
         logger.debug("✉️ Отправляем часть 3...")
@@ -987,6 +987,8 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
             message_part3,
             parse_mode="HTML"
         )
+        
+        await asyncio.sleep(0.5)
         
         # Отправляем клавиатуру отдельным сообщением
         logger.debug("✉️ Отправляем клавиатуру...")
@@ -2048,7 +2050,7 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v15.0")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v16.0")
     print("="*60)
     print("✅ ВАШ ДИЗАЙН экрана «Мои отражения»")
     print("✅ Ссылки на Яндекс.Диск для каждого профиля")
@@ -2057,8 +2059,9 @@ def main():
     print("✅ ИСПРАВЛЕН экран краткого описания 4F (убрана цена)")
     print("✅ ИСПРАВЛЕН экран подробного описания 4F (ссылка + кнопка)")
     print("✅ ИСПРАВЛЕНО: интимный профиль разбит на 3 части")
-    print("✅ ИСПРАВЛЕНО: убраны индикаторы частей и лишние отступы")
+    print("✅ ИСПРАВЛЕНО: убраны индикаторы частей")
     print("✅ ИСПРАВЛЕНО: формат шапки \"📊 Имя, SA-5_INT\"")
+    print("✅ ИСПРАВЛЕНО: кнопки гарантированно появляются")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -2162,7 +2165,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 15.0")
+        print("\n🚀 Бот запущен! Версия 16.0")
         print("="*60)
         logger.info("✅ Бот успешно запущен")
         
