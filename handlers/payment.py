@@ -5,27 +5,32 @@
 
 import logging
 import time
+import sys
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from config import PAYMENT_SCREEN, API_URL, TELEGRAM_BOT_URL, logger
 from sexual_18_plus import get_disk_link
 
+# Получаем функции из основного модуля (bot_adaptive.py)
+current_module = sys.modules['__main__']
+
+# Эти функции должны быть определены в bot_adaptive.py
+create_payment_advanced = getattr(current_module, 'create_payment_advanced', None)
+check_payment_status_api = getattr(current_module, 'check_payment_status_api', None)
+get_materials_link_api = getattr(current_module, 'get_materials_link_api', None)
+
+# Если функции не найдены, создаем заглушки с ошибкой
+if create_payment_advanced is None:
+    logger.error("❌ Функция create_payment_advanced не найдена в основном модуле!")
+    
+if check_payment_status_api is None:
+    logger.error("❌ Функция check_payment_status_api не найдена в основном модуле!")
+    
+if get_materials_link_api is None:
+    logger.error("❌ Функция get_materials_link_api не найдена в основном модуле!")
+
 logger = logging.getLogger(__name__)
-
-# Эти функции будут импортированы из bot_adaptive.py
-# Они определены в основном файле
-async def create_payment_advanced(user_id, profile_code, amount):
-    """Заглушка - реальная функция в bot_adaptive.py"""
-    pass
-
-async def check_payment_status_api(payment_id):
-    """Заглушка - реальная функция в bot_adaptive.py"""
-    pass
-
-async def get_materials_link_api(payment_id, user_id):
-    """Заглушка - реальная функция в bot_adaptive.py"""
-    pass
 
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /buy для получения описания профиля"""
@@ -114,22 +119,31 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             parse_mode='Markdown'
         )
     
-    # Импортируем функцию из bot_adaptive (она будет доступна через globals)
-    import sys
-    current_module = sys.modules['__main__']
-    create_payment_func = getattr(current_module, 'create_payment_advanced', None)
+    # Проверяем, доступна ли функция
+    global create_payment_advanced
+    if create_payment_advanced is None:
+        error_text = (
+            f"❌ *Ошибка конфигурации*\n\n"
+            f"Функция создания платежа не доступна.\n"
+            f"Пожалуйста, обратитесь к администратору."
+        )
+        keyboard = [[InlineKeyboardButton("⬅️ Вернуться", callback_data="back_to_results")]]
+        
+        if query:
+            await query.edit_message_text(
+                error_text,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        else:
+            await update.message.reply_text(
+                error_text,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        return PAYMENT_SCREEN
     
-    if create_payment_func:
-        payment_result = await create_payment_func(user_id, profile_code, 690.00)
-    else:
-        # Заглушка для тестирования
-        payment_result = {
-            "success": True,
-            "payment_id": f"test_{int(time.time())}",
-            "confirmation_url": "https://yoomoney.ru/checkout/payments/v2/contract",
-            "invoice_type": "yookassa_invoice",
-            "available_methods": "all"
-        }
+    payment_result = await create_payment_advanced(user_id, profile_code, 690.00)
     
     if not payment_result.get("success"):
         error_msg = payment_result.get("error", "Неизвестная ошибка")
@@ -250,16 +264,19 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
         parse_mode='Markdown'
     )
     
-    # Импортируем функцию из bot_adaptive
-    import sys
-    current_module = sys.modules['__main__']
-    check_status_func = getattr(current_module, 'check_payment_status_api', None)
+    global check_payment_status_api
+    if check_payment_status_api is None:
+        error_text = f"❌ *Функция проверки статуса не доступна*"
+        keyboard = [[InlineKeyboardButton("⬅️ Вернуться", callback_data="back_to_results")]]
+        
+        await query.edit_message_text(
+            error_text,
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return PAYMENT_SCREEN
     
-    if check_status_func:
-        status_result = await check_status_func(payment_id)
-    else:
-        # Заглушка для тестирования
-        status_result = {"success": True, "status": "pending"}
+    status_result = await check_payment_status_api(payment_id)
     
     if not status_result.get("success"):
         error_msg = status_result.get("error", "Неизвестная ошибка")
@@ -348,20 +365,19 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
         parse_mode='Markdown'
     )
     
-    # Импортируем функцию из bot_adaptive
-    import sys
-    current_module = sys.modules['__main__']
-    get_materials_func = getattr(current_module, 'get_materials_link_api', None)
+    global get_materials_link_api
+    if get_materials_link_api is None:
+        error_text = f"❌ *Функция получения материалов не доступна*"
+        keyboard = [[InlineKeyboardButton("⬅️ Вернуться", callback_data="back_to_results")]]
+        
+        await query.edit_message_text(
+            error_text,
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return PAYMENT_SCREEN
     
-    if get_materials_func:
-        materials_result = await get_materials_func(payment_id, user_id)
-    else:
-        # Заглушка для тестирования
-        materials_result = {
-            "success": True,
-            "materials_link": "https://disk.yandex.ru/d/example",
-            "profile_code": "SA_1_DEF"
-        }
+    materials_result = await get_materials_link_api(payment_id, user_id)
     
     if not materials_result.get("success"):
         error_msg = materials_result.get("error", "Неизвестная ошибка")
@@ -447,15 +463,15 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
     
-    # Импортируем функцию из bot_adaptive
-    import sys
-    current_module = sys.modules['__main__']
-    get_materials_func = getattr(current_module, 'get_materials_link_api', None)
+    global get_materials_link_api
+    if get_materials_link_api is None:
+        await update.message.reply_text(
+            f"❌ *Функция получения материалов не доступна*",
+            parse_mode='Markdown'
+        )
+        return
     
-    if get_materials_func:
-        materials_result = await get_materials_func(last_payment_id, user_id)
-    else:
-        materials_result = {"success": False, "error": "Функция не найдена"}
+    materials_result = await get_materials_link_api(last_payment_id, user_id)
     
     if not materials_result.get("success"):
         error_msg = materials_result.get("error", "Неизвестная ошибка")
@@ -521,15 +537,15 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
     
-    # Импортируем функцию из bot_adaptive
-    import sys
-    current_module = sys.modules['__main__']
-    check_status_func = getattr(current_module, 'check_payment_status_api', None)
+    global check_payment_status_api
+    if check_payment_status_api is None:
+        await update.message.reply_text(
+            f"❌ *Функция проверки статуса не доступна*",
+            parse_mode='Markdown'
+        )
+        return
     
-    if check_status_func:
-        status_result = await check_status_func(last_payment_id)
-    else:
-        status_result = {"success": False, "error": "Функция не найдена"}
+    status_result = await check_payment_status_api(last_payment_id)
     
     if not status_result.get("success"):
         error_msg = status_result.get("error", "Неизвестная ошибка")
