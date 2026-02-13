@@ -11,12 +11,6 @@ import sys
 import asyncio
 import urllib.parse
 import time
-import random
-import requests
-import base64
-import uuid
-from collections import Counter
-from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -25,6 +19,19 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
     ConversationHandler,
+)
+
+# ===== ИМПОРТ КОНФИГУРАЦИИ =====
+from config import (
+    TOKEN, API_URL, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY,
+    TELEGRAM_BOT_URL, BOT_LINK, AUTHOR_LINK, GIFT_PDF_LINK, SHARE_TEXT,
+    STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
+    GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
+    SEXUAL_PROFILE_SCREEN, SEXUAL_INVITES_LIST, SEXUAL_FRIEND_PROFILE,
+    FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN,
+    GIFT_SCREEN_TEXT, STANDARD_SUFFIXES, CONFLICT_PHRASES, SUFFIX_TO_DILTS,
+    EMERGENCY_PROFILES, LEVEL_DIFFS, PROFILE_LINKS, DEFAULT_PROFILE,
+    logger
 )
 
 # ===== ИМПОРТ 18+ МОДУЛЯ =====
@@ -78,8 +85,13 @@ from sexual_18_plus import (
     noop_callback,
 )
 
+# ===== ИМПОРТ ВОПРОСОВ =====
+from questions import (
+    PERCEPTION_TYPES, CLARIFICATION_QUESTIONS,
+    STAGE1_FEEDBACK, STAGE2_FEEDBACK, STAGE3_FEEDBACK, STAGE4_ANALYSIS_SCREEN
+)
+
 # ===== ИМПОРТ НАШИХ НОВЫХ МОДУЛЕЙ =====
-from questions import *
 from handlers import (
     show_stage_1_intro, show_stage_1_details, back_to_stage1_intro,
     start_stage_1, ask_stage_1_question, handle_stage_1_answer, finish_stage_1,
@@ -94,62 +106,30 @@ from handlers import (
     start_stage_4, ask_stage_4_question, handle_stage_4_answer, finish_stage_4,
 )
 
+from handlers.common import ask_clarification_question, handle_clarification_answer
+
+from utils.calculations import (
+    determine_perception_type, get_type_code, get_level_name, get_dilts_code,
+    determine_dilts_level, get_level_group, calculate_thinking_level_by_scores,
+    calculate_final_level, check_profile_coherence, calculate_profile_final
+)
+
+from utils.validators import (
+    need_clarification_stage1, need_clarification_stage2,
+    need_clarification_stage3, need_clarification_stage4
+)
+
+from utils.helpers import calculate_progress
+
 # Импорт загрузчика и профилей
 from loader import loader
 from base import VariaticaProfile
 
-# ===== ПОЛУЧЕНИЕ ТОКЕНА =====
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("❌ ОШИБКА: Переменная TELEGRAM_BOT_TOKEN не установлена!")
-
-# ===== НАСТРОЙКА ЛОГГИРОВАНИЯ =====
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-    handlers=[
-        logging.FileHandler("bot.log", encoding='utf-8'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# ===== КОНФИГУРАЦИЯ ПЛАТЕЖНОЙ СИСТЕМЫ =====
-API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
-YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
-YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
-TELEGRAM_BOT_URL = "https://t.me/Testing_Lichnosti_bot"
-BOT_LINK = "t.me/Testing_Lichnosti_bot"
-AUTHOR_LINK = "@meysternlp"
-GIFT_PDF_LINK = os.getenv("GIFT_PDF_LINK", "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA")
-SHARE_TEXT = "Мне в руки попало особое зеркало. В нём видно то, что обычно скрыто даже от себя.\n\nЯ посмотрел(а). Увидел(а). Теперь держи — твоя очередь смотреть."
-
-# ===== СОСТОЯНИЯ CONVERSATIONHANDLER =====
-STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS = range(6)
-GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN = range(6, 9)
-PAYMENT_SCREEN = 9
-SEXUAL_PROFILE_SCREEN = SEXUAL_STATES["SEXUAL_PROFILE_SCREEN"]
-SEXUAL_INVITES_LIST = SEXUAL_STATES["SEXUAL_INVITES_LIST"]
-SEXUAL_FRIEND_PROFILE = SEXUAL_STATES["SEXUAL_FRIEND_PROFILE"]
-FOUR_F_PAYMENT_SCREEN = SEXUAL_STATES["FOUR_F_PAYMENT_SCREEN"]
-FOUR_F_CONTENT_SCREEN = SEXUAL_STATES["FOUR_F_CONTENT_SCREEN"]
-
 # ============================================
-# ФУНКЦИИ ПЛАТЕЖНОЙ СИСТЕМЫ (ОСТАВЛЯЕМ В MAIN)
+# ФУНКЦИИ ПЛАТЕЖНОЙ СИСТЕМЫ
 # ============================================
 
-def generate_payment_id(prefix="buy", user_id=None) -> str:
-    """Генерирует уникальный ID платежа"""
-    timestamp = int(time.time())
-    random_str = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=12))
-    
-    if user_id:
-        user_suffix = str(user_id)[-6:]
-        return f"{prefix}_{timestamp}_{random_str}_{user_suffix}"
-    else:
-        return f"{prefix}_{timestamp}_{random_str}"
-
-def create_yookassa_invoice(payment_id: str, user_id: int, profile_code: str, amount: float = 690.0, email: str = None) -> dict:
+def create_yookassa_invoice_payment(payment_id: str, user_id: int, profile_code: str, amount: float = 690.0, email: str = None) -> dict:
     """Создает платеж через Invoices API ЮKassa"""
     try:
         logger.info(f"📤 Создаю платеж ЮKassa: {payment_id}, профиль: {profile_code}")
@@ -157,6 +137,7 @@ def create_yookassa_invoice(payment_id: str, user_id: int, profile_code: str, am
         auth_string = f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}"
         auth_encoded = base64.b64encode(auth_string.encode()).decode()
         
+        import uuid
         unique_id = uuid.uuid4().hex[:16]
         idempotence_key = f"{payment_id}_{unique_id}_{int(time.time())}"
         
@@ -211,6 +192,7 @@ def create_yookassa_invoice(payment_id: str, user_id: int, profile_code: str, am
         
         logger.info(f"💳 Отправляю запрос в ЮKassa...")
         
+        import requests
         response = requests.post(
             "https://api.yookassa.ru/v3/payments",
             headers=headers,
@@ -255,7 +237,10 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
     """Создает платеж в БД и ЮKassa"""
     
     timestamp = int(time.time())
-    payment_id = generate_payment_id("prod", user_id)
+    import random
+    random_str = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=12))
+    user_suffix = str(user_id)[-6:]
+    payment_id = f"prod_{timestamp}_{random_str}_{user_suffix}"
     
     logger.info(f"💳 Создаю платеж: {payment_id}, профиль: {profile_code}, сумма: {amount}")
     
@@ -269,6 +254,7 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
             "description": f"Полное описание профиля {profile_code} от виртуального психолога"
         }
         
+        import requests
         db_response = requests.post(
             f"{API_URL}/api/create-payment-advanced",
             json=db_payload,
@@ -293,7 +279,7 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
                 }
             
             logger.info(f"🔄 Создаю платеж через ЮKassa напрямую: {payment_id}")
-            yookassa_result = create_yookassa_invoice(
+            yookassa_result = create_yookassa_invoice_payment(
                 payment_id=payment_id,
                 user_id=user_id,
                 profile_code=profile_code,
@@ -345,6 +331,7 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
 async def check_payment_status_api(payment_id: str) -> dict:
     """Проверяет статус платежа через API"""
     try:
+        import requests
         response = requests.get(
             f"{API_URL}/api/payment-status/{payment_id}",
             timeout=10
@@ -373,6 +360,7 @@ async def check_payment_status_api(payment_id: str) -> dict:
 async def get_materials_link_api(payment_id: str, user_id: int) -> dict:
     """Получает ссылку на материалы через API"""
     try:
+        import requests
         response = requests.get(
             f"{API_URL}/api/get-materials/{payment_id}",
             params={"user_id": user_id},
@@ -406,241 +394,59 @@ async def get_materials_link_api(payment_id: str, user_id: int) -> dict:
         }
 
 # ============================================
-# ФУНКЦИИ РАСЧЕТА ПРОФИЛЯ (ВСПОМОГАТЕЛЬНЫЕ)
+# ФУНКЦИИ РАБОТЫ С ПРОФИЛЯМИ
 # ============================================
 
-def calculate_progress(current: int, total: int) -> str:
-    """Вычисляет прогресс с прогресс-баром"""
-    progress = int((current / total) * 100)
-    filled = int(progress / 10)
-    bar = "▓" * filled + "░" * (10 - filled)
-    return f"Вопрос {current}/{total}\n{bar} {progress}%"
+class ProfileNotFoundError(Exception):
+    """Исключение для случая, когда профиль не найден"""
+    pass
 
-def determine_perception_type(scores):
-    """Определяет тип восприятия"""
-    external = scores.get("EXTERNAL", 0)
-    internal = scores.get("INTERNAL", 0)
-    symbolic = scores.get("SYMBOLIC", 0)
-    material = scores.get("MATERIAL", 0)
+def get_profile_fallback(profile_data: dict) -> 'VariaticaProfile':
+    """Упрощенная логика поиска профиля"""
+    type_code = profile_data.get('type_code', 'sa').lower()
+    level = profile_data.get('level', 1)
+    dilts_code = profile_data.get('dilts_code', 'def').lower()
     
-    focus = "EXTERNAL" if external >= internal else "INTERNAL"
-    anxiety = "SYMBOLIC" if symbolic >= material else "MATERIAL"
+    logger.info(f"🔍 ПОИСК ПРОФИЛЯ: type={type_code}, level={level}, dilts={dilts_code}")
     
-    type_data = PERCEPTION_TYPES.get((focus, anxiety), PERCEPTION_TYPES[("EXTERNAL", "SYMBOLIC")])
-    return type_data["name"]
-
-def get_type_code(perception_type: str) -> str:
-    """Код типа (SA/IA/SP/IP)"""
-    type_map = {
-        "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": "SA",
-        "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ": "IA",
-        "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ": "SP",
-        "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ": "IP"
-    }
-    return type_map.get(perception_type, "SA")
-
-def get_level_name(level_num):
-    """Получаем название уровня по номеру"""
-    level_names = {
-        1: "ДЕФИЦИТАРНЫЙ",
-        2: "ПОИСКОВЫЙ", 
-        3: "КОНСТРУКТИВНЫЙ",
-        4: "КРИЗИСНЫЙ",
-        5: "ИНТЕГРАТИВНЫЙ",
-        6: "АЛЬТРУИСТИЧЕСКИЙ",
-        7: "МУДРЕЦКИЙ",
-        8: "СИСТЕМНЫЙ",
-        9: "ТРАНСЦЕНДЕНТНЫЙ"
-    }
-    return level_names.get(level_num, f"Уровень {level_num}")
-
-def get_dilts_code(dilts_level: str) -> str:
-    """Код Дилтса"""
-    dilts_map = {
-        "ENVIRONMENT": "def",
-        "BEHAVIOR": "sit",
-        "CAPABILITIES": "con",
-        "VALUES": "val",
-        "IDENTITY": "ide"
-    }
-    return dilts_map.get(dilts_level, "def")
-
-def determine_dilts_level(dilts_answers):
-    """Определяет уровень Дилтса"""
-    if not dilts_answers:
-        return "ENVIRONMENT"
+    search_order = []
+    if dilts_code in STANDARD_SUFFIXES:
+        search_order.append(dilts_code)
+    search_order.extend(STANDARD_SUFFIXES)
+    search_order = list(dict.fromkeys(search_order))
     
-    counter = Counter(dilts_answers)
-    most_common = counter.most_common(1)[0]
-    return most_common[0]
-
-def get_level_group(level: int) -> str:
-    """Определяет группу уровней (1-3, 4-6, 7-9)"""
-    if level <= 3:
-        return "1-3"
-    elif level <= 6:
-        return "4-6"
-    else:
-        return "7-9"
-
-def need_clarification_stage1(scores):
-    """Нужны ли уточнения после ЭТАПА 1"""
-    external = scores.get("EXTERNAL", 0)
-    internal = scores.get("INTERNAL", 0)
-    symbolic = scores.get("SYMBOLIC", 0)
-    material = scores.get("MATERIAL", 0)
+    logger.info(f"📋 Порядок поиска суффиксов: {search_order}")
     
-    clarifications = []
-    if abs(external - internal) <= 2:
-        clarifications.append("external_internal")
-    if abs(symbolic - material) <= 2:
-        clarifications.append("symbolic_material")
+    for suffix in search_order:
+        profile_key = f"{type_code}_{level}_{suffix}"
+        profile = loader.get_profile(profile_key)
+        if profile:
+            logger.info(f"✅ Найден профиль: {profile_key}")
+            return profile
     
-    return clarifications
-
-def need_clarification_stage2(level_scores_dict):
-    """Определяет, нужны ли уточнения после этапа 2"""
-    if not level_scores_dict:
-        return False
+    logger.warning(f"⚠️ Не найдено профилей для {type_code}_{level}_*")
     
-    level_groups = {0: 0, 1: 0, 2: 0}
+    for diff in LEVEL_DIFFS:
+        test_level = level + diff
+        if 1 <= test_level <= 9:
+            for suffix in STANDARD_SUFFIXES:
+                profile_key = f"{type_code}_{test_level}_{suffix}"
+                profile = loader.get_profile(profile_key)
+                if profile:
+                    logger.info(f"✅ Найден на уровне {test_level} (разница {diff}): {profile_key}")
+                    return profile
     
-    for level_str, score in level_scores_dict.items():
-        level = int(level_str)
-        group = (level - 1) // 3
-        level_groups[group] = level_groups.get(group, 0) + score
+    logger.error(f"❌ Не найдено профилей типа {type_code} на уровнях 1-9")
     
-    sorted_groups = sorted(level_groups.items(), key=lambda x: x[1], reverse=True)
+    for emergency_key in EMERGENCY_PROFILES:
+        profile = loader.get_profile(emergency_key)
+        if profile:
+            logger.warning(f"🚨 Использую аварийный профиль: {emergency_key}")
+            return profile
     
-    if len(sorted_groups) >= 2:
-        first_score = sorted_groups[0][1]
-        second_score = sorted_groups[1][1]
-        
-        return abs(first_score - second_score) < 5
-    
-    return False
-
-def need_clarification_stage3(stage2_level, stage3_scores):
-    """Определяет, нужны ли уточнения после этапа 3"""
-    if not stage3_scores or len(stage3_scores) < 4:
-        return False
-    
-    stage3_avg = sum(stage3_scores) / len(stage3_scores)
-    
-    return abs(stage2_level - stage3_avg) > 3
-
-def need_clarification_stage4(dilts_answers):
-    """Нужны ли уточнения после ЭТАПА 4"""
-    if not dilts_answers:
-        return False
-    
-    counter = Counter(dilts_answers)
-    most_common = counter.most_common(2)
-    if len(most_common) >= 2:
-        return most_common[0][1] == most_common[1][1]
-    return False
-
-def calculate_thinking_level_by_scores(level_scores_dict):
-    """Определяет уровень мышления (1-9)"""
-    if not level_scores_dict:
-        return 1
-    
-    numeric_scores = {int(k): v for k, v in level_scores_dict.items() if k.isdigit()}
-    
-    if not numeric_scores:
-        return 1
-    
-    max_score = max(numeric_scores.values())
-    max_levels = [level for level, score in numeric_scores.items() if score == max_score]
-    
-    if not max_levels:
-        return 1
-    
-    return min(max_levels)
-
-def calculate_final_level(stage2_level, stage3_scores):
-    """Финальный уровень с приоритетом поведению"""
-    if not stage3_scores:
-        return stage2_level
-    
-    if len(stage3_scores) == 0:
-        return stage2_level
-    
-    stage3_avg = sum(stage3_scores) / len(stage3_scores)
-    
-    if stage3_avg > stage2_level + 2:
-        stage3_avg = stage2_level + 2
-    if stage3_avg < stage2_level - 2:
-        stage3_avg = stage2_level - 2
-    
-    weighted = stage3_avg * 0.6 + stage2_level * 0.4
-    final_level = int(round(weighted))
-    
-    final_level = max(1, min(9, final_level))
-    
-    logger.info(f"Final level: stage2={stage2_level}, stage3_avg={stage3_avg:.2f}, weighted={weighted:.2f}, final={final_level}")
-    return final_level
-
-def check_profile_coherence(profile_level: int, dilts_level: str, actual_suffix: str = None) -> dict:
-    """Проверяет согласованность уровня профиля и уровня Дилтса"""
-    expected_dilts_by_level = {
-        1: ["ENVIRONMENT"],
-        2: ["BEHAVIOR"],
-        3: ["CAPABILITIES"],
-        4: ["BEHAVIOR", "CAPABILITIES"],
-        5: ["CAPABILITIES", "VALUES"],
-        6: ["VALUES"],
-        7: ["VALUES", "IDENTITY"],
-        8: ["IDENTITY"],
-        9: ["IDENTITY"]
-    }
-    
-    expected_dilts = expected_dilts_by_level.get(profile_level, ["VALUES"])
-    is_coherent = dilts_level in expected_dilts
-    
-    return {
-        "is_coherent": is_coherent,
-        "profile_level": profile_level,
-        "dilts_level": dilts_level,
-        "expected_dilts": expected_dilts,
-    }
-
-def calculate_profile_final(context_data: dict) -> dict:
-    """ФИНАЛЬНЫЙ алгоритм расчета профиля"""
-    perception_type = context_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
-    type_code = get_type_code(perception_type)
-    
-    level_scores_dict = context_data.get("stage2_level_scores_dict", {})
-    stage2_level = calculate_thinking_level_by_scores(level_scores_dict)
-    
-    stage3_scores = context_data.get("stage3_level_scores", [])
-    final_level = calculate_final_level(stage2_level, stage3_scores)
-    final_level = max(1, min(9, final_level))
-    
-    dilts_answers = context_data.get("stage4_dilts_answers", [])
-    dilts_level = determine_dilts_level(dilts_answers)
-    dilts_code = get_dilts_code(dilts_level)
-    
-    coherence = check_profile_coherence(final_level, dilts_level)
-    
-    logger.info(f" FINAL PROFILE CALCULATION:")
-    logger.info(f"   Type: {type_code} ({perception_type})")
-    logger.info(f"   Level: {final_level} ({get_level_name(final_level)})")
-    logger.info(f"   Dilts: {dilts_level} ({dilts_code})")
-    logger.info(f"   Coherence: {coherence['is_coherent']}")
-    
-    return {
-        "type_code": type_code,
-        "level": final_level,
-        "dilts_level": dilts_level,
-        "dilts_code": dilts_code,
-        "display_name": f"{type_code}_{final_level}_{dilts_code}",
-        "level_name": get_level_name(final_level),
-        "type_name": perception_type,
-        "coherence": coherence,
-        "stage2_level": stage2_level,
-        "stage3_avg": (sum(stage3_scores) / len(stage3_scores)) if stage3_scores else None,
-    }
+    error_msg = f"Не найден профиль для type={type_code}, level={level}"
+    logger.critical(f"💥 {error_msg}")
+    raise ProfileNotFoundError(error_msg)
 
 def get_discrepancy_note(profile_data: dict, actual_profile_key: str) -> str:
     """Возвращает примечание о конфликте Дилтса"""
@@ -727,57 +533,6 @@ def format_profile_title(profile_title: str, profile_header: str) -> str:
     
     return f"🎯 {profile_header}"
 
-class ProfileNotFoundError(Exception):
-    """Исключение для случая, когда профиль не найден"""
-    pass
-
-def get_profile_fallback(profile_data: dict) -> 'VariaticaProfile':
-    """Упрощенная логика поиска профиля"""
-    type_code = profile_data.get('type_code', 'sa').lower()
-    level = profile_data.get('level', 1)
-    dilts_code = profile_data.get('dilts_code', 'def').lower()
-    
-    logger.info(f"🔍 ПОИСК ПРОФИЛЯ: type={type_code}, level={level}, dilts={dilts_code}")
-    
-    search_order = []
-    if dilts_code in STANDARD_SUFFIXES:
-        search_order.append(dilts_code)
-    search_order.extend(STANDARD_SUFFIXES)
-    search_order = list(dict.fromkeys(search_order))
-    
-    logger.info(f"📋 Порядок поиска суффиксов: {search_order}")
-    
-    for suffix in search_order:
-        profile_key = f"{type_code}_{level}_{suffix}"
-        profile = loader.get_profile(profile_key)
-        if profile:
-            logger.info(f"✅ Найден профиль: {profile_key}")
-            return profile
-    
-    logger.warning(f"⚠️ Не найдено профилей для {type_code}_{level}_*")
-    
-    for diff in LEVEL_DIFFS:
-        test_level = level + diff
-        if 1 <= test_level <= 9:
-            for suffix in STANDARD_SUFFIXES:
-                profile_key = f"{type_code}_{test_level}_{suffix}"
-                profile = loader.get_profile(profile_key)
-                if profile:
-                    logger.info(f"✅ Найден на уровне {test_level} (разница {diff}): {profile_key}")
-                    return profile
-    
-    logger.error(f"❌ Не найдено профилей типа {type_code} на уровнях 1-9")
-    
-    for emergency_key in EMERGENCY_PROFILES:
-        profile = loader.get_profile(emergency_key)
-        if profile:
-            logger.warning(f"🚨 Использую аварийный профиль: {emergency_key}")
-            return profile
-    
-    error_msg = f"Не найден профиль для type={type_code}, level={level}"
-    logger.critical(f"💥 {error_msg}")
-    raise ProfileNotFoundError(error_msg)
-
 def get_card_description_from_profile(profile: 'VariaticaProfile', profile_data: dict) -> dict:
     """Получает описание профиля с очисткой заголовков"""
     is_new_format = hasattr(profile, 'archetype') and profile.archetype
@@ -814,7 +569,7 @@ def get_card_description_from_profile(profile: 'VariaticaProfile', profile_data:
         }
 
 # ============================================
-# ФУНКЦИИ РЕЗУЛЬТАТОВ (ОСТАВЛЯЕМ В MAIN)
+# ФУНКЦИИ РЕЗУЛЬТАТОВ
 # ============================================
 
 async def show_results_screen(
@@ -1052,209 +807,6 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Переходим к первому этапу
     return await show_stage_1_intro(update, context)
-
-# ============================================
-# ФУНКЦИИ УТОЧНЯЮЩИХ ВОПРОСОВ
-# ============================================
-
-async def ask_clarification_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Задаёт уточняющий вопрос"""
-    query = update.callback_query
-    
-    clarification_stage = context.user_data.get("clarification_stage")
-    current = context.user_data.get("clarification_current", 0)
-    
-    if clarification_stage == "stage1":
-        clarifications = context.user_data.get("stage1_clarifications", [])
-        if current >= len(clarifications):
-            context.user_data["stage1_clarified"] = True
-            return await finish_stage_1(update, context)
-        
-        clarification_type = clarifications[current]
-        questions = CLARIFICATION_QUESTIONS.get(f"stage1_{clarification_type}", [])
-        
-        if not questions:
-            context.user_data["clarification_current"] = current + 1
-            return await ask_clarification_question(update, context)
-        
-        if current >= len(questions):
-            context.user_data["clarification_current"] = current + 1
-            return await ask_clarification_question(update, context)
-        
-        question = questions[0]
-        
-    elif clarification_stage == "stage2":
-        questions = CLARIFICATION_QUESTIONS.get("stage2_borderline", [])
-        if current >= len(questions):
-            context.user_data["stage2_clarified"] = True
-            return await finish_stage_2(update, context)
-        question = questions[current]
-        
-    elif clarification_stage == "stage3":
-        questions = CLARIFICATION_QUESTIONS.get("stage3_discrepancy", [])
-        if current >= len(questions):
-            context.user_data["stage3_clarified"] = True
-            return await finish_stage_3(update, context)
-        question = questions[current]
-        
-    elif clarification_stage == "stage4":
-        questions = CLARIFICATION_QUESTIONS.get("stage4_tie", [])
-        if current >= len(questions):
-            context.user_data["stage4_clarified"] = True
-            return await finish_stage_4(update, context)
-        question = questions[current]
-    else:
-        return STAGE_1
-    
-    if not question:
-        return STAGE_1
-    
-    question_text = (
-        f"🧠 <b>УТОЧНЯЮЩИЙ ВОПРОС</b>\n\n"
-        f"{question['text']}\n\n"
-        f"<i>Это поможет мне точнее определить ваш профиль.</i>"
-    )
-    
-    keyboard = []
-    user_id = update.effective_user.id
-    timestamp = int(time.time())
-    
-    if clarification_stage in ["stage1", "stage4"]:
-        for option_id, option in question["options"].items():
-            unique_callback = f"clarify_{clarification_stage}_{current}_{option_id}_{user_id}_{timestamp}"
-            keyboard.append([
-                InlineKeyboardButton(option["text"], callback_data=unique_callback)
-            ])
-    else:
-        for level, answer_text in question["options"].items():
-            unique_callback = f"clarify_{clarification_stage}_{current}_{level}_{user_id}_{timestamp}"
-            keyboard.append([
-                InlineKeyboardButton(answer_text, callback_data=unique_callback)
-            ])
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    try:
-        if hasattr(query, 'message') and query.message:
-            await query.edit_message_text(
-                question_text, 
-                reply_markup=reply_markup, 
-                parse_mode="HTML"
-            )
-    except Exception as e:
-        error_str = str(e).lower()
-        if "message is not modified" in error_str:
-            pass
-        elif "message can't be edited" in error_str:
-            try:
-                await query.message.delete()
-            except:
-                pass
-            
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text=question_text,
-                reply_markup=reply_markup,
-                parse_mode="HTML"
-            )
-        else:
-            logger.error(f"Ошибка при редактировании: {e}")
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text=question_text,
-                reply_markup=reply_markup,
-                parse_mode="HTML"
-            )
-    
-    return CLARIFICATION
-
-async def handle_clarification_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка ответа на уточняющий вопрос"""
-    query = update.callback_query
-    
-    try:
-        await query.answer()
-    except Exception as e:
-        logger.error(f"Ошибка при answer(): {e}")
-    
-    if context.user_data.get("processing", False):
-        logger.debug(f"Пользователь {update.effective_user.id}: пропускаем повторное нажатие")
-        return CLARIFICATION
-    
-    context.user_data["processing"] = True
-    
-    try:
-        parts = query.data.split("_")
-        if len(parts) < 4:
-            return CLARIFICATION
-        
-        clarification_stage = parts[1]
-        current = int(parts[2])
-        option_id = parts[3]
-        
-        if clarification_stage == "stage1":
-            clarifications = context.user_data.get("stage1_clarifications", [])
-            if current < len(clarifications):
-                clarification_type = clarifications[current]
-                questions = CLARIFICATION_QUESTIONS.get(f"stage1_{clarification_type}", [])
-                if questions:
-                    question = questions[0]
-                    selected_option = question["options"].get(option_id)
-                    if selected_option:
-                        for axis, score in selected_option.get("scores", {}).items():
-                            context.user_data["scores"][axis] += score
-            
-            context.user_data["clarification_current"] = current + 1
-            return await ask_clarification_question(update, context)
-            
-        elif clarification_stage == "stage2":
-            questions = CLARIFICATION_QUESTIONS.get("stage2_borderline", [])
-            if current < len(questions):
-                question = questions[current]
-                selected_level = option_id
-                
-                if "stage2_level_scores_dict" not in context.user_data:
-                    context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
-                
-                if selected_level in context.user_data["stage2_level_scores_dict"]:
-                    context.user_data["stage2_level_scores_dict"][selected_level] += 3
-            
-            context.user_data["clarification_current"] = current + 1
-            return await ask_clarification_question(update, context)
-            
-        elif clarification_stage == "stage3":
-            questions = CLARIFICATION_QUESTIONS.get("stage3_discrepancy", [])
-            if current < len(questions):
-                question = questions[current]
-                selected_level = option_id
-                
-                if "stage3_level_scores" not in context.user_data:
-                    context.user_data["stage3_level_scores"] = []
-                
-                context.user_data["stage3_level_scores"].append(int(selected_level))
-            
-            context.user_data["clarification_current"] = current + 1
-            return await ask_clarification_question(update, context)
-            
-        elif clarification_stage == "stage4":
-            questions = CLARIFICATION_QUESTIONS.get("stage4_tie", [])
-            if current < len(questions):
-                question = questions[current]
-                selected_option = question["options"].get(option_id)
-                if selected_option:
-                    dilts = selected_option.get("dilts", "ENVIRONMENT")
-                    context.user_data["stage4_dilts_answers"].append(dilts)
-            
-            context.user_data["clarification_current"] = current + 1
-            return await ask_clarification_question(update, context)
-        
-        return CLARIFICATION
-        
-    except Exception as e:
-        logger.error(f"Критическая ошибка в handle_clarification_answer: {e}", exc_info=True)
-        return await ask_clarification_question(update, context)
-    finally:
-        context.user_data["processing"] = False
 
 # ============================================
 # ФУНКЦИИ ПОДАРКОВ И ПАКЕТОВ
@@ -2041,6 +1593,8 @@ def main():
     print("🔧 РЕФАКТОРИНГ:")
     print("   ✅ Вопросы вынесены в отдельный файл questions.py")
     print("   ✅ Обработчики этапов вынесены в папку handlers/")
+    print("   ✅ Утилиты вынесены в папку utils/")
+    print("   ✅ Конфигурация вынесена в config.py")
     print("="*70)
     
     gift_link = os.getenv("GIFT_PDF_LINK")
@@ -2200,6 +1754,7 @@ def main():
     logger.info("✅ ВЕРСИЯ 5.0: ПОЛНАЯ ИНТЕГРАЦИЯ 18+ МОДУЛЯ!")
     logger.info("✅ Вопросы вынесены в отдельный файл questions.py")
     logger.info("✅ Обработчики этапов вынесены в папку handlers/")
+    logger.info("✅ Утилиты вынесены в папку utils/")
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
