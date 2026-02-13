@@ -30,13 +30,20 @@ from telegram.ext import (
 # ===== НАСТРОЙКА ЛОГИРОВАНИЯ =====
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.DEBUG,  # DEBUG для максимальной детализации
+    level=logging.DEBUG,  # МЕНЯЕМ НА DEBUG
     handlers=[
         logging.FileHandler("bot_detailed.log", encoding='utf-8'),
-        logging.StreamHandler()
+        logging.StreamHandler(sys.stdout)  # Явно указываем stdout
     ]
 )
+
+# Добавляем фильтр для нашего бота
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Включаем логирование всех HTTP запросов (опционально)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # ===== НАСТРОЙКА =====
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "ВАШ_ТОКЕН_ЗДЕСЬ")
@@ -831,6 +838,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """🧠 ЭКРАН РЕЗУЛЬТАТОВ"""
     try:
+        logger.debug("📺 Отображаем экран результатов")
         profile = context.user_data.get("profile", USER_PROFILE)
         
         message = f"""
@@ -860,13 +868,16 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         if hasattr(update, 'callback_query') and update.callback_query:
             query = update.callback_query
+            logger.debug(f"✉️ Редактируем сообщение для пользователя {query.from_user.id}")
             await query.edit_message_text(message, reply_markup=reply_markup, parse_mode="HTML")
         else:
+            logger.debug(f"✉️ Отправляем новое сообщение пользователю {update.effective_user.id}")
             await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
         
+        logger.debug("✅ Экран результатов отображен")
         return RESULTS_SCREEN
     except Exception as e:
-        logger.error(f"❌ Ошибка в show_results_screen: {e}")
+        logger.error(f"❌ Ошибка в show_results_screen: {e}\n{traceback.format_exc()}")
         return RESULTS_SCREEN
 
 # ============================================
@@ -877,13 +888,19 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
     """🔞 Мой интимный профиль"""
     try:
         query = update.callback_query
+        logger.debug(f"🔍 ПОЛУЧЕН CALLBACK: {query.data} от пользователя {query.from_user.id}")
+        
         await query.answer()
         logger.info(f"👤 Пользователь {query.from_user.id} открыл интимный профиль")
         
         user_name = query.from_user.first_name or "Пользователь"
+        logger.debug(f"📝 Загружаем профиль для пользователя: {user_name}")
+        
         profile_data = load_intimate_profile()
+        logger.debug(f"📊 Профиль загружен: {profile_data.get('profile_type', 'unknown')}")
         
         message = format_intimate_profile(profile_data, user_name)
+        logger.debug(f"📄 Сообщение сформировано, длина: {len(message)}")
         
         keyboard = [
             [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
@@ -891,15 +908,17 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
             [InlineKeyboardButton("⬅️ Назад в профиль", callback_data="back_to_results")]
         ]
         
+        logger.debug("✉️ Отправляем сообщение...")
         await query.edit_message_text(
             message,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML"
         )
+        logger.debug("✅ Сообщение отправлено успешно")
         
         return MY_SEXUAL_PROFILE
     except Exception as e:
-        logger.error(f"❌ Ошибка в my_sexual_profile_callback: {e}")
+        logger.error(f"❌ Ошибка в my_sexual_profile_callback: {e}\n{traceback.format_exc()}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
         return RESULTS_SCREEN
 
@@ -1915,6 +1934,7 @@ def main():
     print("✅ Минималистичная навигация")
     print("✅ ИСПРАВЛЕНА кнопка «Интимный профиль»")
     print("✅ ИСПРАВЛЕН обработчик four_f_detailed")
+    print("✅ УЛУЧШЕНО логирование (DEBUG уровень)")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
