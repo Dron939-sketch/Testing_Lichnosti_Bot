@@ -1,13 +1,10 @@
 """
-Конфигурация приложения для Variatica Bot + Flask Webhook
-Версия для двух сервисов на Render:
-1. Telegram Bot (Web Service)
-2. Flask Webhook Server (Web Service)
+Конфигурация приложения для Variatica Bot и Flask API
+Содержит все константы и настройки для психологического теста и платежной системы
 """
 
 import os
 import logging
-from typing import Optional
 from dotenv import load_dotenv
 
 # Загрузка переменных окружения
@@ -19,471 +16,465 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('app.log', encoding='utf-8')
+        logging.FileHandler('bot.log', encoding='utf-8')
     ]
 )
 logger = logging.getLogger(__name__)
 
+# ===== ТОКЕНЫ И КЛЮЧИ =====
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("❌ ОШИБКА: Переменная TELEGRAM_BOT_TOKEN не установлена!")
 
-class Config:
-    """
-    Класс конфигурации приложения
-    """
-    
-    def __init__(self):
-        """Инициализация конфигурации"""
-        logger.info("="*50)
-        logger.info("⚙️  ИНИЦИАЛИЗАЦИЯ КОНФИГУРАЦИИ VARIATICA 2.0")
-        logger.info("="*50)
-        
-        # ==================== ОБЩИЕ НАСТРОЙКИ ====================
-        self.APP_NAME = "Variatica Adaptive Test Bot"
-        self.APP_VERSION = "2.0"
-        self.DEBUG_MODE = os.getenv('DEBUG_MODE', 'False').lower() == 'true'
-        
-        # Определяем какой сервис запущен (по переменной окружения или по контексту)
-        self.SERVICE_TYPE = os.getenv('SERVICE_TYPE', 'telegram_bot')  # telegram_bot или flask_webhook
-        
-        # ==================== TELEGRAM БОТ ====================
-        self.TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
-        self.BOT_TOKEN = self.TELEGRAM_BOT_TOKEN  # Дублируем для совместимости
-        
-        # Проверка токена бота (только для Telegram бота)
-        if self.SERVICE_TYPE == 'telegram_bot':
-            if not self.TELEGRAM_BOT_TOKEN:
-                logger.error("❌ TELEGRAM_BOT_TOKEN не установлен!")
-                raise ValueError("TELEGRAM_BOT_TOKEN не установлен в переменных окружения")
-            
-            logger.info(f"🤖 Telegram Bot Token: {'✅ Установлен' if self.TELEGRAM_BOT_TOKEN else '❌ Отсутствует'}")
-        else:
-            logger.info(f"🤖 Telegram Bot Token: Не требуется (Flask сервер)")
-        
-        # ==================== WEBHOOK URL (КРИТИЧЕСКИ ВАЖНО!) ====================
-        # Это URL твоего Flask сервера на Render:
-        # https://testing-lichnosti-bot-qyra.onrender.com
-        self.WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://testing-lichnosti-bot-qyra.onrender.com')
-        if self.WEBHOOK_URL:
-            self.WEBHOOK_URL = self.WEBHOOK_URL.rstrip('/')
-        
-        logger.info(f"🌐 Webhook URL: {self.WEBHOOK_URL}")
-        
-        # Проверяем, что WEBHOOK_URL установлен (особенно важно для Telegram бота)
-        if self.SERVICE_TYPE == 'telegram_bot' and not self.WEBHOOK_URL:
-            logger.error("❌ WEBHOOK_URL не установлен! Telegram бот не сможет работать с API")
-            raise ValueError("WEBHOOK_URL не установлен в переменных окружения")
-        
-        # ==================== YOOKASSA ПЛАТЕЖИ ====================
-        self.YOOKASSA_SHOP_ID = os.getenv('YOOKASSA_SHOP_ID', '')
-        self.YOOKASSA_SECRET_KEY = os.getenv('YOOKASSA_SECRET_KEY', '')
-        
-        # URL для возврата после оплаты
-        self.RETURN_URL = os.getenv('RETURN_URL', 'https://t.me/variatica_bot')
-        
-        # Определяем кто обрабатывает платежи:
-        # telegram_bot: создает платежи (если есть ключи)
-        # flask_webhook: принимает webhook и обновляет БД
-        if self.SERVICE_TYPE == 'telegram_bot':
-            # Для бота - платежи создаются через API, ключи опциональны
-            yookassa_configured = bool(self.YOOKASSA_SHOP_ID and self.YOOKASSA_SECRET_KEY)
-            self.is_payment_enabled = yookassa_configured
-            
-            if yookassa_configured:
-                logger.info("💰 YooKassa: ✅ Настроен (бот создает платежи)")
-                logger.info(f"   Shop ID: {self.YOOKASSA_SHOP_ID[:10]}...")
-            else:
-                logger.warning("💰 YooKassa: ⚠️  Ключи не указаны")
-                logger.warning("   Бот будет создавать платежи через Flask API")
-        
-        elif self.SERVICE_TYPE == 'flask_webhook':
-            # Для Flask сервера - ключи ОБЯЗАТЕЛЬНЫ для верификации webhook
-            yookassa_configured = bool(self.YOOKASSA_SHOP_ID and self.YOOKASSA_SECRET_KEY)
-            self.is_payment_enabled = yookassa_configured
-            
-            if yookassa_configured:
-                logger.info("💰 YooKassa: ✅ Настроен (Flask принимает webhook)")
-                logger.info(f"   Shop ID: {self.YOOKASSA_SHOP_ID[:10]}...")
-                logger.info(f"   Webhook endpoint: {self.WEBHOOK_URL}/yookassa-webhook")
-            else:
-                logger.error("❌ YooKassa: ⚠️  Ключи не указаны!")
-                logger.error("   Flask сервер не сможет верифицировать webhook от ЮKassa")
-        
-        # ==================== НАСТРОЙКИ ПЛАТЕЖЕЙ ====================
-        self.PAYMENT_AMOUNT = float(os.getenv('PAYMENT_AMOUNT', '199.00'))
-        self.PAYMENT_CURRENCY = os.getenv('PAYMENT_CURRENCY', 'RUB')
-        self.PAYMENT_DESCRIPTION = os.getenv('PAYMENT_DESCRIPTION', 'Оплата подписки Variatica')
-        
-        # ВСЕГДА боевой режим (без тестового)
-        self.is_test_mode = False
-        
-        logger.info(f"💵 Сумма платежа: {self.PAYMENT_AMOUNT} {self.PAYMENT_CURRENCY}")
-        logger.info(f"📝 Описание: {self.PAYMENT_DESCRIPTION}")
-        logger.info(f"🔧 Режим: {'🟡 Тестовый' if self.is_test_mode else '🟢 Боевой'}")
-        
-        # ==================== БАЗА ДАННЫХ ====================
-        # Для Flask сервера используем PostgreSQL от Render
-        # Для Telegram бота - SQLite (или БД не нужна)
-        self.DATABASE_URL = os.getenv('DATABASE_URL', '')
-        
-        if self.SERVICE_TYPE == 'flask_webhook':
-            if not self.DATABASE_URL:
-                logger.error("❌ DATABASE_URL не установлен для Flask сервера!")
-                raise ValueError("DATABASE_URL не установлен в переменных окружения для Flask сервера")
-            
-            # Для PostgreSQL исправляем строку подключения
-            if self.DATABASE_URL.startswith('postgres://'):
-                self.DATABASE_URL = self.DATABASE_URL.replace('postgres://', 'postgresql://', 1)
-            
-            logger.info(f"🗄️  Database URL (PostgreSQL): Установлен")
-            logger.info(f"   Используется PostgreSQL от Render")
-        
-        elif self.SERVICE_TYPE == 'telegram_bot':
-            # Для бота можно использовать SQLite
-            if self.DATABASE_URL:
-                logger.info(f"🗄️  Database URL: {self.DATABASE_URL}")
-            else:
-                logger.info("🗄️  Database URL: Не требуется (бот работает через API)")
-        
-        # ==================== OPENAI API (ОПЦИОНАЛЬНО) ====================
-        self.OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
-        self.OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4')
-        self.OPENAI_TEMPERATURE = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
-        self.OPENAI_MAX_TOKENS = int(os.getenv('OPENAI_MAX_TOKENS', '2000'))
-        
-        if self.OPENAI_API_KEY:
-            logger.info(f"🧠 OpenAI: ✅ Настроен")
-            logger.info(f"   Model: {self.OPENAI_MODEL}")
-        else:
-            logger.info("🧠 OpenAI: ❌ API ключ не установлен (опционально)")
-        
-        # ==================== ДОПОЛНИТЕЛЬНЫЕ НАСТРОЙКИ ====================
-        self.LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
-        
-        # Пути к файлам
-        self.LOG_FILE = 'app.log'
-        
-        # Время жизни сессии (в секундах)
-        self.SESSION_TIMEOUT = int(os.getenv('SESSION_TIMEOUT', '3600'))
-        
-        # Лимиты использования (для будущих функций)
-        self.FREE_MESSAGES_LIMIT = int(os.getenv('FREE_MESSAGES_LIMIT', '5'))
-        self.PREMIUM_MESSAGES_LIMIT = int(os.getenv('PREMIUM_MESSAGES_LIMIT', '1000'))
-        
-        # ==================== ССЫЛКИ ДЛЯ БОТА ====================
-        self.BOT_LINK = os.getenv('BOT_LINK', 'https://t.me/variatica_bot')
-        self.AUTHOR_LINK = os.getenv('AUTHOR_LINK', '@meysternlp')
-        self.PAYMENT_LINK = os.getenv('PAYMENT_LINK', 'https://yoomoney.ru/checkout/payments/v2/contract')
-        self.GIFT_PDF_LINK = os.getenv('GIFT_PDF_LINK', 'https://drive.google.com/file/d/ваш_файл/view')
-        
-        logger.info(f"🔗 Bot Link: {self.BOT_LINK}")
-        logger.info(f"👤 Author: {self.AUTHOR_LINK}")
-        logger.info(f"🎁 Gift PDF: {self.GIFT_PDF_LINK}")
-        
-        # ==================== ПОРТЫ ДЛЯ RENDER ====================
-        self.TELEGRAM_BOT_PORT = int(os.getenv('PORT', '10000'))  # Render сам назначает порт
-        self.FLASK_WEBHOOK_PORT = int(os.getenv('PORT', '10001'))  # Render сам назначает порт
-        
-        logger.info(f"🚀 Сервис запущен как: {self.SERVICE_TYPE.upper()}")
-        logger.info(f"🔌 Telegram бот порт: {self.TELEGRAM_BOT_PORT}")
-        logger.info(f"🔌 Flask сервер порт: {self.FLASK_WEBHOOK_PORT}")
-        
-        # ==================== ПРОВЕРКИ И ВАЛИДАЦИЯ ====================
-        self._validate_configuration()
-        
-        logger.info("="*50)
-        logger.info(f"✅ КОНФИГУРАЦИЯ ЗАГРУЖЕНА ({self.SERVICE_TYPE.upper()})")
-        logger.info("="*50)
-    
-    def _parse_admin_ids(self) -> list:
-        """
-        Парсинг списка ID администраторов
-        
-        Returns:
-            Список ID администраторов
-        """
-        admin_ids_str = os.getenv('TELEGRAM_ADMIN_IDS', '')
-        if not admin_ids_str:
-            return []
-        
-        try:
-            admin_ids_str = admin_ids_str.replace(' ', ',')
-            admin_ids = [int(admin_id.strip()) for admin_id in admin_ids_str.split(',') if admin_id.strip()]
-            return admin_ids
-        except ValueError as e:
-            logger.error(f"❌ Ошибка парсинга TELEGRAM_ADMIN_IDS: {e}")
-            return []
-    
-    def validate(self):
-        """
-        Валидация конфигурации
-        """
-        errors = []
-        warnings = []
-        
-        if self.SERVICE_TYPE == 'telegram_bot':
-            # Проверки для Telegram бота
-            if not self.TELEGRAM_BOT_TOKEN:
-                errors.append("TELEGRAM_BOT_TOKEN не установлен")
-            
-            if not self.WEBHOOK_URL:
-                errors.append("WEBHOOK_URL не установлен. Бот не сможет работать с API")
-            
-            # YooKassa ключи необязательны для бота (может работать через API)
-            if not self.YOOKASSA_SHOP_ID or not self.YOOKASSA_SECRET_KEY:
-                warnings.append("YooKassa ключи не установлены. Бот будет создавать платежи через Flask API")
-        
-        elif self.SERVICE_TYPE == 'flask_webhook':
-            # Проверки для Flask сервера
-            if not self.WEBHOOK_URL:
-                warnings.append("WEBHOOK_URL не установлен. Самопроверка недоступна")
-            
-            if not self.YOOKASSA_SHOP_ID or not self.YOOKASSA_SECRET_KEY:
-                errors.append("YooKassa ключи не установлены. Flask сервер не сможет верифицировать webhook")
-            
-            if not self.DATABASE_URL:
-                errors.append("DATABASE_URL не установлен. Flask серверу нужна PostgreSQL БД")
-        
-        # Логирование ошибок и предупреждений
-        if errors:
-            logger.error("❌ Ошибки конфигурации:")
-            for error in errors:
-                logger.error(f"   - {error}")
-            raise ValueError(f"Ошибки конфигурации: {', '.join(errors)}")
-        
-        if warnings:
-            logger.warning("⚠️  Предупреждения конфигурации:")
-            for warning in warnings:
-                logger.warning(f"   - {warning}")
-        
-        return True
-    
-    def _validate_configuration(self):
-        """
-        Проверка валидности конфигурации
-        """
-        try:
-            self.validate()
-        except ValueError as e:
-            logger.error(f"❌ Критическая ошибка конфигурации: {e}")
-            raise
-    
-    def get_database_config(self) -> dict:
-        """
-        Получение конфигурации базы данных
-        
-        Returns:
-            Словарь с настройками БД
-        """
-        return {
-            'url': self.DATABASE_URL,
-            'echo': self.DEBUG_MODE,
-            'service': self.SERVICE_TYPE
-        }
-    
-    def get_openai_config(self) -> dict:
-        """
-        Получение конфигурации OpenAI
-        
-        Returns:
-            Словарь с настройками OpenAI
-        """
-        return {
-            'api_key': self.OPENAI_API_KEY,
-            'model': self.OPENAI_MODEL,
-            'temperature': self.OPENAI_TEMPERATURE,
-            'max_tokens': self.OPENAI_MAX_TOKENS
-        }
-    
-    def get_yookassa_config(self) -> dict:
-        """
-        Получение конфигурации YooKassa
-        
-        Returns:
-            Словарь с настройками YooKassa
-        """
-        return {
-            'shop_id': self.YOOKASSA_SHOP_ID,
-            'secret_key': self.YOOKASSA_SECRET_KEY,
-            'webhook_url': f"{self.WEBHOOK_URL}/yookassa-webhook" if self.WEBHOOK_URL else None,
-            'return_url': self.RETURN_URL,
-            'is_enabled': self.is_payment_enabled,
-            'is_test_mode': self.is_test_mode,
-            'amount': self.PAYMENT_AMOUNT,
-            'currency': self.PAYMENT_CURRENCY,
-            'description': self.PAYMENT_DESCRIPTION,
-            'service_type': self.SERVICE_TYPE
-        }
-    
-    def get_api_config(self) -> dict:
-        """
-        Получение конфигурации API
-        
-        Returns:
-            Словарь с настройками API
-        """
-        return {
-            'webhook_url': self.WEBHOOK_URL,
-            'api_endpoints': {
-                'payment_status': f"{self.WEBHOOK_URL}/api/payment-status" if self.WEBHOOK_URL else None,
-                'create_payment': f"{self.WEBHOOK_URL}/api/create-payment" if self.WEBHOOK_URL else None,
-                'update_yookassa': f"{self.WEBHOOK_URL}/api/update-yookassa-id" if self.WEBHOOK_URL else None
-            }
-        }
-    
-    def get_logging_config(self) -> dict:
-        """
-        Получение конфигурации логирования
-        
-        Returns:
-            Словарь с настройками логирования
-        """
-        return {
-            'level': self.LOG_LEVEL,
-            'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            'filename': self.LOG_FILE,
-            'filemode': 'a',
-            'service': self.SERVICE_TYPE
-        }
-    
-    def get_app_config(self) -> dict:
-        """
-        Получение общей конфигурации приложения
-        
-        Returns:
-            Словарь с настройками приложения
-        """
-        return {
-            'name': self.APP_NAME,
-            'version': self.APP_VERSION,
-            'debug': self.DEBUG_MODE,
-            'service_type': self.SERVICE_TYPE,
-            'session_timeout': self.SESSION_TIMEOUT,
-            'free_messages_limit': self.FREE_MESSAGES_LIMIT,
-            'premium_messages_limit': self.PREMIUM_MESSAGES_LIMIT,
-            'bot_link': self.BOT_LINK,
-            'author_link': self.AUTHOR_LINK,
-            'payment_link': self.PAYMENT_LINK,
-            'gift_pdf_link': self.GIFT_PDF_LINK,
-            'webhook_url': self.WEBHOOK_URL,
-            'ports': {
-                'telegram_bot': self.TELEGRAM_BOT_PORT,
-                'flask_webhook': self.FLASK_WEBHOOK_PORT
-            }
-        }
-    
-    def get_service_specific_config(self) -> dict:
-        """
-        Получение специфической конфигурации для сервиса
-        
-        Returns:
-            Словарь с настройками сервиса
-        """
-        if self.SERVICE_TYPE == 'telegram_bot':
-            return {
-                'start_command': 'python bot_adaptive.py',
-                'health_check': f'https://variatica-telegram-bot.onrender.com',
-                'api_calls': True,
-                'requires_database': False,
-                'requires_yookassa_keys': False
-            }
-        elif self.SERVICE_TYPE == 'flask_webhook':
-            return {
-                'start_command': 'gunicorn app:app',
-                'health_check': self.WEBHOOK_URL,
-                'api_calls': False,
-                'requires_database': True,
-                'requires_yookassa_keys': True
-            }
-        return {}
-    
-    def __str__(self) -> str:
-        """
-        Строковое представление конфигурации
-        
-        Returns:
-            Форматированная строка с конфигурацией
-        """
-        config_str = []
-        config_str.append("="*50)
-        config_str.append(f"⚙️  КОНФИГУРАЦИЯ {self.SERVICE_TYPE.upper()}")
-        config_str.append("="*50)
-        
-        config_str.append(f"📱 Приложение: {self.APP_NAME} v{self.APP_VERSION}")
-        config_str.append(f"🔧 Сервис: {self.SERVICE_TYPE}")
-        config_str.append(f"🌐 Webhook URL: {self.WEBHOOK_URL}")
-        
-        if self.SERVICE_TYPE == 'telegram_bot':
-            config_str.append(f"🤖 Telegram Bot: {'✅' if self.TELEGRAM_BOT_TOKEN else '❌'}")
-            config_str.append(f"🔌 Порт: {self.TELEGRAM_BOT_PORT}")
-        
-        config_str.append(f"💰 YooKassa: {'✅' if self.is_payment_enabled else '❌'}")
-        if self.is_payment_enabled:
-            config_str.append(f"   Режим: {'🟡 Тестовый' if self.is_test_mode else '🟢 Боевой'}")
-            config_str.append(f"   Сумма: {self.PAYMENT_AMOUNT} {self.PAYMENT_CURRENCY}")
-        
-        if self.SERVICE_TYPE == 'flask_webhook':
-            config_str.append(f"🗄️  Database: {'✅ PostgreSQL' if self.DATABASE_URL else '❌ Нет'}")
-            config_str.append(f"🔌 Порт: {self.FLASK_WEBHOOK_PORT}")
-            config_str.append(f"📡 Webhook endpoint: {self.WEBHOOK_URL}/yookassa-webhook")
-        
-        config_str.append(f"🧠 OpenAI: {'✅' if self.OPENAI_API_KEY else '❌'}")
-        
-        config_str.append(f"🔗 Ссылки:")
-        config_str.append(f"   Бот: {self.BOT_LINK}")
-        config_str.append(f"   Автор: {self.AUTHOR_LINK}")
-        
-        service_config = self.get_service_specific_config()
-        if service_config:
-            config_str.append(f"⚙️  Конфигурация сервиса:")
-            for key, value in service_config.items():
-                config_str.append(f"   {key}: {value}")
-        
-        config_str.append("="*50)
-        
-        return "\n".join(config_str)
+API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
+YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
+YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
+GIFT_PDF_LINK = os.getenv("GIFT_PDF_LINK", "https://disk.yandex.ru/i/Cacp7x1Vt3XhbA")
 
+# ===== ССЫЛКИ =====
+TELEGRAM_BOT_URL = "https://t.me/Testing_Lichnosti_bot"
+BOT_LINK = "t.me/Testing_Lichnosti_bot"
+AUTHOR_LINK = "@meysternlp"
+SHARE_TEXT = "Мне в руки попало особое зеркало. В нём видно то, что обычно скрыто даже от себя.\n\nЯ посмотрел(а). Увидел(а). Теперь держи — твоя очередь смотреть."
 
-# Создаем глобальный экземпляр конфигурации
-config = Config()
+# ===== ТЕКСТЫ =====
+GIFT_SCREEN_TEXT = """
+⚔️ <b>ВАШ МЕЧ ГОТОВ!</b>
 
-# Экспортируем конфигурацию
-__all__ = ['Config', 'config']
+📚 <b>Терапевтическая сказка «Мастер Меча»</b>
 
+Эта сказка работает именно с тем, что мешает вам
+расправить плечи на уровне убеждений.
+
+<i>Она не «ломает» старые установки,
+а создаёт пространство для новых —
+тех, что позволяют стоять прямо и легко.</i>
+
+💡 <b>Как читать для максимального эффекта:</b>
+1️⃣ Прочитайте перед сном
+2️⃣ Ищите в тексте «металл» (вашу истинную природу)
+3️⃣ Отмечайте «зазубрины» (ваши ограничения)
+4️⃣ Обращайте внимание на символы тяжести/лёгкости
+
+<i>Приятного чтения и лёгкости в плечах!</i> 🪶✨
+"""
+
+# ===== СОСТОЯНИЯ CONVERSATIONHANDLER =====
+STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS = range(6)
+GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN = range(6, 9)
+PAYMENT_SCREEN = 9
+
+# ===== 18+ СОСТОЯНИЯ =====
+try:
+    from sexual_18_plus import SEXUAL_STATES
+    SEXUAL_PROFILE_SCREEN = SEXUAL_STATES["SEXUAL_PROFILE_SCREEN"]
+    SEXUAL_INVITES_LIST = SEXUAL_STATES["SEXUAL_INVITES_LIST"]
+    SEXUAL_FRIEND_PROFILE = SEXUAL_STATES["SEXUAL_FRIEND_PROFILE"]
+    FOUR_F_PAYMENT_SCREEN = SEXUAL_STATES["FOUR_F_PAYMENT_SCREEN"]
+    FOUR_F_CONTENT_SCREEN = SEXUAL_STATES["FOUR_F_CONTENT_SCREEN"]
+except (ImportError, KeyError):
+    # Если модуль не загружен, создаем заглушки
+    logger.warning("⚠️ 18+ модуль не загружен, создаем заглушки для состояний")
+    SEXUAL_PROFILE_SCREEN = 10
+    SEXUAL_INVITES_LIST = 11
+    SEXUAL_FRIEND_PROFILE = 12
+    FOUR_F_PAYMENT_SCREEN = 13
+    FOUR_F_CONTENT_SCREEN = 14
+
+# ===== ПСИХОЛОГИЧЕСКИЕ ПОДСКАЗКИ =====
+PSYCHOLOGIST_TIPS = {
+    "stage1": [
+        "🧠 <i>Не думайте слишком долго — важна первая реакция</i>",
+        "🧠 <i>Отвечайте так, как есть сейчас, а не как хотелось бы</i>",
+        "🧠 <i>Это безопасное пространство для честности с собой</i>",
+        "🧠 <i>Все ответы важны для построения точного профиля</i>",
+        "🧠 <i>Чем честнее вы будете, тем точнее будут рекомендации</i>",
+        "🧠 <i>Не бывает правильных или неправильных ответов</i>",
+        "🧠 <i>Это исследование, а не оценка</i>",
+        "🧠 <i>Спасибо за доверие в этом процессе самопознания</i>"
+    ],
+    "stage2": [
+        "🧠 <i>Опишите текущую реальность, а не идеальную ситуацию</i>",
+        "🧠 <i>Ваши ответы помогают мне понять ваш внутренний мир</i>",
+        "🧠 <i>Будьте максимально искренни — это только для вас</i>",
+        "🧠 <i>Каждый ответ добавляет деталь к вашему портрету</i>",
+        "🧠 <i>Не оценивайте свои ответы как хорошие или плохие</i>",
+        "🧠 <i>Это путь к лучшему пониманию себя</i>",
+        "🧠 <i>Ваша честность — ключ к точным инсайтам</i>",
+        "🧠 <i>Спасибо за открытость в этом диалоге</i>"
+    ],
+    "stage3": [
+        "🧠 <i>Вспомните реальные реакции, а не идеальные</i>",
+        "🧠 <i>Автоматизмы — не хорошо и не плохо,это данные</i>",
+        "🧠 <i>Рефлексы показывают ваши глубинные программы</i>",
+        "🧠 <i>Чем честнее, тем точнее будет ваш профиль</i>",
+        "🧠 <i>Стратегии рождаются из осознания автоматизмов</i>",
+        "🧠 <i>Это безопасное пространство для изучения себя</i>",
+        "🧠 <i>Каждый ответ — ключ к вашим паттернам</i>",
+        "🧠 <i>Благодарю за смелость в этом исследовании</i>"
+    ],
+    "stage4": [
+        "🧠 <i>Выбирайте то, что кажется ближе к правде</i>",
+        "🧠 <i>Не задумывайтесь слишком долго — важна первая реакция</i>", 
+        "🧠 <i>Нет правильных или неправильных ответов</i>",
+        "🧠 <i>Каждый выбор показывает ваши глубинные фокусы</i>",
+        "🧠 <i>Это последний этап — собираем все данные воедино</i>",
+        "🧠 <i>Ваши ответы определят точку для роста</i>",
+        "🧠 <i>Доверяйте своему внутреннему ощущению</i>",
+        "🧠 <i>Спасибо за завершение этого исследования</i>"
+    ]
+}
+
+# ===== МОТИВАЦИОННЫЕ ЭКРАНЫ =====
+STAGE1_FEEDBACK = {
+    "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": """
+✅ ЭТАП 1 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
+
+Внимание направлено туда, где пульсирует живое — люди, контакты, отношения.
+Эта оптика первой замечает смену настроения, паузу в разговоре, взгляд.
+Входящий сигнал: «кто рядом и что между нами».
+
+🔍 Что дальше?
+Следующий этап — исследование того, как мышление работает внутри этой оптики.
+
+📊 Продолжим?
+""",
+    "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ": """
+✅ ЭТАП 1 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
+
+Внимание направлено внутрь, в слои собственных состояний и смыслов.
+Эта оптика не пропускает сигнал, пока он не будет понят, прочувствован, назван.
+Входящий сигнал: «что это значит для меня».
+
+🔍 Что дальше?
+Следующий этап — исследование того, как мышление работает внутри этой оптики.
+
+📊 Продолжим?
+""",
+    "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ": """
+✅ ЭТАП 1 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
+
+Внимание направлено на цели, ресурсы, препятствия и способы их преодоления.
+Эта оптика автоматически сканирует среду на предмет «что здесь можно сделать».
+Входящий сигнал: «как это использовать и что с этим делать».
+
+🔍 Что дальше?
+Следующий этап — исследование того, как мышление работает внутри этой оптики.
+
+📊 Продолжим?
+""",
+    "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ": """
+✅ ЭТАП 1 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ ВОСПРИЯТИЯ
+
+Внимание направлено на закономерности, связи между фактами, логику устройства.
+Эта оптика не видит разрозненных событий — только элементы одной системы.
+Входящий сигнал: «как это устроено и по каким правилам работает».
+
+🔍 Что дальше?
+Следующий этап — исследование того, как мышление работает внутри этой оптики.
+
+📊 Продолжим?
+"""
+}
+
+STAGE2_FEEDBACK = {
+    ("СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ", "1-3"): """
+✅ ЭТАП 2 ЗАВЕРШЁН
+
+🧠 КОНФИГУРАЦИЯ МЫШЛЕНИЯ
+
+Мышление внутри вашей системы восприятия настроено на поиск обратной связи.
+Его фокус: «как я соотношусь с другими, видим ли я, принят ли?»
+Оно собирает информацию через контакт и сверку с окружением.
+
+🔍 Что дальше?
+Следующий этап — анализ поведенческих реакций.
+
+📊 Продолжим?
+""",
+    # ... остальные варианты (сокращено для brevity)
+}
+
+STAGE3_FEEDBACK = {
+    1: """
+✅ ЭТАП 3 ЗАВЕРШЁН
+
+🔄 ПОВЕДЕНЧЕСКАЯ КОНФИГУРАЦИЯ
+
+Реакции разворачиваются на скорости рефлекса.
+Сигнал входит — действие выходит.
+Пауза между стимулом и ответом не предусмотрена архитектурой.
+
+Это конфигурация прямой проводимости.
+Она оптимальна для ситуаций, где скорость критичнее анализа.
+Решения принимаются до включения мышления — и это её штатный режим.
+
+🔍 Что дальше?
+Финальный этап — определение точки роста.
+
+📊 Продолжим?
+""",
+    # ... остальные
+}
+
+STAGE4_ANALYSIS_SCREEN = """
+🧠 АНАЛИЗИРУЮ ДАННЫЕ
+
+Соединяются три слоя информации:
+▸ Как работает оптика восприятия
+▸ Как внутри неё выстраивается мышление
+▸ В каком режиме работают поведенческие реакции
+
+Остаётся добавить четвёртый элемент —
+уровень, на котором находится текущая точка сборки.
+
+⏳ Пожалуйста, подождите несколько секунд...
+"""
+
+# ===== КОНСТАНТЫ ДЛЯ ПОИСКА ПРОФИЛЕЙ =====
+STANDARD_SUFFIXES = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
+LEVEL_DIFFS = [0, 1, -1, 2, -2, 3, -3, 4, -4]
+EMERGENCY_PROFILES = [
+    "sa_1_def", "sa_2_sit", "sa_3_con",
+    "sp_1_def", "sp_2_sit", "sp_3_con", 
+    "ia_1_def", "ia_2_sit", "ia_3_con",
+    "ip_1_def", "ip_2_sit", "ip_3_con"
+]
+
+# ===== КОНСТАНТЫ ДЛЯ ПРИМЕЧАНИЙ О КОНФЛИКТЕ =====
+CONFLICT_PHRASES = {
+    "ENVIRONMENT": {
+        "note": "🔥 Примечание: Ваши ценности не могут быть реализованы в этом окружении. Среда не даёт опор для того, что вам важно.",
+        "short": "Окружение не поддерживает ваши ценности"
+    },
+    "BEHAVIOR": {
+        "note": "🔥 Примечание: Ваши действия не соответствуют вашим ценностям. Вы делаете не то, что для вас действительно важно.",
+        "short": "Поведение расходится с ценностями"
+    },
+    "CAPABILITIES": {
+        "note": "🔥 Примечание: Вам не хватает способностей для реализации того, что важно. Навыки не соответствуют уровню ценностей.",
+        "short": "Навыки отстают от ценностей"
+    },
+    "VALUES": {
+        "note": "🔥 Примечание: Конфликт ценностей. Вы одновременно хотите противоречивых вещей.",
+        "short": "Внутренний конфликт ценностей"
+    },
+    "IDENTITY": {
+        "note": "🔥 Примечание: Ваше представление о себе не соответствует тому, что вам действительно важно. Вы не живёте свою идентичность.",
+        "short": "Идентичность не соответствует ценностям"
+    }
+}
+
+SUFFIX_TO_DILTS = {
+    "def": "ENVIRONMENT",
+    "sit": "BEHAVIOR", 
+    "con": "CAPABILITIES",
+    "exp": "CAPABILITIES",
+    "int": "VALUES",
+    "aut": "VALUES",
+    "val": "VALUES",
+    "tra": "IDENTITY",
+    "ide": "IDENTITY"
+}
+
+# ===== УРОВНИ ДИЛТСА =====
+DILTS_LEVELS = {
+    "ENVIRONMENT": {"name": "ОКРУЖЕНИЕ", "code": "env", "description": "Проблема во внешних условиях", "solution": "Измени окружение или отношение к нему"},
+    "BEHAVIOR": {"name": "ПОВЕДЕНИЕ", "code": "beh", "description": "Проблема в действиях", "solution": "Начни действовать по-другому"},
+    "CAPABILITIES": {"name": "СПОСОБНОСТИ", "code": "cap", "description": "Проблема в навыках", "solution": "Освой новые навыки"},
+    "VALUES": {"name": "ЦЕННОСТИ", "code": "val", "description": "Проблема в мотивации", "solution": "Найди свои истинные ценности"},
+    "IDENTITY": {"name": "ИДЕНТИЧНОСТЬ", "code": "ide", "description": "Проблема в самоопределении", "solution": "Переопредели, кто ты"}
+}
+
+# ============================================
+# КОНСТАНТЫ ДЛЯ FLASK API (из app.py)
+# ============================================
+
+# ===== ССЫЛКИ НА ПРОФИЛИ ЯНДЕКС.ДИСК =====
+PROFILE_LINKS = {
+    # SA Profiles
+    "SA_1_DEF": "https://disk.yandex.ru/d/HAcOfAg1tpIedA",
+    "SA_2_SIT": "https://disk.yandex.ru/d/MwdMClX9koCTmA",
+    "SA_3_CON": "https://disk.yandex.ru/d/NKN_XemK62t5nA",
+    "SA_4_EXP": "https://disk.yandex.ru/d/tTSiN5zhSb8LtA",
+    "SA_5_INT": "https://disk.yandex.ru/d/xUdv7bsBT3Wbhg",
+    "SA_6_AUT": "https://disk.yandex.ru/d/lYWKaOdEkC_5Ag",
+    "SA_7_VAL": "https://disk.yandex.ru/d/7BCOKs-6qS6-5g",
+    "SA_8_TRA": "https://disk.yandex.ru/d/SqlDISkse1OEGQ",
+    "SA_9_IDE": "https://disk.yandex.ru/d/vGzHmuckInNL5g",
+    
+    # SP Profiles
+    "SP_1_DEF": "https://disk.yandex.ru/d/7nmOP7wR2iQ9YA",
+    "SP_2_SIT": "https://disk.yandex.ru/d/Ro_mcLDd_QmilA",
+    "SP_3_CON": "https://disk.yandex.ru/d/kUJH3BLMnb4CfA",
+    "SP_4_EXP": "https://disk.yandex.ru/d/KBSO1g0HYNJBcQ",
+    "SP_5_INT": "https://disk.yandex.ru/d/s2jhq2ngz3pmYg",
+    "SP_6_AUT": "https://disk.yandex.ru/d/xWBv4TLFosOB5g",
+    "SP_7_VAL": "https://disk.yandex.ru/d/K1whXj6C6KAazQ",
+    "SP_8_TRA": "https://disk.yandex.ru/d/ZZhRISNn-GNPTg",
+    "SP_9_IDE": "https://disk.yandex.ru/d/jBCaEpYOdZI-JQ",
+    
+    # IA Profiles
+    "IA_1_DEF": "https://disk.yandex.ru/d/M1Y7z175uGKIHg",
+    "IA_2_SIT": "https://disk.yandex.ru/d/X3yz6IP0pdRmVQ",
+    "IA_3_CON": "https://disk.yandex.ru/d/DCkqqALby9UpFg",
+    "IA_4_EXP": "https://disk.yandex.ru/d/aLT8oJBu0EGwLg",
+    "IA_5_INT": "https://disk.yandex.ru/d/x0QXWi7MDR7h0g",
+    "IA_6_AUT": "https://disk.yandex.ru/d/xRjBzTxYh0v4bg",
+    "IA_7_VAL": "https://disk.yandex.ru/d/1fHqhIitNuz_XQ",
+    "IA_8_TRA": "https://disk.yandex.ru/d/0wSeHeF_SWZyFw",
+    "IA_9_IDE": "https://disk.yandex.ru/d/ub0YpQQgS4g6rQ",
+    
+    # IP Profiles
+    "IP_1_DEF": "https://disk.yandex.ru/d/m-WOQwDdgQxsnQ",
+    "IP_2_SIT": "https://disk.yandex.ru/d/aL4VlAQdlaZ-6g",
+    "IP_3_CON": "https://disk.yandex.ru/d/N8GG9XbnC3bFhg",
+    "IP_4_EXP": "https://disk.yandex.ru/d/54RFOZmGhA4cfA",
+    "IP_5_INT": "https://disk.yandex.ru/d/l5iFTIX8-gTycQ",
+    "IP_6_AUT": "https://disk.yandex.ru/d/bTo_vcCoC1KU7Q",
+    "IP_7_VAL": "https://disk.yandex.ru/d/TMx1VP843bnJQw",
+    "IP_8_TRA": "https://disk.yandex.ru/d/e9KfJdLcl3gp7g",
+    "IP_9_IDE": "https://disk.yandex.ru/d/ZiQPHJSDrrWZhw"
+}
+
+DEFAULT_PROFILE = "SA_1_DEF"  # Профиль по умолчанию
+
+# ============================================
+# 18+ МОДУЛЬ - КОНСТАНТЫ
+# ============================================
+SEXUAL_DEFAULT_PROFILE = "sa_5_int"
+SEXUAL_PAYMENT_AMOUNT = 99.00
+SEXUAL_PROFILES_DIR = "sexual_18"
+
+# ============================================
+# 4F МОДУЛЬ - КОНСТАНТЫ
+# ============================================
+F4F_BASE_PATH = "профили/4F"
+F4F_FUNCTIONS = ["1F", "2F", "3F", "4F"]
+F4F_DEFAULT_PROFILE = "sa_4_cap"
+F4F_PAYMENT_AMOUNT = 99.00
+
+# ============================================
+# НАСТРОЙКИ ПЛАТЕЖЕЙ
+# ============================================
+PAYMENT_AMOUNT = float(os.getenv('PAYMENT_AMOUNT', '199.00'))
+PAYMENT_CURRENCY = os.getenv('PAYMENT_CURRENCY', 'RUB')
+PAYMENT_DESCRIPTION = os.getenv('PAYMENT_DESCRIPTION', 'Оплата подписки Variatica')
+
+# ============================================
+# URL И ССЫЛКИ ДЛЯ FLASK
+# ============================================
+WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://testing-lichnosti-bot-qyra.onrender.com')
+RETURN_URL = os.getenv('RETURN_URL', 'https://t.me/variatica_bot')
+
+# ============================================
+# ПРОВЕРКА КОНФИГУРАЦИИ
+# ============================================
+def validate_config():
+    """Проверяет все необходимые настройки"""
+    errors = []
+    warnings = []
+    
+    if not TOKEN:
+        errors.append("TELEGRAM_BOT_TOKEN не установлен")
+    
+    if not API_URL:
+        warnings.append("API_URL не установлен, используется значение по умолчанию")
+    
+    if not YOOKASSA_SHOP_ID or not YOOKASSA_SECRET_KEY:
+        warnings.append("YooKassa ключи не установлены, платежи будут работать через Flask API")
+    
+    if errors:
+        error_msg = "\n".join(errors)
+        logger.error(f"❌ Ошибки конфигурации:\n{error_msg}")
+        raise ValueError(f"Ошибки конфигурации: {', '.join(errors)}")
+    
+    if warnings:
+        for warning in warnings:
+            logger.warning(f"⚠️ {warning}")
+    
+    logger.info("✅ Конфигурация проверена успешно")
+    return True
+
+# Выполняем проверку при импорте
+validate_config()
+
+# Экспортируем все константы
+__all__ = [
+    # Основные
+    'TOKEN', 'API_URL', 'YOOKASSA_SHOP_ID', 'YOOKASSA_SECRET_KEY', 'GIFT_PDF_LINK',
+    'TELEGRAM_BOT_URL', 'BOT_LINK', 'AUTHOR_LINK', 'SHARE_TEXT', 'GIFT_SCREEN_TEXT',
+    
+    # Состояния бота
+    'STAGE_1', 'STAGE_2', 'STAGE_3', 'STAGE_4', 'CLARIFICATION', 'RESULTS',
+    'GIFT_SCREEN', 'PACKAGE_SCREEN', 'OPEN_GIFT_SCREEN', 'PAYMENT_SCREEN',
+    'SEXUAL_PROFILE_SCREEN', 'SEXUAL_INVITES_LIST', 'SEXUAL_FRIEND_PROFILE',
+    'FOUR_F_PAYMENT_SCREEN', 'FOUR_F_CONTENT_SCREEN',
+    
+    # Психологические константы
+    'PSYCHOLOGIST_TIPS', 'STAGE1_FEEDBACK', 'STAGE2_FEEDBACK', 'STAGE3_FEEDBACK',
+    'STAGE4_ANALYSIS_SCREEN', 'STANDARD_SUFFIXES', 'LEVEL_DIFFS', 'EMERGENCY_PROFILES',
+    'CONFLICT_PHRASES', 'SUFFIX_TO_DILTS', 'DILTS_LEVELS',
+    
+    # Flask API константы
+    'PROFILE_LINKS', 'DEFAULT_PROFILE',
+    'SEXUAL_DEFAULT_PROFILE', 'SEXUAL_PAYMENT_AMOUNT', 'SEXUAL_PROFILES_DIR',
+    'F4F_BASE_PATH', 'F4F_FUNCTIONS', 'F4F_DEFAULT_PROFILE', 'F4F_PAYMENT_AMOUNT',
+    'PAYMENT_AMOUNT', 'PAYMENT_CURRENCY', 'PAYMENT_DESCRIPTION',
+    'WEBHOOK_URL', 'RETURN_URL',
+    
+    # Логгер
+    'logger'
+]
 
 if __name__ == "__main__":
-    """
-    Тестирование конфигурации
-    """
-    print("\n" + "="*60)
-    print("🧪 ТЕСТИРОВАНИЕ КОНФИГУРАЦИИ")
-    print("="*60)
+    print("\n" + "="*80)
+    print("🧪 ПРОВЕРКА КОНФИГУРАЦИИ VARIATICA")
+    print("="*80)
     
-    print(str(config))
+    print(f"✅ TELEGRAM_BOT_TOKEN: {'Установлен' if TOKEN else '❌ ОТСУТСТВУЕТ!'}")
+    print(f"✅ API_URL: {API_URL}")
+    print(f"✅ WEBHOOK_URL: {WEBHOOK_URL}")
+    print(f"✅ YOOKASSA_SHOP_ID: {'Установлен' if YOOKASSA_SHOP_ID else 'Не установлен'}")
+    print(f"✅ YOOKASSA_SECRET_KEY: {'Установлен' if YOOKASSA_SECRET_KEY else 'Не установлен'}")
+    print(f"✅ PAYMENT_AMOUNT: {PAYMENT_AMOUNT} {PAYMENT_CURRENCY}")
     
-    print("\n📋 Подробная информация:")
-    print(f"   Сервис: {config.SERVICE_TYPE}")
-    print(f"   Webhook URL: {config.WEBHOOK_URL}")
+    print("\n📊 СОСТОЯНИЯ БОТА:")
+    print(f"   STAGE_1: {STAGE_1}")
+    print(f"   STAGE_2: {STAGE_2}")
+    print(f"   STAGE_3: {STAGE_3}")
+    print(f"   STAGE_4: {STAGE_4}")
+    print(f"   RESULTS: {RESULTS}")
     
-    if config.SERVICE_TYPE == 'telegram_bot':
-        print(f"   Токен бота: {'✅' if config.TELEGRAM_BOT_TOKEN else '❌'}")
+    print("\n📁 ПРОФИЛИ ЯНДЕКС.ДИСК:")
+    print(f"   Всего профилей: {len(PROFILE_LINKS)}")
+    print(f"   Профиль по умолчанию: {DEFAULT_PROFILE}")
+    print(f"   Пример: {DEFAULT_PROFILE} -> {PROFILE_LINKS[DEFAULT_PROFILE][:50]}...")
     
-    print(f"   YooKassa настроен: {'✅' if config.is_payment_enabled else '❌'}")
+    print("\n🔞 18+ МОДУЛЬ:")
+    print(f"   Профиль по умолчанию: {SEXUAL_DEFAULT_PROFILE}")
+    print(f"   Стоимость: {SEXUAL_PAYMENT_AMOUNT}₽")
+    print(f"   Папка: {SEXUAL_PROFILES_DIR}")
     
-    if config.SERVICE_TYPE == 'flask_webhook':
-        print(f"   База данных: {'✅' if config.DATABASE_URL else '❌'}")
-        print(f"   Webhook endpoint: {config.WEBHOOK_URL}/yookassa-webhook")
+    print("\n🔑 4F МОДУЛЬ:")
+    print(f"   Функции: {F4F_FUNCTIONS}")
+    print(f"   Стоимость: {F4F_PAYMENT_AMOUNT}₽")
+    print(f"   Базовая папка: {F4F_BASE_PATH}")
+    print(f"   MVP профиль: {F4F_DEFAULT_PROFILE}")
     
-    api_config = config.get_api_config()
-    print(f"\n🌐 API конфигурация:")
-    for endpoint, url in api_config['api_endpoints'].items():
-        print(f"   {endpoint}: {url}")
-    
-    print(f"\n⚙️  Конфигурация YooKassa:")
-    yookassa_config = config.get_yookassa_config()
-    for key, value in yookassa_config.items():
-        if key in ['secret_key', 'shop_id'] and value:
-            if isinstance(value, str) and len(value) > 10:
-                value = f"{value[:5]}...{value[-5:]}"
-        print(f"   {key}: {value}")
+    print("\n📝 ПСИХОЛОГИЧЕСКИЕ ПОДСКАЗКИ:")
+    print(f"   stage1: {len(PSYCHOLOGIST_TIPS['stage1'])} шт.")
+    print(f"   stage2: {len(PSYCHOLOGIST_TIPS['stage2'])} шт.")
+    print(f"   stage3: {len(PSYCHOLOGIST_TIPS['stage3'])} шт.")
+    print(f"   stage4: {len(PSYCHOLOGIST_TIPS['stage4'])} шт.")
     
     print("\n✅ Конфигурация загружена успешно!")
-    print("="*60)
+    print("="*80)
