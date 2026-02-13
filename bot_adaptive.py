@@ -2172,7 +2172,7 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_results_screen(update, context)
 
 # ============================================
-# ЭКРАН РЕЗУЛЬТАТОВ С 18+ КНОПКОЙ
+# ЭКРАН РЕЗУЛЬТАТОВ С 18+ КНОПКОЙ (ИСПРАВЛЕННЫЙ)
 # ============================================
 
 async def show_results_screen(
@@ -2231,8 +2231,8 @@ async def show_results_screen(
     except Exception as e:
         logger.error(f"⚠️ Ошибка определения реального профиля: {e}")
     
-    # Получаем ссылку на Яндекс.Диск
-    profile_link = get_disk_link(profile_data.get('display_name', 'SA_5_INT'))
+    # ❌ УДАЛЯЕМ ЭТУ СТРОКУ - ссылка не должна быть в результатах!
+    # profile_link = get_disk_link(profile_data.get('display_name', 'SA_5_INT'))
     
     # ПРИМЕЧАНИЕ О КОНФЛИКТЕ
     discrepancy_note = ""
@@ -2318,8 +2318,9 @@ async def show_results_screen(
         f"<i>Это только начало вашего пути к самопознанию.</i>\n\n"
     )
     
-    # Добавляем ссылку на Яндекс.Диск
-    message_2 += f"📁 <b>ССЫЛКА НА ПРОФИЛЬ:</b>\n{profile_link}\n\n"
+    # ❌ УДАЛЯЕМ ЭТИ ДВЕ СТРОКИ - ссылка не должна быть в результатах!
+    # # Добавляем ссылку на Яндекс.Диск
+    # message_2 += f"📁 <b>ССЫЛКА НА ПРОФИЛЬ:</b>\n{profile_link}\n\n"
     
     # ПРИМЕЧАНИЕ О КОНФЛИКТЕ
     if discrepancy_note:
@@ -3631,7 +3632,7 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             "• И другие\n"
         )
     
-    # Получаем ссылку на Яндекс.Диск
+    # ✅ Получаем ссылку на Яндекс.Диск ТОЛЬКО для экрана оплаты
     profile_link = get_disk_link(profile_code)
     
     keyboard = [
@@ -3651,7 +3652,7 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"{invoice_info}"
         f"\n🔒 *Защита от дублей:* ✅ активна\n"
         f"📊 *Профиль сохранен:* ✅ `{profile_code}`\n"
-        f"📁 *Ссылка на профиль:* {profile_link}\n\n"
+        f"📁 *Ссылка на материалы:* {profile_link}\n\n"
         f"*Для оплаты нажмите кнопку ниже:*\n"
         f"После успешной оплаты:\n"
         f"1. Вы получите уведомление\n"
@@ -4159,6 +4160,10 @@ def main():
     print("4. ✅ Платежная система ЮKassa")
     print("5. ✅ Интеграция с Яндекс.Диск (36 профилей)")
     print("="*70)
+    print("🔧 ИСПРАВЛЕНИЯ:")
+    print("   ✅ Ссылка на Яндекс.Диск убрана со страницы результатов")
+    print("   ✅ Ссылка показывается только после оплаты")
+    print("="*70)
     
     gift_link = os.getenv("GIFT_PDF_LINK")
     if not gift_link:
@@ -4317,6 +4322,7 @@ def main():
     logger.info("✅ ВЕРСИЯ 5.0: ПОЛНАЯ ИНТЕГРАЦИЯ 18+ МОДУЛЯ!")
     logger.info("✅ 18+ модуль вынесен в отдельный файл sexual_18_plus.py")
     logger.info("✅ Поддержка 36 профилей Яндекс.Диск")
+    logger.info("✅ Ссылка на Яндекс.Диск показывается только после оплаты")
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
