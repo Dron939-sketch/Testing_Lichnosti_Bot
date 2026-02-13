@@ -894,7 +894,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         InlineKeyboardButton("◀️ К ИНТИМНОМУ ПРОФИЛЮ", callback_data="my_sexual_profile")
     ])
     
-    # Кнопка 4F - ВЫДЕЛЕННАЯ, СНИЗУ
+        # Кнопка 4F - ВЫДЕЛЕННАЯ, СНИЗУ
     keyboard.append([
         InlineKeyboardButton("🔴🧬 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")
     ])
@@ -906,19 +906,6 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     
     return INVITES_LIST
-
-# КНОПКИ - ТОЛЬКО 2 КНОПКИ
-keyboard = []
-    
-    # Кнопка возврата
-    keyboard.append([
-        InlineKeyboardButton("◀️ К ИНТИМНОМУ ПРОФИЛЮ", callback_data="my_sexual_profile")
-    ])
-    
-    # Кнопка 4F - ВЫДЕЛЕННАЯ, СНИЗУ
-    keyboard.append([
-        InlineKeyboardButton("🔴🧬 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")
-    ])
     
     await query.edit_message_text(
         message,
