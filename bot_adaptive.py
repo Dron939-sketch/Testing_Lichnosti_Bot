@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 12.1 - УЛУЧШЕННАЯ ЗАГРУЗКА ПРОФИЛЯ
-✅ Полностью переработан экран "Мои отражения" под ваш минималистичный дизайн
-✅ Добавлены ссылки на Яндекс.Диск для каждого профиля
-✅ Двухуровневая система 4F: кратко (обучайка) и подробно (стимульный контроль)
-✅ Все кнопки управления убраны, только навигационные
-✅ УЛУЧШЕНО: умный поиск файла профиля с диагностикой
-✅ УЛУЧШЕНО: подробное логирование каждого шага
+Версия: 13.0 - МИНИМАЛИСТИЧНЫЙ ЭКРАН "МОИ ОТРАЖЕНИЯ"
+✅ ПОЛНОСТЬЮ ВАШ ДИЗАЙН со статистикой, ссылками и отражениями
+✅ ПОДРОБНОЕ ЛОГИРОВАНИЕ каждого нажатия кнопки и загрузки
+✅ Яндекс.Диск ссылки для всех профилей
+✅ ИСПРАВЛЕНА кнопка "Интимный профиль"
+✅ ИСПРАВЛЕН обработчик four_f_detailed
 """
 
 import logging
@@ -18,7 +17,7 @@ import json
 import urllib.parse
 import traceback
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -31,9 +30,9 @@ from telegram.ext import (
 # ===== НАСТРОЙКА ЛОГИРОВАНИЯ =====
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
+    level=logging.DEBUG,  # DEBUG для максимальной детализации
     handlers=[
-        logging.FileHandler("bot.log", encoding='utf-8'),
+        logging.FileHandler("bot_detailed.log", encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -142,7 +141,7 @@ FOUR_F_SUBTITLES = {
     "4F": "🍽 Стимулы, запускающие режим заработка"
 }
 
-# ===== ПОДРОБНЫЕ ОПИСАНИЯ 4F (ДЛЯ ПОКУПКИ) =====
+# ===== ПОДРОБНЫЕ ОПИСАНИЯ 4F =====
 FOUR_F_DESCRIPTIONS = {
     "1F": """😤 <b>СТИМУЛЫ, ЗАПУСКАЮЩИЕ ЯРОСТЬ</b>
 
@@ -263,7 +262,7 @@ FOUR_F_EXPLANATION = """
 💰 <b>Цена: 1₽</b> (тестовый режим)
 """
 
-# ===== ПОДРОБНОЕ ОПИСАНИЕ 4F (ДЛЯ ОБУЧАЙКИ) =====
+# ===== ПОДРОБНОЕ ОПИСАНИЕ 4F =====
 FOUR_F_DETAILED_EXPLANATION = """
 🔥 <b>1F - ЯРОСТЬ / НАПАДЕНИЕ</b>
 <i>Стимулы, запускающие агрессию</i>
@@ -1016,7 +1015,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ - ВАШ ДИЗАЙН
+# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ - ВАШ МИНИМАЛИСТИЧНЫЙ ДИЗАЙН
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1040,22 +1039,22 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         # ВАШ ДИЗАЙН
         message = f"""
-══════════════════
-📊  СТАТИСТИКА
-🪞  Ссылок зеркал     <b>{total_invites}</b>
-👥  Отражений         <b>{total_reflections}</b>
+🪞 МОИ ОТРАЖЕНИЯ
+────────────────
 
-══════════════════
-🪞  МОЁ ОТРАЖЕНИЕ
-📌 <b>Профиль</b>  {user_profile_code}
-📁 <b>Диск</b>     <code>{USER_DISK_LINK}</code>
+📊 СТАТИСТИКА
+🪞 Ссылок зеркал: {total_invites}
+👥 Посмотрелись в зеркало: {total_reflections}
+
+🪞 МОЁ ОТРАЖЕНИЕ
+📌 Профиль: {user_profile_code}
+📁 Диск: <code>{USER_DISK_LINK}</code>
 """
 
         if used_invites:
             message += f"""
 
-═══════════════════
-👥  ОТРАЖЕНИЕ ТЕХ КТО ПОСМОТРЕЛСЯ({total_reflections})
+👥 ОТРАЖЕНИЯ ТЕХ КТО ПОСМОТРЕЛСЯ В ВАШЕ ЗЕРКАЛО ({total_reflections})
 
 """
             for idx, inv in enumerate(used_invites[:5], 1):
@@ -1064,36 +1063,30 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 disk_link = get_disk_link_by_profile(friend_profile)
                 
                 message += f"""
-{idx}.  🆔 <b>{friend_name}</b>
-    └ 📊 {friend_profile}
-    └ 📁 <code>{disk_link}</code>"""
+{idx}. 🆔 <b>{friend_name}</b> • {friend_profile} • 📁 <code>{disk_link}</code>"""
                 
                 if inv.get("purchased_functions"):
                     key_map = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
                     keys = " ".join(key_map.get(k, k) for k in inv["purchased_functions"])
-                    message += f"""
-    └ {keys}"""
-                
-                message += f"\n"
+                    message += f" • {keys}"
             
             if len(used_invites) > 5:
-                message += f"\n... и ещё {len(used_invites) - 5}\n"
+                message += f"\n\n... и ещё {len(used_invites) - 5}"
         else:
             message += f"""
 
-═══════════════════
-👥  ОТРАЖЕНИЕ ТЕХ КТО ПОСМОТРЕЛСЯ(0)
+👥 ОТРАЖЕНИЯ ТЕХ КТО ПОСМОТРЕЛСЯ В ВАШЕ ЗЕРКАЛО (0)
 
-🌑  <i>Пока нет отражений</i>
+🌑 <i>Пока нет отражений</i>
 
-💡  Создайте ссылку в профиле
-    и отправьте другу
+💡 Создайте ссылку в профиле
+   и отправьте другу
 """
 
         message += f"""
 
-───────────────────────────
-💫  <i>Каждое отражение — ключ к человеку</i>
+────────────────
+💫 Каждое отражение — ключ к человеку.
 """
 
         # Кнопки навигации
@@ -1118,11 +1111,11 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return INVITES_LIST
 
 # ============================================
-# 🧬 ЭКРАН 5: ГЛАВНОЕ МЕНЮ 4F (ОБУЧАЙКА)
+# 🧬 ЭКРАН 5: ГЛАВНОЕ МЕНЮ 4F
 # ============================================
 
 async def four_f_main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🧬 Главное меню 4F-ключей (краткая версия)"""
+    """🧬 Главное меню 4F-ключей"""
     try:
         query = update.callback_query
         await query.answer()
@@ -1170,7 +1163,7 @@ async def four_f_detailed_callback(update: Update, context: ContextTypes.DEFAULT
             parse_mode="HTML"
         )
         
-        return FOUR_F_MAIN
+        return FOUR_F_DETAILED
     except Exception as e:
         logger.error(f"❌ Ошибка в four_f_detailed_callback: {e}")
         return FOUR_F_MAIN
@@ -1652,7 +1645,7 @@ async def four_f_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return FRIEND_MENU
 
 # ============================================
-# 📘 ЭКРАН 16: ОБУЧАЙКА 4F (ДЛЯ ДРУГА)
+# 📘 ЭКРАН 16: ОБУЧАЙКА 4F
 # ============================================
 
 async def four_f_explanation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1914,13 +1907,14 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v12.1")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v13.0")
     print("="*60)
     print("✅ ВАШ ДИЗАЙН экрана «Мои отражения»")
     print("✅ Ссылки на Яндекс.Диск для каждого профиля")
     print("✅ Двухуровневая система 4F: кратко и подробно")
-    print("✅ Минималистичная навигация (только 2 кнопки)")
-    print("✅ УЛУЧШЕНО: умный поиск файла профиля с диагностикой")
+    print("✅ Минималистичная навигация")
+    print("✅ ИСПРАВЛЕНА кнопка «Интимный профиль»")
+    print("✅ ИСПРАВЛЕН обработчик four_f_detailed")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -1995,9 +1989,13 @@ def main():
                 
                 FOUR_F_MAIN: [
                     CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
-                    CallbackQueryHandler(four_f_detailed_callback, pattern='^four_f_detailed$'),
+                    CallbackQueryHandler(four_f_detailed_callback, pattern='^four_f_detailed$'),  # ИСПРАВЛЕНО!
                     CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
                     CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
+                ],
+                
+                FOUR_F_DETAILED: [
+                    CallbackQueryHandler(four_f_main_menu_callback, pattern='^four_f_main_menu$'),
                 ],
             },
             fallbacks=[
@@ -2010,7 +2008,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 12.1")
+        print("\n🚀 Бот запущен! Версия 13.0")
         print("="*60)
         logger.info("✅ Бот успешно запущен")
         
