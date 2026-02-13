@@ -12,6 +12,12 @@ from config import CLARIFICATION, STAGE_1, STAGE_2, STAGE_3, STAGE_4, logger
 from questions import CLARIFICATION_QUESTIONS
 from utils.helpers import generate_unique_callback
 
+# Импортируем функции завершения этапов
+from handlers.stage1 import finish_stage_1
+from handlers.stage2 import finish_stage_2
+from handlers.stage3 import finish_stage_3
+from handlers.stage4 import finish_stage_4
+
 async def ask_clarification_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт уточняющий вопрос"""
     query = update.callback_query
@@ -20,7 +26,6 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
     current = context.user_data.get("clarification_current", 0)
     
     if clarification_stage == "stage1":
-        from handlers.stage1 import finish_stage_1
         clarifications = context.user_data.get("stage1_clarifications", [])
         if current >= len(clarifications):
             context.user_data["stage1_clarified"] = True
@@ -29,18 +34,13 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
         clarification_type = clarifications[current]
         questions = CLARIFICATION_QUESTIONS.get(f"stage1_{clarification_type}", [])
         
-        if not questions:
-            context.user_data["clarification_current"] = current + 1
-            return await ask_clarification_question(update, context)
-        
-        if current >= len(questions):
+        if not questions or current >= len(questions):
             context.user_data["clarification_current"] = current + 1
             return await ask_clarification_question(update, context)
         
         question = questions[0]
         
     elif clarification_stage == "stage2":
-        from handlers.stage2 import finish_stage_2
         questions = CLARIFICATION_QUESTIONS.get("stage2_borderline", [])
         if current >= len(questions):
             context.user_data["stage2_clarified"] = True
@@ -48,7 +48,6 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
         question = questions[current]
         
     elif clarification_stage == "stage3":
-        from handlers.stage3 import finish_stage_3
         questions = CLARIFICATION_QUESTIONS.get("stage3_discrepancy", [])
         if current >= len(questions):
             context.user_data["stage3_clarified"] = True
@@ -56,7 +55,6 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
         question = questions[current]
         
     elif clarification_stage == "stage4":
-        from handlers.stage4 import finish_stage_4
         questions = CLARIFICATION_QUESTIONS.get("stage4_tie", [])
         if current >= len(questions):
             context.user_data["stage4_clarified"] = True
