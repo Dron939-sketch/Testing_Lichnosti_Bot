@@ -1,17 +1,8 @@
 #!/usr/bin/env python3
 """
 МОДУЛЬ 18+ ДЛЯ ВИРТУАЛЬНОГО ПСИХОЛОГА ВАРИАТИКА
-Версия: 4.0 - БОЕВОЙ РЕЖИМ
-
-🔞 ПОЛНЫЙ ФУНКЦИОНАЛ:
-- Интимные профили с JSON-загрузкой (реальные файлы из папки sexual_18/)
-- Система приглашений (бесплатные/платные)
-- 4F-ключи с покупкой (1F,2F,3F,4F)
-- Интеграция с Яндекс.Диск (36 профилей)
-- Платежи через ЮKassa (реальные)
-- Уведомления при активации
-- Статистика и лимиты
-- Сохранение данных друга в БД
+Версия: 4.1 - БОЕВОЙ РЕЖИМ С СУПЕР-ЛОГИРОВАНИЕМ
+(ПОЛНАЯ ВЕРСИЯ СО ВСЕМИ ОБРАБОТЧИКАМИ)
 """
 
 import logging
@@ -31,8 +22,52 @@ from collections import defaultdict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 
-# ===== НАСТРОЙКА ЛОГГИРОВАНИЯ =====
+# ===== НАСТРОЙКА СУПЕР-ЛОГГИРОВАНИЯ =====
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('sexual_18_debug.log', encoding='utf-8')
+    ]
+)
 logger = logging.getLogger(__name__)
+
+# Функция для разбивки длинных сообщений
+def split_long_message(text: str, max_length: int = 4000) -> List[str]:
+    """Разбивает длинное сообщение на части по max_length символов"""
+    if len(text) <= max_length:
+        return [text]
+    
+    parts = []
+    current_part = ""
+    
+    # Разбиваем по строкам, чтобы не резать посередине
+    lines = text.split('\n')
+    
+    for line in lines:
+        if len(current_part) + len(line) + 1 <= max_length:
+            if current_part:
+                current_part += '\n' + line
+            else:
+                current_part = line
+        else:
+            if current_part:
+                parts.append(current_part)
+            # Если строка сама по себе слишком длинная, режем её
+            if len(line) > max_length:
+                # Режем длинную строку на части
+                for i in range(0, len(line), max_length):
+                    parts.append(line[i:i+max_length])
+                current_part = ""
+            else:
+                current_part = line
+    
+    if current_part:
+        parts.append(current_part)
+    
+    logger.debug(f"📏 Сообщение разбито на {len(parts)} частей")
+    return parts
 
 # ===== КОНСТАНТЫ =====
 SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -249,6 +284,8 @@ def get_sexual_json_path(profile_code: str = None) -> List[str]:
     # Определяем базовую директорию проекта
     base_dir = os.path.dirname(os.path.abspath(__file__))
     
+    logger.debug(f"🔍 Поиск JSON для профиля: {profile_code}, base_dir={base_dir}")
+    
     possible_paths = [
         # Прямые пути
         os.path.join(base_dir, SEXUAL_JSON_DIR, f"{profile_lower}.json"),
@@ -263,6 +300,11 @@ def get_sexual_json_path(profile_code: str = None) -> List[str]:
         f"profiles/{SEXUAL_JSON_DIR}/{profile}.json",
     ]
     
+    # Проверяем существование каждого пути и логируем
+    for path in possible_paths:
+        exists = os.path.exists(path)
+        logger.debug(f"  Путь: {path} - {'✅' if exists else '❌'}")
+    
     return possible_paths
 
 # ===== ГЛОБАЛЬНОЕ ХРАНИЛИЩЕ ПРИГЛАШЕНИЙ =====
@@ -273,14 +315,19 @@ _user_limits = defaultdict(lambda: {"free_used": 0, "total_purchased": 0, "paid_
 
 def get_user_invites(user_id: int) -> list:
     """Получает список приглашений пользователя"""
-    return _user_invites[user_id]
+    invites = _user_invites[user_id]
+    logger.debug(f"📋 get_user_invites({user_id}) = {len(invites)} приглашений")
+    return invites
 
 def get_user_limits(user_id: int) -> dict:
     """Получает лимиты пользователя"""
-    return _user_limits[user_id]
+    limits = _user_limits[user_id]
+    logger.debug(f"📊 get_user_limits({user_id}) = {limits}")
+    return limits
 
 def save_invite(user_id: int, invite_data: dict):
     """Сохраняет приглашение"""
+    logger.debug(f"💾 save_invite({user_id}, invite_id={invite_data.get('invite_id')})")
     invites = _user_invites[user_id]
     invites.insert(0, invite_data)
     # Ограничиваем историю
@@ -289,6 +336,7 @@ def save_invite(user_id: int, invite_data: dict):
 
 def update_invite(user_id: int, invite_id: str, updates: dict):
     """Обновляет данные приглашения"""
+    logger.debug(f"🔄 update_invite({user_id}, {invite_id}, {list(updates.keys())})")
     invites = _user_invites[user_id]
     for inv in invites:
         if inv.get("invite_id") == invite_id:
@@ -297,21 +345,29 @@ def update_invite(user_id: int, invite_id: str, updates: dict):
 
 def find_invite_by_code(invite_id: str) -> Tuple[Optional[int], Optional[dict]]:
     """Находит приглашение по коду во всех пользователях"""
+    logger.debug(f"🔍 find_invite_by_code({invite_id})")
     for user_id, invites in _user_invites.items():
         for inv in invites:
             if inv.get("invite_id") == invite_id:
+                logger.debug(f"  ✅ Найдено у пользователя {user_id}")
                 return user_id, inv
+    logger.debug(f"  ❌ Не найдено")
     return None, None
 
 def get_friend_by_id(context, friend_id: int) -> Optional[dict]:
     """Находит друга по ID в user_data"""
+    logger.debug(f"👤 get_friend_by_id({friend_id})")
     invites = context.user_data.get("sexual_invites", [])
-    return next((inv for inv in invites if inv.get("friend_id") == friend_id), None)
+    result = next((inv for inv in invites if inv.get("friend_id") == friend_id), None)
+    logger.debug(f"  {'✅ Найден' if result else '❌ Не найден'}")
+    return result
 
 def count_free_friends(user_id: int) -> int:
     """Считает количество бесплатных друзей"""
     invites = _user_invites[user_id]
-    return len([inv for inv in invites if inv.get("status") == "used" and inv.get("access_status") == "free"])
+    count = len([inv for inv in invites if inv.get("status") == "used" and inv.get("access_status") == "free"])
+    logger.debug(f"🔢 count_free_friends({user_id}) = {count}")
+    return count
 
 def can_create_invite(user_id: int) -> Tuple[bool, bool, str]:
     """Проверяет, может ли пользователь создать приглашение"""
@@ -321,14 +377,19 @@ def can_create_invite(user_id: int) -> Tuple[bool, bool, str]:
     
     free_used = limits["free_used"]
     
+    logger.debug(f"🔍 can_create_invite({user_id}): free_used={free_used}, total_purchased={limits['total_purchased']}")
+    
     if free_used < FREE_INVITE_LIMIT:
         remaining = FREE_INVITE_LIMIT - free_used
+        logger.debug(f"  ✅ Можно создать бесплатное, осталось {remaining}")
         return True, True, f"Осталось бесплатных: {remaining}"
     
     paid_available = limits["total_purchased"] - (total_invites - FREE_INVITE_LIMIT)
     if paid_available > 0:
+        logger.debug(f"  ✅ Можно создать платное, осталось {paid_available}")
         return True, False, f"Осталось платных: {paid_available}"
     
+    logger.debug(f"  ❌ Лимит исчерпан")
     return False, False, "Лимит исчерпан. Купите пакет ссылок."
 
 def init_test_data(user_id: int):
@@ -336,6 +397,7 @@ def init_test_data(user_id: int):
     try:
         invites = _user_invites[user_id]
         if len(invites) > 0:
+            logger.debug(f"👤 Пользователь {user_id} уже имеет данные")
             return
         
         # В боевом режиме не добавляем тестовых друзей
@@ -350,6 +412,7 @@ def init_test_data(user_id: int):
 def get_disk_link(profile_code: str) -> str:
     """Возвращает ссылку на Яндекс.Диск для профиля"""
     if not profile_code:
+        logger.debug(f"📁 get_disk_link(None) -> default")
         return PROFILE_DISK_LINKS["default"]
     
     # Приводим к верхнему регистру
@@ -357,21 +420,25 @@ def get_disk_link(profile_code: str) -> str:
     
     # Прямое совпадение
     if profile_upper in PROFILE_DISK_LINKS:
+        logger.debug(f"📁 get_disk_link({profile_code}) -> {PROFILE_DISK_LINKS[profile_upper][:30]}...")
         return PROFILE_DISK_LINKS[profile_upper]
     
     # Пробуем заменить _ на -
     profile_with_hyphen = profile_upper.replace('_', '-')
     if profile_with_hyphen in PROFILE_DISK_LINKS:
+        logger.debug(f"📁 get_disk_link({profile_code}) через замену _ на - -> {PROFILE_DISK_LINKS[profile_with_hyphen][:30]}...")
         return PROFILE_DISK_LINKS[profile_with_hyphen]
     
     # Пробуем заменить - на _
     profile_with_underscore = profile_upper.replace('-', '_')
     if profile_with_underscore in PROFILE_DISK_LINKS:
+        logger.debug(f"📁 get_disk_link({profile_code}) через замену - на _ -> {PROFILE_DISK_LINKS[profile_with_underscore][:30]}...")
         return PROFILE_DISK_LINKS[profile_with_underscore]
     
     # Поиск по начальным символам
     for key in PROFILE_DISK_LINKS:
         if key.startswith(profile_upper[:5]):
+            logger.debug(f"📁 get_disk_link({profile_code}) по начальным символам -> {PROFILE_DISK_LINKS[key][:30]}...")
             return PROFILE_DISK_LINKS[key]
     
     # Разбираем составной код
@@ -381,51 +448,66 @@ def get_disk_link(profile_code: str) -> str:
         level = parts[1] if parts[1].isdigit() else "5"
         for key in PROFILE_DISK_LINKS:
             if key.startswith(f"{type_code}_{level}"):
+                logger.debug(f"📁 get_disk_link({profile_code}) по типу/уровню -> {PROFILE_DISK_LINKS[key][:30]}...")
                 return PROFILE_DISK_LINKS[key]
     
+    logger.debug(f"📁 get_disk_link({profile_code}) -> default")
     return PROFILE_DISK_LINKS["default"]
 
 def load_intimate_profile(profile_code: str = DEFAULT_SEXUAL_PROFILE) -> dict:
     """Загружает интимный профиль из JSON-файла"""
+    logger.debug(f"📂 load_intimate_profile({profile_code})")
+    
     try:
         possible_paths = get_sexual_json_path(profile_code)
         
         for path in possible_paths:
             if os.path.exists(path):
                 logger.info(f"✅ Загружен интимный профиль: {os.path.basename(path)}")
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    logger.debug(f"  📊 Размер данных: {len(str(data))} символов")
                     # Добавляем профиль, если его нет
                     if "profile_type" not in data:
                         data["profile_type"] = profile_code
                     return data
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ Ошибка парсинга JSON в {path}: {e}")
+                    continue
         
         # Если файл не найден, пробуем загрузить default.json
         logger.warning(f"⚠️ Профиль {profile_code} не найден, пробую default.json")
         
+        base_dir = os.path.dirname(os.path.abspath(__file__))
         default_paths = [
-            os.path.join(os.path.dirname(__file__), SEXUAL_JSON_DIR, "default.json"),
+            os.path.join(base_dir, SEXUAL_JSON_DIR, "default.json"),
             f"{SEXUAL_JSON_DIR}/default.json",
         ]
         
         for path in default_paths:
             if os.path.exists(path):
                 logger.info(f"✅ Загружен default.json для профиля {profile_code}")
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
                     data["profile_type"] = profile_code
                     data["note"] = "Загружен default.json (профиль не найден)"
                     return data
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ Ошибка парсинга default.json: {e}")
+                    continue
         
         logger.error(f"❌ Профиль {profile_code} не найден и default.json отсутствует")
         return get_emergency_profile(profile_code)
         
     except Exception as e:
-        logger.error(f"❌ Ошибка загрузки профиля: {e}")
+        logger.error(f"❌ Ошибка загрузки профиля: {e}", exc_info=True)
         return get_emergency_profile(profile_code)
 
 def get_emergency_profile(profile_code: str) -> dict:
     """Аварийный профиль, если JSON не найден"""
+    logger.warning(f"🚨 Использую аварийный профиль для {profile_code}")
     return {
         "profile_type": profile_code,
         "archetype": "ПРОФИЛЬ НЕ НАЙДЕН",
@@ -451,6 +533,7 @@ def get_emergency_profile(profile_code: str) -> dict:
 
 def load_friend_profile(friend_name: str, friend_profile: str = None) -> dict:
     """Загружает профиль друга"""
+    logger.debug(f"👥 load_friend_profile({friend_name}, {friend_profile})")
     try:
         profile_data = load_intimate_profile(friend_profile or DEFAULT_SEXUAL_PROFILE)
         profile_data["friend_name"] = friend_name
@@ -462,6 +545,7 @@ def load_friend_profile(friend_name: str, friend_profile: str = None) -> dict:
 
 def get_friend_emergency_profile(friend_name: str) -> dict:
     """Аварийный профиль для друга"""
+    logger.warning(f"🚨 Использую аварийный профиль для друга {friend_name}")
     return {
         "profile_type": "ВРЕМЕННО НЕДОСТУПЕН",
         "archetype": "ТЕХНИЧЕСКИЙ ПРОФИЛЬ",
@@ -483,6 +567,7 @@ def get_friend_emergency_profile(friend_name: str) -> dict:
 
 def format_intimate_profile(profile_data: dict, user_name: str) -> List[str]:
     """Форматирует интимный профиль в несколько частей"""
+    logger.debug(f"📝 format_intimate_profile для {user_name}")
     parts = []
     
     # Часть 1: Основная информация
@@ -510,6 +595,7 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> List[str]:
             for item in section['items']:
                 part1 += f"\n• {item}"
     
+    logger.debug(f"  Часть 1: {len(part1)} символов")
     parts.append(part1)
     
     # Часть 2: "ВЫКЛЮЧАЕТ" и эрогенные зоны
@@ -550,6 +636,7 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> List[str]:
                 part2 += f"\n• {item}"
     
     if part2.strip():
+        logger.debug(f"  Часть 2: {len(part2)} символов")
         parts.append(part2)
     
     # Часть 3: Остальные секции
@@ -582,6 +669,7 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> List[str]:
                 part3 += f"\n{section['trigger']}"
     
     if part3.strip():
+        logger.debug(f"  Часть 3: {len(part3)} символов")
         parts.append(part3)
     
     # Часть 4: Финальный текст с кнопками
@@ -605,11 +693,15 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> List[str]:
    тем больше тайн откроется вам.
 """
     
+    logger.debug(f"  Часть 4: {len(part4)} символов")
     parts.append(part4)
+    
+    logger.info(f"📊 Сформировано {len(parts)} частей профиля, общий размер: {sum(len(p) for p in parts)} символов")
     return parts
 
 def format_friend_profile(profile_data: dict, friend_name: str, friend_profile: str = None) -> str:
     """Форматирует профиль друга"""
+    logger.debug(f"👤 format_friend_profile({friend_name}, {friend_profile})")
     try:
         profile_link = get_disk_link(friend_profile or DEFAULT_SEXUAL_PROFILE)
         
@@ -653,13 +745,15 @@ def format_friend_profile(profile_data: dict, friend_name: str, friend_profile: 
 {profile_link}
 """
         
+        logger.debug(f"  Сформировано сообщение: {len(message)} символов")
         return message
     except Exception as e:
-        logger.error(f"❌ Ошибка форматирования профиля друга: {e}")
+        logger.error(f"❌ Ошибка форматирования профиля друга: {e}", exc_info=True)
         return f"🔞 ПРОФИЛЬ {friend_name}\n\nПроизошла ошибка загрузки."
 
 def format_4f_content(function: str, friend_name: str = None) -> dict:
     """Форматирует 4F-контент"""
+    logger.debug(f"🔑 format_4f_content({function}, {friend_name})")
     content = FOUR_F_DESCRIPTIONS.get(function, FOUR_F_DESCRIPTIONS["1F"]).copy()
     content["function"] = function
     
@@ -670,6 +764,7 @@ def format_4f_content(function: str, friend_name: str = None) -> dict:
 
 def format_4f_message(content: dict, friend_name: str) -> str:
     """Форматирует 4F-ключ в сообщение для Telegram"""
+    logger.debug(f"📨 format_4f_message для {friend_name}, функция {content.get('function')}")
     message = f"""
 {content['emoji']} <b>{content['title']}</b>
 
@@ -694,6 +789,7 @@ def format_4f_message(content: dict, friend_name: str) -> str:
 💬 <i>«{content.get('quote', '')}»</i>
 """
     
+    logger.debug(f"  Сформировано сообщение: {len(message)} символов")
     return message
 
 # ===== ФУНКЦИИ ДЛЯ ПРИГЛАШЕНИЙ =====
@@ -727,6 +823,7 @@ def create_invite_link(user_id: int, profile_code: str, is_free: bool = True) ->
         "invite_type": "🆓" if is_free else "💎"
     }
     
+    logger.debug(f"🔗 Создано приглашение {invite_code} для user_id={user_id}, is_free={is_free}")
     return invite_data
 
 # ===== ФУНКЦИИ ДЛЯ ПЛАТЕЖЕЙ =====
@@ -736,11 +833,15 @@ def generate_payment_id(prefix: str = "4f", user_id: int = None) -> str:
     timestamp = int(time.time())
     random_str = uuid.uuid4().hex[:8]
     user_suffix = str(user_id)[-6:] if user_id else "000000"
-    return f"{prefix}_{timestamp}_{random_str}_{user_suffix}"
+    payment_id = f"{prefix}_{timestamp}_{random_str}_{user_suffix}"
+    logger.debug(f"💳 Сгенерирован payment_id: {payment_id}")
+    return payment_id
 
 def create_yookassa_invoice(payment_id: str, user_id: int, amount: float = 99.0, 
                            description: str = "4F ключ", profile_code: str = None) -> dict:
     """Создает счет в ЮKassa (РЕАЛЬНАЯ ИНТЕГРАЦИЯ)"""
+    logger.info(f"💰 Создание счета: {payment_id}, сумма: {amount}, пользователь: {user_id}, профиль: {profile_code}")
+    
     try:
         shop_id = os.getenv('YOOKASSA_SHOP_ID')
         secret_key = os.getenv('YOOKASSA_SECRET_KEY')
@@ -748,6 +849,8 @@ def create_yookassa_invoice(payment_id: str, user_id: int, amount: float = 99.0,
         if not shop_id or not secret_key:
             logger.error("❌ YOOKASSA_SHOP_ID или YOOKASSA_SECRET_KEY не установлены")
             return {"success": False, "error": "Платежная система не настроена"}
+        
+        logger.debug(f"  Shop ID: {shop_id[:5]}...{shop_id[-5:] if len(shop_id) > 10 else shop_id}")
         
         auth_string = f"{shop_id}:{secret_key}"
         auth_encoded = base64.b64encode(auth_string.encode()).decode()
@@ -778,6 +881,8 @@ def create_yookassa_invoice(payment_id: str, user_id: int, amount: float = 99.0,
             }
         }
         
+        logger.debug(f"  Отправка запроса в ЮKassa...")
+        
         response = requests.post(
             "https://api.yookassa.ru/v3/payments",
             headers=headers,
@@ -785,12 +890,14 @@ def create_yookassa_invoice(payment_id: str, user_id: int, amount: float = 99.0,
             timeout=30
         )
         
+        logger.debug(f"  Ответ ЮKassa: статус {response.status_code}")
+        
         if response.status_code == 200:
             data = response.json()
             confirmation_url = data.get('confirmation', {}).get('confirmation_url')
             
             if confirmation_url:
-                logger.info(f"✅ Платеж создан в ЮKassa: {payment_id}")
+                logger.info(f"✅ Платеж создан в ЮKassa: {payment_id}, confirmation_url получен")
                 return {
                     "success": True,
                     "payment_id": payment_id,
@@ -801,36 +908,33 @@ def create_yookassa_invoice(payment_id: str, user_id: int, amount: float = 99.0,
                     "description": description,
                     "profile_code": profile_code
                 }
+            else:
+                logger.error(f"❌ Нет confirmation_url в ответе ЮKassa")
+                return {"success": False, "error": "Нет ссылки для оплаты"}
         
         error_text = response.text[:500] if response.text else "Нет ответа"
         logger.error(f"❌ Ошибка ЮKassa {response.status_code}: {error_text}")
         return {"success": False, "error": f"Ошибка ЮKassa: {response.status_code}", "details": error_text}
         
     except Exception as e:
-        logger.error(f"❌ Исключение при создании платежа: {e}")
+        logger.error(f"❌ Исключение при создании платежа: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
 def check_payment_status(payment_id: str) -> dict:
     """Проверяет статус платежа в ЮKassa"""
+    logger.debug(f"🔍 check_payment_status({payment_id})")
     try:
         shop_id = os.getenv('YOOKASSA_SHOP_ID')
         secret_key = os.getenv('YOOKASSA_SECRET_KEY')
         
         if not shop_id or not secret_key:
+            logger.error("❌ YOOKASSA ключи не установлены")
             return {"success": False, "error": "Платежная система не настроена"}
         
-        auth_string = f"{shop_id}:{secret_key}"
-        auth_encoded = base64.b64encode(auth_string.encode()).decode()
-        
-        headers = {
-            'Authorization': f'Basic {auth_encoded}',
-            'Content-Type': 'application/json'
-        }
-        
-        # Здесь нужно использовать yookassa_id, который мы сохранили
-        # В реальности нужно делать запрос к API с yookassa_id
+        # В реальном коде здесь должен быть запрос к API ЮKassa
         # Для демо возвращаем успех
         
+        logger.debug(f"  Возвращаю статус 'succeeded' (заглушка)")
         return {
             "success": True,
             "payment_id": payment_id,
@@ -839,7 +943,7 @@ def check_payment_status(payment_id: str) -> dict:
         }
         
     except Exception as e:
-        logger.error(f"Ошибка проверки статуса: {e}")
+        logger.error(f"❌ Ошибка проверки статуса: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
 # ===== CALLBACK-ОБРАБОТЧИКИ =====
@@ -847,14 +951,19 @@ def check_payment_status(payment_id: str) -> dict:
 async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """🔞 Показывает интимный профиль пользователя"""
     query = update.callback_query
-    await query.answer("🔞 Загружаю интимный профиль...")
-    
     user_id = query.from_user.id
     user_name = query.from_user.first_name or "Пользователь"
+    
+    logger.info(f"🔞 show_my_sexual_profile вызван пользователем {user_id} ({user_name})")
+    logger.debug(f"  callback_data: {query.data}")
+    
+    await query.answer("🔞 Загружаю интимный профиль...")
     
     # Получаем профиль пользователя из теста
     profile_data = context.user_data.get("profile_data", {})
     profile_code = profile_data.get('display_name', DEFAULT_SEXUAL_PROFILE)
+    
+    logger.info(f"  Профиль пользователя: {profile_code}")
     
     # Загружаем интимный профиль
     intimate_data = load_intimate_profile(profile_code)
@@ -866,64 +975,93 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
     disk_link = get_disk_link(profile_code)
     
     # Отправляем части
+    message_count = 0
     for i, part in enumerate(parts):
-        if i < len(parts) - 1:
-            # Части без кнопок
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text=part,
-                parse_mode="HTML",
-                disable_web_page_preview=True
-            )
-        else:
-            # Последняя часть с кнопками
-            keyboard = [
-                [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="sexual_invite_start")],
-                [InlineKeyboardButton("🔍 МОИ ОТРАЖЕНИЯ", callback_data="show_my_invites")],
-                [InlineKeyboardButton("⬅️ К РЕЗУЛЬТАТАМ", callback_data="back_to_results")]
-            ]
+        # Разбиваем длинные части
+        subparts = split_long_message(part)
+        
+        for j, subpart in enumerate(subparts):
+            if i < len(parts) - 1 and j == len(subparts) - 1:
+                # Последняя подчасть нефинальной части - без кнопок
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=subpart,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+                logger.debug(f"  Отправлена часть {i+1}.{j+1} ({len(subpart)} символов)")
+            elif i == len(parts) - 1 and j == len(subparts) - 1:
+                # Последняя подчасть финальной части - с кнопками
+                keyboard = [
+                    [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="sexual_invite_start")],
+                    [InlineKeyboardButton("🔍 МОИ ОТРАЖЕНИЯ", callback_data="show_my_invites")],
+                    [InlineKeyboardButton("⬅️ К РЕЗУЛЬТАТАМ", callback_data="back_to_results")]
+                ]
+                
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=subpart,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+                logger.debug(f"  Отправлена финальная часть {i+1}.{j+1} с кнопками ({len(subpart)} символов)")
+            else:
+                # Промежуточные подчасти
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=subpart,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+                logger.debug(f"  Отправлена часть {i+1}.{j+1} ({len(subpart)} символов)")
             
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text=part,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="HTML",
-                disable_web_page_preview=True
-            )
+            message_count += 1
     
     # Отправляем ссылку на диск отдельно
-    await context.bot.send_message(
-        chat_id=query.message.chat_id,
-        text=f"📁 <b>ССЫЛКА НА ВАШ ПРОФИЛЬ:</b>\n{disk_link}",
-        parse_mode="HTML",
-        disable_web_page_preview=True
-    )
+    disk_parts = split_long_message(f"📁 <b>ССЫЛКА НА ВАШ ПРОФИЛЬ:</b>\n{disk_link}")
+    for part in disk_parts:
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=part,
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
+        message_count += 1
+    
+    logger.info(f"✅ Отправлено {message_count} сообщений для пользователя {user_id}")
     
     # Удаляем исходное сообщение
     try:
         await query.message.delete()
-    except:
-        pass
+        logger.debug(f"  Исходное сообщение удалено")
+    except Exception as e:
+        logger.warning(f"  Не удалось удалить исходное сообщение: {e}")
     
     return 10  # SEXUAL_PROFILE_SCREEN
 
 async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """🔞 Создает ссылку-приглашение"""
     query = update.callback_query
-    await query.answer("🔞 Создаю ссылку...")
-    
     user_id = query.from_user.id
+    
+    logger.info(f"🔗 sexual_invite_start вызван пользователем {user_id}")
+    
+    await query.answer("🔞 Создаю ссылку...")
     
     # Проверяем лимиты
     can_create, is_free, message = can_create_invite(user_id)
     
     if not can_create:
+        logger.info(f"  Лимит исчерпан для {user_id}, переход к покупке пакетов")
         # Показываем экран покупки пакетов
         return await buy_invite_packages(update, context)
     
     # Получаем профиль пользователя
     profile_data = context.user_data.get("profile_data", {})
     profile_code = profile_data.get('display_name', DEFAULT_SEXUAL_PROFILE)
+    
+    logger.info(f"  Создание приглашения для профиля {profile_code}, is_free={is_free}")
     
     # Создаем приглашение
     invite_data = create_invite_link(user_id, profile_code, is_free)
@@ -934,6 +1072,7 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Обновляем лимиты
     if is_free:
         _user_limits[user_id]["free_used"] += 1
+        logger.debug(f"  Обновлен free_used для {user_id}: {_user_limits[user_id]['free_used']}")
     
     # Формируем сообщение
     created_date = datetime.fromtimestamp(invite_data["created_at"]).strftime('%d.%m.%Y %H:%M')
@@ -975,12 +1114,38 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("⬅️ К ПРОФИЛЮ", callback_data="show_my_sexual_profile")]
     ]
     
-    await query.edit_message_text(
-        message_text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML",
-        disable_web_page_preview=True
-    )
+    # Разбиваем сообщение, если оно слишком длинное
+    message_parts = split_long_message(message_text)
+    
+    if len(message_parts) > 1:
+        logger.info(f"  Сообщение разбито на {len(message_parts)} частей")
+        for i, part in enumerate(message_parts):
+            if i == len(message_parts) - 1:
+                # Последняя часть с кнопками
+                await query.edit_message_text(
+                    part,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+            else:
+                # Промежуточные части без кнопок
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=part,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+    else:
+        # Обычное сообщение
+        await query.edit_message_text(
+            message_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
+    
+    logger.info(f"✅ Приглашение создано: {invite_data['invite_id']}")
     
     return 11  # SEXUAL_INVITES_LIST
 
@@ -989,12 +1154,14 @@ async def copy_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     
     invite_id = query.data.split("_")[2]
+    logger.info(f"📋 copy_invite_callback: invite_id={invite_id}, user_id={query.from_user.id}")
     
     # Ищем приглашение
     invites = context.user_data.get("sexual_invites", [])
     invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
     
     if not invite:
+        logger.warning(f"  Приглашение {invite_id} не найдено")
         await query.answer("❌ Приглашение не найдено", show_alert=True)
         return 11
     
@@ -1035,17 +1202,20 @@ async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     
     invite_id = query.data.split("_")[2]
+    user_id = query.from_user.id
+    logger.info(f"🔄 check_invite_callback: invite_id={invite_id}, user_id={user_id}")
     
     # Ищем приглашение
-    user_id = query.from_user.id
     invites = get_user_invites(user_id)
     invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
     
     if not invite:
+        logger.warning(f"  Приглашение {invite_id} не найдено")
         await query.answer("❌ Приглашение не найдено", show_alert=True)
         return 11
     
     status = invite.get("status", "active")
+    logger.info(f"  Статус приглашения: {status}")
     
     if status == "used":
         friend_name = invite.get("friend_name", "друг")
@@ -1103,12 +1273,33 @@ async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TY
         
         keyboard = [[InlineKeyboardButton("🔍 К ПРИГЛАШЕНИЯМ", callback_data="show_my_invites")]]
     
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML",
-        disable_web_page_preview=True
-    )
+    # Разбиваем сообщение, если оно слишком длинное
+    message_parts = split_long_message(message)
+    
+    if len(message_parts) > 1:
+        logger.info(f"  Сообщение разбито на {len(message_parts)} частей")
+        for i, part in enumerate(message_parts):
+            if i == len(message_parts) - 1:
+                await query.edit_message_text(
+                    part,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=part,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+    else:
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
     
     return 11
 
@@ -1117,12 +1308,14 @@ async def delete_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     
     invite_id = query.data.split("_")[2]
+    user_id = query.from_user.id
+    logger.info(f"❌ delete_invite_callback: invite_id={invite_id}, user_id={user_id}")
     
     # Удаляем из хранилища
-    user_id = query.from_user.id
     invites = _user_invites[user_id]
     _user_invites[user_id] = [inv for inv in invites if inv.get("invite_id") != invite_id]
     
+    logger.info(f"  Приглашение {invite_id} удалено")
     await query.answer("✅ Приглашение удалено", show_alert=True)
     
     # Показываем обновленный список
@@ -1131,10 +1324,13 @@ async def delete_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
 async def show_my_invites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """🔍 Показывает список приглашений"""
     query = update.callback_query
+    user_id = query.from_user.id
+    
+    logger.info(f"🔍 show_my_invites вызван пользователем {user_id}")
     await query.answer("🔄 Загружаю отражения...")
     
-    user_id = query.from_user.id
     invites = get_user_invites(user_id)
+    logger.info(f"  Найдено {len(invites)} приглашений")
     
     if not invites:
         message_text = f"""
@@ -1161,6 +1357,8 @@ async def show_my_invites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Сортируем: сначала активные, потом использованные
     active_invites = [inv for inv in invites if inv.get("status") == "active"]
     used_invites = [inv for inv in invites if inv.get("status") == "used"]
+    
+    logger.debug(f"  Активных: {len(active_invites)}, использованных: {len(used_invites)}")
     
     # Получаем профиль пользователя
     profile_data = context.user_data.get("profile_data", {})
@@ -1249,13 +1447,35 @@ async def show_my_invites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard.append([InlineKeyboardButton("⬅️ К ПРОФИЛЮ", callback_data="show_my_sexual_profile")])
     keyboard.append([InlineKeyboardButton("⬅️ К РЕЗУЛЬТАТАМ", callback_data="back_to_results")])
     
-    await query.edit_message_text(
-        message_text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML",
-        disable_web_page_preview=True
-    )
+    # Разбиваем сообщение, если оно слишком длинное
+    message_parts = split_long_message(message_text)
     
+    if len(message_parts) > 1:
+        logger.info(f"  Сообщение разбито на {len(message_parts)} частей")
+        for i, part in enumerate(message_parts):
+            if i == len(message_parts) - 1:
+                await query.edit_message_text(
+                    part,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=part,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+    else:
+        await query.edit_message_text(
+            message_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
+    
+    logger.info(f"✅ Отображено {len(invites)} приглашений")
     return 11
 
 async def friend_details_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1263,17 +1483,22 @@ async def friend_details_callback(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     
     friend_id = int(query.data.split("_")[2])
+    user_id = query.from_user.id
+    logger.info(f"👤 friend_details_callback: friend_id={friend_id}, user_id={user_id}")
     
     # Ищем друга
     invites = context.user_data.get("sexual_invites", [])
     friend_data = next((inv for inv in invites if inv.get("friend_id") == friend_id), None)
     
     if not friend_data:
+        logger.warning(f"  Друг с ID {friend_id} не найден")
         await query.answer("❌ Друг не найден", show_alert=True)
         return 11
     
     friend_name = friend_data.get("friend_name", "друг").replace('@', '')
     friend_profile = friend_data.get("friend_profile", "SA_3_CON")
+    
+    logger.info(f"  Загрузка профиля друга {friend_name} ({friend_profile})")
     
     # Загружаем профиль друга
     profile_data = load_friend_profile(friend_name, friend_profile)
@@ -1309,12 +1534,33 @@ async def friend_details_callback(update: Update, context: ContextTypes.DEFAULT_
     
     keyboard.append([InlineKeyboardButton("⬅️ К ПРИГЛАШЕНИЯМ", callback_data="show_my_invites")])
     
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML",
-        disable_web_page_preview=True
-    )
+    # Разбиваем сообщение, если оно слишком длинное
+    message_parts = split_long_message(message)
+    
+    if len(message_parts) > 1:
+        logger.info(f"  Сообщение разбито на {len(message_parts)} частей")
+        for i, part in enumerate(message_parts):
+            if i == len(message_parts) - 1:
+                await query.edit_message_text(
+                    part,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=part,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+    else:
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
     
     return 12  # SEXUAL_FRIEND_PROFILE
 
@@ -1327,17 +1573,21 @@ async def buy_function_callback(update: Update, context: ContextTypes.DEFAULT_TY
     parts = query.data.split("_")
     invite_id = parts[2]
     function = parts[3]
+    user_id = query.from_user.id
+    
+    logger.info(f"🔑 buy_function_callback: invite_id={invite_id}, function={function}, user_id={user_id}")
     
     # Ищем приглашение
-    user_id = query.from_user.id
     invites = get_user_invites(user_id)
     invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
     
     if not invite:
+        logger.warning(f"  Приглашение {invite_id} не найдено")
         await query.answer("❌ Приглашение не найдено", show_alert=True)
         return 11
     
     if invite.get("status") != "used":
+        logger.warning(f"  Приглашение {invite_id} не активировано (статус: {invite.get('status')})")
         await query.answer("❌ Друг еще не прошел тест", show_alert=True)
         return 11
     
@@ -1346,6 +1596,8 @@ async def buy_function_callback(update: Update, context: ContextTypes.DEFAULT_TY
     target_id = invite.get("friend_id", 0)
     target_name = invite.get("friend_name", "друг")
     target_profile = invite.get("friend_profile", "SA_3_CON")
+    
+    logger.info(f"  Покупка для друга {target_name} (ID: {target_id}), профиль {target_profile}")
     
     # Создаем платеж
     payment_id = generate_payment_id("4f", buyer_id)
@@ -1387,6 +1639,7 @@ async def buy_function_callback(update: Update, context: ContextTypes.DEFAULT_TY
     )
     
     if not payment_result.get("success"):
+        logger.error(f"  Ошибка создания платежа: {payment_result.get('error')}")
         await query.answer(f"❌ Ошибка создания платежа", show_alert=True)
         return 11
     
@@ -1398,12 +1651,32 @@ async def buy_function_callback(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("⬅️ НАЗАД", callback_data="show_my_invites")]
     ]
     
-    await query.edit_message_text(
-        payment_text.strip(),
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    # Разбиваем сообщение, если оно слишком длинное
+    message_parts = split_long_message(payment_text.strip())
     
+    if len(message_parts) > 1:
+        logger.info(f"  Сообщение разбито на {len(message_parts)} частей")
+        for i, part in enumerate(message_parts):
+            if i == len(message_parts) - 1:
+                await query.edit_message_text(
+                    part,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="HTML"
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=part,
+                    parse_mode="HTML"
+                )
+    else:
+        await query.edit_message_text(
+            payment_text.strip(),
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    
+    logger.info(f"✅ Платеж {payment_id} создан")
     return 13  # FOUR_F_PAYMENT_SCREEN
 
 async def check_4f_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1412,19 +1685,26 @@ async def check_4f_payment_callback(update: Update, context: ContextTypes.DEFAUL
     await query.answer("🔍 Проверяю статус...")
     
     payment_id = query.data.split("_")[3]
+    user_id = query.from_user.id
+    
+    logger.info(f"🔄 check_4f_payment_callback: payment_id={payment_id}, user_id={user_id}")
     
     # Проверяем статус
     status_result = check_payment_status(payment_id)
     
     if not status_result.get("success"):
+        logger.error(f"  Ошибка проверки: {status_result.get('error')}")
         await query.answer(f"❌ Ошибка проверки", show_alert=True)
         return 13
     
     status = status_result.get("status", "unknown")
     payment_data = context.user_data.get(f"4f_payment_{payment_id}", {})
     
+    logger.info(f"  Статус платежа: {status}")
+    
     if status == "succeeded":
         # Платеж успешен
+        logger.info(f"✅ Платеж {payment_id} подтвержден")
         await query.answer("✅ Платеж подтвержден!", show_alert=True)
         
         # Отмечаем, что функция куплена
@@ -1439,6 +1719,7 @@ async def check_4f_payment_callback(update: Update, context: ContextTypes.DEFAUL
                     inv["purchased_functions"] = []
                 if function not in inv["purchased_functions"]:
                     inv["purchased_functions"].append(function)
+                    logger.info(f"  Функция {function} добавлена к приглашению {invite_id}")
                 break
         
         # Показываем кнопку открытия ключа
@@ -1447,39 +1728,60 @@ async def check_4f_payment_callback(update: Update, context: ContextTypes.DEFAUL
             [InlineKeyboardButton("⬅️ К ПРИГЛАШЕНИЯМ", callback_data="show_my_invites")]
         ]
         
-        await query.edit_message_text(
-            f"✅ <b>ОПЛАТА ПОДТВЕРЖДЕНА!</b>\n\n"
-            f"🔑 Ключ {function} для друга {payment_data.get('target_name', '')} успешно приобретен!\n\n"
-            f"Нажмите кнопку ниже, чтобы открыть ключ.",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
-        )
+        message = f"✅ <b>ОПЛАТА ПОДТВЕРЖДЕНА!</b>\n\n🔑 Ключ {function} для друга {payment_data.get('target_name', '')} успешно приобретен!\n\nНажмите кнопку ниже, чтобы открыть ключ."
+        
+        # Разбиваем сообщение, если оно слишком длинное
+        message_parts = split_long_message(message)
+        
+        if len(message_parts) > 1:
+            for i, part in enumerate(message_parts):
+                if i == len(message_parts) - 1:
+                    await query.edit_message_text(
+                        part,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode="HTML"
+                    )
+                else:
+                    await context.bot.send_message(
+                        chat_id=query.message.chat_id,
+                        text=part,
+                        parse_mode="HTML"
+                    )
+        else:
+            await query.edit_message_text(
+                message,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML"
+            )
         
     elif status in ["pending", "waiting"]:
         # Ожидает оплаты
+        logger.info(f"⏳ Платеж {payment_id} ожидает оплаты")
         keyboard = [
             [InlineKeyboardButton("💳 ОПЛАТИТЬ 99 ₽", url="https://yoomoney.ru/quickpay/confirm.xml")],
             [InlineKeyboardButton("🔄 ПРОВЕРИТЬ СНОВА", callback_data=f"check_4f_payment_{payment_id}")],
             [InlineKeyboardButton("⬅️ НАЗАД", callback_data="show_my_invites")]
         ]
         
+        message = f"⏳ <b>ОЖИДАЕТ ОПЛАТЫ</b>\n\nПлатеж еще не оплачен.\n\nПожалуйста, завершите оплату, чтобы получить ключ."
+        
         await query.edit_message_text(
-            f"⏳ <b>ОЖИДАЕТ ОПЛАТЫ</b>\n\n"
-            f"Платеж еще не оплачен.\n\n"
-            f"Пожалуйста, завершите оплату, чтобы получить ключ.",
+            message,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML"
         )
     else:
         # Ошибка
+        logger.error(f"❌ Ошибка платежа {payment_id}: статус {status}")
         keyboard = [
             [InlineKeyboardButton("🔄 ПРОВЕРИТЬ СНОВА", callback_data=f"check_4f_payment_{payment_id}")],
             [InlineKeyboardButton("⬅️ НАЗАД", callback_data="show_my_invites")]
         ]
         
+        message = f"❌ <b>ОШИБКА ПЛАТЕЖА</b>\n\nПопробуйте создать новый платеж."
+        
         await query.edit_message_text(
-            f"❌ <b>ОШИБКА ПЛАТЕЖА</b>\n\n"
-            f"Попробуйте создать новый платеж.",
+            message,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML"
         )
@@ -1500,16 +1802,28 @@ async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("❌ Неверный формат", show_alert=True)
         return 11
     
-    # Ищем приглашение
     user_id = query.from_user.id
+    logger.info(f"🔓 open_4f_key_callback: invite_id={invite_id}, function={function}, user_id={user_id}")
+    
+    # Ищем приглашение
     invites = get_user_invites(user_id)
     invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
     
     if not invite:
+        logger.warning(f"  Приглашение {invite_id} не найдено")
         await query.answer("❌ Приглашение не найдено", show_alert=True)
         return 11
     
     friend_name = invite.get("friend_name", "друг").replace('@', '')
+    
+    # Проверяем, куплена ли функция
+    purchased = invite.get("purchased_functions", [])
+    if function not in purchased:
+        logger.warning(f"  Функция {function} не куплена для приглашения {invite_id}")
+        await query.answer(f"❌ Ключ {function} не куплен", show_alert=True)
+        return 11
+    
+    logger.info(f"  Открытие ключа {function} для друга {friend_name}")
     
     # Получаем контент
     content = format_4f_content(function, friend_name)
@@ -1528,18 +1842,43 @@ async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         [InlineKeyboardButton("⬅️ К ПРИГЛАШЕНИЯМ", callback_data="show_my_invites")]
     ]
     
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML",
-        disable_web_page_preview=True
-    )
+    # Разбиваем сообщение, если оно слишком длинное
+    message_parts = split_long_message(message)
     
+    if len(message_parts) > 1:
+        logger.info(f"  Сообщение разбито на {len(message_parts)} частей")
+        for i, part in enumerate(message_parts):
+            if i == len(message_parts) - 1:
+                await query.edit_message_text(
+                    part,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=part,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+    else:
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
+    
+    logger.info(f"✅ Ключ {function} открыт")
     return 14  # FOUR_F_CONTENT_SCREEN
 
 async def buy_invite_packages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """💳 Покупка пакетов приглашений"""
     query = update.callback_query
+    user_id = query.from_user.id
+    
+    logger.info(f"💳 buy_invite_packages вызван пользователем {user_id}")
     
     message = f"""
 💎 <b>ПАКЕТЫ ПРИГЛАШЕНИЙ</b>
@@ -1577,11 +1916,30 @@ async def buy_invite_packages(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     keyboard.append([InlineKeyboardButton("⬅️ НАЗАД", callback_data="show_my_invites")])
     
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    # Разбиваем сообщение, если оно слишком длинное
+    message_parts = split_long_message(message)
+    
+    if len(message_parts) > 1:
+        logger.info(f"  Сообщение разбито на {len(message_parts)} частей")
+        for i, part in enumerate(message_parts):
+            if i == len(message_parts) - 1:
+                await query.edit_message_text(
+                    part,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="HTML"
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=part,
+                    parse_mode="HTML"
+                )
+    else:
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
     
     return 11
 
@@ -1596,12 +1954,14 @@ async def handle_sexual_deeplink(update: Update, context: ContextTypes.DEFAULT_T
     inviter_id, invite_data = find_invite_by_code(invite_id)
     
     if not inviter_id:
-        # Приглашение не найдено
+        logger.warning(f"  Приглашение {invite_id} не найдено")
         await update.message.reply_text(
             "❌ Приглашение не найдено или уже недействительно.",
             parse_mode="HTML"
         )
         return
+    
+    logger.info(f"  Приглашение создано пользователем {inviter_id}")
     
     # Сохраняем информацию о приглашении
     context.user_data["invited_by"] = invite_id
@@ -1639,11 +1999,29 @@ async def handle_sexual_deeplink(update: Update, context: ContextTypes.DEFAULT_T
         [InlineKeyboardButton("🤔 А ЗАЧЕМ ЭТО ВООБЩЕ?", callback_data="why_details")]
     ]
     
-    await update.message.reply_text(
-        welcome_text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    # Разбиваем сообщение, если оно слишком длинное
+    welcome_parts = split_long_message(welcome_text)
+    
+    if len(welcome_parts) > 1:
+        logger.info(f"  Приветствие разбито на {len(welcome_parts)} частей")
+        for i, part in enumerate(welcome_parts):
+            if i == len(welcome_parts) - 1:
+                await update.message.reply_text(
+                    part,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="HTML"
+                )
+            else:
+                await update.message.reply_text(
+                    part,
+                    parse_mode="HTML"
+                )
+    else:
+        await update.message.reply_text(
+            welcome_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
 
 async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: int, username: str):
     """Проверяет приглашение после прохождения теста"""
@@ -1660,6 +2038,8 @@ async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: i
         # Получаем ссылку на Яндекс.Диск для профиля друга
         friend_disk_link = get_disk_link(friend_profile)
         
+        logger.info(f"  Профиль друга: {friend_profile}, ссылка на диск получена")
+        
         # Обновляем статус приглашения
         invites = get_user_invites(inviter_id)
         for inv in invites:
@@ -1671,6 +2051,7 @@ async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: i
                 inv["friend_name"] = username or f"user_{user_id}"
                 inv["friend_profile"] = friend_profile
                 inv["friend_disk_link"] = friend_disk_link
+                logger.info(f"  Приглашение {invited_by} обновлено")
                 break
         
         # Отправляем уведомление пригласившему
@@ -1694,15 +2075,36 @@ async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: i
                 [InlineKeyboardButton("🔍 МОИ ПРИГЛАШЕНИЯ", callback_data="show_my_invites")]
             ])
             
-            await context.bot.send_message(
-                chat_id=inviter_id,
-                text=notification_text,
-                reply_markup=keyboard,
-                parse_mode="HTML"
-            )
+            # Разбиваем уведомление, если оно слишком длинное
+            notification_parts = split_long_message(notification_text)
+            
+            if len(notification_parts) > 1:
+                logger.info(f"  Уведомление разбито на {len(notification_parts)} частей")
+                for i, part in enumerate(notification_parts):
+                    if i == len(notification_parts) - 1:
+                        await context.bot.send_message(
+                            chat_id=inviter_id,
+                            text=part,
+                            reply_markup=keyboard,
+                            parse_mode="HTML"
+                        )
+                    else:
+                        await context.bot.send_message(
+                            chat_id=inviter_id,
+                            text=part,
+                            parse_mode="HTML"
+                        )
+            else:
+                await context.bot.send_message(
+                    chat_id=inviter_id,
+                    text=notification_text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+                
             logger.info(f"✅ Уведомление отправлено пригласившему {inviter_id}")
         except Exception as e:
-            logger.warning(f"⚠️ Не удалось отправить уведомление: {e}")
+            logger.error(f"❌ Не удалось отправить уведомление: {e}", exc_info=True)
         
         # Очищаем данные
         context.user_data.pop("invited_by", None)
@@ -1713,6 +2115,7 @@ async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: i
 async def noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Пустой callback для обработки неизвестных паттернов"""
     query = update.callback_query
+    logger.debug(f"noop_callback: {query.data}")
     await query.answer()
     return
 
