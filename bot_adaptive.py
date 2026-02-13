@@ -825,49 +825,49 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 └─────────────────────┘
 """
 
-if active_invites:
-    message += f"""
+    if active_invites:
+        message += f"""
 ┌─ 🟢 ЖДУТ ОТКЛИКА ─┐
 │
 """
-    for inv in active_invites[:5]:
-        created = datetime.fromtimestamp(inv.get("created_at", now)).strftime('%d.%m')
-        days = int((now - inv.get("created_at", now)) / 86400)
-        days_text = f"<b>{days}д</b>" if days > 0 else "<b>сегодня</b>"
-        inv_type = inv.get("invite_type", "🆓")
+        for inv in active_invites[:5]:
+            created = datetime.fromtimestamp(inv.get("created_at", now)).strftime('%d.%m')
+            days = int((now - inv.get("created_at", now)) / 86400)
+            days_text = f"<b>{days}д</b>" if days > 0 else "<b>сегодня</b>"
+            inv_type = inv.get("invite_type", "🆓")
+            
+            message += f"│   {inv_type} • {created} • {days_text} ⏳\n"
         
-        message += f"│   {inv_type} • {created} • {days_text} ⏳\n"
-    
-    if len(active_invites) > 5:
-        message += f"│   ... и ещё {len(active_invites) - 5}\n"
-    message += f"│\n└─────────────────────┘\n"
+        if len(active_invites) > 5:
+            message += f"│   ... и ещё {len(active_invites) - 5}\n"
+        message += f"│\n└─────────────────────┘\n"
 
-if used_invites:
-    message += f"""
+    if used_invites:
+        message += f"""
 ┌─ ✨ ОТРАЖЕНИЯ ─────┐
 │
 """
-    for inv in used_invites[:5]:
-        friend_name = inv.get("friend_name", "друг").replace('@', '')
-        friend_profile = inv.get("friend_profile", "SA-3_CON")
-        used_date = datetime.fromtimestamp(inv.get("used_at", inv.get("created_at", datetime.now().timestamp()))).strftime('%d.%m.%Y')
-        inv_type = inv.get("invite_type", "🆓")
+        for inv in used_invites[:5]:
+            friend_name = inv.get("friend_name", "друг").replace('@', '')
+            friend_profile = inv.get("friend_profile", "SA-3_CON")
+            used_date = datetime.fromtimestamp(inv.get("used_at", inv.get("created_at", datetime.now().timestamp()))).strftime('%d.%m.%Y')
+            inv_type = inv.get("invite_type", "🆓")
+            
+            message += f"│   {inv_type} <b>{friend_name}</b>\n"
+            message += f"│      📊 {friend_profile}  •  {used_date}"
+            
+            if inv.get("purchased_functions"):
+                key_map = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
+                keys = "  •  <b>" + " ".join(key_map.get(k, k) for k in inv["purchased_functions"]) + "</b>"
+                message += keys
+            
+            message += f"\n│\n"
         
-        message += f"│   {inv_type} <b>{friend_name}</b>\n"
-        message += f"│      📊 {friend_profile}  •  {used_date}"
-        
-        if inv.get("purchased_functions"):
-            key_map = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
-            keys = "  •  <b>" + " ".join(key_map.get(k, k) for k in inv["purchased_functions"]) + "</b>"
-            message += keys
-        
-        message += f"\n│\n"
-    
-    if len(used_invites) > 5:
-        message += f"│   ... и ещё {len(used_invites) - 5}\n│\n"
-    message += f"└─────────────────────┘\n\n"
-else:
-    message += f"""
+        if len(used_invites) > 5:
+            message += f"│   ... и ещё {len(used_invites) - 5}\n│\n"
+        message += f"└─────────────────────┘\n\n"
+    else:
+        message += f"""
 ┌─ ✨ ОТРАЖЕНИЯ ─────┐
 │
 │   <i>Пока нет отражений</i> 🌑
@@ -880,11 +880,32 @@ else:
 
 """
 
-# Подсказка
-message += f"""
+    # Подсказка
+    message += f"""
 💫 <b>Каждое отражение — ключ к человеку.</b>
    Узнайте его 4F-реакции и интимные сценарии.
 """
+
+    # КНОПКИ - ТОЛЬКО 2 КНОПКИ
+    keyboard = []
+    
+    # Кнопка возврата
+    keyboard.append([
+        InlineKeyboardButton("◀️ К ИНТИМНОМУ ПРОФИЛЮ", callback_data="my_sexual_profile")
+    ])
+    
+    # Кнопка 4F - ВЫДЕЛЕННАЯ, СНИЗУ
+    keyboard.append([
+        InlineKeyboardButton("🔴🧬 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")
+    ])
+
+    await query.edit_message_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+    
+    return INVITES_LIST
 
 # КНОПКИ - ТОЛЬКО 2 КНОПКИ
 keyboard = []
