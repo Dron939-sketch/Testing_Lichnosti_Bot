@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 14.0 - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ, ВСЕ ФУНКЦИИ СОХРАНЕНЫ
+Версия: 14.2 - ИСПРАВЛЕНО ДЛИННОЕ СООБЩЕНИЕ
 ✅ ВАШ ДИЗАЙН экрана «Мои отражения»
 ✅ Ссылки на Яндекс.Диск для каждого профиля
 ✅ ПОЛНЫЙ 4F функционал с покупкой ключей
-✅ ИСПРАВЛЕНА кнопка «Интимный профиль»
+✅ ИСПРАВЛЕН экран краткого описания 4F (убрана цена)
+✅ ИСПРАВЛЕН экран подробного описания 4F (добавлена ссылка и кнопка запроса)
+✅ ИСПРАВЛЕНО: интимный профиль разбит на 2 сообщения (было слишком длинно)
 """
 
 import logging
@@ -104,6 +106,8 @@ INVITE_PACKAGES = {
 
 # ===== ССЫЛКИ НА ЯНДЕКС.ДИСК =====
 USER_DISK_LINK = "https://disk.yandex.ru/d/EYPIF9_puI_t0A"
+EXAMPLE_DISK_LINK = "https://disk.yandex.ru/d/2kQN0cd4dSUzqQ"
+AUTHOR_TELEGRAM = "https://t.me/meysternlp"
 
 PROFILE_DISK_LINKS = {
     # Стандартные профили
@@ -240,7 +244,7 @@ FOUR_F_TAGS = {
     "4F": "🍽 Стимулы мотивации • 3 фразы-включателя • Техника просьбы"
 }
 
-# ===== ОБУЧАЙКА 4F (КРАТКАЯ ВЕРСИЯ) =====
+# ===== ОБУЧАЙКА 4F (КРАТКАЯ ВЕРСИЯ) - ИСПРАВЛЕНО (УБРАНА ЦЕНА) =====
 FOUR_F_EXPLANATION = """
 📘 <b>ЧТО ТАКОЕ 4F-КЛЮЧИ?</b>
 
@@ -248,89 +252,88 @@ FOUR_F_EXPLANATION = """
 Нападение, бегство, секс, поглощение.
 Ключи к управлению состояниями другого человека.
 
-<b>1F 🔥 НАПАДЕНИЕ / ЯРОСТЬ</b>
+🔥 **1F - НАПАДЕНИЕ / ЯРОСТЬ**
 └ Что включает его агрессию
 └ Как быстро её погасить
 
-<b>2F 🏃 БЕГСТВО / СТРАХ</b>
+🏃 **2F - БЕГСТВО / СТРАХ**
 └ Чего он боится на самом деле
 └ Как стать для него безопасностью
 
-<b>3F 🧬 СЕКС / ЖЕЛАНИЕ</b>
+🧬 **3F - СЕКС / ЖЕЛАНИЕ**
 └ Что реально его заводит
 └ 3 слова и 3 касания-ключа
 
-<b>4F 🍽 ПОГЛОЩЕНИЕ / ДЕНЬГИ</b>
+🍽 **4F - ПОГЛОЩЕНИЕ / ДЕНЬГИ**
 └ Что запускает режим заработка
 └ Как говорить с ним о деньгах
-
-💰 <b>Цена: 1₽</b> (тестовый режим)
 """
 
-# ===== ПОДРОБНОЕ ОПИСАНИЕ 4F (ДЛЯ ОБУЧАЙКИ) =====
+# ===== ПОДРОБНОЕ ОПИСАНИЕ 4F - ИСПРАВЛЕНО (ДОБАВЛЕНА ССЫЛКА И КНОПКА) =====
 FOUR_F_DETAILED_EXPLANATION = """
-🔥 <b>1F - ЯРОСТЬ / НАПАДЕНИЕ</b>
-<i>Стимулы, запускающие агрессию</i>
+🔥 **1F - ЯРОСТЬ / НАПАДЕНИЕ**
+Стимулы, запускающие агрессию
 
-😤 <b>СТИМУЛЫ, ЗАПУСКАЮЩИЕ ЯРОСТЬ</b>
+😤 СТИМУЛЫ, ЗАПУСКАЮЩИЕ ЯРОСТЬ
 
 Его агрессия не возникает из ниоткуда.
 Это реакция на конкретные ТРИГГЕРЫ.
 
-<b>🎯 ПУСКОВЫЕ КЛЮЧИ:</b>
+🎯 ПУСКОВЫЕ КЛЮЧИ:
    • Критика при свидетелях
    • Обесценивание его усилий
    • Игнорирование границ
    • Определенные интонации
 
-<b>🔑 ЧТО ДАЁТ КЛЮЧ:</b>
+🔑 ЧТО ДАЁТ КЛЮЧ:
    • Список его личных триггеров
    • 3 фразы-гасителя
    • Технику «Торможение»
+────────────────────
+🏃 **2F - СТРАХ / БЕГСТВО**
+Стимулы, запускающие избегание
 
-══════════════════════
-
-🏃 <b>2F - СТРАХ / БЕГСТВО</b>
-<i>Стимулы, запускающие избегание</i>
-
-<b>🎯 ПУСКОВЫЕ КЛЮЧИ:</b>
+🎯 ПУСКОВЫЕ КЛЮЧИ:
    • Повышение голоса
    • Вопросы о будущем
    • Давление и требования
 
-<b>🔑 ЧТО ДАЁТ КЛЮЧ:</b>
+🔑 ЧТО ДАЁТ КЛЮЧ:
    • 3 якоря безопасности
    • Технику «Безопасная среда»
+────────────────────
+🧬 **3F - СЕКС / ЖЕЛАНИЕ**
+Стимулы, запускающие влечение
 
-══════════════════════
-
-🧬 <b>3F - СЕКС / ЖЕЛАНИЕ</b>
-<i>Стимулы, запускающие влечение</i>
-
-<b>🎯 ПУСКОВЫЕ КЛЮЧИ:</b>
+🎯 ПУСКОВЫЕ КЛЮЧИ:
    • Особая интонация
    • Зрительный контакт
    • Неожиданные касания
 
-<b>🔑 ЧТО ДАЁТ КЛЮЧ:</b>
+🔑 ЧТО ДАЁТ КЛЮЧ:
    • 3 слова-пароля
    • 3 касания-ключа
    • Эротический сценарий
+────────────────────
+🍽 **4F - ДЕНЬГИ / ПОГЛОЩЕНИЕ**
+Стимулы, запускающие режим заработка
 
-══════════════════════
-
-🍽 <b>4F - ДЕНЬГИ / ПОГЛОЩЕНИЕ</b>
-<i>Стимулы, запускающие режим заработка</i>
-
-<b>🎯 ПУСКОВЫЕ КЛЮЧИ:</b>
+🎯 ПУСКОВЫЕ КЛЮЧИ:
    • Упоминание возможностей
    • Разговоры о конкурентах
    • Идеи для заработка
 
-<b>🔑 ЧТО ДАЁТ КЛЮЧ:</b>
+🔑 ЧТО ДАЁТ КЛЮЧ:
    • 3 фразы-мотиватора
    • Технику просьбы
    • Сценарий «Топливо»
+────────────────────
+📎 **ПРИМЕР ОПИСАНИЯ И ФОРМАТ КЛЮЧЕЙ:**
+{EXAMPLE_DISK_LINK}
+
+📌 **Ключи предоставляются по запросу** с указанием:
+   • Профиля человека (из раздела «МОИ ОТРАЖЕНИЯ» — тех, кто посмотрелся в ваше зеркало)
+   • Номера ключа (1F, 2F, 3F, 4F)
 """
 
 # ===== УЛУЧШЕННАЯ ЗАГРУЗКА ИНТИМНОГО ПРОФИЛЯ ИЗ JSON =====
@@ -409,11 +412,11 @@ def get_emergency_profile() -> dict:
         "sections": {}
     }
 
-def format_intimate_profile(profile_data: dict, user_name: str) -> str:
-    """Форматирует интимный профиль с новым дизайном"""
+def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
+    """Форматирует ПЕРВУЮ ЧАСТЬ интимного профиля"""
     try:
         message = f"""
-🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ</b>
+🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ</b> (часть 1/2)
 {user_name}
 
 📊 Тип: {profile_data.get('profile_type', 'SA-5_INT')}
@@ -428,13 +431,10 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> str:
         
         sections = profile_data.get('sections', {})
         
-        section_order = [
-            "what_turns_on", "what_turns_off", "smells_tastes", "sounds",
-            "dirty_details", "fetishes", "places", "morning", "secret_desires",
-            "whispers", "core", "compliments", "tells", "remains"
-        ]
+        # Самые важные секции для первой части
+        part1_sections = ["what_turns_on", "what_turns_off", "erogenous_zone"]
         
-        for section_key in section_order:
+        for section_key in part1_sections:
             section = sections.get(section_key, {})
             if section:
                 title = section.get('title', '')
@@ -442,6 +442,45 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> str:
                 
                 if 'items' in section:
                     for item in section['items']:
+                        message += f"\n• {item}"
+                elif 'content' in section:
+                    message += f"\n{section['content']}"
+        
+        message += f"""
+
+{SEXUAL_DIVIDER}
+<i>Продолжение во втором сообщении...</i>
+"""
+        
+        return message
+    except Exception as e:
+        logger.error(f"❌ Ошибка форматирования части 1: {e}")
+        return "🔞 ИНТИМНЫЙ ПРОФИЛЬ (часть 1/2)\n\nПроизошла ошибка загрузки."
+
+def format_intimate_profile_part2(profile_data: dict, user_name: str) -> str:
+    """Форматирует ВТОРУЮ ЧАСТЬ интимного профиля"""
+    try:
+        message = f"""
+🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ</b> (часть 2/2)
+{user_name}
+"""
+        
+        sections = profile_data.get('sections', {})
+        
+        # Остальные секции для второй части
+        part2_sections = ["smells_tastes", "sounds", "dirty_details", "fetishes", 
+                         "places", "morning", "secret_desires", "whispers", 
+                         "core", "compliments", "tells", "remains"]
+        
+        for section_key in part2_sections:
+            section = sections.get(section_key, {})
+            if section:
+                title = section.get('title', '')
+                message += f"\n\n{title}"
+                
+                if 'items' in section:
+                    # Показываем максимум 5 пунктов для второй части
+                    for item in section['items'][:5]:
                         message += f"\n• {item}"
                 elif 'content' in section:
                     message += f"\n{section['content']}"
@@ -468,8 +507,8 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> str:
         
         return message
     except Exception as e:
-        logger.error(f"❌ Ошибка форматирования профиля: {e}")
-        return "🔞 ИНТИМНЫЙ ПРОФИЛЬ\n\nПроизошла ошибка загрузки. Пожалуйста, попробуйте позже."
+        logger.error(f"❌ Ошибка форматирования части 2: {e}")
+        return "🔞 ИНТИМНЫЙ ПРОФИЛЬ (часть 2/2)\n\nПроизошла ошибка загрузки."
 
 # ===== ЗАГРУЗКА ТЕСТОВОГО ИНТИМНОГО ПРОФИЛЯ ДЛЯ ДРУГА =====
 def load_friend_intimate_profile(friend_name: str, friend_profile: str = None) -> dict:
@@ -881,11 +920,11 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         return RESULTS_SCREEN
 
 # ============================================
-# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ - ИСПРАВЛЕНО!
+# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ - ИСПРАВЛЕНО (РАЗБИТ НА 2 ЧАСТИ)
 # ============================================
 
 async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Мой интимный профиль - ПОЛНОСТЬЮ ИСПРАВЛЕНО"""
+    """🔞 Мой интимный профиль - РАЗБИТ НА 2 СООБЩЕНИЯ"""
     try:
         query = update.callback_query
         logger.debug(f"🔍 ПОЛУЧЕН CALLBACK: {query.data} от пользователя {query.from_user.id}")
@@ -901,24 +940,45 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
         profile_data = load_intimate_profile()
         logger.debug(f"📊 Профиль загружен: {profile_data.get('profile_type', 'unknown')}")
         
-        message = format_intimate_profile(profile_data, user_name)
-        logger.debug(f"📄 Сообщение сформировано, длина: {len(message)}")
+        # Формируем две части сообщения
+        message_part1 = format_intimate_profile_part1(profile_data, user_name)
+        message_part2 = format_intimate_profile_part2(profile_data, user_name)
         
+        logger.debug(f"📄 Длина части 1: {len(message_part1)} символов")
+        logger.debug(f"📄 Длина части 2: {len(message_part2)} символов")
+        
+        # Клавиатура для навигации
         keyboard = [
             [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
             [InlineKeyboardButton("🔍 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
             [InlineKeyboardButton("⬅️ Назад в профиль", callback_data="back_to_results")]
         ]
         
-        logger.debug("✉️ Отправляем сообщение...")
+        # Отправляем первую часть (редактируем текущее сообщение)
+        logger.debug("✉️ Отправляем часть 1...")
         await query.edit_message_text(
-            message,
+            message_part1,
+            parse_mode="HTML"
+        )
+        
+        # Отправляем вторую часть как новое сообщение
+        logger.debug("✉️ Отправляем часть 2...")
+        await query.message.reply_text(
+            message_part2,
+            parse_mode="HTML"
+        )
+        
+        # Отправляем клавиатуру отдельным сообщением
+        logger.debug("✉️ Отправляем клавиатуру...")
+        await query.message.reply_text(
+            "📌 <b>ДЕЙСТВИЯ:</b>",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML"
         )
-        logger.debug("✅ Сообщение отправлено успешно")
         
+        logger.debug("✅ Все сообщения отправлены успешно")
         return MY_SEXUAL_PROFILE
+        
     except Exception as e:
         logger.error(f"❌ Ошибка в my_sexual_profile_callback: {e}\n{traceback.format_exc()}")
         try:
@@ -1139,11 +1199,11 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return INVITES_LIST
 
 # ============================================
-# 🧬 ЭКРАН 5: ГЛАВНОЕ МЕНЮ 4F
+# 🧬 ЭКРАН 5: ГЛАВНОЕ МЕНЮ 4F - ИСПРАВЛЕНО
 # ============================================
 
 async def four_f_main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🧬 Главное меню 4F-ключей"""
+    """🧬 Главное меню 4F-ключей (краткая версия без цены)"""
     try:
         query = update.callback_query
         await query.answer()
@@ -1171,11 +1231,11 @@ async def four_f_main_menu_callback(update: Update, context: ContextTypes.DEFAUL
         return INVITES_LIST
 
 # ============================================
-# 📘 ЭКРАН 6: ПОДРОБНОЕ ОПИСАНИЕ 4F
+# 📘 ЭКРАН 6: ПОДРОБНОЕ ОПИСАНИЕ 4F - ИСПРАВЛЕНО
 # ============================================
 
 async def four_f_detailed_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """📘 ПОДРОБНОЕ ОПИСАНИЕ 4F"""
+    """📘 ПОДРОБНОЕ ОПИСАНИЕ 4F с ссылкой и кнопкой запроса"""
     try:
         query = update.callback_query
         await query.answer()
@@ -1183,16 +1243,19 @@ async def four_f_detailed_callback(update: Update, context: ContextTypes.DEFAULT
         context.user_data["conversation_state"] = FOUR_F_DETAILED
         logger.info(f"📘 Пользователь {query.from_user.id} открыл подробное описание 4F")
         
-        message = FOUR_F_DETAILED_EXPLANATION
+        # Форматируем сообщение с подстановкой ссылки
+        message = FOUR_F_DETAILED_EXPLANATION.format(EXAMPLE_DISK_LINK=EXAMPLE_DISK_LINK)
         
         keyboard = [
+            [InlineKeyboardButton("🔐 ЗАПРОСИТЬ КЛЮЧИ", url=AUTHOR_TELEGRAM)],
             [InlineKeyboardButton("◀️ К ОБУЧАЙКЕ", callback_data="four_f_main_menu")]
         ]
         
         await query.edit_message_text(
             message,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
+            parse_mode="HTML",
+            disable_web_page_preview=True
         )
         
         return FOUR_F_DETAILED
@@ -1965,15 +2028,15 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v14.0")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v14.2")
     print("="*60)
     print("✅ ВАШ ДИЗАЙН экрана «Мои отражения»")
     print("✅ Ссылки на Яндекс.Диск для каждого профиля")
     print("✅ Двухуровневая система 4F: кратко и подробно")
     print("✅ Минималистичная навигация")
-    print("✅ ИСПРАВЛЕНА кнопка «Интимный профиль»")
-    print("✅ ИСПРАВЛЕН обработчик four_f_detailed")
-    print("✅ ДОБАВЛЕНО принудительное управление состояниями")
+    print("✅ ИСПРАВЛЕН экран краткого описания 4F (убрана цена)")
+    print("✅ ИСПРАВЛЕН экран подробного описания 4F (ссылка + кнопка)")
+    print("✅ ИСПРАВЛЕНО: интимный профиль разбит на 2 сообщения")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -2077,7 +2140,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 14.0")
+        print("\n🚀 Бот запущен! Версия 14.2")
         print("="*60)
         logger.info("✅ Бот успешно запущен")
         
