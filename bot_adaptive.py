@@ -13,12 +13,13 @@ import urllib.parse
 import time
 from typing import Dict, List, Optional, Any
 
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
     ConversationHandler,
-    ContextTypes,  
+    ContextTypes,
 )
 
 # ===== ИМПОРТ КОНФИГУРАЦИИ =====
