@@ -219,4 +219,28 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["clarification_current"] = 0
         context.user_data["clarification_stage"] = "stage3"
         
-        logger.info(f"User {update.effective_user.id}: Stage 3 needs clarification
+        logger.info(f"User {update.effective_user.id}: Stage 3 needs clarification")
+        from handlers.common import ask_clarification_question
+        return await ask_clarification_question(update, context)
+    
+    final_level = calculate_final_level(stage2_level, stage3_scores)
+    context.user_data["final_level"] = final_level
+    
+    if final_level <= 1:
+        behavior_level = 1
+    elif final_level <= 2:
+        behavior_level = 2
+    elif final_level <= 4:
+        behavior_level = 4
+    else:
+        behavior_level = 6
+    
+    logger.info(f"User {update.effective_user.id}: Stage 3 complete, behavior_level={behavior_level}")
+    
+    result_text = STAGE3_FEEDBACK.get(behavior_level, STAGE3_FEEDBACK[1])
+    
+    keyboard = [[InlineKeyboardButton("▶️ Перейти к завершающему этапу", callback_data="show_stage_4_intro")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(result_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
+    return STAGE_4
