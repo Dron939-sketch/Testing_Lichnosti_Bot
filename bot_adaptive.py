@@ -7,6 +7,8 @@
 ✅ Добавлена система лимитов (3 бесплатных ссылки)
 ✅ Добавлены пакеты ссылок (3/5/10)
 ✅ Новый премиум-дизайн с рамками и прогресс-барами
+✅ Убрано слово "бесплатная" при создании ссылки
+✅ Укорочены линии для мобильных устройств
 """
 
 import logging
@@ -671,7 +673,7 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
 # ============================================
 
 async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Создание ссылки-приглашения с проверкой лимитов"""
+    """🔞 Создание ссылки-приглашения с проверкой лимитов (УБРАНО СЛОВО "БЕСПЛАТНАЯ")"""
     query = update.callback_query
     await query.answer()
     
@@ -701,9 +703,8 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     
     current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
     
-    # Определяем тип ссылки
+    # Определяем тип ссылки (УБРАНО СЛОВО "бесплатная"/"платная")
     invite_type = "🆓" if is_free else "💎"
-    invite_type_text = "бесплатная" if is_free else "платная"
     
     # Обновляем счетчики
     if is_free:
@@ -711,7 +712,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     
     text = f"""
 🔞 <b>✨ ВАША ССЫЛКА ГОТОВА! ✨</b>
-{invite_type} <b>{invite_type_text.upper()}</b>
+{invite_type}
 
 🔗 <code>{invite_url}</code>
 
@@ -778,11 +779,11 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ - НОВЫЙ ДИЗАЙН
+# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ - НОВЫЙ ДИЗАЙН (КОРОТКИЕ ЛИНИИ)
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔍 МОИ ОТРАЖЕНИЯ - ПРЕМИУМ ДИЗАЙН, БЕЗ КНОПКИ СОЗДАНИЯ ССЫЛКИ"""
+    """🔍 МОИ ОТРАЖЕНИЯ - ПРЕМИУМ ДИЗАЙН, КОРОТКИЕ ЛИНИИ, БЕЗ КНОПКИ СОЗДАНИЯ ССЫЛКИ"""
     query = update.callback_query
     await query.answer("🔄 Загружаю отражения...")
     
@@ -810,7 +811,9 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Прогресс-бар для бесплатных
     free_progress = create_progress_bar(free_used, FREE_INVITE_LIMIT)
     
-    # Основное сообщение с новым дизайном
+    now = datetime.now().timestamp()
+    
+    # Основное сообщение с новым дизайном (КОРОТКИЕ ЛИНИИ)
     message = f"""
 🔍 ✨ МОИ ОТРАЖЕНИЯ ✨
 
@@ -894,19 +897,11 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         InlineKeyboardButton("◀️ К ИНТИМНОМУ ПРОФИЛЮ", callback_data="my_sexual_profile")
     ])
     
-        # Кнопка 4F - ВЫДЕЛЕННАЯ, СНИЗУ
+    # Кнопка 4F - ВЫДЕЛЕННАЯ, СНИЗУ
     keyboard.append([
         InlineKeyboardButton("🔴🧬 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")
     ])
 
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    
-    return INVITES_LIST
-    
     await query.edit_message_text(
         message,
         reply_markup=InlineKeyboardMarkup(keyboard),
@@ -1691,6 +1686,8 @@ def main():
     print("   • Добавлены лимиты: 3 бесплатных ссылки")
     print("   • Пакеты ссылок: 3/299₽, 5/499₽, 10/899₽")
     print("   • Новый премиум-дизайн с рамками")
+    print("   • Убрано слово «бесплатная» при создании ссылки")
+    print("   • Укорочены линии для мобильных устройств")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
