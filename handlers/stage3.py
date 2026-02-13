@@ -10,8 +10,9 @@ from telegram.ext import ContextTypes
 
 from config import STAGE_3, STAGE_4, PSYCHOLOGIST_TIPS, STAGE3_FEEDBACK
 from questions import STAGE_3_QUESTIONS
-from utils.calculations import calculate_final_level, need_clarification_stage3
-from utils.helpers import calculate_progress
+from utils.calculations import calculate_final_level
+from utils.validators import need_clarification_stage3  # ИСПРАВЛЕНО: импорт из validators
+from utils.helpers import calculate_progress, generate_unique_callback
 
 logger = logging.getLogger(__name__)
 
@@ -112,10 +113,9 @@ async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     keyboard = []
     user_id = update.effective_user.id
-    timestamp = int(time.time())
     
     for option_id, option in question["options"].items():
-        unique_callback = f"stage3_{current}_{option_id}_{user_id}_{timestamp}"
+        unique_callback = generate_unique_callback("stage3", user_id, current, option_id)
         keyboard.append([
             InlineKeyboardButton(option["text"], callback_data=unique_callback)
         ])
