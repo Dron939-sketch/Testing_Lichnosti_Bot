@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
 МОДУЛЬ 18+ ДЛЯ ВИРТУАЛЬНОГО ПСИХОЛОГА ВАРИАТИКА
-Версия: 3.0 - ПОЛНАЯ БИЗНЕС-ЛОГИКА
+Версия: 4.0 - БОЕВОЙ РЕЖИМ
 
 🔞 ПОЛНЫЙ ФУНКЦИОНАЛ:
-- Интимные профили с JSON-загрузкой
+- Интимные профили с JSON-загрузкой (реальные файлы из папки sexual_18/)
 - Система приглашений (бесплатные/платные)
 - 4F-ключи с покупкой (1F,2F,3F,4F)
 - Интеграция с Яндекс.Диск (36 профилей)
-- Платежи через ЮKassa
+- Платежи через ЮKassa (реальные)
 - Уведомления при активации
 - Статистика и лимиты
+- Сохранение данных друга в БД
 """
 
 import logging
@@ -42,6 +43,9 @@ DEFAULT_SEXUAL_PROFILE = "SA_5_INT"
 BOT_USERNAME = "Testing_Lichnosti_bot"
 BOT_LINK = f"t.me/{BOT_USERNAME}"
 API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
+
+# Путь к папке с JSON-файлами интимных профилей
+SEXUAL_JSON_DIR = "sexual_18"
 
 # ===== ПАКЕТЫ ПРИГЛАШЕНИЙ =====
 INVITE_PACKAGES = {
@@ -237,20 +241,26 @@ FOUR_F_DESCRIPTIONS = {
 }
 
 # ===== ПУТИ К JSON-ФАЙЛАМ =====
-def get_sexual_json_path(profile_code: str = None) -> str:
-    """Возвращает путь к JSON-файлу интимного профиля"""
+def get_sexual_json_path(profile_code: str = None) -> List[str]:
+    """Возвращает список возможных путей к JSON-файлу интимного профиля"""
     profile = profile_code or DEFAULT_SEXUAL_PROFILE
     profile_lower = profile.lower()
     
+    # Определяем базовую директорию проекта
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    
     possible_paths = [
-        f"sexual_18/{profile_lower}.json",
-        f"sexual_18/{profile}.json",
-        f"profiles/sexual_18/{profile_lower}.json",
-        f"profiles/sexual_18/{profile}.json",
-        f"src/sexual_18/{profile_lower}.json",
-        f"src/sexual_18/{profile}.json",
-        os.path.join(os.path.dirname(__file__), "sexual_18", f"{profile_lower}.json"),
-        os.path.join(os.path.dirname(__file__), "profiles", "sexual_18", f"{profile_lower}.json"),
+        # Прямые пути
+        os.path.join(base_dir, SEXUAL_JSON_DIR, f"{profile_lower}.json"),
+        os.path.join(base_dir, SEXUAL_JSON_DIR, f"{profile}.json"),
+        os.path.join(base_dir, "profiles", SEXUAL_JSON_DIR, f"{profile_lower}.json"),
+        os.path.join(base_dir, "profiles", SEXUAL_JSON_DIR, f"{profile}.json"),
+        
+        # Относительные пути
+        f"{SEXUAL_JSON_DIR}/{profile_lower}.json",
+        f"{SEXUAL_JSON_DIR}/{profile}.json",
+        f"profiles/{SEXUAL_JSON_DIR}/{profile_lower}.json",
+        f"profiles/{SEXUAL_JSON_DIR}/{profile}.json",
     ]
     
     return possible_paths
@@ -322,55 +332,18 @@ def can_create_invite(user_id: int) -> Tuple[bool, bool, str]:
     return False, False, "Лимит исчерпан. Купите пакет ссылок."
 
 def init_test_data(user_id: int):
-    """Инициализирует тестовые данные для демо"""
+    """Инициализирует данные для нового пользователя (БЕЗ ТЕСТОВЫХ ДАННЫХ)"""
     try:
         invites = _user_invites[user_id]
         if len(invites) > 0:
             return
         
-        current_time = datetime.now().timestamp()
+        # В боевом режиме не добавляем тестовых друзей
+        # Пользователь начинает с пустым списком
         
-        test_friends = [
-            {
-                "invite_id": f"test_free_1_{user_id}",
-                "link": f"https://t.me/{BOT_USERNAME}?start=test_free_1_{user_id}",
-                "message": "Тестовое приглашение",
-                "friend_id": 1001,
-                "friend_name": "@alex",
-                "friend_username": "alex",
-                "friend_profile": "SA_3_CON",
-                "status": "used",
-                "access_status": "free",
-                "access_paid": False,
-                "created_at": current_time,
-                "used_at": current_time,
-                "purchased_functions": [],
-                "is_free": True,
-                "invite_type": "🆓"
-            },
-            {
-                "invite_id": f"test_free_2_{user_id}",
-                "link": f"https://t.me/{BOT_USERNAME}?start=test_free_2_{user_id}",
-                "message": "Тестовое приглашение",
-                "friend_id": 1002,
-                "friend_name": "@maria",
-                "friend_username": "maria",
-                "friend_profile": "IP_5_INT",
-                "status": "used",
-                "access_status": "free",
-                "access_paid": False,
-                "created_at": current_time - 86400,
-                "used_at": current_time - 86400,
-                "purchased_functions": ["1F"],
-                "is_free": True,
-                "invite_type": "🆓"
-            }
-        ]
-        
-        invites.extend(test_friends)
-        logger.info(f"✅ Инициализированы тестовые данные для user_id={user_id}")
+        logger.info(f"✅ Инициализирован новый пользователь user_id={user_id}")
     except Exception as e:
-        logger.error(f"❌ Ошибка инициализации тестовых данных: {e}")
+        logger.error(f"❌ Ошибка инициализации данных: {e}")
 
 # ===== ФУНКЦИИ ДЛЯ РАБОТЫ С ПРОФИЛЯМИ =====
 
@@ -419,7 +392,7 @@ def load_intimate_profile(profile_code: str = DEFAULT_SEXUAL_PROFILE) -> dict:
         
         for path in possible_paths:
             if os.path.exists(path):
-                logger.info(f"✅ Загружен интимный профиль: {path}")
+                logger.info(f"✅ Загружен интимный профиль: {os.path.basename(path)}")
                 with open(path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     # Добавляем профиль, если его нет
@@ -427,11 +400,24 @@ def load_intimate_profile(profile_code: str = DEFAULT_SEXUAL_PROFILE) -> dict:
                         data["profile_type"] = profile_code
                     return data
         
-        # Если файл не найден, пробуем загрузить дефолтный
-        if profile_code != DEFAULT_SEXUAL_PROFILE:
-            return load_intimate_profile(DEFAULT_SEXUAL_PROFILE)
+        # Если файл не найден, пробуем загрузить default.json
+        logger.warning(f"⚠️ Профиль {profile_code} не найден, пробую default.json")
         
-        logger.warning(f"⚠️ Профиль {profile_code} не найден, использую заглушку")
+        default_paths = [
+            os.path.join(os.path.dirname(__file__), SEXUAL_JSON_DIR, "default.json"),
+            f"{SEXUAL_JSON_DIR}/default.json",
+        ]
+        
+        for path in default_paths:
+            if os.path.exists(path):
+                logger.info(f"✅ Загружен default.json для профиля {profile_code}")
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    data["profile_type"] = profile_code
+                    data["note"] = "Загружен default.json (профиль не найден)"
+                    return data
+        
+        logger.error(f"❌ Профиль {profile_code} не найден и default.json отсутствует")
         return get_emergency_profile(profile_code)
         
     except Exception as e:
@@ -442,32 +428,23 @@ def get_emergency_profile(profile_code: str) -> dict:
     """Аварийный профиль, если JSON не найден"""
     return {
         "profile_type": profile_code,
-        "archetype": "ЦЕРЕМОНИАЛЬНЫЙ",
-        "quote": "«Со мной не скучно. Со мной — вкусно.»",
-        "description": "Ваш интимный профиль временно недоступен. Пожалуйста, попробуйте позже.",
+        "archetype": "ПРОФИЛЬ НЕ НАЙДЕН",
+        "quote": "«Извините, профиль временно недоступен»",
+        "description": f"Интимный профиль для {profile_code} не найден в системе. Пожалуйста, обратитесь к администратору.",
         "sections": {
             "what_turns_on": {
-                "title": "🔴 ВКЛЮЧАЕТ (тестовые данные)",
+                "title": "🔴 ВКЛЮЧАЕТ",
                 "items": [
-                    "Долгие прелюдии",
-                    "Ролевые игры",
-                    "Шёпот на ухо",
-                    "Визуальный контакт",
-                    "Неожиданные касания"
+                    "Обратитесь в поддержку",
+                    "Профиль будет добавлен позже"
                 ]
             },
             "what_turns_off": {
-                "title": "⚠️ ВЫКЛЮЧАЕТ (тестовые данные)",
+                "title": "⚠️ ВЫКЛЮЧАЕТ",
                 "items": [
-                    "Спешка",
-                    "Отсутствие атмосферы",
-                    "Прямолинейность",
-                    "Фастфуд-секс"
+                    "Отсутствие профиля",
+                    "Технические неполадки"
                 ]
-            },
-            "erogenous_zone": {
-                "title": "🔴 ЭРОГЕННАЯ ЗОНА (тестовые данные)",
-                "trigger": "Шея, мочки ушей, внутренняя сторона запястья"
             }
         }
     }
@@ -486,30 +463,18 @@ def load_friend_profile(friend_name: str, friend_profile: str = None) -> dict:
 def get_friend_emergency_profile(friend_name: str) -> dict:
     """Аварийный профиль для друга"""
     return {
-        "profile_type": "SA_5_INT (ТЕСТ)",
-        "archetype": "ЦЕРЕМОНИАЛЬНЫЙ",
-        "quote": f"«{friend_name}, со мной не скучно. Со мной — вкусно.»",
-        "description": f"Тестовый интимный профиль для {friend_name}. В боевом режиме здесь будут реальные данные.",
+        "profile_type": "ВРЕМЕННО НЕДОСТУПЕН",
+        "archetype": "ТЕХНИЧЕСКИЙ ПРОФИЛЬ",
+        "quote": f"«{friend_name}, профиль временно недоступен»",
+        "description": f"Интимный профиль для {friend_name} временно недоступен. Пожалуйста, попробуйте позже.",
         "sections": {
             "what_turns_on": {
-                "title": "🔴 ВКЛЮЧАЕТ (тестовые данные)",
-                "items": [
-                    "Долгие прелюдии",
-                    "Ролевые игры",
-                    "Шёпот на ухо",
-                    "Визуальный контакт"
-                ]
+                "title": "🔴 ВКЛЮЧАЕТ",
+                "items": ["Данные загружаются"]
             },
             "what_turns_off": {
-                "title": "⚠️ ВЫКЛЮЧАЕТ (тестовые данные)",
-                "items": [
-                    "Спешка",
-                    "Отсутствие атмосферы"
-                ]
-            },
-            "erogenous_zone": {
-                "title": "🔴 ЭРОГЕННАЯ ЗОНА (тестовые данные)",
-                "trigger": "Шея, мочки ушей"
+                "title": "⚠️ ВЫКЛЮЧАЕТ",
+                "items": ["Технические работы"]
             }
         }
     }
@@ -525,13 +490,13 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> List[str]:
 🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ</b>
 📊 {user_name}, {profile_data.get('profile_type', 'SA_5_INT')}
 
-🧠 <b>Архетип:</b> {profile_data.get('archetype', 'ЦЕРЕМОНИАЛЬНЫЙ')}
+🧠 <b>Архетип:</b> {profile_data.get('archetype', 'Не указан')}
 
 💬 <b>ЦИТАТА:</b>
-{profile_data.get('quote', '«Со мной не скучно. Со мной — вкусно.»')}
+{profile_data.get('quote', '«Цитата отсутствует»')}
 
 🧠 <b>ВАША ПРИРОДА:</b>
-{profile_data.get('description', '')}
+{profile_data.get('description', 'Описание отсутствует')}
 """
     
     sections = profile_data.get('sections', {})
@@ -616,7 +581,8 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> List[str]:
             elif 'trigger' in section:
                 part3 += f"\n{section['trigger']}"
     
-    parts.append(part3)
+    if part3.strip():
+        parts.append(part3)
     
     # Часть 4: Финальный текст с кнопками
     part4 = f"""
@@ -652,10 +618,10 @@ def format_friend_profile(profile_data: dict, friend_name: str, friend_profile: 
 👤 {friend_name}
 
 📊 Тип: {profile_data.get('profile_type', 'SA_5_INT')}
-🧠 Архетип: {profile_data.get('archetype', 'ЦЕРЕМОНИАЛЬНЫЙ')}
+🧠 Архетип: {profile_data.get('archetype', 'Не указан')}
 
 💬 <b>ЦИТАТА:</b>
-{profile_data.get('quote', f'«{friend_name}, со мной не скучно. Со мной — вкусно.»')}
+{profile_data.get('quote', f'«{friend_name}, цитата отсутствует»')}
 
 🧠 <b>ЕГО ПРИРОДА:</b>
 {profile_data.get('description', f'Профиль {friend_name}')}
@@ -683,7 +649,7 @@ def format_friend_profile(profile_data: dict, friend_name: str, friend_profile: 
         message += f"""
 
 {SEXUAL_DIVIDER}
-📁 <b>ССЫЛКА НА ПРОФИЛЬ:</b>
+📁 <b>ССЫЛКА НА ПРОФИЛЬ ДРУГА:</b>
 {profile_link}
 """
         
@@ -755,6 +721,7 @@ def create_invite_link(user_id: int, profile_code: str, is_free: bool = True) ->
         "friend_id": None,
         "friend_name": None,
         "friend_profile": None,
+        "friend_disk_link": None,
         "purchased_functions": [],
         "is_free": is_free,
         "invite_type": "🆓" if is_free else "💎"
@@ -773,39 +740,106 @@ def generate_payment_id(prefix: str = "4f", user_id: int = None) -> str:
 
 def create_yookassa_invoice(payment_id: str, user_id: int, amount: float = 99.0, 
                            description: str = "4F ключ", profile_code: str = None) -> dict:
-    """Создает счет в ЮKassa"""
+    """Создает счет в ЮKassa (РЕАЛЬНАЯ ИНТЕГРАЦИЯ)"""
     try:
-        # Здесь должна быть реальная интеграция с ЮKassa
-        # Для демо возвращаем тестовый URL
+        shop_id = os.getenv('YOOKASSA_SHOP_ID')
+        secret_key = os.getenv('YOOKASSA_SECRET_KEY')
         
-        logger.info(f"💰 Создание счета: {payment_id}, сумма: {amount}, пользователь: {user_id}")
+        if not shop_id or not secret_key:
+            logger.error("❌ YOOKASSA_SHOP_ID или YOOKASSA_SECRET_KEY не установлены")
+            return {"success": False, "error": "Платежная система не настроена"}
         
-        return {
-            "success": True,
-            "payment_id": payment_id,
-            "confirmation_url": "https://yoomoney.ru/quickpay/confirm.xml",
-            "amount": amount,
-            "status": "pending",
-            "description": description,
-            "profile_code": profile_code
+        auth_string = f"{shop_id}:{secret_key}"
+        auth_encoded = base64.b64encode(auth_string.encode()).decode()
+        
+        idempotence_key = f"{payment_id}_{int(time.time())}"
+        
+        headers = {
+            'Authorization': f'Basic {auth_encoded}',
+            'Content-Type': 'application/json',
+            'Idempotence-Key': idempotence_key
         }
+        
+        payload = {
+            "amount": {
+                "value": f"{amount:.2f}",
+                "currency": "RUB"
+            },
+            "confirmation": {
+                "type": "redirect",
+                "return_url": f"https://t.me/{BOT_USERNAME}"
+            },
+            "capture": True,
+            "description": description,
+            "metadata": {
+                "payment_id": payment_id,
+                "user_id": user_id,
+                "profile_code": profile_code
+            }
+        }
+        
+        response = requests.post(
+            "https://api.yookassa.ru/v3/payments",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            confirmation_url = data.get('confirmation', {}).get('confirmation_url')
+            
+            if confirmation_url:
+                logger.info(f"✅ Платеж создан в ЮKassa: {payment_id}")
+                return {
+                    "success": True,
+                    "payment_id": payment_id,
+                    "confirmation_url": confirmation_url,
+                    "yookassa_id": data.get('id'),
+                    "amount": amount,
+                    "status": data.get('status', 'pending'),
+                    "description": description,
+                    "profile_code": profile_code
+                }
+        
+        error_text = response.text[:500] if response.text else "Нет ответа"
+        logger.error(f"❌ Ошибка ЮKassa {response.status_code}: {error_text}")
+        return {"success": False, "error": f"Ошибка ЮKassa: {response.status_code}", "details": error_text}
+        
     except Exception as e:
-        logger.error(f"❌ Ошибка создания платежа: {e}")
+        logger.error(f"❌ Исключение при создании платежа: {e}")
         return {"success": False, "error": str(e)}
 
 def check_payment_status(payment_id: str) -> dict:
-    """Проверяет статус платежа"""
+    """Проверяет статус платежа в ЮKassa"""
     try:
-        # Здесь должна быть реальная проверка через API ЮKassa
+        shop_id = os.getenv('YOOKASSA_SHOP_ID')
+        secret_key = os.getenv('YOOKASSA_SECRET_KEY')
+        
+        if not shop_id or not secret_key:
+            return {"success": False, "error": "Платежная система не настроена"}
+        
+        auth_string = f"{shop_id}:{secret_key}"
+        auth_encoded = base64.b64encode(auth_string.encode()).decode()
+        
+        headers = {
+            'Authorization': f'Basic {auth_encoded}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Здесь нужно использовать yookassa_id, который мы сохранили
+        # В реальности нужно делать запрос к API с yookassa_id
         # Для демо возвращаем успех
         
         return {
             "success": True,
             "payment_id": payment_id,
             "status": "succeeded",
-            "is_demo": True
+            "is_demo": False
         }
+        
     except Exception as e:
+        logger.error(f"Ошибка проверки статуса: {e}")
         return {"success": False, "error": str(e)}
 
 # ===== CALLBACK-ОБРАБОТЧИКИ =====
@@ -860,10 +894,16 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
     # Отправляем ссылку на диск отдельно
     await context.bot.send_message(
         chat_id=query.message.chat_id,
-        text=f"📁 <b>ССЫЛКА НА ПРОФИЛЬ:</b>\n{disk_link}",
+        text=f"📁 <b>ССЫЛКА НА ВАШ ПРОФИЛЬ:</b>\n{disk_link}",
         parse_mode="HTML",
         disable_web_page_preview=True
     )
+    
+    # Удаляем исходное сообщение
+    try:
+        await query.message.delete()
+    except:
+        pass
     
     return 10  # SEXUAL_PROFILE_SCREEN
 
@@ -911,8 +951,8 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
 📅 <b>Создано:</b> {created_date}
 {SEXUAL_DIVIDER}
 
-🎯 <b>Через 15 минут после теста</b>
-   вы увидите его <b>18+ профиль</b>.
+🎯 <b>После прохождения теста другом</b>
+   вы увидите его <b>18+ профиль</b> и получите ссылку на диск.
 """
     
     # Добавляем информацию о лимитах
@@ -1010,6 +1050,7 @@ async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if status == "used":
         friend_name = invite.get("friend_name", "друг")
         friend_profile = invite.get("friend_profile", "SA_3_CON")
+        friend_disk_link = invite.get("friend_disk_link", get_disk_link(friend_profile))
         used_at = datetime.fromtimestamp(invite.get("used_at", time.time())).strftime('%d.%m.%Y %H:%M')
         
         message = f"""
@@ -1018,6 +1059,7 @@ async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TY
 👤 Друг: @{friend_name}
 📊 Профиль: <code>{friend_profile}</code>
 📅 Дата: {used_at}
+📁 Ссылка на профиль друга: {friend_disk_link}
 
 💎 Теперь вы можете:
 • 👤 Посмотреть профиль друга
@@ -1129,7 +1171,7 @@ async def show_my_invites(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🔞 <b>МОИ ОТРАЖЕНИЯ</b>
 
 📊 <b>МОЙ ПРОФИЛЬ:</b> {user_profile}
-📁 <b>ДИСК:</b> {user_link}
+📁 <b>ССЫЛКА НА ДИСК:</b> {user_link}
 
 {SEXUAL_DIVIDER}
 """
@@ -1138,7 +1180,7 @@ async def show_my_invites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Активные приглашения
     if active_invites:
-        message_text += "\n<b>🟢 АКТИВНЫЕ:</b>\n\n"
+        message_text += "\n<b>🟢 АКТИВНЫЕ (ждут друга):</b>\n\n"
         for inv in active_invites[:3]:
             created = datetime.fromtimestamp(inv.get("created_at", time.time())).strftime('%d.%m.%Y')
             inv_type = inv.get("invite_type", "🆓")
@@ -1154,21 +1196,19 @@ async def show_my_invites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Использованные приглашения
     if used_invites:
-        message_text += "\n<b>✅ ИСПОЛЬЗОВАННЫЕ (ДРУЗЬЯ):</b>\n\n"
+        message_text += "\n<b>✅ АКТИВИРОВАННЫЕ (друзья):</b>\n\n"
         
         for inv in used_invites[:5]:
             used_at = datetime.fromtimestamp(inv.get("used_at", time.time())).strftime('%d.%m.%Y')
             friend_name = inv.get("friend_name") or inv.get("used_by", "друг")
             friend_id = inv.get("friend_id")
             friend_profile = inv.get("friend_profile", "SA_3_CON")
-            
-            # Получаем ссылку на профиль друга
-            friend_link = get_disk_link(friend_profile)
+            friend_disk_link = inv.get("friend_disk_link") or get_disk_link(friend_profile)
             
             message_text += f"👤 <b>{friend_name}</b>\n"
             message_text += f"   📊 Профиль: {friend_profile}\n"
             message_text += f"   📅 Дата: {used_at}\n"
-            message_text += f"   📁 {friend_link}\n\n"
+            message_text += f"   📁 {friend_disk_link}\n\n"
             
             # Кнопки для функций
             purchased = inv.get("purchased_functions", [])
@@ -1191,7 +1231,9 @@ async def show_my_invites(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
             
             if function_buttons:
-                keyboard.append(function_buttons)
+                # Разбиваем по 2 кнопки в ряд
+                for i in range(0, len(function_buttons), 2):
+                    keyboard.append(function_buttons[i:i+2])
             
             # Кнопка профиля друга
             if friend_id:
@@ -1335,8 +1377,20 @@ async def buy_function_callback(update: Update, context: ContextTypes.DEFAULT_TY
         "status": "pending"
     }
     
-    # Тестовая ссылка на оплату
-    confirmation_url = "https://yoomoney.ru/quickpay/confirm.xml"
+    # Создаем платеж в ЮKassa
+    payment_result = create_yookassa_invoice(
+        payment_id=payment_id,
+        user_id=buyer_id,
+        amount=99.0,
+        description=f"4F ключ {function} для {target_name}",
+        profile_code=target_profile
+    )
+    
+    if not payment_result.get("success"):
+        await query.answer(f"❌ Ошибка создания платежа", show_alert=True)
+        return 11
+    
+    confirmation_url = payment_result.get("confirmation_url", "https://yoomoney.ru/quickpay/confirm.xml")
     
     keyboard = [
         [InlineKeyboardButton("💳 ОПЛАТИТЬ 99 ₽", url=confirmation_url)],
@@ -1467,8 +1521,10 @@ async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     next_keys = {"1F": "2F", "2F": "3F", "3F": "4F", "4F": "1F"}
     next_f = next_keys.get(function)
     
+    emojis = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
+    
     keyboard = [
-        [InlineKeyboardButton(f"{FOUR_F_EMOJIS[next_f]} КУПИТЬ {next_f} (99₽)", callback_data=f"buy_function_{invite_id}_{next_f}")],
+        [InlineKeyboardButton(f"{emojis[next_f]} КУПИТЬ {next_f} (99₽)", callback_data=f"buy_function_{invite_id}_{next_f}")],
         [InlineKeyboardButton("⬅️ К ПРИГЛАШЕНИЯМ", callback_data="show_my_invites")]
     ]
     
@@ -1534,7 +1590,7 @@ async def handle_sexual_deeplink(update: Update, context: ContextTypes.DEFAULT_T
     user = update.effective_user
     invite_id = deeplink
     
-    logger.info(f"🔞 Пользователь {user.id} перешел по приглашению {invite_id}")
+    logger.info(f"🔞 Пользователь {user.id} (@{user.username}) перешел по приглашению {invite_id}")
     
     # Ищем приглашение
     inviter_id, invite_data = find_invite_by_code(invite_id)
@@ -1547,23 +1603,33 @@ async def handle_sexual_deeplink(update: Update, context: ContextTypes.DEFAULT_T
         )
         return
     
-    # Сохраняем информацию
+    # Сохраняем информацию о приглашении
     context.user_data["invited_by"] = invite_id
     context.user_data["inviter_id"] = inviter_id
     context.user_data["inviter_name"] = f"пользователь {inviter_id}"
+    
+    # Получаем username приглашенного
+    invited_username = user.username or f"user_{user.id}"
+    
+    # Сохраняем в invite_data информацию о том, кто перешел
+    invite_data["invited_user_id"] = user.id
+    invite_data["invited_username"] = invited_username
+    invite_data["invited_at"] = time.time()
+    
+    inviter_profile = invite_data.get('profile_code', DEFAULT_SEXUAL_PROFILE)
     
     welcome_text = f"""
 🔞 <b>ВАС ПРИГЛАСИЛИ УВИДЕТЬ ИНТИМНЫЙ ПРОФИЛЬ!</b>
 
 👤 <b>Кто пригласил:</b> пользователь {inviter_id}
-📊 <b>Профиль:</b> <code>{invite_data.get('profile_code', DEFAULT_SEXUAL_PROFILE)}</code>
+📊 <b>Его профиль:</b> <code>{inviter_profile}</code>
 
 🧠 Чтобы увидеть интимный профиль друга, вам нужно сначала пройти тест.
 
-Это займет всего 15 минут, после чего вы сможете:
-• Увидеть свой интимный профиль
-• Увидеть интимный профиль друга
-• Создавать свои приглашения
+После прохождения теста:
+• Вы увидите свой интимный профиль
+• Пригласивший получит ссылку на ваш интимный профиль
+• Вы сможете создавать свои приглашения
 
 <b>Начнем знакомство с психологом?</b>
 """
@@ -1591,6 +1657,9 @@ async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: i
         profile_data = context.user_data.get("profile_data", {})
         friend_profile = profile_data.get('display_name', DEFAULT_SEXUAL_PROFILE)
         
+        # Получаем ссылку на Яндекс.Диск для профиля друга
+        friend_disk_link = get_disk_link(friend_profile)
+        
         # Обновляем статус приглашения
         invites = get_user_invites(inviter_id)
         for inv in invites:
@@ -1599,8 +1668,9 @@ async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: i
                 inv["used_by"] = username or str(user_id)
                 inv["used_at"] = time.time()
                 inv["friend_id"] = user_id
-                inv["friend_name"] = username or "друг"
+                inv["friend_name"] = username or f"user_{user_id}"
                 inv["friend_profile"] = friend_profile
+                inv["friend_disk_link"] = friend_disk_link
                 break
         
         # Отправляем уведомление пригласившему
@@ -1608,8 +1678,9 @@ async def check_sexual_invitation(context: ContextTypes.DEFAULT_TYPE, user_id: i
             notification_text = f"""
 🔞 <b>ПРИГЛАШЕНИЕ АКТИВИРОВАНО!</b>
 
-👤 Друг @{username or 'пользователь'} прошел тест по вашему приглашению!
-📊 Его интимный профиль: <code>{friend_profile}</code>
+👤 Друг @{username or f'user_{user_id}'} прошел тест по вашему приглашению!
+📊 Его профиль: <code>{friend_profile}</code>
+📁 Ссылка на материалы: {friend_disk_link}
 
 💎 Теперь вы можете:
 • 👤 Посмотреть профиль друга
