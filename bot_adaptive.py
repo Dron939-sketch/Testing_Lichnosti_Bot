@@ -1090,7 +1090,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
 <blockquote>{invite_message}</blockquote>
 
 {SEXUAL_DIVIDER}
-🟢 <b>• АКТИВНО •</b> ожидание друга
+🟢 <b>• АКТИВНО •</b> ожидает отправки
 📅 <b>Создано:</b> {current_time}
 {SEXUAL_DIVIDER}
 
