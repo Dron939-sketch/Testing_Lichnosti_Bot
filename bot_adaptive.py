@@ -865,9 +865,7 @@ if used_invites:
     
     if len(used_invites) > 5:
         message += f"│   ... и ещё {len(used_invites) - 5}\n│\n"
-    message += f"└─────────────────────┘\n"
-    else:
-        message += f"""
+    message += f"└─────────────────────┘\n\n"
 ┌─ <b>✨ УЖЕ ОТРАЗИЛИСЬ</b> ───────────────
 │
 │   <i>Пока нет отражений</i> 🌑
