@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 19.0 - ИСПРАВЛЕНЫ КНОПКИ
-✅ Кнопки прикреплены к части 3 интимного профиля
-✅ Нет отдельного сообщения с точкой
-✅ Правильное форматирование всех экранов
+Версия: 19.0 - ПОЛНАЯ ИНТЕГРАЦИЯ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК
+✅ Все 36 ссылок на профили добавлены
+✅ Умная функция поиска ссылок по профилю
+✅ Корректное отображение в "Моих отражениях"
 """
 
 import logging
@@ -102,23 +102,99 @@ INVITE_PACKAGES = {
     "10": {"price": 899, "links": 10, "emoji": "🥇", "popular": False}
 }
 
-# ===== ССЫЛКИ НА ЯНДЕКС.ДИСК =====
-USER_DISK_LINK = "https://disk.yandex.ru/d/EYPIF9_puI_t0A"
-EXAMPLE_DISK_LINK = "https://disk.yandex.ru/d/2kQN0cd4dSUzqQ"
-AUTHOR_TELEGRAM = "https://t.me/meysternlp"
-
+# ===== ССЫЛКИ НА ЯНДЕКС.ДИСК - ВСЕ 36 ПРОФИЛЕЙ =====
 PROFILE_DISK_LINKS = {
-    "SA-3_CON": "https://disk.yandex.ru/d/abc123def",
-    "SA-4_VAL": "https://disk.yandex.ru/d/def456ghi",
-    "SA-5_INT": "https://disk.yandex.ru/d/ghi789jkl",
-    "IP-3_CON": "https://disk.yandex.ru/d/jkl012mno",
-    "IP-4_VAL": "https://disk.yandex.ru/d/mno345pqr",
-    "IP-5_INT": "https://disk.yandex.ru/d/pqr678stu",
-    "default": "https://disk.yandex.ru/d/xyz789uvw"
+    # SA Profiles
+    "SA-1_DEF": "https://disk.yandex.ru/d/k-MqapaI3zmb_w",
+    "SA-2_SIT": "https://disk.yandex.ru/d/1v8xNz0m6cPzTg",
+    "SA-3_CON": "https://disk.yandex.ru/d/8kqMEvs7OC86PQ",
+    "SA-4_EXP": "https://disk.yandex.ru/d/PzCDu_jfJpzgqg",
+    "SA-5_INT": "https://disk.yandex.ru/d/EYPIF9_puI_t0A",
+    "SA-6_AUT": "https://disk.yandex.ru/d/lfRe4hOGoneJUA",
+    "SA-7_VAL": "https://disk.yandex.ru/d/TRFjXAPoxH8_Yw",
+    "SA-8_TRA": "https://disk.yandex.ru/d/kUTCtJTez59G3g",
+    "SA-9_IDE": "https://disk.yandex.ru/d/p54mj-rRgW54zg",
+    
+    # SP Profiles
+    "SP-1_DEF": "https://disk.yandex.ru/d/F07HTDrGplwgWg",
+    "SP-2_SIT": "https://disk.yandex.ru/d/MoXCgdUamEnmfA",
+    "SP-3_CON": "https://disk.yandex.ru/d/9Sp--f1UF1WCrg",
+    "SP-4_EXP": "https://disk.yandex.ru/d/K869xbd1mmLwWA",
+    "SP-5_INT": "https://disk.yandex.ru/d/5Ip1IllKjF1TQg",
+    "SP-6_AUT": "https://disk.yandex.ru/d/saOXkhBzFdGO6A",
+    "SP-7_VAL": "https://disk.yandex.ru/d/1umIAOuQVec-nw",
+    "SP-8_TRA": "https://disk.yandex.ru/d/lqhpsMCnQaXkzw",
+    "SP-9_IDE": "https://disk.yandex.ru/d/RsvI8Kw1G367Mg",
+    
+    # IA Profiles
+    "IA-1_DEF": "https://disk.yandex.ru/d/Ca6qVNiaScceHA",
+    "IA-2_SIT": "https://disk.yandex.ru/d/fQiK3NQ6kJB0vw",
+    "IA-3_CON": "https://disk.yandex.ru/d/44CwOGbfN2304g",
+    "IA-4_EXP": "https://disk.yandex.ru/d/vukRKPMMWiJUZw",
+    "IA-5_INT": "https://disk.yandex.ru/d/ERvhVQqxEgafsw",
+    "IA-6_AUT": "https://disk.yandex.ru/d/41U2jQq-SZBVPg",
+    "IA-7_VAL": "https://disk.yandex.ru/d/7cs7v7_phz5BjQ",
+    "IA-8_TRA": "https://disk.yandex.ru/d/3QpBmWsO8l3xlw",
+    "IA-9_IDE": "https://disk.yandex.ru/d/EjTrACZrYgjFEg",
+    
+    # IP Profiles
+    "IP-1_DEF": "https://disk.yandex.ru/d/MTfoxMFHrfP-Lw",
+    "IP-2_SIT": "https://disk.yandex.ru/d/L6X5a5rRT4FPWQ",
+    "IP-3_CON": "https://disk.yandex.ru/d/larM19K4iVyy6Q",
+    "IP-4_EXP": "https://disk.yandex.ru/d/jSvbjNOi3BuVAw",
+    "IP-5_INT": "https://disk.yandex.ru/d/ny-cnsvdtj_fDw",
+    "IP-6_AUT": "https://disk.yandex.ru/d/kDd9tKyKVughag",
+    "IP-7_VAL": "https://disk.yandex.ru/d/DNAG15nsH0-wYA",
+    "IP-8_TRA": "https://disk.yandex.ru/d/K90BW0SSTOuAhA",
+    "IP-9_IDE": "https://disk.yandex.ru/d/VIgdg8gFVp10aw",
+    
+    # Default
+    "default": "https://disk.yandex.ru/d/EYPIF9_puI_t0A"
 }
 
+USER_DISK_LINK = PROFILE_DISK_LINKS["SA-5_INT"]  # Ссылка на профиль пользователя
+EXAMPLE_DISK_LINK = PROFILE_DISK_LINKS["SA-3_CON"]  # Пример для демо
+AUTHOR_TELEGRAM = "https://t.me/meysternlp"
+
 def get_disk_link_by_profile(profile_code: str) -> str:
-    return PROFILE_DISK_LINKS.get(profile_code, PROFILE_DISK_LINKS["default"])
+    """
+    Умная функция поиска ссылки на Яндекс.Диск по коду профиля
+    Поддерживает разные форматы: SA-5_INT, SA_5_INT, sa-5-int и т.д.
+    """
+    if not profile_code:
+        logger.warning("⚠️ profile_code пустой, использую default")
+        return PROFILE_DISK_LINKS["default"]
+    
+    # Приводим к верхнему регистру и убираем лишние пробелы
+    profile_upper = profile_code.upper().strip()
+    logger.debug(f"🔍 Поиск ссылки для профиля: {profile_upper}")
+    
+    # 1. Прямое совпадение
+    if profile_upper in PROFILE_DISK_LINKS:
+        logger.debug(f"✅ Прямое совпадение: {profile_upper}")
+        return PROFILE_DISK_LINKS[profile_upper]
+    
+    # 2. Пробуем заменить _ на -
+    profile_with_hyphen = profile_upper.replace('_', '-')
+    if profile_with_hyphen in PROFILE_DISK_LINKS:
+        logger.debug(f"✅ После замены _ на -: {profile_with_hyphen}")
+        return PROFILE_DISK_LINKS[profile_with_hyphen]
+    
+    # 3. Пробуем заменить - на _
+    profile_with_underscore = profile_upper.replace('-', '_')
+    if profile_with_underscore in PROFILE_DISK_LINKS:
+        logger.debug(f"✅ После замены - на _: {profile_with_underscore}")
+        return PROFILE_DISK_LINKS[profile_with_underscore]
+    
+    # 4. Ищем по начальным символам (для тестовых форматов)
+    for key in PROFILE_DISK_LINKS:
+        if key.startswith(profile_upper[:5]):
+            logger.debug(f"✅ Найдено по начальным символам: {key}")
+            return PROFILE_DISK_LINKS[key]
+    
+    # 5. Если ничего не найдено - возвращаем default
+    logger.warning(f"⚠️ Профиль {profile_code} не найден, использую default")
+    return PROFILE_DISK_LINKS["default"]
 
 # ===== 4F-КОНСТАНТЫ =====
 FOUR_F_EMOJIS = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
@@ -530,7 +606,6 @@ async def safe_send_message(chat_id: int, text: str, context: ContextTypes.DEFAU
         parts = split_long_message(text)
         
         for i, part in enumerate(parts):
-            # Reply markup прикрепляем только к последней части
             current_markup = reply_markup if i == len(parts) - 1 else None
             
             for attempt in range(max_retries):
@@ -813,6 +888,8 @@ def init_test_data(user_id: int):
             return
         
         current_time = datetime.now().timestamp()
+        
+        # Тестовые данные с корректными профилями
         test_friends = [
             {
                 "invite_id": f"test_free_1_{user_id}",
@@ -901,6 +978,9 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.debug("📺 Отображаем экран результатов")
         profile = context.user_data.get("profile", USER_PROFILE)
         
+        # Получаем ссылку на профиль пользователя
+        user_profile_link = get_disk_link_by_profile(profile['display_name'])
+        
         message = f"""
 🧠 <b>ВАШ ПРОФИЛЬ ГОТОВ</b>
 
@@ -916,6 +996,9 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
 🛠 <b>ИНСТРУМЕНТ</b>
 Сегодня: попросите кого-то о маленькой услуге.
 Заметьте, что мир не рухнул.
+
+📁 <b>ССЫЛКА НА ПРОФИЛЬ:</b>
+{user_profile_link}
 """
         
         keyboard = [
@@ -928,9 +1011,9 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         if hasattr(update, 'callback_query') and update.callback_query:
             query = update.callback_query
-            await query.edit_message_text(message, reply_markup=reply_markup, parse_mode="HTML")
+            await query.edit_message_text(message, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
         else:
-            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
         
         context.user_data["conversation_state"] = RESULTS_SCREEN
         return RESULTS_SCREEN
@@ -939,7 +1022,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         return RESULTS_SCREEN
 
 # ============================================
-# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ (КНОПКИ НА ЧАСТИ 3)
+# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ
 # ============================================
 
 async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1001,11 +1084,9 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
         if message_part3.strip():
             logger.debug("✉️ Отправляем часть 3 с кнопками...")
             
-            # Разбиваем часть 3, если она слишком длинная
             parts = split_long_message(message_part3)
             
             for i, part in enumerate(parts):
-                # Кнопки прикрепляем только к последней части
                 current_markup = navigation_keyboard if i == len(parts) - 1 else None
                 
                 await context.bot.send_message(
@@ -1026,7 +1107,6 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
     except Exception as e:
         logger.error(f"❌ Ошибка в my_sexual_profile_callback: {e}\n{traceback.format_exc()}")
         try:
-            # В случае ошибки всё равно пытаемся отправить кнопки
             chat_id = update.callback_query.message.chat_id
             keyboard = [
                 [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
@@ -1154,11 +1234,11 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ
+# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ (С ПРАВИЛЬНЫМИ ССЫЛКАМИ)
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔍 МОИ ОТРАЖЕНИЯ - правильное форматирование"""
+    """🔍 МОИ ОТРАЖЕНИЯ - с правильными ссылками на Яндекс.Диск"""
     try:
         query = update.callback_query
         await query.answer("🔄 Загружаю отражения...")
@@ -1176,6 +1256,9 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         user_profile = context.user_data.get("profile", USER_PROFILE)
         user_profile_code = user_profile.get('display_name', 'SA-5_INT')
         
+        # Получаем ссылку на профиль пользователя
+        user_profile_link = get_disk_link_by_profile(user_profile_code)
+        
         message = f"""<b>🪞 МОИ ОТРАЖЕНИЯ</b>
 ────────────────
 
@@ -1186,7 +1269,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 <b>🪞 МОЁ ОТРАЖЕНИЕ</b>
 📌 Профиль: {user_profile_code}
 📁 Диск:
-{USER_DISK_LINK}
+{user_profile_link}
 """
 
         if used_invites:
@@ -1196,11 +1279,13 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             for idx, inv in enumerate(used_invites[:5], 1):
                 friend_name = inv.get("friend_name", "друг").replace('@', '')
                 friend_profile = inv.get("friend_profile", "SA-3_CON")
+                
+                # Получаем правильную ссылку на профиль друга
                 disk_link = get_disk_link_by_profile(friend_profile)
                 
                 message += f"""
-{idx}. 🆔 {friend_name} • {friend_profile}
-   {disk_link}"""
+{idx}. 🆔 <b>{friend_name}</b> • {friend_profile}
+   📁 {disk_link}"""
                 
                 if inv.get("purchased_functions"):
                     key_map = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
@@ -1562,6 +1647,9 @@ async def friend_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         progress = len(purchased)
         progress_bar = "▓" * progress + "░" * (4 - progress)
         
+        # Получаем ссылку на профиль друга
+        friend_disk_link = get_disk_link_by_profile(friend_profile)
+        
         message = f"""
 {inv_type} <b>{friend_name}</b>
 
@@ -1569,6 +1657,9 @@ async def friend_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 💎 {'🔓' if access_status == 'free' else '💰'}
 
 🔓 {progress}/4 [{progress_bar}]
+
+📁 <b>ССЫЛКА НА ПРОФИЛЬ:</b>
+{friend_disk_link}
 """
         
         keyboard = [
@@ -1586,7 +1677,8 @@ async def friend_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(
             message,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
+            parse_mode="HTML",
+            disable_web_page_preview=True
         )
         
         return FRIEND_MENU
@@ -1699,12 +1791,17 @@ async def intimate_profile_callback(update: Update, context: ContextTypes.DEFAUL
         profile_data = load_friend_intimate_profile(friend_name, friend_profile)
         message = format_friend_intimate_profile(profile_data, friend_name)
         
+        # Добавляем ссылку на профиль друга
+        friend_disk_link = get_disk_link_by_profile(friend_profile)
+        message += f"\n\n📁 <b>ССЫЛКА НА ПРОФИЛЬ:</b>\n{friend_disk_link}"
+        
         keyboard = [[InlineKeyboardButton("⬅️ НАЗАД", callback_data=f"friend_{friend_id}")]]
         
         await query.edit_message_text(
             message,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
+            parse_mode="HTML",
+            disable_web_page_preview=True
         )
         
         return FRIEND_MENU
@@ -2026,13 +2123,20 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 def main():
-    print("\n" + "="*60)
+    print("\n" + "="*70)
     print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.0")
-    print("="*60)
+    print("="*70)
+    print("✅ ПОЛНАЯ ИНТЕГРАЦИЯ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК")
+    print("✅ Умная функция поиска ссылок по профилю")
+    print("✅ Корректное отображение в \"Моих отражениях\"")
     print("✅ Кнопки прикреплены к части 3 интимного профиля")
-    print("✅ Нет отдельного сообщения с точкой")
-    print("✅ Правильное форматирование всех экранов")
-    print("="*60)
+    print("="*70)
+    print("📊 ДОСТУПНЫЕ ПРОФИЛИ:")
+    print("   SA: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
+    print("   SP: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
+    print("   IA: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
+    print("   IP: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
+    print("="*70)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
         print("\n❌ ОШИБКА: Укажите TELEGRAM_BOT_TOKEN!")
@@ -2136,7 +2240,7 @@ def main():
         app.add_handler(conv_handler)
         
         print("\n🚀 Бот запущен! Версия 19.0")
-        print("="*60)
+        print("="*70)
         logger.info("✅ Бот успешно запущен")
         
         app.run_polling(
