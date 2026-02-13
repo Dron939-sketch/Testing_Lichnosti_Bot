@@ -1688,8 +1688,7 @@ def main():
                 CallbackQueryHandler(skip_share, pattern="^skip_share$"),
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
                 CallbackQueryHandler(restart_test, pattern="^restart_test$"),
-                # 18+ кнопка
-                CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
+                # ❌ 18+ кнопка УДАЛЕНА - теперь она только в SEXUAL_PROFILE_SCREEN
             ],
             GIFT_SCREEN: [
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
