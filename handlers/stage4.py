@@ -13,11 +13,11 @@ from config import STAGE_4, RESULTS, PSYCHOLOGIST_TIPS, STAGE4_ANALYSIS_SCREEN
 from questions import STAGE_4_QUESTIONS
 from utils.calculations import (
     determine_dilts_level, 
-    need_clarification_stage4, 
     calculate_profile_final,
     check_profile_coherence
 )
-from utils.helpers import calculate_progress
+from utils.validators import need_clarification_stage4  # ИСПРАВЛЕНО: импорт из validators
+from utils.helpers import calculate_progress, generate_unique_callback
 
 logger = logging.getLogger(__name__)
 
@@ -110,10 +110,9 @@ async def ask_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     keyboard = []
     user_id = update.effective_user.id
-    timestamp = int(time.time())
     
     for option_id, option in question["options"].items():
-        unique_callback = f"stage4_{current}_{option_id}_{user_id}_{timestamp}"
+        unique_callback = generate_unique_callback("stage4", user_id, current, option_id)
         keyboard.append([
             InlineKeyboardButton(option["text"], callback_data=unique_callback)
         ])
@@ -220,7 +219,6 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await ask_clarification_question(update, context)
     
     profile_data = calculate_profile_final(context.user_data)
-    coherence = profile_data["coherence"]
     context.user_data["profile_data"] = profile_data
     
     analysis_text = STAGE4_ANALYSIS_SCREEN
