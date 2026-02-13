@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 17.0 - ИСПРАВЛЕНЫ ВСЕ ЭКРАНЫ
-✅ Экран "Мои отражения" - ссылки с новой строки
-✅ Экран "4F - кратко" - правильное форматирование
-✅ Экран "4F - подробно" - без звёздочек, с HTML
-✅ Только 3 кнопки в интимном профиле
+Версия: 18.0 - ИСПРАВЛЕНЫ ВСЕ НЕДОЧЕТЫ
+✅ Убрана точка между сообщением и кнопками
+✅ Правильное жирное выделение заголовков
+✅ Убраны лишние пробелы в "Мои отражения"
+✅ Ссылки на диске с новой строки
 """
 
 import logging
@@ -42,7 +42,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-# Подавляем лишние логи
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
@@ -939,11 +938,11 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         return RESULTS_SCREEN
 
 # ============================================
-# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ (ТОЛЬКО 3 КНОПКИ)
+# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ (БЕЗ ТОЧКИ)
 # ============================================
 
 async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Мой интимный профиль - 3 ЧАСТИ + 3 КНОПКИ"""
+    """🔞 Мой интимный профиль - 3 ЧАСТИ + 3 КНОПКИ (БЕЗ ТОЧКИ)"""
     try:
         query = update.callback_query
         logger.debug(f"🔍 ПОЛУЧЕН CALLBACK: {query.data} от пользователя {query.from_user.id}")
@@ -967,7 +966,7 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
         logger.debug(f"📄 Длина части 2: {len(message_part2)} символов")
         logger.debug(f"📄 Длина части 3: {len(message_part3)} символов")
         
-        # ТОЛЬКО 3 КНОПКИ - БЕЗ ЛИШНЕГО ТЕКСТА
+        # ТОЛЬКО 3 КНОПКИ
         keyboard = [
             [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ-ПРИГЛАШЕНИЕ", callback_data="create_invite")],
             [InlineKeyboardButton("🔍 ПОСМОТРЕТЬ МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
@@ -1003,18 +1002,17 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
             await safe_send_message(chat_id, message_part3, context)
             await asyncio.sleep(1)
         
-        # Отправляем ТОЛЬКО КНОПКИ (без сопроводительного текста)
+        # ОТПРАВЛЯЕМ ТОЛЬКО КНОПКИ (БЕЗ ТЕКСТА)
         logger.debug("✉️ Отправляем кнопки...")
-        success = await safe_send_message(
-            chat_id, 
-            ".",  # Минимальный текст
-            context, 
-            navigation_keyboard,
-            max_retries=5
-        )
         
-        if success:
-            logger.debug("✅ Все сообщения и кнопки отправлены успешно")
+        # В Telegram можно отправить сообщение с пробелом (невидимо для пользователя)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=" ",  # Пробел - невидим для пользователя
+            reply_markup=navigation_keyboard,
+            disable_web_page_preview=True
+        )
+        logger.debug("✅ Кнопки отправлены успешно")
         
         return MY_SEXUAL_PROFILE
         
@@ -1029,7 +1027,7 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
             ]
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=".",
+                text=" ",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         except:
@@ -1148,11 +1146,11 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ (ССЫЛКИ С НОВОЙ СТРОКИ)
+# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ (ПРАВИЛЬНОЕ ФОРМАТИРОВАНИЕ)
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔍 МОИ ОТРАЖЕНИЯ - ссылки с новой строки"""
+    """🔍 МОИ ОТРАЖЕНИЯ - правильное форматирование"""
     try:
         query = update.callback_query
         await query.answer("🔄 Загружаю отражения...")
@@ -1170,25 +1168,23 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         user_profile = context.user_data.get("profile", USER_PROFILE)
         user_profile_code = user_profile.get('display_name', 'SA-5_INT')
         
-        message = f"""
-🪞 МОИ ОТРАЖЕНИЯ
+        # Формируем сообщение с правильными отступами
+        message = f"""<b>🪞 МОИ ОТРАЖЕНИЯ</b>
 ────────────────
 
-📊 СТАТИСТИКА
+<b>📊 СТАТИСТИКА</b>
 🪞 Ссылок зеркал: {total_invites}
 👥 Посмотрелись в зеркало: {total_reflections}
 
-🪞 МОЁ ОТРАЖЕНИЕ
+<b>🪞 МОЁ ОТРАЖЕНИЕ</b>
 📌 Профиль: {user_profile_code}
-📁 Диск: 
+📁 Диск:
 {USER_DISK_LINK}
 """
 
         if used_invites:
             message += f"""
-
-👥 ОТРАЖЕНИЯ ТЕХ КТО ПОСМОТРЕЛСЯ В ВАШЕ ЗЕРКАЛО ({total_reflections})
-
+<b>👥 ОТРАЖЕНИЯ ТЕХ КТО ПОСМОТРЕЛСЯ В ВАШЕ ЗЕРКАЛО ({total_reflections})</b>
 """
             for idx, inv in enumerate(used_invites[:5], 1):
                 friend_name = inv.get("friend_name", "друг").replace('@', '')
@@ -1197,7 +1193,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 
                 message += f"""
 {idx}. 🆔 {friend_name} • {friend_profile}
-   📁 {disk_link}"""
+   {disk_link}"""
                 
                 if inv.get("purchased_functions"):
                     key_map = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
@@ -1208,8 +1204,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 message += f"\n\n... и ещё {len(used_invites) - 5}"
         else:
             message += f"""
-
-👥 ОТРАЖЕНИЯ ТЕХ КТО ПОСМОТРЕЛСЯ В ВАШЕ ЗЕРКАЛО (0)
+<b>👥 ОТРАЖЕНИЯ ТЕХ КТО ПОСМОТРЕЛСЯ В ВАШЕ ЗЕРКАЛО (0)</b>
 
 🌑 <i>Пока нет отражений</i>
 
@@ -1218,10 +1213,8 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 """
 
         message += f"""
-
 ────────────────
-💫 Каждое отражение — ключ к человеку.
-"""
+💫 Каждое отражение — ключ к человеку."""
 
         # Кнопки навигации
         keyboard = [
@@ -2028,12 +2021,12 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v17.0")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v18.0")
     print("="*60)
-    print("✅ Экран 'Мои отражения' - ссылки с новой строки")
-    print("✅ Экран '4F - кратко' - правильное форматирование")
-    print("✅ Экран '4F - подробно' - без звёздочек, с HTML")
-    print("✅ Только 3 кнопки в интимном профиле")
+    print("✅ Убрана точка между сообщением и кнопками")
+    print("✅ Правильное жирное выделение заголовков")
+    print("✅ Убраны лишние пробелы в 'Мои отражения'")
+    print("✅ Ссылки на диске с новой строки")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -2137,7 +2130,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 17.0")
+        print("\n🚀 Бот запущен! Версия 18.0")
         print("="*60)
         logger.info("✅ Бот успешно запущен")
         
