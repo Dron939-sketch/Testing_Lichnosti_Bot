@@ -4,13 +4,15 @@
 """
 
 import logging
+import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from config import STAGE_1, STAGE_2, PSYCHOLOGIST_TIPS, STAGE1_FEEDBACK
 from questions import STAGE_1_QUESTIONS
-from utils.calculations import determine_perception_type, need_clarification_stage1
-from utils.helpers import calculate_progress
+from utils.calculations import determine_perception_type
+from utils.validators import need_clarification_stage1  # ИСПРАВЛЕНО: импорт из validators
+from utils.helpers import calculate_progress, generate_unique_callback
 
 logger = logging.getLogger(__name__)
 
@@ -100,10 +102,9 @@ async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     keyboard = []
     user_id = update.effective_user.id
-    timestamp = int(time.time())
     
     for option_id, option in question["options"].items():
-        unique_callback = f"stage1_{current}_{option_id}_{user_id}_{timestamp}"
+        unique_callback = generate_unique_callback("stage1", user_id, current, option_id)
         keyboard.append([
             InlineKeyboardButton(option["text"], callback_data=unique_callback)
         ])
