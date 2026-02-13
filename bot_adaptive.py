@@ -11,6 +11,10 @@ import sys
 import asyncio
 import urllib.parse
 import time
+import base64
+import uuid
+import random
+import requests
 from typing import Dict, List, Optional, Any
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
