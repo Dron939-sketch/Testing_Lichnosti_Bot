@@ -11,6 +11,10 @@ import sys
 import asyncio
 import urllib.parse
 import time
+import base64  # ← ДОБАВЛЕНО для работы с ЮKassa
+import uuid   # ← ДОБАВЛЕНО для генерации уникальных ID
+import random # ← ДОБАВЛЕНО для генерации случайных строк
+import requests # ← ДОБАВЛЕНО для HTTP-запросов к ЮKassa
 from typing import Dict, List, Optional, Any
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
