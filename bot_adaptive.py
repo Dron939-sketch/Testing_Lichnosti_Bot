@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 10.5 - ИСПРАВЛЕНА КНОПКА "МОИ ОТРАЖЕНИЯ"
-✅ Добавлен await query.answer()
-✅ Исправлены тестовые данные
-✅ Убраны конфликтующие хендлеры
+Версия: 11.0 - НОВАЯ СИСТЕМА ПЛАТНЫХ ССЫЛОК
+✅ Убрана кнопка "Создать ссылку" из "Мои отражения"
+✅ Кнопка 4F выделена и перемещена вниз
+✅ Добавлена система лимитов (3 бесплатных ссылки)
+✅ Добавлены пакеты ссылок (3/5/10)
+✅ Новый премиум-дизайн с рамками и прогресс-барами
 """
 
 import logging
@@ -63,12 +65,22 @@ FRIEND_MENU = 3
 FOUR_F_MENU = 4
 FOUR_F_CONTENT = 5
 FOUR_F_PAYMENT_SCREEN = 6
+BUY_PACKAGES = 7  # НОВОЕ состояние для покупки пакетов
+FOUR_F_MAIN = 8   # НОВОЕ состояние для главного меню 4F
 
 # ===== КОНСТАНТЫ =====
 SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━━━"
 FREE_FRIEND_LIMIT = 2
 FRIEND_ACCESS_PRICE = 99
 FOUR_F_PRICE = 1
+
+# НОВЫЕ константы для лимитов ссылок
+FREE_INVITE_LIMIT = 3
+INVITE_PACKAGES = {
+    "3": {"price": 299, "links": 3, "emoji": "🥉", "popular": False},
+    "5": {"price": 499, "links": 5, "emoji": "🥈", "popular": True},
+    "10": {"price": 899, "links": 10, "emoji": "🥇", "popular": False}
+}
 
 # ===== ПРАВИЛЬНЫЕ 4F-КОНСТАНТЫ =====
 FOUR_F_EMOJIS = {
@@ -200,18 +212,18 @@ def get_emergency_profile() -> dict:
     }
 
 def format_intimate_profile(profile_data: dict, user_name: str) -> str:
-    """Форматирует интимный профиль"""
+    """Форматирует интимный профиль с новым дизайном"""
     message = f"""
-🔞 ИНТИМНЫЙ ПРОФИЛЬ
+🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ</b>
 {user_name}
 
 📊 Тип: {profile_data.get('profile_type', 'SA-5_INT')}
 🧠 Архетип: {profile_data.get('archetype', 'ЦЕРЕМОНИАЛЬНЫЙ')}
 
-💬 ЦИТАТА:
+💬 <b>ЦИТАТА:</b>
 {profile_data.get('quote', '«Со мной не скучно. Со мной — вкусно.»')}
 
-🧠 ВАША ПРИРОДА:
+🧠 <b>ВАША ПРИРОДА:</b>
 {profile_data.get('description', '')}
 """
     
@@ -235,24 +247,25 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> str:
             elif 'content' in section:
                 message += f"\n{section['content']}"
     
+    # НОВЫЙ ДИЗАЙН БЛОКА "ТАМ, ЗА ЗЕРКАЛОМ"
     message += f"""
 
 {SEXUAL_DIVIDER}
 
-🪞 ТАМ, ЗА ЗЕРКАЛОМ...
+🪞 <b>ТАМ, ЗА ЗЕРКАЛОМ...</b>
 
-Вы увидели только что СВОЁ 🪞 отражение.
-Но у каждого друга — своя тайна.
+Вы увидели только что СВОЁ отражение. ✨
+Но у <b>каждого друга</b> — своя тайна.
 Свои сценарии. Свои триггеры. Свои желания.
 
-⬇️ КАК УВИДЕТЬ ИХ:
+<b>⬇️ КАК УВИДЕТЬ ИХ:</b>
 
-1️⃣ Нажмите «🔞 СОЗДАТЬ ССЫЛКУ»
-2️⃣ Отправьте ссылку другу
-3️⃣ Друг проходит тест → вам открывается ЕГО профиль и интимные подробности
+<b>1.</b> 🚀 Нажмите «🔞 СОЗДАТЬ ССЫЛКУ»
+<b>2.</b> 💌 Отправьте ссылку другу
+<b>3.</b> 🔓 Друг проходит тест → вам открывается ЕГО профиль
 
-💫 Чем больше друзей увидят себя в зеркале —
-   тем больше тайн откроется вам.
+<b>💫 Чем больше друзей увидят себя в зеркале —</b>
+   <b>тем больше тайн откроется вам.</b>
 """
     
     return message
@@ -325,16 +338,16 @@ def get_friend_emergency_profile(friend_name: str) -> dict:
 def format_friend_intimate_profile(profile_data: dict, friend_name: str) -> str:
     """Форматирует интимный профиль ДРУГА"""
     message = f"""
-🔞 ИНТИМНЫЙ ПРОФИЛЬ ДРУГА
+🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ ДРУГА</b>
 👤 {friend_name}
 
 📊 Тип: {profile_data.get('profile_type', 'ТЕСТ-5_INT')}
 🧠 Архетип: {profile_data.get('archetype', 'ЦЕРЕМОНИАЛЬНЫЙ')}
 
-💬 ЦИТАТА:
+💬 <b>ЦИТАТА:</b>
 {profile_data.get('quote', f'«{friend_name}, со мной не скучно. Со мной — вкусно.»')}
 
-🧠 ЕГО ПРИРОДА:
+🧠 <b>ЕГО ПРИРОДА:</b>
 {profile_data.get('description', f'Тестовый профиль {friend_name}')}
 """
     
@@ -487,13 +500,14 @@ def count_free_friends(user_id: int) -> int:
     return len([inv for inv in invites if inv.get("status") == "used" and inv.get("access_status") == "free"])
 
 def init_test_data(user_id: int):
-    """Инициализирует тестовые данные с created_at"""
+    """Инициализирует тестовые данные с created_at и is_free"""
     invites = get_user_invites(user_id)
     if len(invites) > 0:
         return
     
     current_time = datetime.now().timestamp()
     
+    # ОБНОВЛЕННЫЕ тестовые данные с is_free
     test_friends = [
         {
             "invite_id": f"test_free_1_{user_id}",
@@ -506,7 +520,9 @@ def init_test_data(user_id: int):
             "access_paid": False,
             "created_at": current_time,
             "used_at": current_time,
-            "purchased_functions": []
+            "purchased_functions": [],
+            "is_free": True,
+            "invite_type": "🆓"
         },
         {
             "invite_id": f"test_free_2_{user_id}",
@@ -519,12 +535,51 @@ def init_test_data(user_id: int):
             "access_paid": False,
             "created_at": current_time - 86400,
             "used_at": current_time - 86400,
-            "purchased_functions": ["1F"]
+            "purchased_functions": ["1F"],
+            "is_free": True,
+            "invite_type": "🆓"
         }
     ]
     
     invites.extend(test_friends)
     logger.info(f"✅ Инициализированы тестовые данные для user_id={user_id}")
+
+# ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ЛИМИТОВ =====
+def get_user_limits(context: ContextTypes.DEFAULT_TYPE) -> dict:
+    """Получает или создает данные о лимитах пользователя"""
+    return context.user_data.setdefault("invite_limits", {
+        "free_used": 0,                    # Использовано бесплатных
+        "total_purchased": 0,               # Всего куплено ссылок
+        "paid_packages": []                  # История покупок
+    })
+
+def can_create_invite(user_limits: dict, total_invites: int) -> tuple:
+    """
+    Проверяет, может ли пользователь создать ссылку
+    Возвращает (can_create: bool, is_free: bool, message: str)
+    """
+    free_used = user_limits["free_used"]
+    
+    # Бесплатные есть?
+    if free_used < FREE_INVITE_LIMIT:
+        remaining = FREE_INVITE_LIMIT - free_used
+        return True, True, f"Осталось бесплатных: {remaining}"
+    
+    # Платные есть?
+    paid_available = user_limits["total_purchased"] - (total_invites - FREE_INVITE_LIMIT)
+    if paid_available > 0:
+        return True, False, f"Осталось платных: {paid_available}"
+    
+    # Нет доступа
+    return False, False, "Лимит исчерпан. Купите пакет ссылок."
+
+def create_progress_bar(current: int, total: int, length: int = 3) -> str:
+    """Создает прогресс-бар"""
+    if total == 0:
+        return "░" * length
+    filled = int(length * current / total)
+    empty = length - filled
+    return "▓" * filled + "░" * empty
 
 # ============================================
 # 🧠 ЭКРАН 1: РЕЗУЛЬТАТЫ
@@ -541,6 +596,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     init_test_data(user.id)
     context.user_data["sexual_invites"] = get_user_invites(user.id)
     
+    # Инициализируем лимиты
+    get_user_limits(context)
+    
     return await show_results_screen(update, context)
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -548,18 +606,18 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     profile = context.user_data.get("profile", USER_PROFILE)
     
     message = f"""
-🧠 ВАШ ПРОФИЛЬ ГОТОВ
+🧠 <b>ВАШ ПРОФИЛЬ ГОТОВ</b>
 
 📊 {profile['display_name']}
 
-💬 ЦИТАТА:
+💬 <b>ЦИТАТА:</b>
 «Я не ищу — я нахожу»
 
-💔 СУТЬ ПРОБЛЕМЫ
+💔 <b>СУТЬ ПРОБЛЕМЫ</b>
 Вам сложно просить о помощи, даже когда она нужна.
 Вы привыкли справляться сами, но это истощает.
 
-🛠 ИНСТРУМЕНТ
+🛠 <b>ИНСТРУМЕНТ</b>
 Сегодня: попросите кого-то о маленькой услуге.
 Заметьте, что мир не рухнул.
 """
@@ -609,13 +667,25 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
     return MY_SEXUAL_PROFILE
 
 # ============================================
-# 🔗 ЭКРАН 3: СОЗДАНИЕ ПРИГЛАШЕНИЯ
+# 🔗 ЭКРАН 3: СОЗДАНИЕ ПРИГЛАШЕНИЯ (ОБНОВЛЕН)
 # ============================================
 
 async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Создание ссылки-приглашения"""
+    """🔞 Создание ссылки-приглашения с проверкой лимитов"""
     query = update.callback_query
     await query.answer()
+    
+    # Получаем лимиты
+    user_limits = get_user_limits(context)
+    invites = context.user_data.get("sexual_invites", [])
+    total_invites = len(invites)
+    
+    # Проверяем, можно ли создать ссылку
+    can_create, is_free, limit_message = can_create_invite(user_limits, total_invites)
+    
+    if not can_create:
+        await query.answer("❌ Лимит ссылок исчерпан!", show_alert=True)
+        return await buy_invite_packages_callback(update, context)
     
     profile = context.user_data.get("profile", USER_PROFILE)
     
@@ -623,31 +693,48 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     invite_url = f"https://t.me/{BOT_USERNAME}?start={invite_code}"
     
     invite_message = (
-        "Есть одна штука.\n"
+        "✨ Есть одна штука.\n"
         "Определяет твой ночной тип личности.\n"
         "У меня — совпало процентов на 90.\n\n"
-        "Интересно, у тебя тоже?"
+        "🤫 Интересно, у тебя тоже?"
     )
     
     current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
     
+    # Определяем тип ссылки
+    invite_type = "🆓" if is_free else "💎"
+    invite_type_text = "бесплатная" if is_free else "платная"
+    
+    # Обновляем счетчики
+    if is_free:
+        user_limits["free_used"] += 1
+    
     text = f"""
-🔞 ВАША ССЫЛКА ГОТОВА!
+🔞 <b>✨ ВАША ССЫЛКА ГОТОВА! ✨</b>
+{invite_type} <b>{invite_type_text.upper()}</b>
 
 🔗 <code>{invite_url}</code>
 
-💬 ТЕКСТ СООБЩЕНИЯ:
-{invite_message}
+💬 <b>📨 ТЕКСТ СООБЩЕНИЯ:</b>
+<blockquote>{invite_message}</blockquote>
 
 {SEXUAL_DIVIDER}
-🟢 АКТИВНО • ожидание
-📅 {current_time}
+🟢 <b>• АКТИВНО •</b> ожидание друга
+📅 <b>Создано:</b> {current_time}
 {SEXUAL_DIVIDER}
 
-🎯 Через 15 минут после теста
-   вы увидите его 18+ профиль.
-   То, что скрывается даже от близких.
+🎯 <b>Через 15 минут после теста</b>
+   вы увидите его <b>18+ профиль</b>.
 """
+    
+    # Показываем остаток ссылок
+    remaining_free = max(0, FREE_INVITE_LIMIT - user_limits["free_used"])
+    remaining_paid = user_limits["total_purchased"] - (total_invites + 1 - user_limits["free_used"])
+    
+    if remaining_free > 0:
+        text += f"\n🆓 Осталось бесплатных: {remaining_free}"
+    if remaining_paid > 0:
+        text += f"\n💎 Осталось платных: {remaining_paid}"
     
     invite_data = {
         "invite_id": invite_code,
@@ -663,10 +750,11 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         "friend_name": None,
         "friend_profile": None,
         "access_status": None,
-        "purchased_functions": []
+        "purchased_functions": [],
+        "is_free": is_free,
+        "invite_type": invite_type
     }
     
-    invites = context.user_data.setdefault("sexual_invites", [])
     invites.insert(0, invite_data)
     
     user_id = query.from_user.id
@@ -676,8 +764,8 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
     
     keyboard = [
-        [InlineKeyboardButton("📤 Отправить другу", url=share_url)],
-        [InlineKeyboardButton("⬅️ Вернуться в профиль", callback_data="my_sexual_profile")]
+        [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
+        [InlineKeyboardButton("⬅️ К ОТРАЖЕНИЯМ", callback_data="my_invites")]
     ]
     
     await query.edit_message_text(
@@ -690,89 +778,139 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ - ИСПРАВЛЕНО!
+# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ - НОВЫЙ ДИЗАЙН
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔍 Мои отражения - 100% РАБОЧАЯ ВЕРСИЯ"""
+    """🔍 МОИ ОТРАЖЕНИЯ - ПРЕМИУМ ДИЗАЙН, БЕЗ КНОПКИ СОЗДАНИЯ ССЫЛКИ"""
     query = update.callback_query
-    await query.answer("🔄 Загружаю отражения...")  # ← КРИТИЧЕСКИ ВАЖНО!
+    await query.answer("🔄 Загружаю отражения...")
     
     user_id = query.from_user.id
     invites = get_user_invites(user_id)
     context.user_data["sexual_invites"] = invites
     
+    # Получаем лимиты
+    user_limits = get_user_limits(context)
+    
+    # Считаем статистику
     active_invites = [inv for inv in invites if inv.get("status") == "active"]
     used_invites = [inv for inv in invites if inv.get("status") == "used"]
     
     total_invites = len(invites)
     total_reflections = len(used_invites)
-    free_used = sum(1 for inv in used_invites if inv.get("access_status") == "free")
-    paid_available = max(0, FREE_FRIEND_LIMIT - free_used)
     
+    # Бесплатные лимиты
+    free_used = user_limits["free_used"]
+    free_remaining = max(0, FREE_INVITE_LIMIT - free_used)
+    
+    # Платные лимиты
+    paid_available = user_limits["total_purchased"] - (total_invites - free_used)
+    
+    # Прогресс-бар для бесплатных
+    free_progress = create_progress_bar(free_used, FREE_INVITE_LIMIT)
+    
+    # Основное сообщение с новым дизайном
     message = f"""
-🔍 МОИ ОТРАЖЕНИЯ
+🔍 <b>✨ МОИ ОТРАЖЕНИЯ ✨</b>
 
-📊 СТАТИСТИКА:
-   🔗 Всего ссылок: {total_invites}
-   ✨ Отражений: {total_reflections}
-   💎 Бесплатных: {free_used}/{FREE_FRIEND_LIMIT}
-   🔓 Доступно: {paid_available}
-
-{SEXUAL_DIVIDER}
+┌─ <b>📊 СТАТИСТИКА</b> ───────────────────
+│
+│   🔗 <b>Всего ссылок:</b>  {total_invites}
+│   ✨ <b>Отражений:</b>     {total_reflections}
+│
+│   🆓 <b>Бесплатные:</b>    {free_used}/{FREE_INVITE_LIMIT}  [{free_progress}]
+│   💎 <b>Платные:</b>       {max(0, paid_available)} доступно
+│
+└─────────────────────────────────
 """
     
-    keyboard = []
-    
+    # АКТИВНЫЕ ПРИГЛАШЕНИЯ (ЖДУТ ОТКЛИКА)
     if active_invites:
-        message += f"\n🟢 ЖДУТ ОТКЛИКА ✨"
-        for inv in active_invites[:3]:
-            created = datetime.fromtimestamp(inv.get("created_at", datetime.now().timestamp())).strftime('%d.%m')
-            days = int((datetime.now().timestamp() - inv.get("created_at", datetime.now().timestamp())) / 86400)
-            message += f"\n   • {created} • ждёт {days}д"
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"🔄 {inv['invite_id'][:8]}...",
-                    callback_data=f"check_status_{inv['invite_id']}"
-                )
-            ])
+        message += f"""
+┌─ <b>🟢 ЖДУТ ОТКЛИКА</b> ─────────────────
+│
+"""
+        now = datetime.now().timestamp()
+        for inv in active_invites[:5]:
+            created = datetime.fromtimestamp(inv.get("created_at", now)).strftime('%d.%m')
+            days = int((now - inv.get("created_at", now)) / 86400)
+            days_text = f"<b>{days}д</b>" if days > 0 else "<b>сегодня</b>"
+            inv_type = inv.get("invite_type", "🆓")
+            
+            message += f"│   {inv_type} • <b>{created}</b> • {days_text} ⏳\n"
+        
+        if len(active_invites) > 5:
+            message += f"│   ... и ещё {len(active_invites) - 5}\n"
+        message += f"│\n└─────────────────────────────────\n"
     else:
-        message += f"\n✨ У вас пока нет активных приглашений"
+        message += f"""
+┌─ <b>🟢 ЖДУТ ОТКЛИКА</b> ─────────────────
+│
+│   <i>Нет активных приглашений</i> 🌙
+│
+└─────────────────────────────────
+
+"""
     
+    # ОТРАЗИВШИЕСЯ ДРУЗЬЯ
     if used_invites:
-        message += f"\n\n✨ УЖЕ ОТРАЗИЛИСЬ — {len(used_invites)}"
+        message += f"""
+┌─ <b>✨ УЖЕ ОТРАЗИЛИСЬ</b> ───────────────
+│
+"""
         for inv in used_invites[:5]:
-            friend_name = inv.get("friend_name", "друг")
+            friend_name = inv.get("friend_name", "друг").replace('@', '')
             friend_profile = inv.get("friend_profile", "SA-3_CON")
             used_date = datetime.fromtimestamp(inv.get("used_at", inv.get("created_at", datetime.now().timestamp()))).strftime('%d.%m.%Y')
-            keys = ""
+            inv_type = inv.get("invite_type", "🆓")
+            
+            message += f"│   {inv_type} <b>{friend_name}</b>\n"
+            message += f"│      📊 {friend_profile}  •  {used_date}"
+            
+            # Добавляем купленные ключи
             if inv.get("purchased_functions"):
-                keys = f" • 🔑 {' '.join(inv['purchased_functions'])}"
+                key_map = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
+                keys = "  •  <b>" + " ".join(key_map.get(k, k) for k in inv["purchased_functions"]) + "</b>"
+                message += keys
             
-            message += f"\n\n   👤 {friend_name}"
-            message += f"\n   📊 {friend_profile} • {used_date}{keys}"
-            
-            if inv.get("friend_id"):
-                keyboard.append([
-                    InlineKeyboardButton(
-                        f"👤 {friend_name}",
-                        callback_data=f"friend_{inv['friend_id']}"
-                    )
-                ])
+            message += f"\n│\n"
+        
+        if len(used_invites) > 5:
+            message += f"│   ... и ещё {len(used_invites) - 5}\n│\n"
+        message += f"└─────────────────────────────────\n"
     else:
-        message += f"\n\n✨ У вас пока нет отражений"
-        message += f"\n\n💡 Создайте ссылку и отправьте другу —"
-        message += f"\n   когда он пройдет тест, его профиль появится здесь"
-    
-    message += f"""
+        message += f"""
+┌─ <b>✨ УЖЕ ОТРАЗИЛИСЬ</b> ───────────────
+│
+│   <i>Пока нет отражений</i> 🌑
+│
+│   💡 <b>Создайте ссылку</b> в профиле и отправьте другу —
+│      когда он пройдёт тест,
+│      его профиль появится здесь
+│
+└─────────────────────────────────
 
-{SEXUAL_DIVIDER}
-💡 Каждое отражение — ключ к человеку.
-    Узнайте его 4F-реакции и интимные сценарии.
 """
     
-    keyboard.append([InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")])
-    keyboard.append([InlineKeyboardButton("⬅️ К ИНТИМНОМУ ПРОФИЛЮ", callback_data="my_sexual_profile")])
+    # Подсказка
+    message += f"""
+💫 <b>Каждое отражение — ключ к человеку.</b>
+   Узнайте его 4F-реакции и интимные сценарии.
+"""
+    
+    # КНОПКИ - ТОЛЬКО 2 КНОПКИ (УБРАНА "СОЗДАТЬ ССЫЛКУ")
+    keyboard = []
+    
+    # Кнопка возврата
+    keyboard.append([
+        InlineKeyboardButton("◀️ К ИНТИМНОМУ ПРОФИЛЮ", callback_data="my_sexual_profile")
+    ])
+    
+    # Кнопка 4F - ВЫДЕЛЕННАЯ, СНИЗУ
+    keyboard.append([
+        InlineKeyboardButton("🔴🧬 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")
+    ])
     
     await query.edit_message_text(
         message,
@@ -783,7 +921,58 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 5: ПРОВЕРКА СТАТУСА
+# 🧬 НОВЫЙ ЭКРАН: ГЛАВНОЕ МЕНЮ 4F
+# ============================================
+
+async def four_f_main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """🧬 Главное меню 4F-ключей"""
+    query = update.callback_query
+    await query.answer()
+    
+    message = f"""
+🧬 <b>4F-КЛЮЧИ</b>
+
+<b>Что это?</b>
+4F — система доступа к глубинным состояниям человека.
+Четыре базовые реакции, зашитые в подкорке.
+
+<b>Доступные ключи:</b>
+
+1F 🔥 <b>НАПАДЕНИЕ / ЯРОСТЬ</b>
+└ Как гасить агрессию и не нарваться
+
+2F 🏃 <b>БЕГСТВО / СТРАХ</b>
+└ Чего он боится на самом деле
+
+3F 🧬 <b>СЕКС / ЖЕЛАНИЕ</b>
+└ Что включает его режим «хочу»
+
+4F 🍽 <b>ПОГЛОЩЕНИЕ / ДЕНЬГИ</b>
+└ Какие идеи прорастают в его голове
+
+{SEXUAL_DIVIDER}
+💡 Чтобы открыть 4F-ключи друга:
+   1. Выберите друга в списке отражений
+   2. Нажмите "🧬 4F" в его меню
+   3. Купите нужный ключ
+"""
+    
+    keyboard = [
+        [InlineKeyboardButton("🔍 К ОТРАЖЕНИЯМ", callback_data="my_invites")],
+        [InlineKeyboardButton("📘 ПОДРОБНЕЕ", callback_data="4f_explain")],
+        [InlineKeyboardButton("◀️ В ПРОФИЛЬ", callback_data="my_sexual_profile")]
+    ]
+    
+    await query.edit_message_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+    
+    return FOUR_F_MAIN
+
+# ============================================
+# 🔍 ЭКРАН 5: ПРОВЕРКА СТАТУСА (ОБНОВЛЕН)
 # ============================================
 
 async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -793,13 +982,25 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
     
     invite_id = query.data.replace("check_status_", "")
     
+    # Находим приглашение
+    invites = context.user_data.get("sexual_invites", [])
+    invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
+    
+    if not invite:
+        await query.answer("❌ Приглашение не найдено", show_alert=True)
+        return INVITES_LIST
+    
+    created_date = datetime.fromtimestamp(invite.get("created_at", datetime.now().timestamp())).strftime('%d.%m.%Y %H:%M')
+    invite_type = invite.get("invite_type", "🆓")
+    
     message = f"""
-🔍 СТАТУС ПРИГЛАШЕНИЯ
+🔍 <b>СТАТУС ПРИГЛАШЕНИЯ</b>
+{invite_type}
 
 🔗 <code>https://t.me/{BOT_USERNAME}?start={invite_id}</code>
 
-🟢 • • • АКТИВНО • • • ждёт друга
-⏳ Создано: {datetime.now().strftime('%d.%m.%Y %H:%M')}
+🟢 <b>• • • АКТИВНО • • •</b> ждёт друга
+📅 <b>Создано:</b> {created_date}
 
 ✨ Друг ещё не прошёл тест.
    Напомните ему о себе.
@@ -807,7 +1008,7 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
     
     keyboard = [
         [InlineKeyboardButton("⬅️ К ОТРАЖЕНИЯМ", callback_data="my_invites")],
-        [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")]
+        [InlineKeyboardButton("◀️ В ПРОФИЛЬ", callback_data="my_sexual_profile")]
     ]
     
     await query.edit_message_text(
@@ -819,7 +1020,164 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
     return INVITES_LIST
 
 # ============================================
-# 👤 ЭКРАН 6: МЕНЮ ПРОФИЛЯ ДРУГА
+# 💳 НОВЫЙ ЭКРАН: ПОКУПКА ПАКЕТОВ ССЫЛОК
+# ============================================
+
+async def buy_invite_packages_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """💎 Покупка пакетов ссылок"""
+    query = update.callback_query
+    await query.answer()
+    
+    message = f"""
+💎 <b>ПАКЕТЫ ПРИГЛАШЕНИЙ</b>
+
+<b>🆓 Бесплатные ссылки закончились!</b>
+У вас было {FREE_INVITE_LIMIT} бесплатные ссылки, и вы их использовали.
+
+<b>Выберите пакет для продолжения:</b>
+
+"""
+    
+    for links, data in INVITE_PACKAGES.items():
+        popular = " 🔥 ХИТ" if data["popular"] else ""
+        price_per_link = data["price"] // data["links"]
+        message += f"""
+{data['emoji']} <b>{data['links']} ссылок</b> — {data['price']}₽{popular}
+   💎 {price_per_link}₽ за ссылку
+"""
+    
+    message += f"""
+
+{SEXUAL_DIVIDER}
+✅ После оплаты ссылки добавляются к вашему лимиту
+🎁 Чем больше пакет — тем выгоднее!
+"""
+    
+    keyboard = []
+    
+    # Кнопки пакетов
+    for links, data in INVITE_PACKAGES.items():
+        keyboard.append([
+            InlineKeyboardButton(
+                f"{data['emoji']} {data['links']} ссылок - {data['price']}₽",
+                callback_data=f"pay_package_{links}"
+            )
+        ])
+    
+    keyboard.append([
+        InlineKeyboardButton("◀️ Назад", callback_data="my_invites")
+    ])
+    
+    await query.edit_message_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+    
+    return BUY_PACKAGES
+
+# ============================================
+# 💳 НОВЫЙ ЭКРАН: ОПЛАТА ПАКЕТА
+# ============================================
+
+async def pay_package_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """💳 Оплата пакета ссылок"""
+    query = update.callback_query
+    await query.answer("💰 Формирую счёт...")
+    
+    package_id = query.data.split("_")[2]
+    package = INVITE_PACKAGES.get(package_id)
+    
+    if not package:
+        await query.answer("❌ Пакет не найден", show_alert=True)
+        return
+    
+    payment_id = generate_payment_id("package", query.from_user.id)
+    
+    message = f"""
+💳 <b>ОПЛАТА ПАКЕТА</b>
+
+{package['emoji']} <b>Пакет: {package['links']} ссылок</b>
+💰 <b>Сумма: {package['price']}₽</b>
+
+✅ После оплаты ссылки будут добавлены к вашему аккаунту
+"""
+    
+    keyboard = [
+        [InlineKeyboardButton(f"💳 ОПЛАТИТЬ {package['price']}₽", callback_data=f"process_package_payment_{payment_id}_{package_id}")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="buy_invite_packages")]
+    ]
+    
+    await query.edit_message_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+    
+    return FOUR_F_PAYMENT_SCREEN
+
+# ============================================
+# ✅ НОВЫЙ ЭКРАН: ПОДТВЕРЖДЕНИЕ ОПЛАТЫ ПАКЕТА
+# ============================================
+
+async def process_package_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """✅ Подтверждение оплаты пакета"""
+    query = update.callback_query
+    await query.answer("🔄 Проверяю оплату...")
+    
+    parts = query.data.split("_")
+    payment_id = parts[3]
+    package_id = parts[4]
+    
+    package = INVITE_PACKAGES.get(package_id)
+    
+    # Здесь должна быть реальная проверка платежа
+    # Сейчас имитируем успешную оплату
+    
+    # Обновляем лимиты пользователя
+    user_limits = get_user_limits(context)
+    user_limits["total_purchased"] += package["links"]
+    user_limits["paid_packages"].append({
+        "package": package_id,
+        "links": package["links"],
+        "price": package["price"],
+        "payment_id": payment_id,
+        "purchased_at": datetime.now().timestamp()
+    })
+    
+    # Считаем оставшиеся лимиты для отображения
+    invites = context.user_data.get("sexual_invites", [])
+    total_invites = len(invites)
+    paid_available = user_limits["total_purchased"] - (total_invites - user_limits["free_used"])
+    
+    message = f"""
+✅ <b>ОПЛАТА ПРОШЛА УСПЕШНО!</b>
+
+{package['emoji']} <b>{package['links']} ссылок</b> добавлено
+💰 Сумма: {package['price']}₽
+
+💎 <b>Теперь у вас:</b>
+   • Бесплатных использовано: {user_limits['free_used']}/{FREE_INVITE_LIMIT}
+   • Платных доступно: {paid_available}
+
+🎉 Можете создавать новые приглашения!
+"""
+    
+    keyboard = [
+        [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
+        [InlineKeyboardButton("◀️ К ОТРАЖЕНИЯМ", callback_data="my_invites")]
+    ]
+    
+    await query.edit_message_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+    
+    return INVITES_LIST
+
+# ============================================
+# 👤 ЭКРАН 6: МЕНЮ ПРОФИЛЯ ДРУГА (ОБНОВЛЕН)
 # ============================================
 
 def get_friend_by_id(context: ContextTypes.DEFAULT_TYPE, friend_id: int) -> Optional[dict]:
@@ -845,10 +1203,11 @@ async def friend_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data["current_friend_id"] = friend_id
     context.user_data["current_friend_data"] = friend_data
     
-    friend_name = friend_data.get("friend_name", "друг")
+    friend_name = friend_data.get("friend_name", "друг").replace('@', '')
     friend_profile = friend_data.get("friend_profile", "SA-3_CON")
     access_status = friend_data.get("access_status", "free")
     free_count = count_free_friends(query.from_user.id)
+    inv_type = friend_data.get("invite_type", "🆓")
     
     if access_status == "locked" or (free_count >= FREE_FRIEND_LIMIT and not friend_data.get("access_paid")):
         return await show_payment_access_screen(update, context, friend_data)
@@ -858,12 +1217,12 @@ async def friend_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     progress_bar = "▓" * progress + "░" * (4 - progress)
     
     message = f"""
-👤 {friend_name}
+{inv_type} <b>{friend_name}</b>
 
 📊 {friend_profile}
 💎 {'🔓 Бесплатно' if access_status == 'free' else '💰 Куплен'}
 
-🔓 РАЗГАДАНО: {progress}/4 [{progress_bar}]
+🔓 <b>РАЗГАДАНО:</b> {progress}/4 [{progress_bar}]
 """
     
     keyboard = [
@@ -894,20 +1253,20 @@ async def show_payment_access_screen(update: Update, context: ContextTypes.DEFAU
     """💰 Разблокировка платного друга"""
     query = update.callback_query
     
-    friend_name = friend_data.get("friend_name", "друг")
+    friend_name = friend_data.get("friend_name", "друг").replace('@', '')
     friend_profile = friend_data.get("friend_profile", "SA-3_CON")
     free_count = count_free_friends(query.from_user.id)
     
     message = f"""
-🔒 {friend_name} ЗАБЛОКИРОВАН
+🔒 <b>{friend_name} ЗАБЛОКИРОВАН</b>
 
 📊 {friend_profile}
 
-⚠️ БЕСПЛАТНЫЙ ЛИМИТ ИСЧЕРПАН
+⚠️ <b>БЕСПЛАТНЫЙ ЛИМИТ ИСЧЕРПАН</b>
    Использовано: {free_count}/{FREE_FRIEND_LIMIT}
    Следующий друг: {FRIEND_ACCESS_PRICE}₽
 
-💰 РАЗБЛОКИРОВАТЬ ДОСТУП:
+💰 <b>РАЗБЛОКИРОВАТЬ ДОСТУП:</b>
    • Цена: {FRIEND_ACCESS_PRICE}₽ (разово)
    • Стандартный профиль
    • Интимный профиль
@@ -928,7 +1287,7 @@ async def show_payment_access_screen(update: Update, context: ContextTypes.DEFAU
     return FOUR_F_PAYMENT_SCREEN
 
 # ============================================
-# 📊 ЭКРАН 8: СТАНДАРТНЫЙ ПРОФИЛЬ
+# 📊 ЭКРАН 8: СТАНДАРТНЫЙ ПРОФИЛЬ (ОБНОВЛЕН)
 # ============================================
 
 async def standard_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -938,25 +1297,25 @@ async def standard_profile_callback(update: Update, context: ContextTypes.DEFAUL
     
     friend_id = int(query.data.split("_")[1])
     friend_data = get_friend_by_id(context, friend_id)
-    friend_name = friend_data.get("friend_name", "друг") if friend_data else "друг"
+    friend_name = friend_data.get("friend_name", "друг").replace('@', '') if friend_data else "друг"
     
     profile = load_friend_standard_profile()
     
     message = f"""
-📊 {friend_name}
+📊 <b>{friend_name}</b>
 
-🧠 Архетип: {profile['archetype']}
+🧠 <b>Архетип:</b> {profile['archetype']}
 
-💬 Цитата:
+💬 <b>Цитата:</b>
 {profile['quote']}
 
-💔 Суть проблемы:
+💔 <b>Суть проблемы:</b>
 {profile['pain']}
 
-🛠 Инструмент:
+🛠 <b>Инструмент:</b>
 {profile['immediate_tool']}
 
-🚀 Следующие шаги:
+🚀 <b>Следующие шаги:</b>
 {profile['cta']}
 """
     
@@ -973,7 +1332,7 @@ async def standard_profile_callback(update: Update, context: ContextTypes.DEFAUL
     return FRIEND_MENU
 
 # ============================================
-# 🔞 ЭКРАН 9: ИНТИМНЫЙ ПРОФИЛЬ ДРУГА
+# 🔞 ЭКРАН 9: ИНТИМНЫЙ ПРОФИЛЬ ДРУГА (ОБНОВЛЕН)
 # ============================================
 
 async def intimate_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -988,7 +1347,7 @@ async def intimate_profile_callback(update: Update, context: ContextTypes.DEFAUL
         await query.answer("❌ Друг не найден", show_alert=True)
         return FRIEND_MENU
     
-    friend_name = friend_data.get("friend_name", "друг")
+    friend_name = friend_data.get("friend_name", "друг").replace('@', '')
     friend_profile = friend_data.get("friend_profile", "SA-3_CON")
     
     profile_data = load_friend_intimate_profile(friend_name, friend_profile)
@@ -1022,14 +1381,14 @@ async def four_f_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("❌ Друг не найден", show_alert=True)
         return INVITES_LIST
     
-    friend_name = friend_data.get("friend_name", "друг")
+    friend_name = friend_data.get("friend_name", "друг").replace('@', '')
     friend_profile = friend_data.get("friend_profile", "SA-3_CON")
     purchased = friend_data.get("purchased_functions", [])
     
     hot_hint = "\n🔥 ХИТ ПРОДАЖ: 1F покупают в 2 раза чаще"
     
     message = f"""
-🧬 4F-КЛЮЧИ ДЛЯ {friend_name}
+🧬 <b>4F-КЛЮЧИ ДЛЯ {friend_name}</b>
 
 📊 {friend_profile}
 {hot_hint if not purchased else ""}
@@ -1129,13 +1488,13 @@ async def buy_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.answer("❌ Друг не найден", show_alert=True)
         return FOUR_F_MENU
     
-    friend_name = friend_data.get("friend_name", "друг")
+    friend_name = friend_data.get("friend_name", "друг").replace('@', '')
     friend_profile = friend_data.get("friend_profile", "SA-3_CON")
     
     content = load_4f_content(function)
     
     message = f"""
-{content['emoji']} {content['title']}
+{content['emoji']} <b>{content['title']}</b>
 {content['subtitle']}
 
 👤 Друг: {friend_name}
@@ -1143,7 +1502,7 @@ async def buy_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 {content['description']}
 
-💰 Цена: 1₽ (тестовый режим)
+💰 <b>Цена: 1₽ (тестовый режим)</b>
 """
     
     payment_id = generate_payment_id("4f", query.from_user.id)
@@ -1187,7 +1546,7 @@ async def process_payment_callback(update: Update, context: ContextTypes.DEFAULT
         return FOUR_F_PAYMENT_SCREEN
     
     message = f"""
-💳 СЧЁТ СФОРМИРОВАН
+💳 <b>СЧЁТ СФОРМИРОВАН</b>
 
 🔑 Ключ: {function}
 👤 Друг: ID {friend_id}
@@ -1226,12 +1585,12 @@ async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     content = load_4f_content(function)
     
     message = f"""
-🎉 КЛЮЧ АКТИВИРОВАН!
+🎉 <b>КЛЮЧ АКТИВИРОВАН!</b>
 
-{content['emoji']} {content['title']}
+{content['emoji']} <b>{content['title']}</b>
 {content['subtitle']}
 
-🎯 ТРИГГЕР-ФРАЗЫ:
+<b>🎯 ТРИГГЕР-ФРАЗЫ:</b>
 """
     
     for i, trigger in enumerate(content['triggers'][:3], 1):
@@ -1239,10 +1598,10 @@ async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     
     message += f"""
 
-🧠 ПСИХОЛОГИЧЕСКИЙ РАЗБОР:
+<b>🧠 ПСИХОЛОГИЧЕСКИЙ РАЗБОР:</b>
 {content['analysis']}
 
-📋 ПРОТОКОЛ ПРИМЕНЕНИЯ:
+<b>📋 ПРОТОКОЛ ПРИМЕНЕНИЯ:</b>
 {content['protocol']}
 
 {content['tag']}
@@ -1323,19 +1682,20 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return RESULTS_SCREEN
 
 # ============================================
-# 🚀 ЗАПУСК С ИСПРАВЛЕННЫМ CONVERSATIONHANDLER
+# 🚀 ЗАПУСК С ОБНОВЛЕННЫМ CONVERSATIONHANDLER
 # ============================================
 
 def main():
-    """Запуск бота - 100% РАБОЧАЯ ВЕРСИЯ"""
+    """Запуск бота - НОВАЯ ВЕРСИЯ 11.0"""
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v10.5")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v11.0")
     print("="*60)
-    print("✅ ИСПРАВЛЕНО: КНОПКА «МОИ ОТРАЖЕНИЯ» РАБОТАЕТ!")
-    print("   • Добавлен await query.answer() в my_invites_callback")
-    print("   • Исправлены тестовые данные (добавлен created_at)")
-    print("   • Убраны конфликтующие хендлеры")
-    print("   • Добавлены безопасные .get() для всех полей")
+    print("✅ НОВАЯ СИСТЕМА ПЛАТНЫХ ССЫЛОК!")
+    print("   • Убрана кнопка «Создать ссылку» из «Мои отражения»")
+    print("   • Кнопка 4F выделена и перемещена вниз")
+    print("   • Добавлены лимиты: 3 бесплатных ссылки")
+    print("   • Пакеты ссылок: 3/299₽, 5/499₽, 10/899₽")
+    print("   • Новый премиум-дизайн с рамками")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -1345,7 +1705,7 @@ def main():
     
     app = Application.builder().token(TOKEN).build()
     
-    # ===== СОЗДАЕМ CONVERSATION HANDLER =====
+    # ===== ОБНОВЛЕННЫЙ CONVERSATION HANDLER =====
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -1363,11 +1723,12 @@ def main():
             ],
             
             INVITES_LIST: [
-                CallbackQueryHandler(create_invite_callback, pattern='^create_invite$'),
                 CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+                CallbackQueryHandler(four_f_main_menu_callback, pattern='^four_f_main_menu$'),
                 CallbackQueryHandler(check_status_callback, pattern='^check_status_'),
                 CallbackQueryHandler(friend_menu_callback, pattern='^friend_'),
                 CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
+                CallbackQueryHandler(buy_invite_packages_callback, pattern='^buy_invite_packages$'),
                 CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
             ],
             
@@ -1395,8 +1756,22 @@ def main():
                 CallbackQueryHandler(process_payment_callback, pattern='^process_payment_'),
                 CallbackQueryHandler(dummy_callback, pattern='^check_payment_'),
                 CallbackQueryHandler(dummy_callback, pattern='^pay_access_'),
+                CallbackQueryHandler(pay_package_callback, pattern='^pay_package_'),
+                CallbackQueryHandler(process_package_payment_callback, pattern='^process_package_payment_'),
                 CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
+                CallbackQueryHandler(buy_invite_packages_callback, pattern='^buy_invite_packages$'),
                 CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+            ],
+            
+            BUY_PACKAGES: [
+                CallbackQueryHandler(pay_package_callback, pattern='^pay_package_'),
+                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+            ],
+            
+            FOUR_F_MAIN: [
+                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+                CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
+                CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
             ],
         },
         fallbacks=[
@@ -1407,10 +1782,9 @@ def main():
         persistent=False,
     )
     
-    # Добавляем ТОЛЬКО ConversationHandler - никаких других хендлеров!
     app.add_handler(conv_handler)
     
-    print("\n🚀 Бот запущен! Кнопка «МОИ ОТРАЖЕНИЯ» РАБОТАЕТ!")
+    print("\n🚀 Бот запущен! Новая версия 11.0")
     print("="*60)
     
     app.run_polling()
