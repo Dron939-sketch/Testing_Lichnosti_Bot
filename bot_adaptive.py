@@ -2362,7 +2362,7 @@ async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return RESULTS
 
 async def back_to_results_after_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат к результатам после просмотра подарка"""
+    """Возврат к результатам после подарка"""
     query = update.callback_query
     await query.answer("🔄 Возвращаюсь к результатам...")
     
@@ -2390,6 +2390,32 @@ async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"✅ User {update.effective_user.id}: confirm_share → open_gift_screen")
     return await open_gift_screen(update, context)
+
+async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Перезапуск теста"""
+    query = update.callback_query
+    await query.answer("🔄 Перезапускаю тест...")
+    
+    # Очищаем данные пользователя
+    context.user_data.clear()
+    
+    # Инициализируем новые данные
+    context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
+    context.user_data["stage1_current"] = 0
+    context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
+    context.user_data["stage3_level_scores"] = []
+    context.user_data["stage4_dilts_answers"] = []
+    context.user_data["processing"] = False
+    context.user_data["has_shared"] = False
+    
+    # Инициализируем хранилище приглашений
+    user_id = query.from_user.id
+    context.user_data["sexual_invites"] = get_user_invites(user_id)
+    
+    logger.info(f"User {user_id} перезапустил тест")
+    
+    # Переходим к первому этапу
+    return await show_stage_1_intro(update, context)
 
 # ============================================
 # ФУНКЦИИ ВОПРОСОВ
