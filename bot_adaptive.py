@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 12.0 - ВАШ ДИЗАЙН "МОИ ОТРАЖЕНИЯ" + ДВУХУРОВНЕВАЯ 4F
+Версия: 12.1 - УЛУЧШЕННАЯ ЗАГРУЗКА ПРОФИЛЯ
 ✅ Полностью переработан экран "Мои отражения" под ваш минималистичный дизайн
 ✅ Добавлены ссылки на Яндекс.Диск для каждого профиля
 ✅ Двухуровневая система 4F: кратко (обучайка) и подробно (стимульный контроль)
 ✅ Все кнопки управления убраны, только навигационные
-✅ Добавлено логирование ошибок и процессов
+✅ УЛУЧШЕНО: умный поиск файла профиля с диагностикой
+✅ УЛУЧШЕНО: подробное логирование каждого шага
 """
 
 import logging
@@ -81,7 +82,7 @@ FOUR_F_CONTENT = 5
 FOUR_F_PAYMENT_SCREEN = 6
 BUY_PACKAGES = 7
 FOUR_F_MAIN = 8
-FOUR_F_DETAILED = 9  # НОВОЕ состояние для подробного описания
+FOUR_F_DETAILED = 9
 
 # ===== КОНСТАНТЫ =====
 SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━━━"
@@ -262,7 +263,7 @@ FOUR_F_EXPLANATION = """
 💰 <b>Цена: 1₽</b> (тестовый режим)
 """
 
-# ===== ПОДРОБНОЕ ОПИСАНИЕ 4F (НОВОЕ) =====
+# ===== ПОДРОБНОЕ ОПИСАНИЕ 4F (ДЛЯ ОБУЧАЙКИ) =====
 FOUR_F_DETAILED_EXPLANATION = """
 🔥 <b>1F - ЯРОСТЬ / НАПАДЕНИЕ</b>
 <i>Стимулы, запускающие агрессию</i>
@@ -328,28 +329,68 @@ FOUR_F_DETAILED_EXPLANATION = """
    • Сценарий «Топливо»
 """
 
-# ===== ЗАГРУЗКА ИНТИМНОГО ПРОФИЛЯ ИЗ JSON =====
+# ===== УЛУЧШЕННАЯ ЗАГРУЗКА ИНТИМНОГО ПРОФИЛЯ ИЗ JSON =====
 def load_intimate_profile() -> dict:
-    """Загружает интимный профиль из JSON файла"""
+    """Загружает интимный профиль - ищет в нескольких местах"""
     try:
+        bot_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Все возможные пути где может лежать файл
         possible_paths = [
+            # Вариант А: sexual_18 рядом с ботом (ПРИОРИТЕТ)
+            os.path.join(bot_dir, "sexual_18", "sa_5_int.json"),
+            
+            # Вариант Б: через PROJECT_ROOT
+            os.path.join(PROJECT_ROOT, "sexual_18", "sa_5_int.json"),
             os.path.join(PROJECT_ROOT, "profiles", "sexual_18", "sa_5_int.json"),
+            
+            # Относительные пути
+            os.path.join("sexual_18", "sa_5_int.json"),
             os.path.join("profiles", "sexual_18", "sa_5_int.json"),
-            os.path.join(os.path.dirname(__file__), "profiles", "sexual_18", "sa_5_int.json"),
+            
+            # Абсолютные пути (для Render.com)
+            "/opt/render/project/src/sexual_18/sa_5_int.json",
+            "/opt/render/project/src/profiles/sexual_18/sa_5_int.json",
         ]
         
-        for profile_path in possible_paths:
-            if os.path.exists(profile_path):
-                with open(profile_path, 'r', encoding='utf-8') as f:
+        logger.info("🔍 Поиск файла профиля:")
+        for path in possible_paths:
+            logger.info(f"   Проверяем: {path}")
+            if os.path.exists(path):
+                logger.info(f"   ✅ НАЙДЕН: {path}")
+                
+                with open(path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    logger.info(f"✅ Загружен интимный профиль: {profile_path}")
-                    return data
+                    
+                    # Проверяем что загрузили
+                    sections = data.get('sections', {})
+                    logger.info(f"   📊 Секций загружено: {len(sections)}")
+                    
+                    # Если секции есть - успех
+                    if sections:
+                        logger.info(f"   ✅ Профиль успешно загружен: {data.get('profile_type', 'unknown')}")
+                        return data
+                    else:
+                        logger.warning("   ⚠️ Файл найден но секции пустые!")
+                        return data
+            
+            logger.info(f"   ❌ Не найден")
         
-        logger.warning(f"⚠️ Файл профиля не найден, используем аварийный")
+        # Если ничего не нашли
+        logger.error("❌ Файл sa_5_int.json не найден нигде!")
+        
+        # Диагностика - покажем содержимое директорий
+        if os.path.exists(os.path.join(bot_dir, "sexual_18")):
+            logger.info(f"📁 В sexual_18 есть: {os.listdir(os.path.join(bot_dir, 'sexual_18'))}")
+        if os.path.exists(os.path.join(PROJECT_ROOT, "sexual_18")):
+            logger.info(f"📁 В PROJECT_ROOT/sexual_18 есть: {os.listdir(os.path.join(PROJECT_ROOT, 'sexual_18'))}")
+        if os.path.exists(os.path.join(PROJECT_ROOT, "profiles", "sexual_18")):
+            logger.info(f"📁 В profiles/sexual_18 есть: {os.listdir(os.path.join(PROJECT_ROOT, 'profiles', 'sexual_18'))}")
+        
         return get_emergency_profile()
         
     except Exception as e:
-        logger.error(f"❌ Ошибка загрузки интимного профиля: {e}\n{traceback.format_exc()}")
+        logger.error(f"❌ Ошибка загрузки: {e}\n{traceback.format_exc()}")
         return get_emergency_profile()
 
 def get_emergency_profile() -> dict:
@@ -997,7 +1038,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         user_profile = context.user_data.get("profile", USER_PROFILE)
         user_profile_code = user_profile.get('display_name', 'SA-5_INT')
         
-        # ВАШ ДИЗАЙН - ТОЧНО ПО ТЗ
+        # ВАШ ДИЗАЙН
         message = f"""
 ══════════════════
 📊  СТАТИСТИКА
@@ -1055,7 +1096,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 💫  <i>Каждое отражение — ключ к человеку</i>
 """
 
-        # Кнопки навигации (только 2)
+        # Кнопки навигации
         keyboard = [
             [InlineKeyboardButton("◀️ К ПРОФИЛЮ", callback_data="my_sexual_profile")],
             [InlineKeyboardButton("🔴 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")]
@@ -1107,7 +1148,7 @@ async def four_f_main_menu_callback(update: Update, context: ContextTypes.DEFAUL
         return INVITES_LIST
 
 # ============================================
-# 📘 ЭКРАН 6: ПОДРОБНОЕ ОПИСАНИЕ 4F (НОВЫЙ)
+# 📘 ЭКРАН 6: ПОДРОБНОЕ ОПИСАНИЕ 4F
 # ============================================
 
 async def four_f_detailed_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1873,12 +1914,13 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v12.0")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v12.1")
     print("="*60)
     print("✅ ВАШ ДИЗАЙН экрана «Мои отражения»")
     print("✅ Ссылки на Яндекс.Диск для каждого профиля")
     print("✅ Двухуровневая система 4F: кратко и подробно")
     print("✅ Минималистичная навигация (только 2 кнопки)")
+    print("✅ УЛУЧШЕНО: умный поиск файла профиля с диагностикой")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -1968,7 +2010,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 12.0")
+        print("\n🚀 Бот запущен! Версия 12.1")
         print("="*60)
         logger.info("✅ Бот успешно запущен")
         
