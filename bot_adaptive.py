@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 14.2 - ИСПРАВЛЕНО ДЛИННОЕ СООБЩЕНИЕ
+Версия: 15.0 - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ
 ✅ ВАШ ДИЗАЙН экрана «Мои отражения»
 ✅ Ссылки на Яндекс.Диск для каждого профиля
 ✅ ПОЛНЫЙ 4F функционал с покупкой ключей
 ✅ ИСПРАВЛЕН экран краткого описания 4F (убрана цена)
-✅ ИСПРАВЛЕН экран подробного описания 4F (добавлена ссылка и кнопка запроса)
-✅ ИСПРАВЛЕНО: интимный профиль разбит на 2 сообщения (было слишком длинно)
+✅ ИСПРАВЛЕН экран подробного описания 4F (ссылка + кнопка)
+✅ ИСПРАВЛЕНО: интимный профиль разбит на 3 части
+✅ ИСПРАВЛЕНО: убраны индикаторы частей и лишние отступы
+✅ ИСПРАВЛЕНО: формат шапки "📊 Имя, SA-5_INT"
 """
 
 import logging
@@ -412,14 +414,14 @@ def get_emergency_profile() -> dict:
         "sections": {}
     }
 
+# ===== ФУНКЦИИ ФОРМАТИРОВАНИЯ ИНТИМНОГО ПРОФИЛЯ (3 ЧАСТИ) =====
 def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
     """Форматирует ПЕРВУЮ ЧАСТЬ интимного профиля"""
     try:
         message = f"""
-🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ</b> (часть 1/2)
-{user_name}
+🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ</b>
+📊 {user_name}, {profile_data.get('profile_type', 'SA-5_INT')}
 
-📊 Тип: {profile_data.get('profile_type', 'SA-5_INT')}
 🧠 Архетип: {profile_data.get('archetype', 'ЦЕРЕМОНИАЛЬНЫЙ')}
 
 💬 <b>ЦИТАТА:</b>
@@ -431,10 +433,54 @@ def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
         
         sections = profile_data.get('sections', {})
         
-        # Самые важные секции для первой части
-        part1_sections = ["what_turns_on", "what_turns_off", "erogenous_zone"]
+        # Только "ЧТО ВАС ЗАВОДИТ" для первой части
+        section = sections.get("what_turns_on", {})
+        if section:
+            title = section.get('title', '')
+            message += f"\n\n{title}"
+            if 'items' in section:
+                for item in section['items']:
+                    message += f"\n• {item}"
         
-        for section_key in part1_sections:
+        return message
+    except Exception as e:
+        logger.error(f"❌ Ошибка форматирования части 1: {e}")
+        return "🔞 ИНТИМНЫЙ ПРОФИЛЬ\n\nПроизошла ошибка загрузки."
+
+def format_intimate_profile_part2(profile_data: dict, user_name: str) -> str:
+    """Форматирует ВТОРУЮ ЧАСТЬ интимного профиля"""
+    try:
+        message = ""  # Начинаем пустую строку
+        
+        sections = profile_data.get('sections', {})
+        
+        # "ЧТО ВАС ВЫКЛЮЧАЕТ" для второй части
+        section = sections.get("what_turns_off", {})
+        if section:
+            title = section.get('title', '')
+            message += f"\n\n{title}"
+            if 'items' in section:
+                for item in section['items']:
+                    message += f"\n• {item}"
+        
+        return message
+    except Exception as e:
+        logger.error(f"❌ Ошибка форматирования части 2: {e}")
+        return ""
+
+def format_intimate_profile_part3(profile_data: dict, user_name: str) -> str:
+    """Форматирует ТРЕТЬЮ ЧАСТЬ интимного профиля"""
+    try:
+        message = ""  # Начинаем пустую строку
+        
+        sections = profile_data.get('sections', {})
+        
+        # Остальные секции для третьей части
+        part3_sections = ["erogenous_zone", "smells_tastes", "sounds", "dirty_details", 
+                         "fetishes", "places", "morning", "secret_desires", "whispers", 
+                         "core", "compliments", "tells", "remains"]
+        
+        for section_key in part3_sections:
             section = sections.get(section_key, {})
             if section:
                 title = section.get('title', '')
@@ -445,46 +491,10 @@ def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
                         message += f"\n• {item}"
                 elif 'content' in section:
                     message += f"\n{section['content']}"
+                elif 'trigger' in section:
+                    message += f"\n{section['trigger']}"
         
-        message += f"""
-
-{SEXUAL_DIVIDER}
-<i>Продолжение во втором сообщении...</i>
-"""
-        
-        return message
-    except Exception as e:
-        logger.error(f"❌ Ошибка форматирования части 1: {e}")
-        return "🔞 ИНТИМНЫЙ ПРОФИЛЬ (часть 1/2)\n\nПроизошла ошибка загрузки."
-
-def format_intimate_profile_part2(profile_data: dict, user_name: str) -> str:
-    """Форматирует ВТОРУЮ ЧАСТЬ интимного профиля"""
-    try:
-        message = f"""
-🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ</b> (часть 2/2)
-{user_name}
-"""
-        
-        sections = profile_data.get('sections', {})
-        
-        # Остальные секции для второй части
-        part2_sections = ["smells_tastes", "sounds", "dirty_details", "fetishes", 
-                         "places", "morning", "secret_desires", "whispers", 
-                         "core", "compliments", "tells", "remains"]
-        
-        for section_key in part2_sections:
-            section = sections.get(section_key, {})
-            if section:
-                title = section.get('title', '')
-                message += f"\n\n{title}"
-                
-                if 'items' in section:
-                    # Показываем максимум 5 пунктов для второй части
-                    for item in section['items'][:5]:
-                        message += f"\n• {item}"
-                elif 'content' in section:
-                    message += f"\n{section['content']}"
-        
+        # Добавляем финальный текст
         message += f"""
 
 {SEXUAL_DIVIDER}
@@ -507,8 +517,8 @@ def format_intimate_profile_part2(profile_data: dict, user_name: str) -> str:
         
         return message
     except Exception as e:
-        logger.error(f"❌ Ошибка форматирования части 2: {e}")
-        return "🔞 ИНТИМНЫЙ ПРОФИЛЬ (часть 2/2)\n\nПроизошла ошибка загрузки."
+        logger.error(f"❌ Ошибка форматирования части 3: {e}")
+        return "\n\nПроизошла ошибка загрузки."
 
 # ===== ЗАГРУЗКА ТЕСТОВОГО ИНТИМНОГО ПРОФИЛЯ ДЛЯ ДРУГА =====
 def load_friend_intimate_profile(friend_name: str, friend_profile: str = None) -> dict:
@@ -920,11 +930,11 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         return RESULTS_SCREEN
 
 # ============================================
-# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ - ИСПРАВЛЕНО (РАЗБИТ НА 2 ЧАСТИ)
+# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ - ИСПРАВЛЕНО (РАЗБИТ НА 3 ЧАСТИ)
 # ============================================
 
 async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Мой интимный профиль - РАЗБИТ НА 2 СООБЩЕНИЯ"""
+    """🔞 Мой интимный профиль - РАЗБИТ НА 3 ЧАСТИ"""
     try:
         query = update.callback_query
         logger.debug(f"🔍 ПОЛУЧЕН CALLBACK: {query.data} от пользователя {query.from_user.id}")
@@ -940,12 +950,14 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
         profile_data = load_intimate_profile()
         logger.debug(f"📊 Профиль загружен: {profile_data.get('profile_type', 'unknown')}")
         
-        # Формируем две части сообщения
+        # Формируем три части сообщения
         message_part1 = format_intimate_profile_part1(profile_data, user_name)
         message_part2 = format_intimate_profile_part2(profile_data, user_name)
+        message_part3 = format_intimate_profile_part3(profile_data, user_name)
         
         logger.debug(f"📄 Длина части 1: {len(message_part1)} символов")
         logger.debug(f"📄 Длина части 2: {len(message_part2)} символов")
+        logger.debug(f"📄 Длина части 3: {len(message_part3)} символов")
         
         # Клавиатура для навигации
         keyboard = [
@@ -962,9 +974,17 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
         )
         
         # Отправляем вторую часть как новое сообщение
-        logger.debug("✉️ Отправляем часть 2...")
+        if message_part2.strip():
+            logger.debug("✉️ Отправляем часть 2...")
+            await query.message.reply_text(
+                message_part2,
+                parse_mode="HTML"
+            )
+        
+        # Отправляем третью часть как новое сообщение
+        logger.debug("✉️ Отправляем часть 3...")
         await query.message.reply_text(
-            message_part2,
+            message_part3,
             parse_mode="HTML"
         )
         
@@ -2028,7 +2048,7 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v14.2")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v15.0")
     print("="*60)
     print("✅ ВАШ ДИЗАЙН экрана «Мои отражения»")
     print("✅ Ссылки на Яндекс.Диск для каждого профиля")
@@ -2036,7 +2056,9 @@ def main():
     print("✅ Минималистичная навигация")
     print("✅ ИСПРАВЛЕН экран краткого описания 4F (убрана цена)")
     print("✅ ИСПРАВЛЕН экран подробного описания 4F (ссылка + кнопка)")
-    print("✅ ИСПРАВЛЕНО: интимный профиль разбит на 2 сообщения")
+    print("✅ ИСПРАВЛЕНО: интимный профиль разбит на 3 части")
+    print("✅ ИСПРАВЛЕНО: убраны индикаторы частей и лишние отступы")
+    print("✅ ИСПРАВЛЕНО: формат шапки \"📊 Имя, SA-5_INT\"")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -2140,7 +2162,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 14.2")
+        print("\n🚀 Бот запущен! Версия 15.0")
         print("="*60)
         logger.info("✅ Бот успешно запущен")
         
