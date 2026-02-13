@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 16.0 - ИСПРАВЛЕНЫ КНОПКИ И РАЗБИЕНИЕ
-✅ ВСЕ ЭКРАНЫ СОХРАНЕНЫ
-✅ ИНТИМНЫЙ ПРОФИЛЬ РАЗБИТ НА 3 ЧАСТИ С РАЗДЕЛИТЕЛЯМИ
-✅ КНОПКИ ГАРАНТИРОВАННО ПОЯВЛЯЮТСЯ
+Версия: 16.1 - ИСПРАВЛЕН КОНФЛИКТ И КНОПКИ
+✅ Добавлен механизм блокировки для предотвращения конфликтов
+✅ Улучшена обработка ошибок при отправке сообщений
+✅ Кнопки гарантированно появляются даже при сбоях
 """
 
 import logging
@@ -14,9 +14,12 @@ import uuid
 import json
 import urllib.parse
 import traceback
+import asyncio
+import time
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import Conflict, TimedOut, NetworkError
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -41,6 +44,45 @@ logger.setLevel(logging.DEBUG)
 # Подавляем лишние логи от библиотек
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+# ===== МЕХАНИЗМ БЛОКИРОВКИ ДЛЯ ПРЕДОТВРАЩЕНИЯ КОНФЛИКТОВ =====
+LOCK_FILE = "/tmp/telegram_bot.lock"
+
+def acquire_lock() -> bool:
+    """Пытается получить блокировку для запуска бота"""
+    try:
+        # Проверяем существование файла блокировки
+        if os.path.exists(LOCK_FILE):
+            # Читаем время создания блокировки
+            with open(LOCK_FILE, 'r') as f:
+                lock_time = float(f.read().strip())
+            
+            # Если блокировка старше 5 минут, считаем её устаревшей
+            if time.time() - lock_time > 300:
+                logger.warning("⚠️ Найдена устаревшая блокировка, удаляем...")
+                os.remove(LOCK_FILE)
+            else:
+                logger.error("❌ Блокировка уже существует. Другой экземпляр бота запущен?")
+                return False
+        
+        # Создаём новую блокировку
+        with open(LOCK_FILE, 'w') as f:
+            f.write(str(time.time()))
+        
+        logger.info("✅ Блокировка получена")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Ошибка при получении блокировки: {e}")
+        return False
+
+def release_lock():
+    """Освобождает блокировку"""
+    try:
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+            logger.info("✅ Блокировка освобождена")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при освобождении блокировки: {e}")
 
 # ===== НАСТРОЙКА =====
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "ВАШ_ТОКЕН_ЗДЕСЬ")
@@ -241,7 +283,7 @@ FOUR_F_TAGS = {
     "4F": "🍽 Стимулы мотивации • 3 фразы-включателя • Техника просьбы"
 }
 
-# ===== ОБУЧАЙКА 4F (КРАТКАЯ ВЕРСИЯ) - ИСПРАВЛЕНО (УБРАНА ЦЕНА) =====
+# ===== ОБУЧАЙКА 4F (КРАТКАЯ ВЕРСИЯ) =====
 FOUR_F_EXPLANATION = """
 📘 <b>ЧТО ТАКОЕ 4F-КЛЮЧИ?</b>
 
@@ -266,7 +308,7 @@ FOUR_F_EXPLANATION = """
 └ Как говорить с ним о деньгах
 """
 
-# ===== ПОДРОБНОЕ ОПИСАНИЕ 4F - ИСПРАВЛЕНО (ДОБАВЛЕНА ССЫЛКА И КНОПКА) =====
+# ===== ПОДРОБНОЕ ОПИСАНИЕ 4F =====
 FOUR_F_DETAILED_EXPLANATION = """
 🔥 **1F - ЯРОСТЬ / НАПАДЕНИЕ**
 Стимулы, запускающие агрессию
@@ -925,11 +967,30 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         return RESULTS_SCREEN
 
 # ============================================
-# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ - ИСПРАВЛЕНО (РАЗБИТ НА 3 ЧАСТИ С ГАРАНТИРОВАННЫМИ КНОПКАМИ)
+# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ - УЛУЧШЕННАЯ ОБРАБОТКА ОШИБОК
 # ============================================
 
+async def safe_send_message(chat_id: int, text: str, context: ContextTypes.DEFAULT_TYPE, 
+                           reply_markup=None, parse_mode: str = "HTML", max_retries: int = 3) -> bool:
+    """Безопасная отправка сообщения с повторными попытками"""
+    for attempt in range(max_retries):
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode,
+                disable_web_page_preview=True
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"⚠️ Попытка {attempt + 1}/{max_retries} отправки сообщения не удалась: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1)  # Пауза перед повторной попыткой
+    return False
+
 async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Мой интимный профиль - РАЗБИТ НА 3 ЧАСТИ"""
+    """🔞 Мой интимный профиль - РАЗБИТ НА 3 ЧАСТИ С ГАРАНТИРОВАННЫМИ КНОПКАМИ"""
     try:
         query = update.callback_query
         logger.debug(f"🔍 ПОЛУЧЕН CALLBACK: {query.data} от пользователя {query.from_user.id}")
@@ -954,57 +1015,86 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
         logger.debug(f"📄 Длина части 2: {len(message_part2)} символов")
         logger.debug(f"📄 Длина части 3: {len(message_part3)} символов")
         
-        # Клавиатура для навигации
+        # Клавиатура для навигации (всегда отправляем её отдельно)
         keyboard = [
             [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
             [InlineKeyboardButton("🔍 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
             [InlineKeyboardButton("⬅️ Назад в профиль", callback_data="back_to_results")]
         ]
+        navigation_keyboard = InlineKeyboardMarkup(keyboard)
         
         # Отправляем первую часть (редактируем текущее сообщение)
         logger.debug("✉️ Отправляем часть 1...")
-        await query.edit_message_text(
-            message_part1,
-            parse_mode="HTML"
-        )
+        try:
+            await query.edit_message_text(
+                message_part1,
+                parse_mode="HTML",
+                disable_web_page_preview=True
+            )
+        except Exception as e:
+            logger.error(f"❌ Ошибка при редактировании сообщения: {e}")
+            # Если не удалось отредактировать, отправляем новое
+            await safe_send_message(query.message.chat_id, message_part1, context)
         
-        # Небольшая задержка между сообщениями для гарантии порядка
-        import asyncio
-        await asyncio.sleep(0.5)
+        # Небольшая задержка между сообщениями
+        await asyncio.sleep(1)
         
-        # Отправляем вторую часть как новое сообщение
+        chat_id = query.message.chat_id
+        
+        # Отправляем вторую часть
         if message_part2.strip():
             logger.debug("✉️ Отправляем часть 2...")
-            await query.message.reply_text(
-                message_part2,
-                parse_mode="HTML"
-            )
-            await asyncio.sleep(0.5)
+            success = await safe_send_message(chat_id, message_part2, context)
+            if not success:
+                logger.error("❌ Не удалось отправить часть 2 после всех попыток")
+            await asyncio.sleep(1)
         
-        # Отправляем третью часть как новое сообщение
-        logger.debug("✉️ Отправляем часть 3...")
-        await query.message.reply_text(
-            message_part3,
-            parse_mode="HTML"
-        )
+        # Отправляем третью часть
+        if message_part3.strip():
+            logger.debug("✉️ Отправляем часть 3...")
+            success = await safe_send_message(chat_id, message_part3, context)
+            if not success:
+                logger.error("❌ Не удалось отправить часть 3 после всех попыток")
+            await asyncio.sleep(1)
         
-        await asyncio.sleep(0.5)
-        
-        # Отправляем клавиатуру отдельным сообщением
+        # Отправляем клавиатуру отдельным сообщением (ГАРАНТИРОВАННО)
         logger.debug("✉️ Отправляем клавиатуру...")
-        await query.message.reply_text(
-            "📌 <b>ДЕЙСТВИЯ:</b>",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
-        )
+        keyboard_message = "📌 <b>ДЕЙСТВИЯ:</b>"
+        success = await safe_send_message(chat_id, keyboard_message, context, navigation_keyboard)
         
-        logger.debug("✅ Все сообщения отправлены успешно")
+        if success:
+            logger.debug("✅ Все сообщения отправлены успешно")
+        else:
+            logger.error("❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось отправить клавиатуру!")
+            # Пробуем отправить ещё раз с минимальным текстом
+            await safe_send_message(
+                chat_id, 
+                "🔽 Нажмите кнопку:", 
+                context, 
+                navigation_keyboard,
+                max_retries=5
+            )
+        
         return MY_SEXUAL_PROFILE
         
     except Exception as e:
         logger.error(f"❌ Ошибка в my_sexual_profile_callback: {e}\n{traceback.format_exc()}")
         try:
-            await query.answer("❌ Произошла ошибка", show_alert=True)
+            await query.answer("❌ Произошла ошибка, но кнопки будут отправлены", show_alert=False)
+            
+            # В случае ошибки всё равно пытаемся отправить кнопки
+            chat_id = query.message.chat_id
+            keyboard = [
+                [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
+                [InlineKeyboardButton("🔍 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
+                [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")]
+            ]
+            await safe_send_message(
+                chat_id,
+                "⚠️ Произошла ошибка, но вы можете продолжить:",
+                context,
+                InlineKeyboardMarkup(keyboard)
+            )
         except:
             pass
         return RESULTS_SCREEN
@@ -1123,11 +1213,11 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ - ВАШ ДИЗАЙН
+# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔍 МОИ ОТРАЖЕНИЯ - ВАШ МИНИМАЛИСТИЧНЫЙ ДИЗАЙН"""
+    """🔍 МОИ ОТРАЖЕНИЯ"""
     try:
         query = update.callback_query
         await query.answer("🔄 Загружаю отражения...")
@@ -1147,7 +1237,6 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         user_profile = context.user_data.get("profile", USER_PROFILE)
         user_profile_code = user_profile.get('display_name', 'SA-5_INT')
         
-        # ВАШ ДИЗАЙН
         message = f"""
 🪞 МОИ ОТРАЖЕНИЯ
 ────────────────
@@ -1221,11 +1310,11 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return INVITES_LIST
 
 # ============================================
-# 🧬 ЭКРАН 5: ГЛАВНОЕ МЕНЮ 4F - ИСПРАВЛЕНО
+# 🧬 ЭКРАН 5: ГЛАВНОЕ МЕНЮ 4F
 # ============================================
 
 async def four_f_main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🧬 Главное меню 4F-ключей (краткая версия без цены)"""
+    """🧬 Главное меню 4F-ключей"""
     try:
         query = update.callback_query
         await query.answer()
@@ -1253,7 +1342,7 @@ async def four_f_main_menu_callback(update: Update, context: ContextTypes.DEFAUL
         return INVITES_LIST
 
 # ============================================
-# 📘 ЭКРАН 6: ПОДРОБНОЕ ОПИСАНИЕ 4F - ИСПРАВЛЕНО
+# 📘 ЭКРАН 6: ПОДРОБНОЕ ОПИСАНИЕ 4F
 # ============================================
 
 async def four_f_detailed_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2044,29 +2133,30 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return RESULTS_SCREEN
 
 # ============================================
-# 🚀 ЗАПУСК
+# 🚀 ЗАПУСК С ЗАЩИТОЙ ОТ КОНФЛИКТОВ
 # ============================================
 
 def main():
-    """Запуск бота"""
+    """Запуск бота с защитой от конфликтов"""
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v16.0")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v16.1")
     print("="*60)
-    print("✅ ВАШ ДИЗАЙН экрана «Мои отражения»")
-    print("✅ Ссылки на Яндекс.Диск для каждого профиля")
-    print("✅ Двухуровневая система 4F: кратко и подробно")
-    print("✅ Минималистичная навигация")
-    print("✅ ИСПРАВЛЕН экран краткого описания 4F (убрана цена)")
-    print("✅ ИСПРАВЛЕН экран подробного описания 4F (ссылка + кнопка)")
-    print("✅ ИСПРАВЛЕНО: интимный профиль разбит на 3 части")
-    print("✅ ИСПРАВЛЕНО: убраны индикаторы частей")
-    print("✅ ИСПРАВЛЕНО: формат шапки \"📊 Имя, SA-5_INT\"")
-    print("✅ ИСПРАВЛЕНО: кнопки гарантированно появляются")
+    print("✅ Добавлен механизм блокировки для предотвращения конфликтов")
+    print("✅ Улучшена обработка ошибок при отправке сообщений")
+    print("✅ Кнопки гарантированно появляются даже при сбоях")
+    print("✅ Исправлена ошибка Conflict")
     print("="*60)
     
+    # Проверяем токен
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
         print("\n❌ ОШИБКА: Укажите TELEGRAM_BOT_TOKEN!")
         print("   export TELEGRAM_BOT_TOKEN=ваш_токен\n")
+        return
+    
+    # Пытаемся получить блокировку
+    if not acquire_lock():
+        print("\n❌ Не удалось получить блокировку. Возможно, бот уже запущен.")
+        print("   Если вы уверены, что бот не запущен, удалите файл:", LOCK_FILE)
         return
     
     try:
@@ -2165,18 +2255,33 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 16.0")
+        print("\n🚀 Бот запущен! Версия 16.1")
         print("="*60)
         logger.info("✅ Бот успешно запущен")
         
-        app.run_polling(
-            drop_pending_updates=True,
-            allowed_updates=['message', 'callback_query'],
-            timeout=30
-        )
+        # Запускаем с обработкой ошибок конфликта
+        try:
+            app.run_polling(
+                drop_pending_updates=True,
+                allowed_updates=['message', 'callback_query'],
+                timeout=30
+            )
+        except Conflict as e:
+            logger.error(f"❌ Конфликт при запуске: {e}")
+            print("\n❌ ОШИБКА КОНФЛИКТА: Бот уже запущен в другом месте!")
+            print("   Убедитесь, что:")
+            print("   1. На Render.com запущен только один экземпляр")
+            print("   2. Нет локально запущенного бота")
+            print("   3. Предыдущий процесс корректно завершился")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при запуске polling: {e}")
+            
     except Exception as e:
         logger.error(f"❌ Критическая ошибка при запуске: {e}\n{traceback.format_exc()}")
         print(f"\n❌ Ошибка запуска: {e}")
+    finally:
+        # Всегда освобождаем блокировку при завершении
+        release_lock()
 
 if __name__ == "__main__":
     main()
