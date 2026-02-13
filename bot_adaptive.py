@@ -252,7 +252,7 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> str:
 
 {SEXUAL_DIVIDER}
 
-🪞 <b>ТАМ, ЗА ЗЕРКАЛОМ...</b>
+💎 <b>ТАМ, ЗА ЗЕРКАЛОМ...</b> ✨
 
 Вы увидели только что СВОЁ отражение. ✨
 Но у <b>каждого друга</b> — своя тайна.
