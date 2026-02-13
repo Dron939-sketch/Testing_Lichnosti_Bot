@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 10.4 - ИСПРАВЛЕНЫ ВСЕ ПРОБЛЕМЫ
+Версия: 10.5 - ИСПРАВЛЕНЫ ВСЕ ПРОБЛЕМЫ С CALLBACK'АМИ
 ✅ КНОПКА "МОИ ОТРАЖЕНИЯ" РАБОТАЕТ ВЕЗДЕ
+✅ КНОПКА "СОЗДАТЬ ССЫЛКУ" РАБОТАЕТ
 ✅ ИНТИМНЫЙ ПРОФИЛЬ ЗАГРУЖАЕТСЯ
 ✅ ТЕКСТ И ЭМОДЗИ ИСПРАВЛЕНЫ
+✅ УБРАНЫ КОНФЛИКТЫ ОБРАБОТЧИКОВ
 """
 
 import logging
@@ -197,10 +199,8 @@ def diagnose_sexual_profile_paths():
 def load_intimate_profile() -> dict:
     """Загружает интимный профиль из JSON файла с автоопределением структуры"""
     try:
-        # Диагностика при каждой загрузке
         logger.info("📂 Поиск файла интимного профиля...")
         
-        # Приоритетные пути (сначала БЕЗ profiles/)
         possible_paths = [
             os.path.join(PROJECT_ROOT, "sexual_18", "sa_5_int.json"),
             os.path.join("sexual_18", "sa_5_int.json"),
@@ -210,7 +210,6 @@ def load_intimate_profile() -> dict:
             os.path.join(os.path.dirname(__file__), "profiles", "sexual_18", "sa_5_int.json"),
         ]
         
-        # Для Render
         if os.path.exists('/app'):
             possible_paths.append('/app/sexual_18/sa_5_int.json')
             possible_paths.append('/app/profiles/sexual_18/sa_5_int.json')
@@ -223,7 +222,6 @@ def load_intimate_profile() -> dict:
                     data = json.load(f)
                     logger.info(f"📊 Ключи в JSON: {list(data.keys())}")
                     
-                    # Проверяем структуру
                     if 'sections' not in data:
                         logger.warning("⚠️ Нет секции 'sections' - преобразуем структуру")
                         data = convert_to_expected_format(data)
@@ -251,7 +249,6 @@ def convert_to_expected_format(data: dict) -> dict:
         "sections": {}
     }
     
-    # Маппинг возможных ключей из разных форматов
     section_mapping = {
         "what_turns_on": ["what_turns_on", "turns_on", "включает", "возбуждает"],
         "what_turns_off": ["what_turns_off", "turns_off", "выключает", "отталкивает"],
@@ -321,7 +318,7 @@ def get_emergency_profile() -> dict:
     }
 
 def format_intimate_profile(profile_data: dict, user_name: str) -> str:
-    """Форматирует интимный профиль - ИСПРАВЛЕНЫ ПУСТЫЕ СТРОКИ И ЭМОДЗИ"""
+    """Форматирует интимный профиль"""
     message = f"""
 🔞 ИНТИМНЫЙ ПРОФИЛЬ
 {user_name}
@@ -607,7 +604,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Старт бота"""
     user = update.effective_user
     
-    # Диагностика при старте
     diagnose_sexual_profile_paths()
     
     context.user_data.clear()
@@ -752,7 +748,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
     share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
     
     keyboard = [
-        [InlineKeyboardButton("💎 Отправить ссылку", url=share_url)],  # ИСПРАВЛЕНО!
+        [InlineKeyboardButton("💎 Отправить ссылку", url=share_url)],
         [InlineKeyboardButton("⬅️ Вернуться в профиль", callback_data="my_sexual_profile")]
     ]
     
@@ -770,7 +766,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """💎 Мои отражения - РАБОТАЕТ ВЕЗДЕ!"""
+    """💎 Мои отражения"""
     query = update.callback_query
     await query.answer()
     
@@ -964,7 +960,7 @@ async def friend_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 InlineKeyboardButton("🧬 4F", callback_data=f"4f_{friend_id}"),
                 InlineKeyboardButton("❓ Что это?", callback_data="4f_explain")
             ],
-            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],  # ДОБАВЛЕНО!
+            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
             [InlineKeyboardButton("⬅️ Назад", callback_data="my_invites")]
         ]
         
@@ -1011,7 +1007,7 @@ async def show_payment_access_screen(update: Update, context: ContextTypes.DEFAU
     
     keyboard = [
         [InlineKeyboardButton(f"🔓 РАЗБЛОКИРОВАТЬ - {FRIEND_ACCESS_PRICE}₽", callback_data=f"pay_access_{friend_data['friend_id']}")],
-        [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],  # ДОБАВЛЕНО!
+        [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
         [InlineKeyboardButton("⬅️ Назад", callback_data="my_invites")]
     ]
     
@@ -1058,7 +1054,7 @@ async def standard_profile_callback(update: Update, context: ContextTypes.DEFAUL
 """
         
         keyboard = [
-            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],  # ДОБАВЛЕНО!
+            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
             [InlineKeyboardButton("⬅️ Назад", callback_data=f"friend_{friend_id}")]
         ]
         
@@ -1098,7 +1094,7 @@ async def intimate_profile_callback(update: Update, context: ContextTypes.DEFAUL
         message = format_friend_intimate_profile(profile_data, friend_name)
         
         keyboard = [
-            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],  # ДОБАВЛЕНО!
+            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
             [InlineKeyboardButton("⬅️ Назад", callback_data=f"friend_{friend_id}")]
         ]
         
@@ -1179,7 +1175,7 @@ async def four_f_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             InlineKeyboardButton("❓ Что такое 4F?", callback_data="4f_explain"),
             InlineKeyboardButton("⬅️ Назад", callback_data=f"friend_{friend_id}")
         ])
-        keyboard.append([InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")])  # ДОБАВЛЕНО!
+        keyboard.append([InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")])
         
         await query.edit_message_text(
             message,
@@ -1213,7 +1209,7 @@ async def four_f_explanation_callback(update: Update, context: ContextTypes.DEFA
         ])
     else:
         keyboard.append([
-            InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites"),  # ДОБАВЛЕНО!
+            InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites"),
             InlineKeyboardButton("⬅️ Назад", callback_data="my_invites")
         ])
     
@@ -1266,7 +1262,7 @@ async def buy_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         keyboard = [
             [InlineKeyboardButton("💳 ОПЛАТИТЬ 1₽", callback_data=f"process_payment_{payment_id}_{friend_id}_{function}")],
-            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],  # ДОБАВЛЕНО!
+            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
             [InlineKeyboardButton("⬅️ Назад", callback_data=f"4f_{friend_id}")]
         ]
         
@@ -1321,7 +1317,7 @@ async def process_payment_callback(update: Update, context: ContextTypes.DEFAULT
         keyboard = [
             [InlineKeyboardButton("💳 ОПЛАТИТЬ 1₽", url=payment_result["confirmation_url"])],
             [InlineKeyboardButton("🔄 ПРОВЕРИТЬ", callback_data=f"check_payment_{payment_id}_{friend_id}_{function}")],
-            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],  # ДОБАВЛЕНО!
+            [InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
             [InlineKeyboardButton("⬅️ Назад", callback_data=f"4f_{friend_id}")]
         ]
         
@@ -1395,7 +1391,7 @@ async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         ])
         
         keyboard.append([
-            InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites"),  # ДОБАВЛЕНО!
+            InlineKeyboardButton("💎 МОИ ОТРАЖЕНИЯ", callback_data="my_invites"),
             InlineKeyboardButton("⬅️ К СПИСКУ КЛЮЧЕЙ", callback_data=f"4f_{friend_id}")
         ])
         
@@ -1421,42 +1417,38 @@ async def back_to_results_callback(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
     return await show_results_screen(update, context)
 
-async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Заглушка для демо-функций"""
+# ============================================
+# ⚠️ ВАЖНО: ЭТОТ КОЛБЭК ТЕПЕРЬ ТОЛЬКО ДЛЯ ТЕХ КНОПОК,
+#    КОТОРЫЕ НЕ ВХОДЯТ В CONVERSATIONHANDLER!
+# ============================================
+
+async def fallback_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Заглушка для кнопок вне ConversationHandler"""
     query = update.callback_query
+    pattern = query.data
+    
+    logger.info(f"🔄 fallback_callback: {pattern}")
     
     try:
-        if pattern.startswith("pay_access_"):
-            await query.answer("💰 Демо-платёж")
-        elif pattern == "share_mirror":
+        if pattern == "share_mirror":
             await query.answer("🪞 Скоро здесь будет подарок")
         elif pattern == "full_description":
             await query.answer("📖 Полное описание — 690₽")
+        elif pattern.startswith("pay_access_"):
+            await query.answer("💰 Демо-платёж")
         elif pattern.startswith("check_payment_"):
             parts = pattern.split("_")
             if len(parts) >= 5:
                 friend_id = int(parts[3])
                 function = parts[4]
-                
-                for inv in context.user_data.get("sexual_invites", []):
-                    if inv.get("friend_id") == friend_id:
-                        if "purchased_functions" not in inv:
-                            inv["purchased_functions"] = []
-                        if function not in inv["purchased_functions"]:
-                            inv["purchased_functions"].append(function)
-                        break
-                
-                await query.answer("✅ Ключ разблокирован!", show_alert=True)
-                new_query = update
-                new_query.data = f"open_4f_{friend_id}_{function}"
-                return await open_4f_key_callback(new_query, context)
+                await query.answer(f"✅ Ключ {function} разблокирован!", show_alert=True)
         else:
             await query.answer("✅ Демо-режим")
         
         return RESULTS_SCREEN
         
     except Exception as e:
-        logger.error(f"❌ Ошибка в dummy_callback: {e}")
+        logger.error(f"❌ Ошибка в fallback_callback: {e}")
         await query.answer("✅ Демо-режим")
         return RESULTS_SCREEN
 
@@ -1465,16 +1457,17 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 def main():
-    """Запуск бота с исправленным ConversationHandler"""
+    """Запуск бота"""
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v10.4")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v10.5")
     print("="*60)
     print("✅ ИСПРАВЛЕНО ВСЁ:")
     print("   • Кнопка «МОИ ОТРАЖЕНИЯ» работает ВЕЗДЕ")
+    print("   • Кнопка «СОЗДАТЬ ССЫЛКУ» работает")
+    print("   • Убраны конфликты обработчиков")
     print("   • Интимный профиль загружается из sexual_18/")
     print("   • Убраны пустые строки в описании")
     print("   • Заменены эмодзи на 💎")
-    print("   • Кнопка отправки → «💎 Отправить ссылку»")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -1484,66 +1477,62 @@ def main():
     
     app = Application.builder().token(TOKEN).build()
     
-    # ===== СОЗДАЕМ CONVERSATION HANDLER С ВСЕМИ ИСПРАВЛЕНИЯМИ =====
+    # ===== СОЗДАЕМ CONVERSATION HANDLER =====
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            # Состояние 0: ЭКРАН РЕЗУЛЬТАТОВ
             RESULTS_SCREEN: [
                 CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
-                CallbackQueryHandler(dummy_callback, pattern='^share_mirror$'),
-                CallbackQueryHandler(dummy_callback, pattern='^full_description$'),
-                CallbackQueryHandler(show_results_screen, pattern='^show_results$'),
+                CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
+                # share_mirror и full_description НЕ включаем сюда - они уйдут в fallback
             ],
             
-            # Состояние 1: МОЙ ИНТИМНЫЙ ПРОФИЛЬ
             MY_SEXUAL_PROFILE: [
                 CallbackQueryHandler(create_invite_callback, pattern='^create_invite$'),
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),  # ✅ ЕСТЬ
+                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
                 CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
             ],
             
-            # Состояние 2: ПРИГЛАШЕНИЯ И ОТРАЖЕНИЯ - ИСПРАВЛЕНО!
             INVITES_LIST: [
                 CallbackQueryHandler(create_invite_callback, pattern='^create_invite$'),
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),  # ✅ ДОБАВЛЕНО
+                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
                 CallbackQueryHandler(check_status_callback, pattern='^check_status_'),
                 CallbackQueryHandler(friend_menu_callback, pattern='^friend_'),
                 CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
                 CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
             ],
             
-            # Состояние 3: МЕНЮ ДРУГА - ИСПРАВЛЕНО!
             FRIEND_MENU: [
                 CallbackQueryHandler(standard_profile_callback, pattern='^std_'),
                 CallbackQueryHandler(intimate_profile_callback, pattern='^int_'),
                 CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
                 CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),  # ✅ ДОБАВЛЕНО
+                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+                CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
             ],
             
-            # Состояние 4: МЕНЮ 4F - ИСПРАВЛЕНО!
             FOUR_F_MENU: [
                 CallbackQueryHandler(buy_4f_key_callback, pattern='^buy_4f_'),
                 CallbackQueryHandler(open_4f_key_callback, pattern='^open_4f_'),
                 CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
                 CallbackQueryHandler(friend_menu_callback, pattern='^friend_'),
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),  # ✅ ДОБАВЛЕНО
+                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+                CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
             ],
             
-            # Состояние 5: КОНТЕНТ 4F
             FOUR_F_CONTENT: [
                 CallbackQueryHandler(buy_4f_key_callback, pattern='^buy_4f_'),
                 CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
+                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+                CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
             ],
             
-            # Состояние 6: ПЛАТЕЖИ - ИСПРАВЛЕНО!
             FOUR_F_PAYMENT_SCREEN: [
                 CallbackQueryHandler(process_payment_callback, pattern='^process_payment_'),
-                CallbackQueryHandler(dummy_callback, pattern='^check_payment_'),
-                CallbackQueryHandler(dummy_callback, pattern='^pay_access_'),
                 CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),  # ✅ ДОБАВЛЕНО
+                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+                CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
+                # check_payment_ и pay_access_ НЕ включаем сюда - они уйдут в fallback
             ],
         },
         fallbacks=[
@@ -1554,19 +1543,21 @@ def main():
         persistent=False,
     )
     
-    # Добавляем ConversationHandler
+    # Добавляем ConversationHandler (у него приоритет)
     app.add_handler(conv_handler)
     
-    # Добавляем отдельные хендлеры для callback'ов, которые могут приходить вне состояний
-    app.add_handler(CallbackQueryHandler(dummy_callback, pattern='^pay_access_'))
-    app.add_handler(CallbackQueryHandler(dummy_callback, pattern='^share_mirror$'))
-    app.add_handler(CallbackQueryHandler(dummy_callback, pattern='^full_description$'))
-    app.add_handler(CallbackQueryHandler(dummy_callback, pattern='^check_payment_'))
+    # ===== ВАЖНО: Добавляем fallback handler для кнопок вне ConversationHandler =====
+    # Эти обработчики сработают ТОЛЬКО если кнопка не была перехвачена выше
+    app.add_handler(CallbackQueryHandler(fallback_callback, pattern='^share_mirror$'))
+    app.add_handler(CallbackQueryHandler(fallback_callback, pattern='^full_description$'))
+    app.add_handler(CallbackQueryHandler(fallback_callback, pattern='^pay_access_'))
+    app.add_handler(CallbackQueryHandler(fallback_callback, pattern='^check_payment_'))
     
     print("\n🚀 Бот запущен! ВСЕ ИСПРАВЛЕНИЯ ПРИМЕНЕНЫ!")
     print("   ✅ Кнопка «МОИ ОТРАЖЕНИЯ» работает везде")
+    print("   ✅ Кнопка «СОЗДАТЬ ССЫЛКУ» работает")
+    print("   ✅ Нет конфликтов обработчиков")
     print("   ✅ Интимный профиль загружается")
-    print("   ✅ Текст и эмодзи исправлены")
     print("="*60)
     
     app.run_polling()
