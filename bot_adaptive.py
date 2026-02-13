@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 18.0 - ИСПРАВЛЕНЫ ВСЕ НЕДОЧЕТЫ
-✅ Убрана точка между сообщением и кнопками
-✅ Правильное жирное выделение заголовков
-✅ Убраны лишние пробелы в "Мои отражения"
-✅ Ссылки на диске с новой строки
+Версия: 19.0 - ИСПРАВЛЕНЫ КНОПКИ
+✅ Кнопки прикреплены к части 3 интимного профиля
+✅ Нет отдельного сообщения с точкой
+✅ Правильное форматирование всех экранов
 """
 
 import logging
@@ -20,7 +19,7 @@ import time
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.error import Conflict
+from telegram.error import Conflict, BadRequest
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -434,7 +433,7 @@ def format_intimate_profile_part2(profile_data: dict, user_name: str) -> str:
         return ""
 
 def format_intimate_profile_part3(profile_data: dict, user_name: str) -> str:
-    """Форматирует ТРЕТЬЮ ЧАСТЬ интимного профиля"""
+    """Форматирует ТРЕТЬЮ ЧАСТЬ интимного профиля (с финальным текстом)"""
     try:
         message = ""
         sections = profile_data.get('sections', {})
@@ -466,6 +465,7 @@ def format_intimate_profile_part3(profile_data: dict, user_name: str) -> str:
                 elif 'trigger' in section:
                     message += f"\n{section['trigger']}"
         
+        # Финальный текст (к нему будут прикреплены кнопки)
         message += f"""
 
 {SEXUAL_DIVIDER}
@@ -530,7 +530,8 @@ async def safe_send_message(chat_id: int, text: str, context: ContextTypes.DEFAU
         parts = split_long_message(text)
         
         for i, part in enumerate(parts):
-            current_markup = reply_markup if i == 0 and len(parts) == 1 else None
+            # Reply markup прикрепляем только к последней части
+            current_markup = reply_markup if i == len(parts) - 1 else None
             
             for attempt in range(max_retries):
                 try:
@@ -938,11 +939,11 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         return RESULTS_SCREEN
 
 # ============================================
-# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ (БЕЗ ТОЧКИ)
+# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ (КНОПКИ НА ЧАСТИ 3)
 # ============================================
 
 async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Мой интимный профиль - 3 ЧАСТИ + 3 КНОПКИ (БЕЗ ТОЧКИ)"""
+    """🔞 Мой интимный профиль - 3 ЧАСТИ, КНОПКИ НА ЧАСТИ 3"""
     try:
         query = update.callback_query
         logger.debug(f"🔍 ПОЛУЧЕН CALLBACK: {query.data} от пользователя {query.from_user.id}")
@@ -966,7 +967,7 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
         logger.debug(f"📄 Длина части 2: {len(message_part2)} символов")
         logger.debug(f"📄 Длина части 3: {len(message_part3)} символов")
         
-        # ТОЛЬКО 3 КНОПКИ
+        # 3 КНОПКИ (будут прикреплены к части 3)
         keyboard = [
             [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ-ПРИГЛАШЕНИЕ", callback_data="create_invite")],
             [InlineKeyboardButton("🔍 ПОСМОТРЕТЬ МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
@@ -976,7 +977,7 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
         
         chat_id = query.message.chat_id
         
-        # Отправляем часть 1
+        # Отправляем часть 1 (редактируем текущее сообщение)
         logger.debug("✉️ Отправляем часть 1...")
         try:
             await query.edit_message_text(
@@ -990,35 +991,42 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
         
         await asyncio.sleep(1)
         
-        # Отправляем часть 2
+        # Отправляем часть 2 (без кнопок)
         if message_part2.strip():
             logger.debug("✉️ Отправляем часть 2...")
             await safe_send_message(chat_id, message_part2, context)
             await asyncio.sleep(1)
         
-        # Отправляем часть 3
+        # Отправляем часть 3 С КНОПКАМИ
         if message_part3.strip():
-            logger.debug("✉️ Отправляем часть 3...")
-            await safe_send_message(chat_id, message_part3, context)
-            await asyncio.sleep(1)
+            logger.debug("✉️ Отправляем часть 3 с кнопками...")
+            
+            # Разбиваем часть 3, если она слишком длинная
+            parts = split_long_message(message_part3)
+            
+            for i, part in enumerate(parts):
+                # Кнопки прикрепляем только к последней части
+                current_markup = navigation_keyboard if i == len(parts) - 1 else None
+                
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=part,
+                    reply_markup=current_markup,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+                logger.debug(f"✅ Отправлена подчасть 3.{i+1}/{len(parts)}")
+                
+                if i < len(parts) - 1:
+                    await asyncio.sleep(0.5)
         
-        # ОТПРАВЛЯЕМ ТОЛЬКО КНОПКИ (БЕЗ ТЕКСТА)
-        logger.debug("✉️ Отправляем кнопки...")
-        
-        # В Telegram можно отправить сообщение с пробелом (невидимо для пользователя)
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=" ",  # Пробел - невидим для пользователя
-            reply_markup=navigation_keyboard,
-            disable_web_page_preview=True
-        )
-        logger.debug("✅ Кнопки отправлены успешно")
-        
+        logger.debug("✅ Все сообщения и кнопки отправлены успешно")
         return MY_SEXUAL_PROFILE
         
     except Exception as e:
         logger.error(f"❌ Ошибка в my_sexual_profile_callback: {e}\n{traceback.format_exc()}")
         try:
+            # В случае ошибки всё равно пытаемся отправить кнопки
             chat_id = update.callback_query.message.chat_id
             keyboard = [
                 [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
@@ -1027,7 +1035,7 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
             ]
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=" ",
+                text="💎 Выберите действие:",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         except:
@@ -1146,7 +1154,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ (ПРАВИЛЬНОЕ ФОРМАТИРОВАНИЕ)
+# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1168,7 +1176,6 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         user_profile = context.user_data.get("profile", USER_PROFILE)
         user_profile_code = user_profile.get('display_name', 'SA-5_INT')
         
-        # Формируем сообщение с правильными отступами
         message = f"""<b>🪞 МОИ ОТРАЖЕНИЯ</b>
 ────────────────
 
@@ -1216,7 +1223,6 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 ────────────────
 💫 Каждое отражение — ключ к человеку."""
 
-        # Кнопки навигации
         keyboard = [
             [InlineKeyboardButton("◀️ К ПРОФИЛЮ", callback_data="my_sexual_profile")],
             [InlineKeyboardButton("🔴 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")]
@@ -1274,7 +1280,7 @@ async def four_f_main_menu_callback(update: Update, context: ContextTypes.DEFAUL
 # ============================================
 
 async def four_f_detailed_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """📘 ПОДРОБНОЕ ОПИСАНИЕ 4F с правильным HTML"""
+    """📘 ПОДРОБНОЕ ОПИСАНИЕ 4F"""
     try:
         query = update.callback_query
         await query.answer()
@@ -2021,12 +2027,11 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v18.0")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.0")
     print("="*60)
-    print("✅ Убрана точка между сообщением и кнопками")
-    print("✅ Правильное жирное выделение заголовков")
-    print("✅ Убраны лишние пробелы в 'Мои отражения'")
-    print("✅ Ссылки на диске с новой строки")
+    print("✅ Кнопки прикреплены к части 3 интимного профиля")
+    print("✅ Нет отдельного сообщения с точкой")
+    print("✅ Правильное форматирование всех экранов")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -2130,7 +2135,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 18.0")
+        print("\n🚀 Бот запущен! Версия 19.0")
         print("="*60)
         logger.info("✅ Бот успешно запущен")
         
