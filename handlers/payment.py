@@ -5,30 +5,35 @@
 
 import logging
 import time
-import sys
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from config import PAYMENT_SCREEN, API_URL, TELEGRAM_BOT_URL, logger
 from sexual_18_plus import get_disk_link
 
-# Получаем функции из основного модуля (bot_adaptive.py)
-current_module = sys.modules['__main__']
-
-# Эти функции должны быть определены в bot_adaptive.py
-create_payment_advanced = getattr(current_module, 'create_payment_advanced', None)
-check_payment_status_api = getattr(current_module, 'check_payment_status_api', None)
-get_materials_link_api = getattr(current_module, 'get_materials_link_api', None)
-
-# Если функции не найдены, создаем заглушки с ошибкой
-if create_payment_advanced is None:
-    logger.error("❌ Функция create_payment_advanced не найдена в основном модуле!")
+# Импортируем функции напрямую из payment_functions
+# Предварительно нужно создать файл payment_functions.py в корне проекта
+try:
+    from payment_functions import (
+        create_payment_advanced,
+        check_payment_status_api,
+        get_materials_link_api
+    )
+    logger.info("✅ Функции платежей успешно импортированы из payment_functions")
+except ImportError as e:
+    logger.error(f"❌ Ошибка импорта функций из payment_functions: {e}")
+    # Создаем заглушки для случаев, когда импорт не удался
+    async def create_payment_advanced(user_id, profile_code, amount):
+        logger.error("❌ Функция create_payment_advanced не импортирована")
+        return {"success": False, "error": "Функция не доступна"}
     
-if check_payment_status_api is None:
-    logger.error("❌ Функция check_payment_status_api не найдена в основном модуле!")
+    async def check_payment_status_api(payment_id):
+        logger.error("❌ Функция check_payment_status_api не импортирована")
+        return {"success": False, "error": "Функция не доступна"}
     
-if get_materials_link_api is None:
-    logger.error("❌ Функция get_materials_link_api не найдена в основном модуле!")
+    async def get_materials_link_api(payment_id, user_id):
+        logger.error("❌ Функция get_materials_link_api не импортирована")
+        return {"success": False, "error": "Функция не доступна"}
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +125,6 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
     
     # Проверяем, доступна ли функция
-    global create_payment_advanced
     if create_payment_advanced is None:
         error_text = (
             f"❌ *Ошибка конфигурации*\n\n"
@@ -264,7 +268,6 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
         parse_mode='Markdown'
     )
     
-    global check_payment_status_api
     if check_payment_status_api is None:
         error_text = f"❌ *Функция проверки статуса не доступна*"
         keyboard = [[InlineKeyboardButton("⬅️ Вернуться", callback_data="back_to_results")]]
@@ -365,7 +368,6 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
         parse_mode='Markdown'
     )
     
-    global get_materials_link_api
     if get_materials_link_api is None:
         error_text = f"❌ *Функция получения материалов не доступна*"
         keyboard = [[InlineKeyboardButton("⬅️ Вернуться", callback_data="back_to_results")]]
@@ -463,7 +465,6 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
     
-    global get_materials_link_api
     if get_materials_link_api is None:
         await update.message.reply_text(
             f"❌ *Функция получения материалов не доступна*",
@@ -537,7 +538,6 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
     
-    global check_payment_status_api
     if check_payment_status_api is None:
         await update.message.reply_text(
             f"❌ *Функция проверки статуса не доступна*",
