@@ -252,7 +252,7 @@ def format_intimate_profile(profile_data: dict, user_name: str) -> str:
 
 {SEXUAL_DIVIDER}
 
-💎 <b>ТАМ, ЗА ЗЕРКАЛОМ...</b> ✨
+💎 <b>ТАМ, ЗА ЗЕРКАЛОМ...</b> 🪞
 
 Вы увидели только что СВОЁ отражение. ✨
 Но у <b>каждого друга</b> — своя тайна.
@@ -812,73 +812,60 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     # Основное сообщение с новым дизайном
     message = f"""
-🔍 <b>✨ МОИ ОТРАЖЕНИЯ ✨</b>
+🔍 ✨ МОИ ОТРАЖЕНИЯ ✨
 
-┌─ <b>📊 СТАТИСТИКА</b> ───────────────────
+┌─ 📊 СТАТИСТИКА ─────┐
 │
-│   🔗 <b>Всего ссылок:</b>  {total_invites}
-│   ✨ <b>Отражений:</b>     {total_reflections}
+│   🔗 Всего ссылок:  {total_invites}
+│   ✨ Отражений:     {total_reflections}
 │
-│   🆓 <b>Бесплатные:</b>    {free_used}/{FREE_INVITE_LIMIT}  [{free_progress}]
-│   💎 <b>Платные:</b>       {max(0, paid_available)} доступно
+│   🆓 Бесплатные:    {free_used}/{FREE_INVITE_LIMIT}  [{free_progress}]
+│   💎 Платные:       {max(0, paid_available)} доступно
 │
-└─────────────────────────────────
+└─────────────────────┘
 """
-    
-    # АКТИВНЫЕ ПРИГЛАШЕНИЯ (ЖДУТ ОТКЛИКА)
-    if active_invites:
-        message += f"""
-┌─ <b>🟢 ЖДУТ ОТКЛИКА</b> ─────────────────
-│
-"""
-        now = datetime.now().timestamp()
-        for inv in active_invites[:5]:
-            created = datetime.fromtimestamp(inv.get("created_at", now)).strftime('%d.%m')
-            days = int((now - inv.get("created_at", now)) / 86400)
-            days_text = f"<b>{days}д</b>" if days > 0 else "<b>сегодня</b>"
-            inv_type = inv.get("invite_type", "🆓")
-            
-            message += f"│   {inv_type} • <b>{created}</b> • {days_text} ⏳\n"
-        
-        if len(active_invites) > 5:
-            message += f"│   ... и ещё {len(active_invites) - 5}\n"
-        message += f"│\n└─────────────────────────────────\n"
-    else:
-        message += f"""
-┌─ <b>🟢 ЖДУТ ОТКЛИКА</b> ─────────────────
-│
-│   <i>Нет активных приглашений</i> 🌙
-│
-└─────────────────────────────────
 
-"""
-    
-    # ОТРАЗИВШИЕСЯ ДРУЗЬЯ
-    if used_invites:
-        message += f"""
-┌─ <b>✨ УЖЕ ОТРАЗИЛИСЬ</b> ───────────────
+if active_invites:
+    message += f"""
+┌─ 🟢 ЖДУТ ОТКЛИКА ─┐
 │
 """
-        for inv in used_invites[:5]:
-            friend_name = inv.get("friend_name", "друг").replace('@', '')
-            friend_profile = inv.get("friend_profile", "SA-3_CON")
-            used_date = datetime.fromtimestamp(inv.get("used_at", inv.get("created_at", datetime.now().timestamp()))).strftime('%d.%m.%Y')
-            inv_type = inv.get("invite_type", "🆓")
-            
-            message += f"│   {inv_type} <b>{friend_name}</b>\n"
-            message += f"│      📊 {friend_profile}  •  {used_date}"
-            
-            # Добавляем купленные ключи
-            if inv.get("purchased_functions"):
-                key_map = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
-                keys = "  •  <b>" + " ".join(key_map.get(k, k) for k in inv["purchased_functions"]) + "</b>"
-                message += keys
-            
-            message += f"\n│\n"
+    for inv in active_invites[:5]:
+        created = datetime.fromtimestamp(inv.get("created_at", now)).strftime('%d.%m')
+        days = int((now - inv.get("created_at", now)) / 86400)
+        days_text = f"<b>{days}д</b>" if days > 0 else "<b>сегодня</b>"
+        inv_type = inv.get("invite_type", "🆓")
         
-        if len(used_invites) > 5:
-            message += f"│   ... и ещё {len(used_invites) - 5}\n│\n"
-        message += f"└─────────────────────────────────\n"
+        message += f"│   {inv_type} • {created} • {days_text} ⏳\n"
+    
+    if len(active_invites) > 5:
+        message += f"│   ... и ещё {len(active_invites) - 5}\n"
+    message += f"│\n└─────────────────────┘\n"
+
+if used_invites:
+    message += f"""
+┌─ ✨ ОТРАЖЕНИЯ ─────┐
+│
+"""
+    for inv in used_invites[:5]:
+        friend_name = inv.get("friend_name", "друг").replace('@', '')
+        friend_profile = inv.get("friend_profile", "SA-3_CON")
+        used_date = datetime.fromtimestamp(inv.get("used_at", inv.get("created_at", datetime.now().timestamp()))).strftime('%d.%m.%Y')
+        inv_type = inv.get("invite_type", "🆓")
+        
+        message += f"│   {inv_type} <b>{friend_name}</b>\n"
+        message += f"│      📊 {friend_profile}  •  {used_date}"
+        
+        if inv.get("purchased_functions"):
+            key_map = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
+            keys = "  •  <b>" + " ".join(key_map.get(k, k) for k in inv["purchased_functions"]) + "</b>"
+            message += keys
+        
+        message += f"\n│\n"
+    
+    if len(used_invites) > 5:
+        message += f"│   ... и ещё {len(used_invites) - 5}\n│\n"
+    message += f"└─────────────────────┘\n"
     else:
         message += f"""
 ┌─ <b>✨ УЖЕ ОТРАЗИЛИСЬ</b> ───────────────
