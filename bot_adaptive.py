@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 11.1 - ОБНОВЛЕНЫ ТЕКСТЫ 4F, УЛУЧШЕНО ЛОГИРОВАНИЕ
-✅ Убрана кнопка "Создать ссылку" из "Мои отражения"
-✅ Кнопка 4F выделена и перемещена вниз
-✅ Добавлена система лимитов (3 бесплатных ссылки)
-✅ Добавлены пакеты ссылок (3/5/10)
-✅ Новый премиум-дизайн с рамками и прогресс-барами
-✅ Убрано слово "бесплатная" при создании ссылки
-✅ Укорочены линии для мобильных устройств
+Версия: 12.0 - ВАШ ДИЗАЙН "МОИ ОТРАЖЕНИЯ" + ДВУХУРОВНЕВАЯ 4F
+✅ Полностью переработан экран "Мои отражения" под ваш минималистичный дизайн
+✅ Добавлены ссылки на Яндекс.Диск для каждого профиля
+✅ Двухуровневая система 4F: кратко (обучайка) и подробно (стимульный контроль)
+✅ Все кнопки управления убраны, только навигационные
 ✅ Добавлено логирование ошибок и процессов
-✅ Убран лишний эмодзи 🆓 на экране создания ссылки
 """
 
 import logging
@@ -85,6 +81,7 @@ FOUR_F_CONTENT = 5
 FOUR_F_PAYMENT_SCREEN = 6
 BUY_PACKAGES = 7
 FOUR_F_MAIN = 8
+FOUR_F_DETAILED = 9  # НОВОЕ состояние для подробного описания
 
 # ===== КОНСТАНТЫ =====
 SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━━━"
@@ -99,6 +96,28 @@ INVITE_PACKAGES = {
     "5": {"price": 499, "links": 5, "emoji": "🥈", "popular": True},
     "10": {"price": 899, "links": 10, "emoji": "🥇", "popular": False}
 }
+
+# ===== ССЫЛКИ НА ЯНДЕКС.ДИСК =====
+USER_DISK_LINK = "https://disk.yandex.ru/d/EYPIF9_puI_t0A"
+
+PROFILE_DISK_LINKS = {
+    # Стандартные профили
+    "SA-3_CON": "https://disk.yandex.ru/d/abc123def",
+    "SA-4_VAL": "https://disk.yandex.ru/d/def456ghi",
+    "SA-5_INT": "https://disk.yandex.ru/d/ghi789jkl",
+    
+    # Интимные профили
+    "IP-3_CON": "https://disk.yandex.ru/d/jkl012mno",
+    "IP-4_VAL": "https://disk.yandex.ru/d/mno345pqr",
+    "IP-5_INT": "https://disk.yandex.ru/d/pqr678stu",
+    
+    # Дефолтная
+    "default": "https://disk.yandex.ru/d/xyz789uvw"
+}
+
+def get_disk_link_by_profile(profile_code: str) -> str:
+    """Возвращает ссылку на Яндекс.Диск для профиля"""
+    return PROFILE_DISK_LINKS.get(profile_code, PROFILE_DISK_LINKS["default"])
 
 # ===== ОБНОВЛЕННЫЕ 4F-КОНСТАНТЫ =====
 FOUR_F_EMOJIS = {
@@ -122,7 +141,7 @@ FOUR_F_SUBTITLES = {
     "4F": "🍽 Стимулы, запускающие режим заработка"
 }
 
-# ===== НОВЫЕ ПОДРОБНЫЕ ОПИСАНИЯ 4F =====
+# ===== ПОДРОБНЫЕ ОПИСАНИЯ 4F (ДЛЯ ПОКУПКИ) =====
 FOUR_F_DESCRIPTIONS = {
     "1F": """😤 <b>СТИМУЛЫ, ЗАПУСКАЮЩИЕ ЯРОСТЬ</b>
 
@@ -216,7 +235,7 @@ FOUR_F_TAGS = {
     "4F": "🍽 Стимулы мотивации • 3 фразы-включателя • Техника просьбы"
 }
 
-# ===== ОБНОВЛЕННЫЙ ТЕКСТ ОБУЧАЙКИ 4F =====
+# ===== ОБУЧАЙКА 4F (КРАТКАЯ ВЕРСИЯ) =====
 FOUR_F_EXPLANATION = """
 📘 <b>ЧТО ТАКОЕ 4F-КЛЮЧИ?</b>
 
@@ -241,6 +260,72 @@ FOUR_F_EXPLANATION = """
 └ Как говорить с ним о деньгах
 
 💰 <b>Цена: 1₽</b> (тестовый режим)
+"""
+
+# ===== ПОДРОБНОЕ ОПИСАНИЕ 4F (НОВОЕ) =====
+FOUR_F_DETAILED_EXPLANATION = """
+🔥 <b>1F - ЯРОСТЬ / НАПАДЕНИЕ</b>
+<i>Стимулы, запускающие агрессию</i>
+
+😤 <b>СТИМУЛЫ, ЗАПУСКАЮЩИЕ ЯРОСТЬ</b>
+
+Его агрессия не возникает из ниоткуда.
+Это реакция на конкретные ТРИГГЕРЫ.
+
+<b>🎯 ПУСКОВЫЕ КЛЮЧИ:</b>
+   • Критика при свидетелях
+   • Обесценивание его усилий
+   • Игнорирование границ
+   • Определенные интонации
+
+<b>🔑 ЧТО ДАЁТ КЛЮЧ:</b>
+   • Список его личных триггеров
+   • 3 фразы-гасителя
+   • Технику «Торможение»
+
+══════════════════════
+
+🏃 <b>2F - СТРАХ / БЕГСТВО</b>
+<i>Стимулы, запускающие избегание</i>
+
+<b>🎯 ПУСКОВЫЕ КЛЮЧИ:</b>
+   • Повышение голоса
+   • Вопросы о будущем
+   • Давление и требования
+
+<b>🔑 ЧТО ДАЁТ КЛЮЧ:</b>
+   • 3 якоря безопасности
+   • Технику «Безопасная среда»
+
+══════════════════════
+
+🧬 <b>3F - СЕКС / ЖЕЛАНИЕ</b>
+<i>Стимулы, запускающие влечение</i>
+
+<b>🎯 ПУСКОВЫЕ КЛЮЧИ:</b>
+   • Особая интонация
+   • Зрительный контакт
+   • Неожиданные касания
+
+<b>🔑 ЧТО ДАЁТ КЛЮЧ:</b>
+   • 3 слова-пароля
+   • 3 касания-ключа
+   • Эротический сценарий
+
+══════════════════════
+
+🍽 <b>4F - ДЕНЬГИ / ПОГЛОЩЕНИЕ</b>
+<i>Стимулы, запускающие режим заработка</i>
+
+<b>🎯 ПУСКОВЫЕ КЛЮЧИ:</b>
+   • Упоминание возможностей
+   • Разговоры о конкурентах
+   • Идеи для заработка
+
+<b>🔑 ЧТО ДАЁТ КЛЮЧ:</b>
+   • 3 фразы-мотиватора
+   • Технику просьбы
+   • Сценарий «Топливо»
 """
 
 # ===== ЗАГРУЗКА ИНТИМНОГО ПРОФИЛЯ ИЗ JSON =====
@@ -779,11 +864,11 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
         return RESULTS_SCREEN
 
 # ============================================
-# 🔗 ЭКРАН 3: СОЗДАНИЕ ПРИГЛАШЕНИЯ (ОБНОВЛЕН)
+# 🔗 ЭКРАН 3: СОЗДАНИЕ ПРИГЛАШЕНИЯ
 # ============================================
 
 async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Создание ссылки-приглашения (УБРАН 🆓)"""
+    """🔞 Создание ссылки-приглашения"""
     try:
         query = update.callback_query
         await query.answer()
@@ -817,7 +902,6 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         if is_free:
             user_limits["free_used"] += 1
         
-        # ИСПРАВЛЕНО: УБРАН ЛИШНИЙ 🆓
         text = f"""
 🔞 <b>✨ ВАША ССЫЛКА ГОТОВА! ✨</b>
 
@@ -891,11 +975,11 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ - КОМПАКТНЫЙ ДИЗАЙН
+# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ - ВАШ ДИЗАЙН
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔍 МОИ ОТРАЖЕНИЯ - КОМПАКТНЫЙ ДИЗАЙН"""
+    """🔍 МОИ ОТРАЖЕНИЯ - ВАШ МИНИМАЛИСТИЧНЫЙ ДИЗАЙН"""
     try:
         query = update.callback_query
         await query.answer("🔄 Загружаю отражения...")
@@ -904,142 +988,110 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         invites = get_user_invites(user_id)
         context.user_data["sexual_invites"] = invites
         
-        user_limits = get_user_limits(context)
-        
-        active_invites = [inv for inv in invites if inv.get("status") == "active"]
+        # Статистика
         used_invites = [inv for inv in invites if inv.get("status") == "used"]
-        
         total_invites = len(invites)
         total_reflections = len(used_invites)
         
-        free_used = user_limits["free_used"]
-        paid_available = user_limits["total_purchased"] - (total_invites - free_used)
+        # Профиль пользователя
+        user_profile = context.user_data.get("profile", USER_PROFILE)
+        user_profile_code = user_profile.get('display_name', 'SA-5_INT')
         
-        free_progress = create_progress_bar(free_used, FREE_INVITE_LIMIT)
-        
-        now = datetime.now().timestamp()
-        
-        # КОМПАКТНЫЙ ДИЗАЙН
+        # ВАШ ДИЗАЙН - ТОЧНО ПО ТЗ
         message = f"""
-🔍 <b>МОИ ОТРАЖЕНИЯ</b>
+══════════════════
+📊  СТАТИСТИКА
+🪞  Ссылок зеркал     <b>{total_invites}</b>
+👥  Отражений         <b>{total_reflections}</b>
 
-┌─ СТАТИСТИКА ──────┐
-│ 🔗 {total_invites} · ✨ {total_reflections}
-│ 🆓 {free_used}/{FREE_INVITE_LIMIT} [{free_progress}]
-│ 💎 {max(0, paid_available)}
-└───────────────────┘
+══════════════════
+🪞  МОЁ ОТРАЖЕНИЕ
+📌 <b>Профиль</b>  {user_profile_code}
+📁 <b>Диск</b>     <code>{USER_DISK_LINK}</code>
 """
-
-        if active_invites:
-            message += f"""
-┌─ ЖДУТ ОТКЛИКА ────┐"""
-            for inv in active_invites[:5]:
-                created = datetime.fromtimestamp(inv.get("created_at", now)).strftime('%d.%m')
-                days = int((now - inv.get("created_at", now)) / 86400)
-                days_text = f"{days}д" if days > 0 else "сег"
-                inv_type = inv.get("invite_type", "🆓")
-                message += f"\n│ {inv_type} {created} {days_text}"
-            
-            if len(active_invites) > 5:
-                message += f"\n│ +{len(active_invites)-5}"
-            message += f"\n└───────────────────┘\n"
 
         if used_invites:
             message += f"""
-┌─ ОТРАЖЕНИЯ ───────┐"""
-            for inv in used_invites[:3]:
-                friend_name = inv.get("friend_name", "друг").replace('@', '')[:10]
-                friend_profile = inv.get("friend_profile", "SA-3")
-                used_date = datetime.fromtimestamp(inv.get("used_at", inv.get("created_at", now))).strftime('%d.%m')
-                inv_type = inv.get("invite_type", "🆓")
+
+═══════════════════
+👥  ОТРАЖЕНИЕ ТЕХ КТО ПОСМОТРЕЛСЯ({total_reflections})
+
+"""
+            for idx, inv in enumerate(used_invites[:5], 1):
+                friend_name = inv.get("friend_name", "друг").replace('@', '')
+                friend_profile = inv.get("friend_profile", "SA-3_CON")
+                disk_link = get_disk_link_by_profile(friend_profile)
                 
-                message += f"\n│ {inv_type} <b>{friend_name}</b>"
-                message += f"\n│   {friend_profile} {used_date}"
+                message += f"""
+{idx}.  🆔 <b>{friend_name}</b>
+    └ 📊 {friend_profile}
+    └ 📁 <code>{disk_link}</code>"""
                 
                 if inv.get("purchased_functions"):
                     key_map = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
                     keys = " ".join(key_map.get(k, k) for k in inv["purchased_functions"])
-                    message += f" {keys}"
-                message += f"\n│"
+                    message += f"""
+    └ {keys}"""
+                
+                message += f"\n"
             
-            if len(used_invites) > 3:
-                message += f"\n│ +{len(used_invites)-3}"
-            message += f"\n└───────────────────┘\n"
+            if len(used_invites) > 5:
+                message += f"\n... и ещё {len(used_invites) - 5}\n"
         else:
             message += f"""
-┌─ ОТРАЖЕНИЯ ───────┐
-│ <i>Пока нет</i> 🌑
-│ 💡 Создайте ссылку
-└───────────────────┘
 
+═══════════════════
+👥  ОТРАЖЕНИЕ ТЕХ КТО ПОСМОТРЕЛСЯ(0)
+
+🌑  <i>Пока нет отражений</i>
+
+💡  Создайте ссылку в профиле
+    и отправьте другу
 """
 
         message += f"""
-💫 Каждое отражение — ключ к человеку"""
 
-        keyboard = []
-        keyboard.append([
-            InlineKeyboardButton("◀️ К ПРОФИЛЮ", callback_data="my_sexual_profile")
-        ])
-        keyboard.append([
-            InlineKeyboardButton("🔴 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")
-        ])
+───────────────────────────
+💫  <i>Каждое отражение — ключ к человеку</i>
+"""
+
+        # Кнопки навигации (только 2)
+        keyboard = [
+            [InlineKeyboardButton("◀️ К ПРОФИЛЮ", callback_data="my_sexual_profile")],
+            [InlineKeyboardButton("🔴 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")]
+        ]
 
         await query.edit_message_text(
             message,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
+            parse_mode="HTML",
+            disable_web_page_preview=True
         )
         
         logger.info(f"🔍 Пользователь {user_id} открыл Мои отражения")
         return INVITES_LIST
+        
     except Exception as e:
         logger.error(f"❌ Ошибка в my_invites_callback: {e}\n{traceback.format_exc()}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
         return INVITES_LIST
 
 # ============================================
-# 🧬 НОВЫЙ ЭКРАН: ГЛАВНОЕ МЕНЮ 4F
+# 🧬 ЭКРАН 5: ГЛАВНОЕ МЕНЮ 4F (ОБУЧАЙКА)
 # ============================================
 
 async def four_f_main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🧬 Главное меню 4F-ключей"""
+    """🧬 Главное меню 4F-ключей (краткая версия)"""
     try:
         query = update.callback_query
         await query.answer()
         logger.info(f"🧬 Пользователь {query.from_user.id} открыл меню 4F")
         
-        message = f"""
-🧬 <b>4F-КЛЮЧИ</b>
-
-<b>Что это?</b>
-4F — система доступа к глубинным состояниям человека.
-Четыре базовые реакции, зашитые в подкорке.
-
-<b>Доступные ключи:</b>
-
-1F 🔥 <b>НАПАДЕНИЕ / ЯРОСТЬ</b>
-└ Как гасить агрессию и не нарваться
-
-2F 🏃 <b>БЕГСТВО / СТРАХ</b>
-└ Чего он боится на самом деле
-
-3F 🧬 <b>СЕКС / ЖЕЛАНИЕ</b>
-└ Что включает его режим «хочу»
-
-4F 🍽 <b>ПОГЛОЩЕНИЕ / ДЕНЬГИ</b>
-└ Какие идеи прорастают в его голове
-
-{SEXUAL_DIVIDER}
-💡 Чтобы открыть 4F-ключи друга:
-   1. Выберите друга в списке отражений
-   2. Нажмите "🧬 4F" в его меню
-   3. Купите нужный ключ
-"""
+        message = FOUR_F_EXPLANATION
         
         keyboard = [
+            [InlineKeyboardButton("📘 ПОДРОБНЕЕ", callback_data="four_f_detailed")],
             [InlineKeyboardButton("🔍 К ОТРАЖЕНИЯМ", callback_data="my_invites")],
-            [InlineKeyboardButton("📘 ПОДРОБНЕЕ", callback_data="4f_explain")],
             [InlineKeyboardButton("◀️ В ПРОФИЛЬ", callback_data="my_sexual_profile")]
         ]
         
@@ -1055,7 +1107,35 @@ async def four_f_main_menu_callback(update: Update, context: ContextTypes.DEFAUL
         return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 5: ПРОВЕРКА СТАТУСА
+# 📘 ЭКРАН 6: ПОДРОБНОЕ ОПИСАНИЕ 4F (НОВЫЙ)
+# ============================================
+
+async def four_f_detailed_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """📘 ПОДРОБНОЕ ОПИСАНИЕ 4F"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        logger.info(f"📘 Пользователь {query.from_user.id} открыл подробное описание 4F")
+        
+        message = FOUR_F_DETAILED_EXPLANATION
+        
+        keyboard = [
+            [InlineKeyboardButton("◀️ К ОБУЧАЙКЕ", callback_data="four_f_main_menu")]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
+        return FOUR_F_MAIN
+    except Exception as e:
+        logger.error(f"❌ Ошибка в four_f_detailed_callback: {e}")
+        return FOUR_F_MAIN
+
+# ============================================
+# 🔍 ЭКРАН 7: ПРОВЕРКА СТАТУСА
 # ============================================
 
 async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1106,7 +1186,7 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return INVITES_LIST
 
 # ============================================
-# 💳 НОВЫЙ ЭКРАН: ПОКУПКА ПАКЕТОВ ССЫЛОК
+# 💳 ЭКРАН 8: ПОКУПКА ПАКЕТОВ ССЫЛОК
 # ============================================
 
 async def buy_invite_packages_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1166,7 +1246,7 @@ async def buy_invite_packages_callback(update: Update, context: ContextTypes.DEF
         return INVITES_LIST
 
 # ============================================
-# 💳 НОВЫЙ ЭКРАН: ОПЛАТА ПАКЕТА
+# 💳 ЭКРАН 9: ОПЛАТА ПАКЕТА
 # ============================================
 
 async def pay_package_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1210,7 +1290,7 @@ async def pay_package_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return BUY_PACKAGES
 
 # ============================================
-# ✅ НОВЫЙ ЭКРАН: ПОДТВЕРЖДЕНИЕ ОПЛАТЫ ПАКЕТА
+# ✅ ЭКРАН 10: ПОДТВЕРЖДЕНИЕ ОПЛАТЫ ПАКЕТА
 # ============================================
 
 async def process_package_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1271,7 +1351,7 @@ async def process_package_payment_callback(update: Update, context: ContextTypes
         return INVITES_LIST
 
 # ============================================
-# 👤 ЭКРАН 6: МЕНЮ ПРОФИЛЯ ДРУГА
+# 👤 ЭКРАН 11: МЕНЮ ПРОФИЛЯ ДРУГА
 # ============================================
 
 def get_friend_by_id(context: ContextTypes.DEFAULT_TYPE, friend_id: int) -> Optional[dict]:
@@ -1344,7 +1424,7 @@ async def friend_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return INVITES_LIST
 
 # ============================================
-# 💰 ЭКРАН 7: ОПЛАТА ДОСТУПА
+# 💰 ЭКРАН 12: ОПЛАТА ДОСТУПА
 # ============================================
 
 async def show_payment_access_screen(update: Update, context: ContextTypes.DEFAULT_TYPE, friend_data: dict):
@@ -1383,7 +1463,7 @@ async def show_payment_access_screen(update: Update, context: ContextTypes.DEFAU
         return INVITES_LIST
 
 # ============================================
-# 📊 ЭКРАН 8: СТАНДАРТНЫЙ ПРОФИЛЬ
+# 📊 ЭКРАН 13: СТАНДАРТНЫЙ ПРОФИЛЬ
 # ============================================
 
 async def standard_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1426,7 +1506,7 @@ async def standard_profile_callback(update: Update, context: ContextTypes.DEFAUL
         return FRIEND_MENU
 
 # ============================================
-# 🔞 ЭКРАН 9: ИНТИМНЫЙ ПРОФИЛЬ ДРУГА
+# 🔞 ЭКРАН 14: ИНТИМНЫЙ ПРОФИЛЬ ДРУГА
 # ============================================
 
 async def intimate_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1464,7 +1544,7 @@ async def intimate_profile_callback(update: Update, context: ContextTypes.DEFAUL
         return FRIEND_MENU
 
 # ============================================
-# 🧬 ЭКРАН 10: МЕНЮ 4F-КЛЮЧЕЙ
+# 🧬 ЭКРАН 15: МЕНЮ 4F-КЛЮЧЕЙ ДЛЯ ДРУГА
 # ============================================
 
 async def four_f_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1531,7 +1611,7 @@ async def four_f_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return FRIEND_MENU
 
 # ============================================
-# 📘 ЭКРАН 11: ОБУЧАЙКА 4F
+# 📘 ЭКРАН 16: ОБУЧАЙКА 4F (ДЛЯ ДРУГА)
 # ============================================
 
 async def four_f_explanation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1566,7 +1646,7 @@ async def four_f_explanation_callback(update: Update, context: ContextTypes.DEFA
         return FOUR_F_MENU
 
 # ============================================
-# 💳 ЭКРАН 12: ПОКУПКА 4F-КЛЮЧА
+# 💳 ЭКРАН 17: ПОКУПКА 4F-КЛЮЧА
 # ============================================
 
 async def buy_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1619,7 +1699,7 @@ async def buy_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return FOUR_F_MENU
 
 # ============================================
-# 💳 ЭКРАН 13: ПРОЦЕСС ПЛАТЕЖА
+# 💳 ЭКРАН 18: ПРОЦЕСС ПЛАТЕЖА
 # ============================================
 
 async def process_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1669,7 +1749,7 @@ async def process_payment_callback(update: Update, context: ContextTypes.DEFAULT
         return FOUR_F_PAYMENT_SCREEN
 
 # ============================================
-# 🔑 ЭКРАН 14: ОТКРЫТЫЙ 4F-КЛЮЧ
+# 🔑 ЭКРАН 19: ОТКРЫТЫЙ 4F-КЛЮЧ
 # ============================================
 
 async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1793,12 +1873,12 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*60)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v11.1")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v12.0")
     print("="*60)
-    print("✅ Обновлены тексты 4F")
-    print("✅ Улучшено логирование")
-    print("✅ Укорочены линии в Мои отражения")
-    print("✅ Убран лишний 🆓 на экране создания ссылки")
+    print("✅ ВАШ ДИЗАЙН экрана «Мои отражения»")
+    print("✅ Ссылки на Яндекс.Диск для каждого профиля")
+    print("✅ Двухуровневая система 4F: кратко и подробно")
+    print("✅ Минималистичная навигация (только 2 кнопки)")
     print("="*60)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
@@ -1873,6 +1953,7 @@ def main():
                 
                 FOUR_F_MAIN: [
                     CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+                    CallbackQueryHandler(four_f_detailed_callback, pattern='^four_f_detailed$'),
                     CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
                     CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
                 ],
@@ -1887,7 +1968,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 11.1")
+        print("\n🚀 Бот запущен! Версия 12.0")
         print("="*60)
         logger.info("✅ Бот успешно запущен")
         
