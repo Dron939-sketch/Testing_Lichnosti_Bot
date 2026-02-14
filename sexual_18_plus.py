@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 19.0 - ПОЛНАЯ ИНТЕГРАЦИЯ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК
+Версия: 19.1 - ПОЛНАЯ ИНТЕГРАЦИЯ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК + СОСТОЯНИЯ
 ✅ Все 36 ссылок на профили добавлены
 ✅ Умная функция поиска ссылок по профилю
 ✅ Корректное отображение в "Моих отражениях"
+✅ Добавлены состояния для 18+ модуля
+✅ Полный экспорт всех необходимых компонентов
 """
 
 import logging
@@ -88,6 +90,21 @@ FOUR_F_PAYMENT_SCREEN = 6
 BUY_PACKAGES = 7
 FOUR_F_MAIN = 8
 FOUR_F_DETAILED = 9
+
+# ===== СОСТОЯНИЯ ДЛЯ 18+ МОДУЛЯ (ЭКСПОРТИРУЮТСЯ) =====
+SEXUAL_STATES = {
+    "SEXUAL_PROFILE_SCREEN": 10,
+    "SEXUAL_INVITES_LIST": 11,
+    "SEXUAL_FRIEND_PROFILE": 12,
+    "FOUR_F_PAYMENT_SCREEN": 13,
+    "FOUR_F_CONTENT_SCREEN": 14
+}
+
+SEXUAL_PROFILE_SCREEN = SEXUAL_STATES["SEXUAL_PROFILE_SCREEN"]
+SEXUAL_INVITES_LIST = SEXUAL_STATES["SEXUAL_INVITES_LIST"]
+SEXUAL_FRIEND_PROFILE = SEXUAL_STATES["SEXUAL_FRIEND_PROFILE"]
+FOUR_F_PAYMENT_SCREEN = SEXUAL_STATES["FOUR_F_PAYMENT_SCREEN"]
+FOUR_F_CONTENT_SCREEN = SEXUAL_STATES["FOUR_F_CONTENT_SCREEN"]
 
 # ===== КОНСТАНТЫ =====
 SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━━━"
@@ -2124,12 +2141,14 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("\n" + "="*70)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.0")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.1")
     print("="*70)
     print("✅ ПОЛНАЯ ИНТЕГРАЦИЯ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК")
     print("✅ Умная функция поиска ссылок по профилю")
     print("✅ Корректное отображение в \"Моих отражениях\"")
     print("✅ Кнопки прикреплены к части 3 интимного профиля")
+    print("✅ Добавлены состояния для 18+ модуля")
+    print("✅ Полный экспорт всех необходимых компонентов")
     print("="*70)
     print("📊 ДОСТУПНЫЕ ПРОФИЛИ:")
     print("   SA: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
@@ -2239,7 +2258,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 19.0")
+        print("\n🚀 Бот запущен! Версия 19.1")
         print("="*70)
         logger.info("✅ Бот успешно запущен")
         
