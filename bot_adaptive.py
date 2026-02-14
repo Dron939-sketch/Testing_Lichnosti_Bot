@@ -105,7 +105,6 @@ load_4f_content,     # ✅ правильно
     sexual_invite_start,
     copy_invite_callback,
     check_invite_callback,
-    delete_invite_callback,
     show_my_invites,
     friend_details_callback,
     buy_function_callback,
