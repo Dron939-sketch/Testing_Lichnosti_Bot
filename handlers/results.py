@@ -1,4 +1,3 @@
-# handlers/results.py
 """
 Обработчики для экрана результатов
 """
@@ -188,6 +187,8 @@ async def show_results_screen(
     
     await query.message.reply_text(message_2.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
+    # ВАЖНО: Добавляем логирование возвращаемого значения
+    logger.info(f"✅ User {update.effective_user.id}: show_results_screen → возвращаю RESULTS = {RESULTS}")
     return RESULTS
 
 async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -197,7 +198,7 @@ async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await show_results_screen(update, context, force_shared_view=True)
     
-    logger.info(f"🔄 User {update.effective_user.id}: back_to_results → RESULTS")
+    logger.info(f"🔄 User {update.effective_user.id}: back_to_results → RESULTS = {RESULTS}")
     return RESULTS
 
 async def back_to_results_after_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -207,7 +208,7 @@ async def back_to_results_after_gift(update: Update, context: ContextTypes.DEFAU
     
     await show_results_screen(update, context, force_shared_view=True)
     
-    logger.info(f"🎁 User {update.effective_user.id}: back_to_results_after_gift → RESULTS")
+    logger.info(f"🎁 User {update.effective_user.id}: back_to_results_after_gift → RESULTS = {RESULTS}")
     return RESULTS
 
 async def skip_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -217,7 +218,7 @@ async def skip_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await show_results_screen(update, context, force_shared_view=True)
     
-    logger.info(f"🔄 User {update.effective_user.id}: skip_share → RESULTS")
+    logger.info(f"🔄 User {update.effective_user.id}: skip_share → RESULTS = {RESULTS}")
     return RESULTS
 
 async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
