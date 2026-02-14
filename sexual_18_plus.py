@@ -215,9 +215,12 @@ def get_disk_link_by_profile(profile_code: str) -> str:
             logger.debug(f"✅ Найдено по начальным символам: {key}")
             return PROFILE_DISK_LINKS[key]
     
-    # 5. Если ничего не найдено - возвращаем default
+       # 5. Если ничего не найдено - возвращаем default
     logger.warning(f"⚠️ Профиль {profile_code} не найден, использую default")
     return PROFILE_DISK_LINKS["default"]
+
+# ===== АЛИАСЫ ДЛЯ СОВМЕСТИМОСТИ =====
+get_disk_link = get_disk_link_by_profile
 
 # ===== 4F-КОНСТАНТЫ =====
 FOUR_F_EMOJIS = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
@@ -2545,6 +2548,7 @@ __all__ = [
     
     # Функции для работы с профилями
     'get_disk_link_by_profile',
+    'get_disk_link',
     'load_intimate_profile',
     'load_friend_intimate_profile',
     'format_intimate_profile_part1',
