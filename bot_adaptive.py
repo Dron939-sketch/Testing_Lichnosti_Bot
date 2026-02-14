@@ -93,7 +93,7 @@ load_friend_intimate_profile,
 format_intimate_profile_part1,
 format_intimate_profile_part2,
 format_intimate_profile_part3,
-format_friend_profile,
+format_friend_intimate_profile,  # ✅ правильно
 format_4f_content,
 format_4f_message,
     
