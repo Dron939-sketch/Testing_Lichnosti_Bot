@@ -8,7 +8,8 @@ import urllib.parse
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from config import GIFT_SCREEN, OPEN_GIFT_SCREEN, PACKAGE_SCREEN, RESULTS
+# ИСПРАВЛЕНО: Импортируем константы из constants.py вместо config.py
+from constants import GIFT_SCREEN, OPEN_GIFT_SCREEN, PACKAGE_SCREEN, RESULTS
 from config import GIFT_PDF_LINK, SHARE_TEXT, BOT_LINK, GIFT_SCREEN_TEXT, logger
 from sexual_18_plus import PROFILE_DISK_LINKS
 
@@ -17,6 +18,10 @@ logger = logging.getLogger(__name__)
 async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ЭКРАН: ДАЙТЕ ДРУГИМ ЗЕРКАЛО — ПОЛУЧИТЕ МЕЧ"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"🎁 get_gift_screen ВЫЗВАН для пользователя {user_id}")
+    
     await query.answer()
     
     instruction_text = (
@@ -45,16 +50,34 @@ async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(instruction_text, reply_markup=reply_markup, parse_mode="HTML")
+    
+    logger.info(f"🔄 User {user_id}: get_gift_screen → возвращаю GIFT_SCREEN = {GIFT_SCREEN}")
     return GIFT_SCREEN
 
 async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ЭКРАН С ПОДАРКОМ"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"🎁 open_gift_screen ВЫЗВАН для пользователя {user_id}")
+    logger.info(f"📊 has_shared={context.user_data.get('has_shared', False)}")
+    
     await query.answer()
     
     if not context.user_data.get("has_shared", False):
+        logger.warning(f"❌ Пользователь {user_id} пытается открыть подарок без has_shared")
         await query.answer(
             "❌ Сначала поделитесь зеркалом с друзьями, чтобы получить подарок!", 
+            show_alert=True
+        )
+        from handlers.results import show_results_screen
+        return await show_results_screen(update, context, force_shared_view=True)
+    
+    # Проверяем наличие ссылки
+    if not GIFT_PDF_LINK:
+        logger.error(f"❌ GIFT_PDF_LINK не установлен для пользователя {user_id}")
+        await query.answer(
+            "❌ Ссылка на подарок временно недоступна. Пожалуйста, попробуйте позже.",
             show_alert=True
         )
         from handlers.results import show_results_screen
@@ -66,7 +89,7 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    logger.info(f"🎁 User {update.effective_user.id} opened gift (has_shared={context.user_data.get('has_shared', False)})")
+    logger.info(f"🎁 User {user_id} opened gift (has_shared={context.user_data.get('has_shared', False)})")
     
     await query.edit_message_text(
         GIFT_SCREEN_TEXT,
@@ -74,11 +97,16 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
     
+    logger.info(f"🔄 User {user_id}: open_gift_screen → возвращаю OPEN_GIFT_SCREEN = {OPEN_GIFT_SCREEN}")
     return OPEN_GIFT_SCREEN
 
 async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ЭКРАН: ПОЛНОЕ ОПИСАНИЕ ПРОФИЛЯ"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"📦 show_package_screen ВЫЗВАН для пользователя {user_id}")
+    
     await query.answer()
     
     profile_data = context.user_data.get("profile_data")
@@ -87,9 +115,11 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         profile_code = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
         profile_info = f"\n📊 <b>Ваш профиль:</b> <code>{profile_code}</code>\n"
         personal_note = f"\n<i>Это описание будет создано персонально для вас на основе ваших ответов.</i>"
+        logger.info(f"📊 Профиль пользователя: {profile_code}")
     else:
         profile_info = "\n📊 <b>Профиль:</b> будет определен после теста\n"
         personal_note = f"\n<i>После теста я подготовлю персональное описание именно для вас.</i>"
+        logger.info(f"⚠️ profile_data отсутствует для пользователя {user_id}")
     
     package_text = (
         f"🧠 <b>ПОЛНОЕ ОПИСАНИЕ ВАШЕГО ПРОФИЛЯ</b>\n\n"
@@ -115,6 +145,8 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(package_text, reply_markup=reply_markup, parse_mode="HTML")
+    
+    logger.info(f"🔄 User {user_id}: show_package_screen → возвращаю PACKAGE_SCREEN = {PACKAGE_SCREEN}")
     return PACKAGE_SCREEN
 
 __all__ = [
