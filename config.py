@@ -60,18 +60,10 @@ GIFT_SCREEN_TEXT = """
 """
 
 # ===== СОСТОЯНИЯ CONVERSATIONHANDLER =====
-# Эти состояния теперь определяются в bot_adaptive.py
-# Устанавливаем их здесь для обратной совместимости, но фактические значения берутся из bot_adaptive.py
-STAGE_1 = 10
-STAGE_2 = 11
-STAGE_3 = 12
-STAGE_4 = 13
-CLARIFICATION = 14
-RESULTS = 15
-GIFT_SCREEN = 16
-PACKAGE_SCREEN = 17
-OPEN_GIFT_SCREEN = 18
-PAYMENT_SCREEN = 19
+# Синхронизируем с bot_adaptive.py
+STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS = range(6)
+GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN = range(6, 9)
+PAYMENT_SCREEN = 9
 
 # ===== 18+ СОСТОЯНИЯ =====
 try:
