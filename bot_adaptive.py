@@ -1791,6 +1791,17 @@ def main():
     print(f"💰 Стоимость доступа к другу: {FRIEND_ACCESS_PRICE} рублей")
     print("="*30)
     
+    # ✅ ВАЖНО: Сбрасываем вебхук перед запуском
+    print("\n🔄 СБРОС ВЕБХУКА")
+    print("="*30)
+    try:
+        import requests
+        response = requests.get(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook")
+        print(f"   Ответ: {response.json()}")
+    except Exception as e:
+        print(f"   ❌ Ошибка: {e}")
+    print("="*30)
+    
     application = Application.builder().token(TOKEN).build()
     
     # Команды
@@ -1927,7 +1938,19 @@ def main():
     logger.info("✅ Утилиты вынесены в папку utils/")
     logger.info("✅ Супер-логирование активировано!")
     
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # ✅ ВАЖНО: Добавляем обработку ошибок и сброс вебхука
+    print("\n🚀 ЗАПУСК БОТА")
+    print("="*30)
+    
+    try:
+        application.run_polling(
+            drop_pending_updates=True,  # ОЧЕНЬ ВАЖНО!
+            allowed_updates=['message', 'callback_query'],  # Только нужные типы
+            poll_interval=1.0  # Частота опроса
+        )
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка: {e}")
+        print(f"\n❌ Ошибка запуска: {e}")
 
 if __name__ == "__main__":
     # Добавляем путь для импорта модулей
