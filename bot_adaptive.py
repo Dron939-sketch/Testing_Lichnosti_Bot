@@ -877,7 +877,7 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Инициализируем хранилище приглашений
     user_id = query.from_user.id
-    context.user_data["sexual_invites"] = get_user_invites(user_id)
+    context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)  # ← ИСПРАВЛЕНО
     
     logger.info(f"User {user_id} перезапустил тест")
     
@@ -1701,7 +1701,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Инициализируем хранилище приглашений
     user_id = query.from_user.id
-    context.user_data["sexual_invites"] = get_user_invites(user_id)
+    context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)  # ← ИСПРАВЛЕНО
     
     logger.info(f"User {update.effective_user.id} начал знакомство с психологом")
     
