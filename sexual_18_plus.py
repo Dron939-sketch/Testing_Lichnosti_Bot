@@ -1078,7 +1078,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = update.effective_user
         logger.info(f"🚀 Пользователь {user.id} (@{user.username}) запустил бота")
-                context.user_data.clear()
+        context.user_data.clear()
         context.user_data["user_id"] = user.id
         context.user_data["profile"] = USER_PROFILE.copy()
         context.user_data["conversation_state"] = RESULTS_SCREEN
