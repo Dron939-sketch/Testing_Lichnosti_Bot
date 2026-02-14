@@ -8,7 +8,9 @@ import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from config import PAYMENT_SCREEN, API_URL, TELEGRAM_BOT_URL, logger
+# ИСПРАВЛЕНО: Импортируем константу из constants.py вместо config.py
+from constants import PAYMENT_SCREEN
+from config import API_URL, TELEGRAM_BOT_URL, logger
 from sexual_18_plus import get_disk_link
 
 # Импортируем функции напрямую из payment_functions
@@ -40,6 +42,8 @@ logger = logging.getLogger(__name__)
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /buy для получения описания профиля"""
     user_id = update.effective_user.id
+    
+    logger.info(f"💳 buy_command ВЫЗВАН для пользователя {user_id}")
     
     profile_data = context.user_data.get("profile_data")
     
@@ -90,6 +94,10 @@ async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def buy_without_test_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Покупка без прохождения теста"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"💳 buy_without_test_callback ВЫЗВАН для пользователя {user_id}")
+    
     await query.answer("💳 Переход к оплате...")
     
     context.user_data["pending_payment_profile"] = "SA_1_DEF"
@@ -101,6 +109,8 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query if hasattr(update, 'callback_query') else None
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
+    
+    logger.info(f"💰 show_payment_screen ВЫЗВАН для пользователя {user_id}")
     
     profile_data = context.user_data.get("profile_data")
     
@@ -252,11 +262,16 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             disable_web_page_preview=True
         )
     
+    logger.info(f"✅ User {user_id}: show_payment_screen → возвращаю PAYMENT_SCREEN = {PAYMENT_SCREEN}")
     return PAYMENT_SCREEN
 
 async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Проверка статуса платежа"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"🔍 check_payment_callback ВЫЗВАН для пользователя {user_id}")
+    
     await query.answer()
     
     payment_id = query.data.split("_")[2]
@@ -351,15 +366,19 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     
+    logger.info(f"🔄 User {user_id}: check_payment_callback → возвращаю PAYMENT_SCREEN = {PAYMENT_SCREEN}")
     return PAYMENT_SCREEN
 
 async def get_materials_callback_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Получение материалов после оплаты"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"📦 get_materials_callback_payment ВЫЗВАН для пользователя {user_id}")
+    
     await query.answer()
     
     payment_id = query.data.split("_")[2]
-    user_id = update.effective_user.id
     
     await query.edit_message_text(
         f"📦 *ПОЛУЧАЮ МАТЕРИАЛЫ...*\n\n"
@@ -435,12 +454,15 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
         disable_web_page_preview=True
     )
     
+    logger.info(f"✅ User {user_id}: get_materials_callback_payment → возвращаю PAYMENT_SCREEN = {PAYMENT_SCREEN}")
     return PAYMENT_SCREEN
 
 async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /materials для получения материалов после оплаты"""
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
+    
+    logger.info(f"📦 materials_command ВЫЗВАН для пользователя {user_id}")
     
     last_payment_id = context.user_data.get("last_payment_id")
     
@@ -520,6 +542,9 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /status для проверки статуса последнего платежа"""
     user_id = update.effective_user.id
+    
+    logger.info(f"📊 status_command ВЫЗВАН для пользователя {user_id}")
+    
     last_payment_id = context.user_data.get("last_payment_id")
     
     if not last_payment_id:
