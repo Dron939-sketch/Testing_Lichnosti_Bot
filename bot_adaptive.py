@@ -77,11 +77,11 @@ from sexual_18_plus import (
     FOUR_F_DESCRIPTIONS,
     SEXUAL_STATES,
     
-    get_user_invites,
+    get_user_invites_from_api,   # ✅ новая функция вместо get_user_invites
     get_user_limits,
-    save_invite,
-    update_invite,
-    find_invite_by_code,
+    save_invite_to_api,          # ✅ новая функция вместо save_invite
+    update_invite_in_api,        # ✅ новая функция вместо update_invite
+    find_invite_in_api,          # ✅ новая функция вместо find_invite_by_code
     get_friend_by_id,
     count_free_friends,
     can_create_invite,
