@@ -88,12 +88,14 @@ from sexual_18_plus import (
     init_test_data,
     
     get_disk_link_by_profile,
-    load_intimate_profile,
-    load_friend_intimate_profile,
-    format_intimate_profile,
-    format_friend_profile,
-    format_4f_content,
-    format_4f_message,
+load_intimate_profile,
+load_friend_intimate_profile,
+format_intimate_profile_part1,
+format_intimate_profile_part2,
+format_intimate_profile_part3,
+format_friend_profile,
+format_4f_content,
+format_4f_message,
     
     create_invite_link,
     
