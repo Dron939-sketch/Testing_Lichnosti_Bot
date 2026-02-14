@@ -172,6 +172,13 @@ from handlers import (
 
 from handlers.common import ask_clarification_question, handle_clarification_answer
 
+# ===== ПРОВЕРКА ИМПОРТОВ =====
+logger.info("🔍 ПРОВЕРКА ИМПОРТОВ ИЗ handlers:")
+logger.info(f"  start_stage_1: {start_stage_1}")
+logger.info(f"  handle_stage_1_answer: {handle_stage_1_answer}")
+logger.info(f"  ask_stage_1_question: {ask_stage_1_question}")
+logger.info(f"  finish_stage_1: {finish_stage_1}")
+
 from utils.calculations import (
     determine_perception_type, get_type_code, get_level_name, get_dilts_code,
     determine_dilts_level, get_level_group, calculate_thinking_level_by_scores,
@@ -1576,6 +1583,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Основная команда /start с поддержкой deep link для 18+"""
     user = update.effective_user
     logger.info(f"🚀 /start вызван пользователем {user.id} (@{user.username})")
+    
+    # 🔍 Проверка импорта функции
+    logger.info(f"🔍 Проверка функции start_stage_1: {start_stage_1}")
     
     # Инициализируем тестовые данные для нового пользователя
     init_test_data(user.id)
