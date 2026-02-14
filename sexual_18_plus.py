@@ -1226,7 +1226,7 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
         return MY_SEXUAL_PROFILE
         
     except Exception as e:
-        logger.error(f"❌ Ошибка в my_sexual_profile_callback: {e}\n{traceback.format_exc()}")
+        logger.error(f"❌ Ошибка в show_my_sexual_profile: {e}\n{traceback.format_exc()}")
         try:
             chat_id = update.callback_query.message.chat_id
             keyboard = [
@@ -2294,7 +2294,7 @@ def main():
             entry_points=[CommandHandler('start', start)],
             states={
                 RESULTS_SCREEN: [
-                    CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
+                    CallbackQueryHandler(show_my_sexual_profile, pattern='^my_sexual_profile$'),
                     CallbackQueryHandler(dummy_callback, pattern='^share_mirror$'),
                     CallbackQueryHandler(dummy_callback, pattern='^full_description$'),
                     CallbackQueryHandler(show_results_screen, pattern='^show_results$'),
@@ -2311,7 +2311,7 @@ def main():
                     CallbackQueryHandler(four_f_main_menu_callback, pattern='^four_f_main_menu$'),
                     CallbackQueryHandler(check_status_callback, pattern='^check_status_'),
                     CallbackQueryHandler(friend_menu_callback, pattern='^friend_'),
-                    CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
+                    CallbackQueryHandler(show_my_sexual_profile, pattern='^my_sexual_profile$'),
                     CallbackQueryHandler(buy_invite_packages_callback, pattern='^buy_invite_packages$'),
                     CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
                 ],
@@ -2356,7 +2356,7 @@ def main():
                     CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
                     CallbackQueryHandler(four_f_detailed_callback, pattern='^four_f_detailed$'),
                     CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
-                    CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
+                    CallbackQueryHandler(show_my_sexual_profile, pattern='^my_sexual_profile$'),
                 ],
                 
                 FOUR_F_DETAILED: [
@@ -2366,7 +2366,7 @@ def main():
             fallbacks=[
                 CommandHandler('start', start),
                 CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
-                CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
+                CallbackQueryHandler(show_my_sexual_profile, pattern='^my_sexual_profile$'),
             ],
             allow_reentry=True,
             name="intimate_profiles_conversation",
