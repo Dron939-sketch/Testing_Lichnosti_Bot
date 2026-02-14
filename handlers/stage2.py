@@ -300,6 +300,6 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(result_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
-    # ВАЖНО: Возвращаем STAGE_3 (который теперь равен 12)
+    # ВАЖНО: Возвращаем STAGE_3 (который теперь равен 2)
     logger.info(f"🔄 User {user_id}: finish_stage_2 → возвращаю STAGE_3 = {STAGE_3}")
     return STAGE_3
