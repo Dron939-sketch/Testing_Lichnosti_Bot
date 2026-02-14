@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 19.4 - ДИНАМИЧЕСКАЯ ЗАГРУЗКА ПРОФИЛЕЙ С ЛОГИРОВАНИЕМ
+Версия: 19.5 - ПОИСК ПРОФИЛЕЙ БЕЗ УЧЕТА СУФФИКСА
 ✅ Все 36 ссылок на профили добавлены
 ✅ Умная функция поиска ссылок по профилю
 ✅ Корректное отображение в "Моих отражениях"
@@ -11,6 +11,7 @@
 ✅ Сохранение приглашений в БД
 ✅ Обновление статуса после прохождения теста
 ✅ Динамическая загрузка интимных профилей по коду пользователя
+✅ Поиск профилей без учета суффикса (EXP → любой файл типа_уровня_*)
 ✅ Расширенное логирование поиска профилей
 """
 
@@ -488,52 +489,30 @@ def check_available_sexual_profiles() -> Dict[str, List[str]]:
         "total_missing": len(missing_profiles)
     }
 
-# ===== ЗАГРУЗКА ИНТИМНОГО ПРОФИЛЯ =====
+# ===== ЗАГРУЗКА ИНТИМНОГО ПРОФИЛЯ (НОВАЯ ВЕРСИЯ - БЕЗ УЧЕТА СУФФИКСА) =====
 def load_intimate_profile(profile_code: str = "SA-5_INT") -> dict:
     """
-    Загружает интимный профиль по коду профиля (без учета регистра)
+    Загружает интимный профиль по коду профиля (без учета суффикса)
+    Ищет любой файл вида {тип}_{уровень}_*.json
     """
     try:
         logger.info(f"🔍🔍🔍 НАЧАЛО ЗАГРУЗКИ ИНТИМНОГО ПРОФИЛЯ для кода: {profile_code}")
         
-        # Приводим к нижнему регистру для поиска
-        target_name = profile_code.lower().replace('-', '_') + '.json'
-        logger.info(f"📄 Ищем файл (без учета регистра): {target_name}")
+        # Извлекаем тип и уровень из кода (например, "IP-4_EXP" → тип="ip", уровень="4")
+        code_parts = profile_code.upper().replace('-', '_').split('_')
+        profile_type = None
+        profile_level = None
+        
+        if len(code_parts) >= 2:
+            profile_type = code_parts[0].lower()  # ip, sa, sp, ia
+            profile_level = code_parts[1]          # 1,2,3,4,5,6,7,8,9
+            logger.info(f"📊 Извлечены тип={profile_type}, уровень={profile_level}")
+        else:
+            logger.warning(f"⚠️ Не удалось распарсить код профиля: {profile_code}")
         
         bot_dir = os.path.dirname(os.path.abspath(__file__))
         logger.info(f"📁 Текущая директория: {bot_dir}")
         logger.info(f"📁 Корень проекта: {PROJECT_ROOT}")
-        
-        # Сначала ищем в возможных путях с точным совпадением (для скорости)
-        possible_paths = [
-            os.path.join(bot_dir, "sexual_18", target_name),
-            os.path.join(PROJECT_ROOT, "sexual_18", target_name),
-            os.path.join(PROJECT_ROOT, "profiles", "sexual_18", target_name),
-            os.path.join("sexual_18", target_name),
-            os.path.join("profiles", "sexual_18", target_name),
-            f"/opt/render/project/src/sexual_18/{target_name}",
-            f"/opt/render/project/src/profiles/sexual_18/{target_name}",
-        ]
-        
-        logger.info(f"🔍 Поиск файла профиля для кода {profile_code}:")
-        
-        # Сначала проверяем точные пути
-        for i, path in enumerate(possible_paths, 1):
-            logger.info(f"   {i}. Проверяем: {path}")
-            if os.path.exists(path):
-                logger.info(f"   ✅ НАЙДЕН! Файл существует: {path}")
-                try:
-                    with open(path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        data['loaded_for_profile'] = profile_code
-                        sections = data.get('sections', {})
-                        logger.info(f"   📊 Секций загружено: {len(sections)}")
-                        return data
-                except Exception as e:
-                    logger.error(f"   ❌ Ошибка чтения файла: {e}")
-        
-        # Если не нашли, ищем во всех JSON файлах без учета регистра
-        logger.info(f"🔍 Точных совпадений нет, ищем без учета регистра...")
         
         # Проверяем все возможные директории
         search_dirs = [
@@ -546,27 +525,54 @@ def load_intimate_profile(profile_code: str = "SA-5_INT") -> dict:
             "/opt/render/project/src/profiles/sexual_18",
         ]
         
+        # Если удалось получить тип и уровень, ищем любой подходящий файл
+        if profile_type and profile_level:
+            pattern = f"{profile_type}_{profile_level}_"
+            logger.info(f"🔍 Ищем любой файл по шаблону: {pattern}*.json")
+            
+            for search_dir in search_dirs:
+                if os.path.exists(search_dir):
+                    logger.info(f"📁 Проверяем папку: {search_dir}")
+                    try:
+                        for filename in os.listdir(search_dir):
+                            if filename.lower().startswith(pattern) and filename.endswith('.json'):
+                                file_path = os.path.join(search_dir, filename)
+                                logger.info(f"   ✅ НАЙДЕН! Файл: {filename} (соответствует шаблону {pattern})")
+                                try:
+                                    with open(file_path, 'r', encoding='utf-8') as f:
+                                        data = json.load(f)
+                                        data['loaded_for_profile'] = profile_code
+                                        data['loaded_from_file'] = filename
+                                        data['profile_type'] = filename.replace('.json', '').upper()
+                                        sections = data.get('sections', {})
+                                        logger.info(f"   📊 Секций загружено: {len(sections)}")
+                                        return data
+                                except Exception as e:
+                                    logger.error(f"   ❌ Ошибка чтения файла: {e}")
+                    except Exception as e:
+                        logger.error(f"   ❌ Ошибка чтения папки: {e}")
+        
+        # Если не нашли по шаблону, пробуем точное совпадение (для обратной совместимости)
+        logger.info(f"🔍 Не нашли по шаблону, пробуем точное совпадение...")
+        target_name = profile_code.lower().replace('-', '_') + '.json'
+        
         for search_dir in search_dirs:
             if os.path.exists(search_dir):
-                logger.info(f"📁 Проверяем папку: {search_dir}")
-                try:
-                    for filename in os.listdir(search_dir):
-                        if filename.lower() == target_name:
-                            file_path = os.path.join(search_dir, filename)
-                            logger.info(f"   ✅ НАЙДЕН! Файл: {filename} (соответствует {target_name})")
-                            try:
-                                with open(file_path, 'r', encoding='utf-8') as f:
-                                    data = json.load(f)
-                                    data['loaded_for_profile'] = profile_code
-                                    sections = data.get('sections', {})
-                                    logger.info(f"   📊 Секций загружено: {len(sections)}")
-                                    return data
-                            except Exception as e:
-                                logger.error(f"   ❌ Ошибка чтения файла: {e}")
-                except Exception as e:
-                    logger.error(f"   ❌ Ошибка чтения папки: {e}")
+                file_path = os.path.join(search_dir, target_name)
+                if os.path.exists(file_path):
+                    logger.info(f"   ✅ НАЙДЕН точный файл: {file_path}")
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            data['loaded_for_profile'] = profile_code
+                            data['loaded_from_file'] = target_name
+                            sections = data.get('sections', {})
+                            logger.info(f"   📊 Секций загружено: {len(sections)}")
+                            return data
+                    except Exception as e:
+                        logger.error(f"   ❌ Ошибка чтения файла: {e}")
         
-        # Если файл не найден, пробуем default.json
+        # Если ничего не нашли, пробуем default.json
         logger.warning(f"⚠️ Файл для {profile_code} не найден, пробуем default.json")
         
         default_paths = [
@@ -591,78 +597,6 @@ def load_intimate_profile(profile_code: str = "SA-5_INT") -> dict:
                     return data
         
         logger.error(f"❌ Не найден ни файл для {profile_code}, ни default.json!")
-        return get_emergency_profile(profile_code)
-        
-    except Exception as e:
-        logger.error(f"❌ Критическая ошибка загрузки: {e}\n{traceback.format_exc()}")
-        return get_emergency_profile(profile_code)
-        
-        logger.info(f"🔍 Поиск файла профиля для кода {profile_code}:")
-        found_path = None
-        
-        for i, path in enumerate(possible_paths, 1):
-            logger.info(f"   {i}. Проверяем: {path}")
-            if os.path.exists(path):
-                logger.info(f"   ✅ НАЙДЕН! Файл существует: {path}")
-                found_path = path
-                
-                # Проверяем размер файла
-                file_size = os.path.getsize(path)
-                logger.info(f"   📊 Размер файла: {file_size} байт")
-                
-                try:
-                    with open(path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        sections = data.get('sections', {})
-                        logger.info(f"   📊 Секций загружено: {len(sections)}")
-                        
-                        # Проверяем структуру данных
-                        if 'archetype' in data:
-                            logger.info(f"   🧠 Архетип: {data['archetype']}")
-                        if 'quote' in data:
-                            logger.info(f"   💬 Цитата: {data['quote'][:50]}...")
-                        
-                        # Добавляем информацию о том, для какого профиля загружен
-                        data['loaded_for_profile'] = profile_code
-                        
-                        if sections:
-                            logger.info(f"   ✅ Профиль успешно загружен: {data.get('profile_type', 'unknown')} для {profile_code}")
-                            return data
-                        else:
-                            logger.warning("   ⚠️ Файл найден но секции пустые!")
-                            return data
-                except json.JSONDecodeError as e:
-                    logger.error(f"   ❌ Ошибка парсинга JSON: {e}")
-                except Exception as e:
-                    logger.error(f"   ❌ Ошибка чтения файла: {e}")
-            else:
-                logger.info(f"   ❌ Не найден")
-        
-        # Если файл не найден, пробуем загрузить default.json
-        logger.warning(f"⚠️ Файл {file_name} не найден ни в одном из путей, пробуем default.json")
-        
-        default_paths = [
-            os.path.join(bot_dir, "sexual_18", "default.json"),
-            os.path.join(PROJECT_ROOT, "sexual_18", "default.json"),
-            os.path.join(PROJECT_ROOT, "profiles", "sexual_18", "default.json"),
-            os.path.join("sexual_18", "default.json"),
-            os.path.join("profiles", "sexual_18", "default.json"),
-            "/opt/render/project/src/sexual_18/default.json",
-            "/opt/render/project/src/profiles/sexual_18/default.json",
-        ]
-        
-        for path in default_paths:
-            logger.info(f"   Проверяем default.json: {path}")
-            if os.path.exists(path):
-                logger.info(f"   ✅ НАЙДЕН default.json: {path}")
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    data['loaded_for_profile'] = profile_code
-                    data['is_default'] = True
-                    logger.info(f"   ⚠️ Использую default.json для профиля {profile_code}")
-                    return data
-        
-        logger.error(f"❌ Не найден ни файл {file_name}, ни default.json!")
         return get_emergency_profile(profile_code)
         
     except Exception as e:
@@ -781,9 +715,15 @@ def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
         # Получаем код профиля для отображения
         profile_code = profile_data.get('loaded_for_profile', profile_data.get('profile_type', 'SA-5_INT'))
         
+        # Если есть информация о том, из какого файла загружено, добавляем примечание
+        loaded_from = profile_data.get('loaded_from_file', '')
+        file_note = ""
+        if loaded_from and not profile_data.get('is_default') and not profile_data.get('is_emergency'):
+            file_note = f"\n<i>Загружен из: {loaded_from}</i>"
+        
         message = f"""
 🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ</b>
-📊 {user_name}, {profile_code}
+📊 {user_name}, {profile_code}{file_note}
 
 🧠 Архетип: {profile_data.get('archetype', 'ЦЕРЕМОНИАЛЬНЫЙ')}
 
@@ -1545,23 +1485,21 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
         logger.debug(f"📝 Загружаем интимный профиль для пользователя: {user_name} с кодом {profile_code}")
         
         # ЗАГРУЖАЕМ ИНТИМНЫЙ ПРОФИЛЬ С ЭТИМ КОДОМ
-        profile_data = load_intimate_profile(profile_code)
-        
-        # ... остальной код без изменений
+        intimate_data = load_intimate_profile(profile_code)
         
         # Логируем результат загрузки
-        if profile_data.get('is_emergency'):
+        if intimate_data.get('is_emergency'):
             logger.warning(f"⚠️ ЗАГРУЖЕН АВАРИЙНЫЙ ПРОФИЛЬ для {profile_code}")
-        elif profile_data.get('is_default'):
+        elif intimate_data.get('is_default'):
             logger.warning(f"⚠️ ЗАГРУЖЕН ПРОФИЛЬ ПО УМОЛЧАНИЮ для {profile_code}")
         else:
-            logger.info(f"✅ УСПЕШНО ЗАГРУЖЕН ПРОФИЛЬ: {profile_code}")
+            logger.info(f"✅ УСПЕШНО ЗАГРУЖЕН ПРОФИЛЬ: {profile_code} (из файла {intimate_data.get('loaded_from_file', 'неизвестно')})")
         
-        logger.debug(f"📊 Интимный профиль загружен: {profile_data.get('profile_type', 'unknown')} для {profile_code}")
+        logger.debug(f"📊 Интимный профиль загружен: {intimate_data.get('profile_type', 'unknown')} для {profile_code}")
         
-        message_part1 = format_intimate_profile_part1(profile_data, user_name)
-        message_part2 = format_intimate_profile_part2(profile_data, user_name)
-        message_part3 = format_intimate_profile_part3(profile_data, user_name)
+        message_part1 = format_intimate_profile_part1(intimate_data, user_name)
+        message_part2 = format_intimate_profile_part2(intimate_data, user_name)
+        message_part3 = format_intimate_profile_part3(intimate_data, user_name)
         
         logger.debug(f"📄 Длина части 1: {len(message_part1)} символов")
         logger.debug(f"📄 Длина части 2: {len(message_part2)} символов")
@@ -1823,7 +1761,6 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 📁 Диск:
 {user_profile_link}
 """
-        # ... остальной код ...
 
         if used_invites:
             message += f"""
@@ -2682,7 +2619,7 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("\n" + "="*70)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.4")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.5")
     print("="*70)
     print("✅ ПОЛНАЯ ИНТЕГРАЦИЯ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК")
     print("✅ Умная функция поиска ссылок по профилю")
@@ -2694,6 +2631,7 @@ def main():
     print("✅ Сохранение приглашений в БД")
     print("✅ Обновление статуса после прохождения теста")
     print("✅ Динамическая загрузка интимных профилей по коду пользователя")
+    print("✅ Поиск профилей без учета суффикса (EXP → любой файл типа_уровня_*)")
     print("✅ Расширенное логирование поиска профилей")
     print("="*70)
     print("📊 ДОСТУПНЫЕ ПРОФИЛИ:")
@@ -2812,7 +2750,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 19.4")
+        print("\n🚀 Бот запущен! Версия 19.5")
         print("="*70)
         logger.info("✅ Бот успешно запущен")
         
