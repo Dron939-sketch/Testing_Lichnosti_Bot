@@ -95,7 +95,6 @@ format_intimate_profile_part2,
 format_intimate_profile_part3,
 format_friend_intimate_profile,  # ✅ правильно
 load_4f_content,     # ✅ правильно
-format_4f_message,   # ✅ правильно
     
     create_invite_link,
     
