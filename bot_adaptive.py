@@ -179,6 +179,18 @@ logger.info(f"  handle_stage_1_answer: {handle_stage_1_answer}")
 logger.info(f"  ask_stage_1_question: {ask_stage_1_question}")
 logger.info(f"  finish_stage_1: {finish_stage_1}")
 
+# ===== ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ТИПОВ =====
+import sys
+print("\n" + "="*60, file=sys.stderr)
+print("🔍 ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ИМПОРТА", file=sys.stderr)
+print("="*60, file=sys.stderr)
+print(f"🔥 start_stage_1 = {start_stage_1}", file=sys.stderr)
+print(f"🔥 Тип start_stage_1 = {type(start_stage_1)}", file=sys.stderr)
+print(f"🔥 start_stage_1 is None: {start_stage_1 is None}", file=sys.stderr)
+print(f"🔥 start_stage_1 is callable: {callable(start_stage_1)}", file=sys.stderr)
+print("="*60 + "\n", file=sys.stderr)
+sys.stderr.flush()
+
 from utils.calculations import (
     determine_perception_type, get_type_code, get_level_name, get_dilts_code,
     determine_dilts_level, get_level_group, calculate_thinking_level_by_scores,
@@ -1753,6 +1765,23 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     """Запуск бота"""
+    # ПРИНУДИТЕЛЬНЫЙ СБРОС ВЕБХУКА И ЗАВЕРШЕНИЕ СТАРЫХ СЕССИЙ
+    import requests
+    print("\n" + "="*50)
+    print("🔄 СБРОС ВЕБХУКА И ОЧИСТКА")
+    print("="*50)
+    
+    # Сначала удаляем вебхук
+    url = f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=true"
+    response = requests.get(url)
+    print(f"Ответ: {response.json()}")
+    
+    # Проверяем, что вебхук удален
+    url = f"https://api.telegram.org/bot{TOKEN}/getWebhookInfo"
+    response = requests.get(url)
+    print(f"Информация о вебхуке: {response.json()}")
+    print("="*50 + "\n")
+    
     print("\n" + "="*70)
     print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.2)")
     print("="*70)
@@ -1799,17 +1828,6 @@ def main():
     print(f"💰 Стоимость профиля: 690 рублей")
     print(f"💰 Стоимость 4F ключа: {FOUR_F_PRICE} рублей")
     print(f"💰 Стоимость доступа к другу: {FRIEND_ACCESS_PRICE} рублей")
-    print("="*30)
-    
-    # ✅ ВАЖНО: Сбрасываем вебхук перед запуском
-    print("\n🔄 СБРОС ВЕБХУКА")
-    print("="*30)
-    try:
-        import requests
-        response = requests.get(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook")
-        print(f"   Ответ: {response.json()}")
-    except Exception as e:
-        print(f"   ❌ Ошибка: {e}")
     print("="*30)
     
     application = Application.builder().token(TOKEN).build()
