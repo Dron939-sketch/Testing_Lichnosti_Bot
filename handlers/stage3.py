@@ -1,4 +1,3 @@
-# handlers/stage3.py
 """
 Обработчики для ЭТАПА 3: Конфигурация поведения
 """
@@ -11,7 +10,7 @@ from telegram.ext import ContextTypes
 from config import STAGE_3, STAGE_4, PSYCHOLOGIST_TIPS, STAGE3_FEEDBACK
 from questions import STAGE_3_QUESTIONS
 from utils.calculations import calculate_final_level
-from utils.validators import need_clarification_stage3  # ИСПРАВЛЕНО: импорт из validators
+from utils.validators import need_clarification_stage3
 from utils.helpers import calculate_progress, generate_unique_callback
 
 logger = logging.getLogger(__name__)
@@ -235,7 +234,7 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         behavior_level = 6
     
-    logger.info(f"User {update.effective_user.id}: Stage 3 complete, behavior_level={behavior_level}")
+    logger.info(f"✅ User {update.effective_user.id}: Stage 3 complete, behavior_level={behavior_level}")
     
     result_text = STAGE3_FEEDBACK.get(behavior_level, STAGE3_FEEDBACK[1])
     
@@ -243,4 +242,7 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(result_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
+    
+    # ВАЖНО: Возвращаем STAGE_4 (который теперь равен 13)
+    logger.info(f"🔄 User {update.effective_user.id}: finish_stage_3 → возвращаю STAGE_4 = {STAGE_4}")
     return STAGE_4
