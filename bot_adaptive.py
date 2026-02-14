@@ -2,7 +2,7 @@
 """
 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА: ПУТЬ К САМОПОЗНАНИЮ
 4 этапа адаптивного исследования + персональное описание профиля
-ВЕРСИЯ 5.3: ИСПРАВЛЕН КОНФЛИКТ СОСТОЯНИЙ И ИМПОРТОВ
+ВЕРСИЯ 5.4: ИСПРАВЛЕН ЦИКЛИЧЕСКИЙ ИМПОРТ
 """
 
 import logging
@@ -52,6 +52,14 @@ def log_callback(func_name: str, update: Update, context: ContextTypes.DEFAULT_T
     
     logger.debug(log_msg)
     print(f"🔍 {log_msg}")
+
+# ===== ИМПОРТ КОНСТАНТ СОСТОЯНИЙ =====
+from constants import (
+    STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
+    GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
+    MY_SEXUAL_PROFILE, SEXUAL_PROFILE_SCREEN, SEXUAL_INVITES_LIST,
+    SEXUAL_FRIEND_PROFILE, FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN
+)
 
 # ===== ИМПОРТ КОНФИГУРАЦИИ =====
 from config import (
@@ -113,33 +121,6 @@ from sexual_18_plus import (
     split_long_message,
     safe_send_message,
 )
-
-# ===== СОСТОЯНИЯ CONVERSATIONHANDLER =====
-# Основные состояния теста (начинаем с 10, чтобы не конфликтовать с 18+)
-STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS = range(10, 16)
-GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN = range(16, 19)
-PAYMENT_SCREEN = 19
-
-# Состояние для интимного профиля (18+)
-MY_SEXUAL_PROFILE = 1
-
-# Состояния из 18+ модуля
-try:
-    SEXUAL_PROFILE_SCREEN = SEXUAL_STATES["SEXUAL_PROFILE_SCREEN"]
-    SEXUAL_INVITES_LIST = SEXUAL_STATES["SEXUAL_INVITES_LIST"]
-    SEXUAL_FRIEND_PROFILE = SEXUAL_STATES["SEXUAL_FRIEND_PROFILE"]
-    FOUR_F_PAYMENT_SCREEN = SEXUAL_STATES["FOUR_F_PAYMENT_SCREEN"]
-    FOUR_F_CONTENT_SCREEN = SEXUAL_STATES["FOUR_F_CONTENT_SCREEN"]
-except (ImportError, KeyError):
-    # Если модуль не загружен, создаем заглушки
-    logger.warning("⚠️ 18+ модуль не загружен, создаем заглушки для состояний")
-    SEXUAL_PROFILE_SCREEN = 20
-    SEXUAL_INVITES_LIST = 21
-    SEXUAL_FRIEND_PROFILE = 22
-    FOUR_F_PAYMENT_SCREEN = 23
-    FOUR_F_CONTENT_SCREEN = 24
-
-# ===== КОНЕЦ ОПРЕДЕЛЕНИЯ СОСТОЯНИЙ =====
 
 # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 async def noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1779,7 +1760,7 @@ def main():
     print("="*50 + "\n")
     
     print("\n" + "="*70)
-    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.3)")
+    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.4)")
     print("="*70)
     print("🔞 ПОЛНАЯ ИНТЕГРАЦИЯ 18+ МОДУЛЯ")
     print("="*70)
@@ -1790,12 +1771,10 @@ def main():
     print("4. ✅ Платежная система ЮKassa")
     print("5. ✅ Интеграция с Яндекс.Диск (36 профилей)")
     print("="*70)
-    print("🔧 ИСПРАВЛЕНИЯ В 5.3:")
-    print("   ✅ Исправлен конфликт состояний (тест теперь с 10, 18+ с 1)")
-    print("   ✅ Убраны конфликтующие импорты из sexual_18_plus")
-    print("   ✅ Добавлен обработчик 18+ кнопки в состояние RESULTS")
-    print("   ✅ Убрана ссылка на материалы из экрана платежа")
-    print("   ✅ Ссылка появляется только после успешной оплаты")
+    print("🔧 ИСПРАВЛЕНИЯ В 5.4:")
+    print("   ✅ Исправлен циклический импорт (константы вынесены в constants.py)")
+    print("   ✅ Импорты STAGE_1, STAGE_2 теперь из constants.py")
+    print("   ✅ Устранена проблема с start_stage_1 = None")
     print("="*70)
     
     # Проверка наличия GIFT_PDF_LINK
@@ -1957,7 +1936,8 @@ def main():
     application.add_handler(conv_handler)
     
     logger.info("🧠 Виртуальный психолог Вариатика запущен!")
-    logger.info("✅ ВЕРСИЯ 5.3: ИСПРАВЛЕН КОНФЛИКТ СОСТОЯНИЙ И ИМПОРТОВ!")
+    logger.info("✅ ВЕРСИЯ 5.4: ИСПРАВЛЕН ЦИКЛИЧЕСКИЙ ИМПОРТ!")
+    logger.info("✅ Константы вынесены в отдельный файл constants.py")
     logger.info("✅ Вопросы вынесены в отдельный файл questions.py")
     logger.info("✅ Обработчики этапов вынесены в папку handlers/")
     logger.info("✅ Утилиты вынесены в папку utils/")
