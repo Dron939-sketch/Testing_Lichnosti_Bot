@@ -491,30 +491,111 @@ def check_available_sexual_profiles() -> Dict[str, List[str]]:
 # ===== ЗАГРУЗКА ИНТИМНОГО ПРОФИЛЯ =====
 def load_intimate_profile(profile_code: str = "SA-5_INT") -> dict:
     """
-    Загружает интимный профиль по коду профиля
-    Поддерживает форматы: SA-5_INT, sa_5_int, SA-5_INT, и т.д.
-    С расширенным логированием для отладки
+    Загружает интимный профиль по коду профиля (без учета регистра)
     """
     try:
         logger.info(f"🔍🔍🔍 НАЧАЛО ЗАГРУЗКИ ИНТИМНОГО ПРОФИЛЯ для кода: {profile_code}")
         
-        # Приводим к нижнему регистру и заменяем - на _ для имени файла
-        file_name = profile_code.lower().replace('-', '_') + '.json'
-        logger.info(f"📄 Имя файла для поиска: {file_name}")
+        # Приводим к нижнему регистру для поиска
+        target_name = profile_code.lower().replace('-', '_') + '.json'
+        logger.info(f"📄 Ищем файл (без учета регистра): {target_name}")
         
         bot_dir = os.path.dirname(os.path.abspath(__file__))
         logger.info(f"📁 Текущая директория: {bot_dir}")
         logger.info(f"📁 Корень проекта: {PROJECT_ROOT}")
         
+        # Сначала ищем в возможных путях с точным совпадением (для скорости)
         possible_paths = [
-            os.path.join(bot_dir, "sexual_18", file_name),
-            os.path.join(PROJECT_ROOT, "sexual_18", file_name),
-            os.path.join(PROJECT_ROOT, "profiles", "sexual_18", file_name),
-            os.path.join("sexual_18", file_name),
-            os.path.join("profiles", "sexual_18", file_name),
-            f"/opt/render/project/src/sexual_18/{file_name}",
-            f"/opt/render/project/src/profiles/sexual_18/{file_name}",
+            os.path.join(bot_dir, "sexual_18", target_name),
+            os.path.join(PROJECT_ROOT, "sexual_18", target_name),
+            os.path.join(PROJECT_ROOT, "profiles", "sexual_18", target_name),
+            os.path.join("sexual_18", target_name),
+            os.path.join("profiles", "sexual_18", target_name),
+            f"/opt/render/project/src/sexual_18/{target_name}",
+            f"/opt/render/project/src/profiles/sexual_18/{target_name}",
         ]
+        
+        logger.info(f"🔍 Поиск файла профиля для кода {profile_code}:")
+        
+        # Сначала проверяем точные пути
+        for i, path in enumerate(possible_paths, 1):
+            logger.info(f"   {i}. Проверяем: {path}")
+            if os.path.exists(path):
+                logger.info(f"   ✅ НАЙДЕН! Файл существует: {path}")
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        data['loaded_for_profile'] = profile_code
+                        sections = data.get('sections', {})
+                        logger.info(f"   📊 Секций загружено: {len(sections)}")
+                        return data
+                except Exception as e:
+                    logger.error(f"   ❌ Ошибка чтения файла: {e}")
+        
+        # Если не нашли, ищем во всех JSON файлах без учета регистра
+        logger.info(f"🔍 Точных совпадений нет, ищем без учета регистра...")
+        
+        # Проверяем все возможные директории
+        search_dirs = [
+            os.path.join(bot_dir, "sexual_18"),
+            os.path.join(PROJECT_ROOT, "sexual_18"),
+            os.path.join(PROJECT_ROOT, "profiles", "sexual_18"),
+            os.path.join("sexual_18"),
+            os.path.join("profiles", "sexual_18"),
+            "/opt/render/project/src/sexual_18",
+            "/opt/render/project/src/profiles/sexual_18",
+        ]
+        
+        for search_dir in search_dirs:
+            if os.path.exists(search_dir):
+                logger.info(f"📁 Проверяем папку: {search_dir}")
+                try:
+                    for filename in os.listdir(search_dir):
+                        if filename.lower() == target_name:
+                            file_path = os.path.join(search_dir, filename)
+                            logger.info(f"   ✅ НАЙДЕН! Файл: {filename} (соответствует {target_name})")
+                            try:
+                                with open(file_path, 'r', encoding='utf-8') as f:
+                                    data = json.load(f)
+                                    data['loaded_for_profile'] = profile_code
+                                    sections = data.get('sections', {})
+                                    logger.info(f"   📊 Секций загружено: {len(sections)}")
+                                    return data
+                            except Exception as e:
+                                logger.error(f"   ❌ Ошибка чтения файла: {e}")
+                except Exception as e:
+                    logger.error(f"   ❌ Ошибка чтения папки: {e}")
+        
+        # Если файл не найден, пробуем default.json
+        logger.warning(f"⚠️ Файл для {profile_code} не найден, пробуем default.json")
+        
+        default_paths = [
+            os.path.join(bot_dir, "sexual_18", "default.json"),
+            os.path.join(PROJECT_ROOT, "sexual_18", "default.json"),
+            os.path.join(PROJECT_ROOT, "profiles", "sexual_18", "default.json"),
+            os.path.join("sexual_18", "default.json"),
+            os.path.join("profiles", "sexual_18", "default.json"),
+            "/opt/render/project/src/sexual_18/default.json",
+            "/opt/render/project/src/profiles/sexual_18/default.json",
+        ]
+        
+        for path in default_paths:
+            logger.info(f"   Проверяем default.json: {path}")
+            if os.path.exists(path):
+                logger.info(f"   ✅ НАЙДЕН default.json: {path}")
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    data['loaded_for_profile'] = profile_code
+                    data['is_default'] = True
+                    logger.info(f"   ⚠️ Использую default.json для профиля {profile_code}")
+                    return data
+        
+        logger.error(f"❌ Не найден ни файл для {profile_code}, ни default.json!")
+        return get_emergency_profile(profile_code)
+        
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка загрузки: {e}\n{traceback.format_exc()}")
+        return get_emergency_profile(profile_code)
         
         logger.info(f"🔍 Поиск файла профиля для кода {profile_code}:")
         found_path = None
