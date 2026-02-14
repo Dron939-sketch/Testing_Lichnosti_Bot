@@ -22,6 +22,10 @@ async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     logger.info(f"🔵 show_stage_1_intro ВЫЗВАН для пользователя {user_id}")
     
+    # ✅ ВАЖНО: сохраняем состояние в user_data
+    context.user_data["conversation_state"] = STAGE_1
+    logger.info(f"💾 Сохраняю состояние STAGE_1 = {STAGE_1} для пользователя {user_id}")
+    
     intro_text = (
         f"🧠 <b>ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ</b>\n\n"
         f"Как ваш виртуальный психолог, я начну с понимания вашей базовой конфигурации восприятия.\n\n"
@@ -49,6 +53,13 @@ async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def show_stage_1_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Детали ЭТАПА 1"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"📋 show_stage_1_details ВЫЗВАН для пользователя {user_id}")
+    
+    # ✅ ВАЖНО: сохраняем состояние
+    context.user_data["conversation_state"] = STAGE_1
+    
     await query.answer()
     
     details_text = (
@@ -69,10 +80,18 @@ async def show_stage_1_details(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(details_text, reply_markup=reply_markup, parse_mode="HTML")
+    
+    logger.info(f"🔄 User {user_id}: show_stage_1_details → возвращаю STAGE_1 = {STAGE_1}")
     return STAGE_1
 
 async def back_to_stage1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к экрану ЭТАПА 1"""
+    user_id = update.effective_user.id
+    logger.info(f"⬅️ back_to_stage1_intro ВЫЗВАН для пользователя {user_id}")
+    
+    # ✅ ВАЖНО: сохраняем состояние
+    context.user_data["conversation_state"] = STAGE_1
+    
     return await show_stage_1_intro(update, context)
 
 async def start_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -88,6 +107,10 @@ async def start_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["stage1_current"] = 0
     context.user_data["stage1_last_answered"] = -1
     
+    # ✅ ВАЖНО: сохраняем состояние
+    context.user_data["conversation_state"] = STAGE_1
+    logger.info(f"💾 Сохраняю состояние STAGE_1 = {STAGE_1} для пользователя {user_id}")
+    
     logger.info(f"✅ stage1_current инициализирован: 0 для пользователя {user_id}")
     
     return await ask_stage_1_question(update, context)
@@ -99,6 +122,9 @@ async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     current = context.user_data.get("stage1_current", 0)
     logger.info(f"📝 ask_stage_1_question для пользователя {user_id}: current={current}")
+    
+    # ✅ ВАЖНО: сохраняем состояние
+    context.user_data["conversation_state"] = STAGE_1
     
     if current >= len(STAGE_1_QUESTIONS):
         logger.info(f"🏁 Все вопросы заданы для пользователя {user_id}, завершаем этап 1")
@@ -116,7 +142,6 @@ async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     
     keyboard = []
-    user_id = update.effective_user.id
     
     for option_id, option in question["options"].items():
         unique_callback = generate_unique_callback("stage1", user_id, current, option_id)
@@ -214,6 +239,9 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         
         context.user_data["stage1_last_answered"] = current
         context.user_data["stage1_current"] = current + 1
+        
+        # ✅ ВАЖНО: сохраняем состояние
+        context.user_data["conversation_state"] = STAGE_1
         
         return await ask_stage_1_question(update, context)
         
