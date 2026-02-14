@@ -1087,6 +1087,49 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         init_test_data(user.id)
         context.user_data["sexual_invites"] = get_user_invites(user.id)
         get_user_limits(context)
+        # ============================================
+# 🗑️ УДАЛЕНИЕ ПРИГЛАШЕНИЯ
+# ============================================
+
+async def delete_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик для удаления приглашения
+    """
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Извлекаем ID приглашения из callback_data
+        # Формат: delete_invite_{invite_id}
+        invite_id = query.data.replace("delete_invite_", "")
+        
+        # Ищем приглашение в данных пользователя
+        invites = context.user_data.get("sexual_invites", [])
+        invite_index = None
+        for i, inv in enumerate(invites):
+            if inv.get("invite_id") == invite_id:
+                invite_index = i
+                break
+        
+        if invite_index is None:
+            await query.answer("❌ Приглашение не найдено", show_alert=True)
+            return
+        
+        # Удаляем приглашение
+        deleted_invite = invites.pop(invite_index)
+        context.user_data["sexual_invites"] = invites
+        
+        await query.message.reply_text(
+            f"✅ Приглашение успешно удалено!\n\n"
+            f"Ссылка: {deleted_invite.get('link', '')}",
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"🗑️ Пользователь {query.from_user.id} удалил приглашение {invite_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в delete_invite_callback: {e}")
+        await query.answer("❌ Произошла ошибка", show_alert=True)
         
         return await show_results_screen(update, context)
     except Exception as e:
