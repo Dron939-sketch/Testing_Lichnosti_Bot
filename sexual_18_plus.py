@@ -2387,6 +2387,91 @@ def main():
     except Exception as e:
         logger.error(f"❌ Критическая ошибка при запуске: {e}\n{traceback.format_exc()}")
         print(f"\n❌ Ошибка запуска: {e}")
-
+# ===== ЭКСПОРТ =====
+__all__ = [
+    # Константы
+    'SEXUAL_DIVIDER',
+    'FREE_INVITE_LIMIT',
+    'FRIEND_ACCESS_PRICE',
+    'FOUR_F_PRICE',
+    'INVITE_PACKAGES',
+    'PROFILE_DISK_LINKS',
+    'FOUR_F_DESCRIPTIONS',
+    'SEXUAL_STATES',
+    'SEXUAL_PROFILE_SCREEN',
+    'SEXUAL_INVITES_LIST',
+    'SEXUAL_FRIEND_PROFILE',
+    'FOUR_F_PAYMENT_SCREEN',
+    'FOUR_F_CONTENT_SCREEN',
+    
+    # Функции для работы с БД
+    'save_invite_to_api',
+    'find_invite_in_api',
+    'update_invite_in_api',
+    'get_user_invites_from_api',
+    
+    # Функции для работы с профилями
+    'get_disk_link_by_profile',
+    'load_intimate_profile',
+    'load_friend_intimate_profile',
+    'format_intimate_profile_part1',
+    'format_intimate_profile_part2',
+    'format_intimate_profile_part3',
+    'format_friend_intimate_profile',
+    'get_friend_emergency_profile',
+    'get_emergency_profile',
+    
+    # Функции для 4F
+    'load_4f_content',
+    
+    # Функции для приглашений
+    'get_user_invites',
+    'count_free_friends',
+    'init_test_data',
+    'get_user_limits',
+    'can_create_invite',
+    
+    # Callback-обработчики
+    'show_my_sexual_profile',  # ✅ ЭТО ВАЖНО!
+    'sexual_invite_start',
+    'copy_invite_callback',
+    'check_invite_callback',
+    'delete_invite_callback',
+    'show_my_invites',
+    'friend_details_callback',
+    'buy_function_callback',
+    'check_4f_payment_callback',
+    'open_4f_key_callback',
+    'buy_invite_packages',
+    'handle_sexual_deeplink',
+    'check_sexual_invitation',
+    'noop_callback',
+    
+    # Функции для экранов
+    'start',
+    'show_results_screen',
+    'my_sexual_profile_callback',
+    'create_invite_callback',
+    'my_invites_callback',
+    'friend_menu_callback',
+    'show_payment_access_screen',
+    'standard_profile_callback',
+    'intimate_profile_callback',
+    'four_f_menu_callback',
+    'four_f_explanation_callback',
+    'buy_4f_key_callback',
+    'process_payment_callback',
+    'open_4f_key_callback',
+    'back_to_results_callback',
+    'dummy_callback',
+    
+    # Вспомогательные функции
+    'split_long_message',
+    'safe_send_message',
+    
+    # Функции платежей
+    'generate_payment_id',
+    'create_yookassa_invoice',
+]
 if __name__ == "__main__":
     main()
