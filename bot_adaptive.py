@@ -2,7 +2,7 @@
 """
 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА: ПУТЬ К САМОПОЗНАНИЮ
 4 этапа адаптивного исследования + персональное описание профиля
-ВЕРСИЯ 5.1: ИСПРАВЛЕНА 18+ КНОПКА И ЭКРАН ПЛАТЕЖА
+ВЕРСИЯ 5.2: ИСПРАВЛЕН КОНФЛИКТ СОСТОЯНИЙ
 """
 
 import logging
@@ -51,7 +51,7 @@ def log_callback(func_name: str, update: Update, context: ContextTypes.DEFAULT_T
         log_msg += f" | profile: {context.user_data.get('profile_data', {}).get('display_name', 'None')}"
     
     logger.debug(log_msg)
-    print(f"🔍 {log_msg}")  # Дублируем в stdout для гарантии
+    print(f"🔍 {log_msg}")
 
 # ===== ИМПОРТ КОНФИГУРАЦИИ =====
 from config import (
@@ -115,11 +115,11 @@ from sexual_18_plus import (
     safe_send_message,
 )
 
-# ===== СОСТОЯНИЯ CONVERSATIONHANDLER =====
-# Основные состояния теста
-STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS = range(6)
-GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN = range(6, 9)
-PAYMENT_SCREEN = 9
+# ===== ИСПРАВЛЕННЫЕ СОСТОЯНИЯ CONVERSATIONHANDLER =====
+# Основные состояния теста (начинаем с 10, чтобы не конфликтовать с 18+)
+STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS = range(10, 16)
+GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN = range(16, 19)
+PAYMENT_SCREEN = 19
 
 # Состояние для интимного профиля (18+)
 MY_SEXUAL_PROFILE = 1
@@ -134,11 +134,11 @@ try:
 except (ImportError, KeyError):
     # Если модуль не загружен, создаем заглушки
     logger.warning("⚠️ 18+ модуль не загружен, создаем заглушки для состояний")
-    SEXUAL_PROFILE_SCREEN = 10
-    SEXUAL_INVITES_LIST = 11
-    SEXUAL_FRIEND_PROFILE = 12
-    FOUR_F_PAYMENT_SCREEN = 13
-    FOUR_F_CONTENT_SCREEN = 14
+    SEXUAL_PROFILE_SCREEN = 20
+    SEXUAL_INVITES_LIST = 21
+    SEXUAL_FRIEND_PROFILE = 22
+    FOUR_F_PAYMENT_SCREEN = 23
+    FOUR_F_CONTENT_SCREEN = 24
 
 # ===== КОНЕЦ ОПРЕДЕЛЕНИЯ СОСТОЯНИЙ =====
 
@@ -189,8 +189,6 @@ from utils.helpers import calculate_progress
 from loader import loader
 from base import VariaticaProfile
 
-# ===== ДАЛЬШЕ ИДУТ ВСЕ ВАШИ ФУНКЦИИ (show_results_screen, back_to_results и т.д.) =====
-# ... (весь остальной код вашего файла) ...
 # ============================================
 # ФУНКЦИИ ПЛАТЕЖНОЙ СИСТЕМЫ
 # ============================================
@@ -897,7 +895,7 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Инициализируем хранилище приглашений
     user_id = query.from_user.id
-    context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)  # ← ИСПРАВЛЕНО
+    context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)
     
     logger.info(f"User {user_id} перезапустил тест")
     
@@ -1198,7 +1196,7 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             "• И другие\n"
         )
     
-    # ✅ УБРАНА ссылка на материалы из экрана платежа
+    # УБРАНА ссылка на материалы из экрана платежа
     # Ссылка будет доступна ТОЛЬКО после оплаты
     
     keyboard = [
@@ -1389,7 +1387,7 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
     
     logger.info(f"✅ Материалы получены для профиля {profile_code}")
     
-    # ✅ ЗДЕСЬ появляется ссылка на материалы - ТОЛЬКО ПОСЛЕ ОПЛАТЫ
+    # ЗДЕСЬ появляется ссылка на материалы - ТОЛЬКО ПОСЛЕ ОПЛАТЫ
     keyboard = [
         [InlineKeyboardButton("📥 СКАЧАТЬ ПЕРСОНАЛЬНОЕ ОПИСАНИЕ", url=materials_link)],
         [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
@@ -1721,7 +1719,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Инициализируем хранилище приглашений
     user_id = query.from_user.id
-    context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)  # ← ИСПРАВЛЕНО
+    context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)
     
     logger.info(f"User {update.effective_user.id} начал знакомство с психологом")
     
@@ -1746,7 +1744,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     print("\n" + "="*70)
-    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.1)")
+    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.2)")
     print("="*70)
     print("🔞 ПОЛНАЯ ИНТЕГРАЦИЯ 18+ МОДУЛЯ")
     print("="*70)
@@ -1757,7 +1755,8 @@ def main():
     print("4. ✅ Платежная система ЮKassa")
     print("5. ✅ Интеграция с Яндекс.Диск (36 профилей)")
     print("="*70)
-    print("🔧 ИСПРАВЛЕНИЯ В 5.1:")
+    print("🔧 ИСПРАВЛЕНИЯ В 5.2:")
+    print("   ✅ Исправлен конфликт состояний (тест теперь с 10, 18+ с 1)")
     print("   ✅ Добавлен обработчик 18+ кнопки в состояние RESULTS")
     print("   ✅ Убрана ссылка на материалы из экрана платежа")
     print("   ✅ Ссылка появляется только после успешной оплаты")
@@ -1853,7 +1852,6 @@ def main():
                 CallbackQueryHandler(skip_share, pattern="^skip_share$"),
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
                 CallbackQueryHandler(restart_test, pattern="^restart_test$"),
-                # ✅ 18+ кнопка ДОБАВЛЕНА ОБРАТНО!
                 CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
             ],
             GIFT_SCREEN: [
@@ -1870,19 +1868,19 @@ def main():
                 CallbackQueryHandler(back_to_results_after_gift, pattern="^back_to_results_after_gift$"),
                 CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
             ],
-                        PAYMENT_SCREEN: [
+            PAYMENT_SCREEN: [
                 CallbackQueryHandler(check_payment_callback, pattern="^check_payment_"),
                 CallbackQueryHandler(get_materials_callback_payment, pattern="^get_materials_"),
                 CallbackQueryHandler(buy_without_test_callback, pattern="^buy_without_test$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
             ],
             # ===== 18+ МОДУЛЬ =====
-            MY_SEXUAL_PROFILE: [  # Состояние 1 - после открытия интимного профиля
+            MY_SEXUAL_PROFILE: [
                 CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
                 CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
             ],
-            SEXUAL_PROFILE_SCREEN: [  # Состояние из sexual_18_plus
+            SEXUAL_PROFILE_SCREEN: [
                 CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
                 CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
                 CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
@@ -1923,7 +1921,7 @@ def main():
     application.add_handler(conv_handler)
     
     logger.info("🧠 Виртуальный психолог Вариатика запущен!")
-    logger.info("✅ ВЕРСИЯ 5.1: ИСПРАВЛЕНА 18+ КНОПКА И ЭКРАН ПЛАТЕЖА!")
+    logger.info("✅ ВЕРСИЯ 5.2: ИСПРАВЛЕН КОНФЛИКТ СОСТОЯНИЙ!")
     logger.info("✅ Вопросы вынесены в отдельный файл questions.py")
     logger.info("✅ Обработчики этапов вынесены в папку handlers/")
     logger.info("✅ Утилиты вынесены в папку utils/")
