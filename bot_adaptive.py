@@ -76,38 +76,38 @@ from sexual_18_plus import (
     PROFILE_DISK_LINKS,
     FOUR_F_DESCRIPTIONS,
     SEXUAL_STATES,
-    
-    get_user_invites_from_api,   # ✅ новая функция вместо get_user_invites
+    SEXUAL_PROFILE_SCREEN,
+    SEXUAL_INVITES_LIST,
+    SEXUAL_FRIEND_PROFILE,
+    FOUR_F_PAYMENT_SCREEN,
+    FOUR_F_CONTENT_SCREEN,
+    get_user_invites_from_api,
     get_user_limits,
-    save_invite_to_api,          # ✅ новая функция вместо save_invite
-    update_invite_in_api,        # ✅ новая функция вместо update_invite
-    find_invite_in_api,          # ✅ новая функция вместо find_invite_by_code
+    save_invite_to_api,
+    update_invite_in_api,
+    find_invite_in_api,
     get_friend_by_id,
     count_free_friends,
     can_create_invite,
     init_test_data,
-    
     get_disk_link_by_profile,
-load_intimate_profile,
-load_friend_intimate_profile,
-format_intimate_profile_part1,
-format_intimate_profile_part2,
-format_intimate_profile_part3,
-format_friend_intimate_profile,  # ✅ правильно
-load_4f_content,     # ✅ правильно
-    
-    create_invite_callback,  # ✅ правильное название
-    
+    get_disk_link,
+    load_intimate_profile,
+    load_friend_intimate_profile,
+    format_intimate_profile_part1,
+    format_intimate_profile_part2,
+    format_intimate_profile_part3,
+    format_friend_intimate_profile,
+    load_4f_content,
+    create_invite_callback,
     generate_payment_id,
     create_yookassa_invoice,
-    
-        show_my_sexual_profile,
+    show_my_sexual_profile,
     sexual_invite_start,
     copy_invite_callback,
     check_invite_callback,
     start,
     show_results_screen,
-    create_invite_callback,
     my_invites_callback,
     friend_menu_callback,
     show_payment_access_screen,
@@ -120,7 +120,16 @@ load_4f_content,     # ✅ правильно
     open_4f_key_callback,
     back_to_results_callback,
     dummy_callback,
+    split_long_message,
+    safe_send_message,
 )
+
+# ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+async def noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Заглушка для нереализованных функций"""
+    query = update.callback_query
+    await query.answer("🚧 Функция в разработке", show_alert=True)
+    return
 
 # ===== ИМПОРТ ВОПРОСОВ =====
 from questions import (
