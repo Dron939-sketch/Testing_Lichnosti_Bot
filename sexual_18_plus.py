@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 19.2 - ПОЛНАЯ ИНТЕГРАЦИЯ С БД ЧЕРЕЗ API
+Версия: 19.3 - ДИНАМИЧЕСКАЯ ЗАГРУЗКА ПРОФИЛЕЙ
 ✅ Все 36 ссылок на профили добавлены
 ✅ Умная функция поиска ссылок по профилю
 ✅ Корректное отображение в "Моих отражениях"
@@ -10,6 +10,7 @@
 ✅ Интеграция с БД через API (app.py)
 ✅ Сохранение приглашений в БД
 ✅ Обновление статуса после прохождения теста
+✅ Динамическая загрузка интимных профилей по коду пользователя
 """
 
 import logging
@@ -125,6 +126,14 @@ INVITE_PACKAGES = {
     "10": {"price": 899, "links": 10, "emoji": "🥇", "popular": False}
 }
 
+# ===== ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ПО УМОЛЧАНИЮ =====
+USER_PROFILE = {
+    "display_name": "SA-5_INT",
+    "type_code": "SA",
+    "level": 5,
+    "dilts_code": "int"
+}
+
 # ===== ССЫЛКИ НА ЯНДЕКС.ДИСК - ВСЕ 36 ПРОФИЛЕЙ =====
 PROFILE_DISK_LINKS = {
     # SA Profiles
@@ -215,7 +224,7 @@ def get_disk_link_by_profile(profile_code: str) -> str:
             logger.debug(f"✅ Найдено по начальным символам: {key}")
             return PROFILE_DISK_LINKS[key]
     
-       # 5. Если ничего не найдено - возвращаем default
+    # 5. Если ничего не найдено - возвращаем default
     logger.warning(f"⚠️ Профиль {profile_code} не найден, использую default")
     return PROFILE_DISK_LINKS["default"]
 
@@ -407,21 +416,28 @@ FOUR_F_DETAILED_TEXT = f"""
 """
 
 # ===== ЗАГРУЗКА ИНТИМНОГО ПРОФИЛЯ =====
-def load_intimate_profile() -> dict:
-    """Загружает интимный профиль"""
+def load_intimate_profile(profile_code: str = "SA-5_INT") -> dict:
+    """
+    Загружает интимный профиль по коду профиля
+    Поддерживает форматы: SA-5_INT, sa_5_int, SA-5_INT, и т.д.
+    """
     try:
+        # Приводим к нижнему регистру и заменяем - на _ для имени файла
+        file_name = profile_code.lower().replace('-', '_') + '.json'
+        logger.info(f"🔍 Поиск интимного профиля: {file_name} для кода {profile_code}")
+        
         bot_dir = os.path.dirname(os.path.abspath(__file__))
         possible_paths = [
-            os.path.join(bot_dir, "sexual_18", "sa_5_int.json"),
-            os.path.join(PROJECT_ROOT, "sexual_18", "sa_5_int.json"),
-            os.path.join(PROJECT_ROOT, "profiles", "sexual_18", "sa_5_int.json"),
-            os.path.join("sexual_18", "sa_5_int.json"),
-            os.path.join("profiles", "sexual_18", "sa_5_int.json"),
-            "/opt/render/project/src/sexual_18/sa_5_int.json",
-            "/opt/render/project/src/profiles/sexual_18/sa_5_int.json",
+            os.path.join(bot_dir, "sexual_18", file_name),
+            os.path.join(PROJECT_ROOT, "sexual_18", file_name),
+            os.path.join(PROJECT_ROOT, "profiles", "sexual_18", file_name),
+            os.path.join("sexual_18", file_name),
+            os.path.join("profiles", "sexual_18", file_name),
+            f"/opt/render/project/src/sexual_18/{file_name}",
+            f"/opt/render/project/src/profiles/sexual_18/{file_name}",
         ]
         
-        logger.info("🔍 Поиск файла профиля:")
+        logger.info(f"🔍 Поиск файла профиля для кода {profile_code}:")
         for path in possible_paths:
             logger.info(f"   Проверяем: {path}")
             if os.path.exists(path):
@@ -430,31 +446,59 @@ def load_intimate_profile() -> dict:
                     data = json.load(f)
                     sections = data.get('sections', {})
                     logger.info(f"   📊 Секций загружено: {len(sections)}")
+                    
+                    # Добавляем информацию о том, для какого профиля загружен
+                    data['loaded_for_profile'] = profile_code
+                    
                     if sections:
-                        logger.info(f"   ✅ Профиль успешно загружен: {data.get('profile_type', 'unknown')}")
+                        logger.info(f"   ✅ Профиль успешно загружен: {data.get('profile_type', 'unknown')} для {profile_code}")
                         return data
                     else:
                         logger.warning("   ⚠️ Файл найден но секции пустые!")
                         return data
             logger.info(f"   ❌ Не найден")
         
-        logger.error("❌ Файл sa_5_int.json не найден нигде!")
-        return get_emergency_profile()
+        # Если файл не найден, пробуем загрузить default.json
+        logger.warning(f"⚠️ Файл {file_name} не найден, пробуем default.json")
+        
+        default_paths = [
+            os.path.join(bot_dir, "sexual_18", "default.json"),
+            os.path.join(PROJECT_ROOT, "sexual_18", "default.json"),
+            os.path.join(PROJECT_ROOT, "profiles", "sexual_18", "default.json"),
+            os.path.join("sexual_18", "default.json"),
+            os.path.join("profiles", "sexual_18", "default.json"),
+            "/opt/render/project/src/sexual_18/default.json",
+            "/opt/render/project/src/profiles/sexual_18/default.json",
+        ]
+        
+        for path in default_paths:
+            if os.path.exists(path):
+                logger.info(f"   ✅ НАЙДЕН default.json: {path}")
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    data['loaded_for_profile'] = profile_code
+                    data['is_default'] = True
+                    return data
+        
+        logger.error(f"❌ Не найден ни файл {file_name}, ни default.json!")
+        return get_emergency_profile(profile_code)
         
     except Exception as e:
         logger.error(f"❌ Ошибка загрузки: {e}\n{traceback.format_exc()}")
-        return get_emergency_profile()
+        return get_emergency_profile(profile_code)
 
-def get_emergency_profile() -> dict:
+def get_emergency_profile(profile_code: str = "SA-5_INT") -> dict:
     """Аварийный интимный профиль"""
-    logger.info("🆘 Используется аварийный профиль")
+    logger.info(f"🆘 Используется аварийный профиль для {profile_code}")
     return {
-        "profile_type": "SA-5_INT",
+        "profile_type": profile_code.upper(),
         "archetype": "ЦЕРЕМОНИАЛЬНЫЙ",
         "role": "Жрец/Жрица сексуальной мистерии",
         "quote": "«Со мной не скучно. Со мной — вкусно.»",
-        "description": "Секс для вас — священнодействие. Ритуал. Мистерия.\nВам нужен сценарий, подготовка, правильная атмосфера.\nВы не занимаетесь любовью — вы служите ей.\nИ каждый раз — как в первый. И каждый раз — как в последний.",
-        "sections": {}
+        "description": f"Секс для вас — священнодействие. Ритуал. Мистерия.\nВам нужен сценарий, подготовка, правильная атмосфера.\nВы не занимаетесь любовью — вы служите ей.\nИ каждый раз — как в первый. И каждый раз — как в последний.",
+        "sections": {},
+        "is_emergency": True,
+        "loaded_for_profile": profile_code
     }
 
 # ===== ФУНКЦИИ ДЛЯ РАБОТЫ С БД ЧЕРЕЗ API =====
@@ -552,9 +596,12 @@ def get_user_invites_from_api(user_id: int) -> list:
 def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
     """Форматирует ПЕРВУЮ ЧАСТЬ интимного профиля"""
     try:
+        # Получаем код профиля для отображения
+        profile_code = profile_data.get('loaded_for_profile', profile_data.get('profile_type', 'SA-5_INT'))
+        
         message = f"""
 🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ</b>
-📊 {user_name}, {profile_data.get('profile_type', 'SA-5_INT')}
+📊 {user_name}, {profile_code}
 
 🧠 Архетип: {profile_data.get('archetype', 'ЦЕРЕМОНИАЛЬНЫЙ')}
 
@@ -574,6 +621,20 @@ def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
             if 'items' in section:
                 for item in section['items']:
                     message += f"\n• {item}"
+        
+        # Добавляем примечание, если это аварийный профиль
+        if profile_data.get('is_emergency'):
+            message += f"""
+
+⚠️ <i>Этот профиль загружен в аварийном режиме.
+Полная версия будет доступна после создания файла {profile_code.lower().replace('-', '_')}.json</i>
+"""
+        elif profile_data.get('is_default'):
+            message += f"""
+
+⚠️ <i>Используется профиль по умолчанию.
+Специальный профиль для {profile_code} находится в разработке.</i>
+"""
         
         return message
     except Exception as e:
@@ -976,14 +1037,6 @@ def create_yookassa_invoice(payment_id: str, user_id: int, amount: float = 1.0, 
         logger.error(f"❌ Ошибка создания платежа: {e}")
         return {"success": False, "error": str(e)}
 
-# ===== ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ =====
-USER_PROFILE = {
-    "display_name": "SA-5_INT",
-    "type_code": "SA",
-    "level": 5,
-    "dilts_code": "int"
-}
-
 # ===== ХРАНИЛИЩЕ ПРИГЛАШЕНИЙ (временное, для обратной совместимости) =====
 user_invites = {}
 
@@ -1086,7 +1139,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["profile"] = USER_PROFILE.copy()
         context.user_data["conversation_state"] = RESULTS_SCREEN
         
-        init_test_data(user.id)  # ← здесь не должно быть отступа
+        init_test_data(user.id)
         context.user_data["sexual_invites"] = get_user_invites(user.id)
         get_user_limits(context)
         
@@ -1177,7 +1230,7 @@ async def copy_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception as e:
         logger.error(f"❌ Ошибка в copy_invite_callback: {e}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
-        # ===== ВСТАВЬТЕ НОВУЮ ФУНКЦИЮ ЗДЕСЬ =====
+
 # ============================================
 # ✅ ПРОВЕРКА ПРИГЛАШЕНИЯ
 # ============================================
@@ -1227,7 +1280,10 @@ async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception as e:
         logger.error(f"❌ Ошибка в check_invite_callback: {e}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
-# ===== КОНЕЦ НОВОЙ ФУНКЦИИ =====
+
+# ============================================
+# 📺 ЭКРАН РЕЗУЛЬТАТОВ
+# ============================================
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -1292,11 +1348,17 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
         
         context.user_data["conversation_state"] = MY_SEXUAL_PROFILE
         
-        user_name = query.from_user.first_name or "Пользователь"
-        logger.debug(f"📝 Загружаем профиль для пользователя: {user_name}")
+        # ПОЛУЧАЕМ ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ИЗ КОНТЕКСТА
+        user_profile = context.user_data.get("profile", USER_PROFILE)
+        profile_code = user_profile.get('display_name', 'SA-5_INT')
+        logger.info(f"📊 Профиль пользователя для 18+: {profile_code}")
         
-        profile_data = load_intimate_profile()
-        logger.debug(f"📊 Профиль загружен: {profile_data.get('profile_type', 'unknown')}")
+        user_name = query.from_user.first_name or "Пользователь"
+        logger.debug(f"📝 Загружаем интимный профиль для пользователя: {user_name} с кодом {profile_code}")
+        
+        # ЗАГРУЖАЕМ ИНТИМНЫЙ ПРОФИЛЬ С ЭТИМ КОДОМ
+        profile_data = load_intimate_profile(profile_code)
+        logger.debug(f"📊 Интимный профиль загружен: {profile_data.get('profile_type', 'unknown')} для {profile_code}")
         
         message_part1 = format_intimate_profile_part1(profile_data, user_name)
         message_part2 = format_intimate_profile_part2(profile_data, user_name)
@@ -2390,7 +2452,7 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("\n" + "="*70)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.2")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.3")
     print("="*70)
     print("✅ ПОЛНАЯ ИНТЕГРАЦИЯ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК")
     print("✅ Умная функция поиска ссылок по профилю")
@@ -2401,6 +2463,7 @@ def main():
     print("✅ Интеграция с БД через API (app.py)")
     print("✅ Сохранение приглашений в БД")
     print("✅ Обновление статуса после прохождения теста")
+    print("✅ Динамическая загрузка интимных профилей по коду пользователя")
     print("="*70)
     print("📊 ДОСТУПНЫЕ ПРОФИЛИ:")
     print("   SA: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
@@ -2510,7 +2573,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 19.2")
+        print("\n🚀 Бот запущен! Версия 19.3")
         print("="*70)
         logger.info("✅ Бот успешно запущен")
         
