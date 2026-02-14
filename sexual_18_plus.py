@@ -351,7 +351,7 @@ FOUR_F_SHORT = """
 """
 
 # ===== ЭКРАН "4F - ПОДРОБНО" =====
-FOUR_F_DETAILED_TEXT = f"""
+FOUR_F_DETAILED_TEXT = """
 🔥 <b>1F - ЯРОСТЬ / НАПАДЕНИЕ</b>
 <i>Стимулы, запускающие агрессию</i>
 
@@ -611,7 +611,7 @@ def get_emergency_profile(profile_code: str = "SA-5_INT") -> dict:
         "archetype": "ЦЕРЕМОНИАЛЬНЫЙ",
         "role": "Жрец/Жрица сексуальной мистерии",
         "quote": "«Со мной не скучно. Со мной — вкусно.»",
-        "description": f"Секс для вас — священнодействие. Ритуал. Мистерия.\nВам нужен сценарий, подготовка, правильная атмосфера.\nВы не занимаетесь любовью — вы служите ей.\nИ каждый раз — как в первый. И каждый раз — как в последний.",
+        "description": "Секс для вас — священнодействие. Ритуал. Мистерия.\nВам нужен сценарий, подготовка, правильная атмосфера.\nВы не занимаетесь любовью — вы служите ей.\nИ каждый раз — как в первый. И каждый раз — как в последний.",
         "sections": {},
         "is_emergency": True,
         "loaded_for_profile": profile_code
@@ -749,13 +749,6 @@ def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
             message += f"""
 
 ⚠️ <i>Используется профиль по умолчанию.
-Специальный профиль для {profile_code} находится в разработке.</i>
-"""
-        
-        return message
-    except Exception as e:
-        logger.error(f"❌ Ошибка форматирования части 1: {e}")
-        return "🔞 ИНТИМНЫЙ ПРОФИЛЬ\n\nПроизошла ошибка загрузки."
 Специальный профиль для {profile_code} находится в разработке.</i>
 """
         
@@ -1579,21 +1572,18 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
         return RESULTS_SCREEN
 
 # ============================================
-# 🔗 ЭКРАН 3: СОЗДАНИЕ ПРИГЛАШЕНИЯ (С ДОБАВЛЕННЫМ ЛОГИРОВАНИЕМ)
+# 🔗 ЭКРАН 3: СОЗДАНИЕ ПРИГЛАШЕНИЯ
 # ============================================
 
 async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔗 СОЗДАНИЕ ПРИГЛАШЕНИЯ - С РАСШИРЕННЫМ ЛОГИРОВАНИЕМ"""
-    # ВРЕМЕННОЕ ЛОГИРОВАНИЕ ДЛЯ ОТЛАДКИ
-    logger.info(f"🔥🔥🔥 create_invite_callback ВЫЗВАН! User: {update.effective_user.id}")
-    print(f"🔥🔥🔥 create_invite_callback ВЫЗВАН! User: {update.effective_user.id}")
+    """🔗 СОЗДАНИЕ ПРИГЛАШЕНИЯ"""
+    logger.info(f"🔗 create_invite_callback ВЫЗВАН! User: {update.effective_user.id}")
     
     try:
         query = update.callback_query
         user_id = query.from_user.id
         await query.answer()
         
-        # Добавляем подробное логирование
         logger.info(f"✅ create_invite_callback: пользователь {user_id} успешно вызвал функцию")
         logger.info(f"📊 Данные пользователя: username=@{query.from_user.username}, first_name={query.from_user.first_name}")
         
@@ -1679,7 +1669,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
             "purchased_functions": [],
             "is_free": is_free,
             "invite_type": invite_type,
-            "user_id": user_id  # Добавляем user_id для сохранения в БД
+            "user_id": user_id
         }
         
         # Сохраняем в БД
@@ -1717,7 +1707,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ (С ПРАВИЛЬНЫМИ ССЫЛКАМИ)
+# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1729,7 +1719,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.user_data["conversation_state"] = INVITES_LIST
         
         user_id = query.from_user.id
-        invites = get_user_invites(user_id)  # Теперь получает из БД
+        invites = get_user_invites(user_id)
         context.user_data["sexual_invites"] = invites
         
         used_invites = [inv for inv in invites if inv.get("status") == "used"]
@@ -1864,7 +1854,8 @@ async def four_f_detailed_callback(update: Update, context: ContextTypes.DEFAULT
         context.user_data["conversation_state"] = FOUR_F_DETAILED
         logger.info(f"📘 Пользователь {query.from_user.id} открыл подробное описание 4F")
         
-        message = FOUR_F_DETAILED_TEXT
+        # Используем правильную подстановку ссылки
+        message = FOUR_F_DETAILED_TEXT.replace("{EXAMPLE_DISK_LINK}", EXAMPLE_DISK_LINK)
         
         keyboard = [
             [InlineKeyboardButton("🔐 ЗАПРОСИТЬ КЛЮЧИ", url=AUTHOR_TELEGRAM)],
@@ -2815,7 +2806,6 @@ __all__ = [
     'sexual_invite_start',
     'copy_invite_callback',
     'check_invite_callback',
-    'delete_invite_callback',
     'show_my_invites',
     'friend_details_callback',
     'buy_function_callback',
