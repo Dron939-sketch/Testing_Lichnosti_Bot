@@ -1175,6 +1175,57 @@ async def copy_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception as e:
         logger.error(f"❌ Ошибка в copy_invite_callback: {e}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
+        # ===== ВСТАВЬТЕ НОВУЮ ФУНКЦИЮ ЗДЕСЬ =====
+# ============================================
+# ✅ ПРОВЕРКА ПРИГЛАШЕНИЯ
+# ============================================
+
+async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик для проверки статуса приглашения
+    """
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Извлекаем ID приглашения из callback_data
+        # Формат: check_invite_{invite_id}
+        invite_id = query.data.replace("check_invite_", "")
+        
+        # Ищем приглашение в данных пользователя
+        invites = context.user_data.get("sexual_invites", [])
+        invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
+        
+        if not invite:
+            await query.answer("❌ Приглашение не найдено", show_alert=True)
+            return
+        
+        # Формируем сообщение со статусом
+        status_text = "🟢 АКТИВНО" if invite.get("status") == "active" else "🔴 ИСПОЛЬЗОВАНО"
+        created_date = datetime.fromtimestamp(invite.get("created_at", datetime.now().timestamp())).strftime('%d.%m.%Y %H:%M')
+        
+        message = f"""
+📋 <b>СТАТУС ПРИГЛАШЕНИЯ</b>
+
+🔗 <code>{invite.get('link', '')}</code>
+📊 Статус: {status_text}
+📅 Создано: {created_date}
+"""
+        
+        if invite.get("status") == "used" and invite.get("friend_name"):
+            message += f"\n👤 Использовано: {invite.get('friend_name')}"
+        
+        await query.message.reply_text(
+            message,
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"✅ Пользователь {query.from_user.id} проверил статус приглашения {invite_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в check_invite_callback: {e}")
+        await query.answer("❌ Произошла ошибка", show_alert=True)
+# ===== КОНЕЦ НОВОЙ ФУНКЦИИ =====
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
