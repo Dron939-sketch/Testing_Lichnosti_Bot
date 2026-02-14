@@ -11,8 +11,6 @@ from config import CLARIFICATION, STAGE_1, STAGE_2, STAGE_3, STAGE_4, logger
 from questions import CLARIFICATION_QUESTIONS
 from utils.helpers import generate_unique_callback
 
-# УБИРАЕМ ИМПОРТЫ ИЗ stage1, stage2, stage3, stage4
-
 async def ask_clarification_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт уточняющий вопрос"""
     query = update.callback_query
