@@ -1449,16 +1449,24 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
         
         context.user_data["conversation_state"] = MY_SEXUAL_PROFILE
         
-        # ПОЛУЧАЕМ ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ИЗ КОНТЕКСТА
-        user_profile = context.user_data.get("profile", USER_PROFILE)
-        profile_code = user_profile.get('display_name', 'SA-5_INT')
-        logger.info(f"📊 ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ДЛЯ 18+: {profile_code}")
+        # ПОЛУЧАЕМ ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ИЗ РЕЗУЛЬТАТОВ ТЕСТА
+        profile_data = context.user_data.get("profile_data")
+        if profile_data and 'display_name' in profile_data:
+            profile_code = profile_data['display_name']
+            logger.info(f"📊 ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ИЗ ТЕСТА: {profile_code}")
+        else:
+            # Если нет, берем из profile (по умолчанию)
+            user_profile = context.user_data.get("profile", USER_PROFILE)
+            profile_code = user_profile.get('display_name', 'SA-5_INT')
+            logger.info(f"📊 ПРОФИЛЬ ПО УМОЛЧАНИЮ: {profile_code}")
         
         user_name = query.from_user.first_name or "Пользователь"
         logger.debug(f"📝 Загружаем интимный профиль для пользователя: {user_name} с кодом {profile_code}")
         
         # ЗАГРУЖАЕМ ИНТИМНЫЙ ПРОФИЛЬ С ЭТИМ КОДОМ
         profile_data = load_intimate_profile(profile_code)
+        
+        # ... остальной код без изменений
         
         # Логируем результат загрузки
         if profile_data.get('is_emergency'):
