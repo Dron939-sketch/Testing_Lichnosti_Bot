@@ -1093,7 +1093,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"❌ Ошибка в start: {e}\n{traceback.format_exc()}")
         await update.message.reply_text("❌ Произошла ошибка. Пожалуйста, попробуйте позже.")
         return RESULTS_SCREEN
-        # ===== ВСТАВЬТЕ СЮДА НОВУЮ ФУНКЦИЮ =====
+
+# ============================================
+# 🔗 ОБРАБОТЧИК ПРИГЛАШЕНИЙ ДЛЯ 18+ МОДУЛЯ
+# ============================================
+
 async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Обработчик приглашений для 18+ модуля
@@ -1130,7 +1134,47 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"❌ Ошибка в sexual_invite_start: {e}")
         await update.message.reply_text("❌ Произошла ошибка при обработке приглашения.")
         return RESULTS_SCREEN
-# ===== КОНЕЦ НОВОЙ ФУНКЦИИ =====
+
+# ============================================
+# 📋 КОПИРОВАНИЕ ПРИГЛАШЕНИЯ
+# ============================================
+
+async def copy_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик для копирования текста приглашения
+    """
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Извлекаем ID приглашения из callback_data
+        # Формат: copy_invite_{invite_id}
+        invite_id = query.data.replace("copy_invite_", "")
+        
+        # Ищем приглашение в данных пользователя
+        invites = context.user_data.get("sexual_invites", [])
+        invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
+        
+        if not invite:
+            await query.answer("❌ Приглашение не найдено", show_alert=True)
+            return
+        
+        # Текст приглашения для копирования
+        invite_text = f"{invite.get('message', '')}\n\n{invite.get('link', '')}"
+        
+        # Отправляем сообщение с текстом для копирования
+        await query.message.reply_text(
+            f"📋 <b>Текст для отправки другу:</b>\n\n"
+            f"<code>{invite_text}</code>\n\n"
+            f"Просто скопируйте и отправьте другу!",
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"📋 Пользователь {query.from_user.id} скопировал приглашение {invite_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в copy_invite_callback: {e}")
+        await query.answer("❌ Произошла ошибка", show_alert=True)
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -2425,6 +2469,7 @@ def main():
     except Exception as e:
         logger.error(f"❌ Критическая ошибка при запуске: {e}\n{traceback.format_exc()}")
         print(f"\n❌ Ошибка запуска: {e}")
+
 # ===== ЭКСПОРТ =====
 __all__ = [
     # Константы
@@ -2470,7 +2515,7 @@ __all__ = [
     'can_create_invite',
     
     # Callback-обработчики
-    'show_my_sexual_profile',  # ✅ ЭТО ВАЖНО!
+    'show_my_sexual_profile',
     'sexual_invite_start',
     'copy_invite_callback',
     'check_invite_callback',
@@ -2511,5 +2556,6 @@ __all__ = [
     'generate_payment_id',
     'create_yookassa_invoice',
 ]
+
 if __name__ == "__main__":
     main()
