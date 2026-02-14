@@ -7,16 +7,25 @@ import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from config import CLARIFICATION, STAGE_1, STAGE_2, STAGE_3, STAGE_4, logger
+# ИСПРАВЛЕНО: Импортируем константы из constants.py вместо config.py
+from constants import CLARIFICATION, STAGE_1, STAGE_2, STAGE_3, STAGE_4
+from config import logger
 from questions import CLARIFICATION_QUESTIONS
 from utils.helpers import generate_unique_callback
 
 async def ask_clarification_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт уточняющий вопрос"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"❓ ask_clarification_question ВЫЗВАН для пользователя {user_id}")
     
     clarification_stage = context.user_data.get("clarification_stage")
     current = context.user_data.get("clarification_current", 0)
+    
+    # ✅ ВАЖНО: сохраняем состояние
+    context.user_data["conversation_state"] = CLARIFICATION
+    logger.info(f"💾 Сохраняю состояние CLARIFICATION = {CLARIFICATION} для пользователя {user_id}")
     
     if clarification_stage == "stage1":
         clarifications = context.user_data.get("stage1_clarifications", [])
@@ -25,7 +34,7 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
             # ИМПОРТ ВНУТРИ ФУНКЦИИ
             from handlers.stage1 import finish_stage_1
             result = await finish_stage_1(update, context)
-            logger.info(f"🔄 User {update.effective_user.id}: clarification stage1 → возвращаю {result}")
+            logger.info(f"🔄 User {user_id}: clarification stage1 → возвращаю {result}")
             return result
         
         clarification_type = clarifications[current]
@@ -44,7 +53,7 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
             # ИМПОРТ ВНУТРИ ФУНКЦИИ
             from handlers.stage2 import finish_stage_2
             result = await finish_stage_2(update, context)
-            logger.info(f"🔄 User {update.effective_user.id}: clarification stage2 → возвращаю {result}")
+            logger.info(f"🔄 User {user_id}: clarification stage2 → возвращаю {result}")
             return result
         question = questions[current]
         
@@ -55,7 +64,7 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
             # ИМПОРТ ВНУТРИ ФУНКЦИИ
             from handlers.stage3 import finish_stage_3
             result = await finish_stage_3(update, context)
-            logger.info(f"🔄 User {update.effective_user.id}: clarification stage3 → возвращаю {result}")
+            logger.info(f"🔄 User {user_id}: clarification stage3 → возвращаю {result}")
             return result
         question = questions[current]
         
@@ -66,13 +75,15 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
             # ИМПОРТ ВНУТРИ ФУНКЦИИ
             from handlers.stage4 import finish_stage_4
             result = await finish_stage_4(update, context)
-            logger.info(f"🔄 User {update.effective_user.id}: clarification stage4 → возвращаю {result}")
+            logger.info(f"🔄 User {user_id}: clarification stage4 → возвращаю {result}")
             return result
         question = questions[current]
     else:
+        logger.warning(f"⚠️ Неизвестный clarification_stage: {clarification_stage}")
         return STAGE_1
     
     if not question:
+        logger.warning(f"⚠️ Вопрос не найден для stage={clarification_stage}, current={current}")
         return STAGE_1
     
     question_text = (
@@ -82,7 +93,6 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
     )
     
     keyboard = []
-    user_id = update.effective_user.id
     
     if clarification_stage in ["stage1", "stage4"]:
         for option_id, option in question["options"].items():
@@ -106,6 +116,7 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
                 reply_markup=reply_markup, 
                 parse_mode="HTML"
             )
+            logger.info(f"✅ Уточняющий вопрос {current+1} отправлен пользователю {user_id}")
     except Exception as e:
         error_str = str(e).lower()
         if "message is not modified" in error_str:
@@ -136,14 +147,17 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
 async def handle_clarification_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ответа на уточняющий вопрос"""
     query = update.callback_query
+    user_id = update.effective_user.id
     
     try:
         await query.answer()
     except Exception as e:
         logger.error(f"Ошибка при answer(): {e}")
     
+    logger.info(f"📥 handle_clarification_answer для пользователя {user_id}, data={query.data}")
+    
     if context.user_data.get("processing", False):
-        logger.debug(f"Пользователь {update.effective_user.id}: пропускаем повторное нажатие")
+        logger.debug(f"Пользователь {user_id}: пропускаем повторное нажатие")
         return CLARIFICATION
     
     context.user_data["processing"] = True
@@ -151,11 +165,14 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
     try:
         parts = query.data.split("_")
         if len(parts) < 4:
+            logger.error(f"Неверный формат callback: {query.data}")
             return CLARIFICATION
         
         clarification_stage = parts[1]
         current = int(parts[2])
         option_id = parts[3]
+        
+        logger.info(f"📊 clarification_stage={clarification_stage}, current={current}, option={option_id}")
         
         if clarification_stage == "stage1":
             clarifications = context.user_data.get("stage1_clarifications", [])
@@ -168,6 +185,7 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
                     if selected_option:
                         for axis, score in selected_option.get("scores", {}).items():
                             context.user_data["scores"][axis] += score
+                            logger.info(f"   +{score} к {axis}")
             
             context.user_data["clarification_current"] = current + 1
             return await ask_clarification_question(update, context)
@@ -183,6 +201,7 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
                 
                 if selected_level in context.user_data["stage2_level_scores_dict"]:
                     context.user_data["stage2_level_scores_dict"][selected_level] += 3
+                    logger.info(f"   +3 к уровню {selected_level}")
             
             context.user_data["clarification_current"] = current + 1
             return await ask_clarification_question(update, context)
@@ -197,6 +216,7 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
                     context.user_data["stage3_level_scores"] = []
                 
                 context.user_data["stage3_level_scores"].append(int(selected_level))
+                logger.info(f"   + уровень {selected_level} к stage3_scores")
             
             context.user_data["clarification_current"] = current + 1
             return await ask_clarification_question(update, context)
@@ -209,6 +229,7 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
                 if selected_option:
                     dilts = selected_option.get("dilts", "ENVIRONMENT")
                     context.user_data["stage4_dilts_answers"].append(dilts)
+                    logger.info(f"   + dilts={dilts} к stage4_answers")
             
             context.user_data["clarification_current"] = current + 1
             return await ask_clarification_question(update, context)
