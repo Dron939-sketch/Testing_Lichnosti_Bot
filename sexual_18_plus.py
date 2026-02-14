@@ -2450,7 +2450,7 @@ __all__ = [
     # Функции для экранов
     'start',
     'show_results_screen',
-    'my_sexual_profile_callback',
+    'show_my_sexual_profile',
     'create_invite_callback',
     'my_invites_callback',
     'friend_menu_callback',
