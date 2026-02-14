@@ -96,7 +96,7 @@ format_intimate_profile_part3,
 format_friend_intimate_profile,  # ✅ правильно
 load_4f_content,     # ✅ правильно
     
-    create_invite_link,
+    create_invite_callback,  # ✅ правильное название
     
     generate_payment_id,
     create_yookassa_invoice,
