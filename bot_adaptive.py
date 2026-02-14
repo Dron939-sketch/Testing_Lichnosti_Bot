@@ -26,6 +26,33 @@ from telegram.ext import (
     ContextTypes,
 )
 
+# ===== НАСТРОЙКА СУПЕР-ЛОГГИРОВАНИЯ =====
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('bot_debug.log', encoding='utf-8')
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Функция для логирования входящих callback
+def log_callback(func_name: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Логирует входящий callback"""
+    user = update.effective_user
+    query = update.callback_query if update.callback_query else None
+    
+    log_msg = f"📞 {func_name} | User: {user.id} (@{user.username})"
+    if query:
+        log_msg += f" | Callback: {query.data}"
+    if context.user_data:
+        log_msg += f" | has_shared: {context.user_data.get('has_shared', False)}"
+        log_msg += f" | profile: {context.user_data.get('profile_data', {}).get('display_name', 'None')}"
+    
+    logger.debug(log_msg)
+    print(f"🔍 {log_msg}")  # Дублируем в stdout для гарантии
+
 # ===== ИМПОРТ КОНФИГУРАЦИИ =====
 from config import (
     TOKEN, API_URL, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY,
@@ -36,7 +63,7 @@ from config import (
     FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN,
     GIFT_SCREEN_TEXT, STANDARD_SUFFIXES, CONFLICT_PHRASES, SUFFIX_TO_DILTS,
     EMERGENCY_PROFILES, LEVEL_DIFFS, PROFILE_LINKS, DEFAULT_PROFILE,
-    logger
+    logger as config_logger
 )
 
 # ===== ИМПОРТ 18+ МОДУЛЯ =====
@@ -139,10 +166,13 @@ def create_yookassa_invoice_payment(payment_id: str, user_id: int, profile_code:
     try:
         logger.info(f"📤 Создаю платеж ЮKassa: {payment_id}, профиль: {profile_code}")
         
+        if not YOOKASSA_SHOP_ID or not YOOKASSA_SECRET_KEY:
+            logger.error("❌ YOOKASSA ключи не установлены!")
+            return {"success": False, "error": "Платежная система не настроена"}
+        
         auth_string = f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}"
         auth_encoded = base64.b64encode(auth_string.encode()).decode()
         
-        import uuid
         unique_id = uuid.uuid4().hex[:16]
         idempotence_key = f"{payment_id}_{unique_id}_{int(time.time())}"
         
@@ -197,7 +227,6 @@ def create_yookassa_invoice_payment(payment_id: str, user_id: int, profile_code:
         
         logger.info(f"💳 Отправляю запрос в ЮKassa...")
         
-        import requests
         response = requests.post(
             "https://api.yookassa.ru/v3/payments",
             headers=headers,
@@ -230,19 +259,18 @@ def create_yookassa_invoice_payment(payment_id: str, user_id: int, profile_code:
                 logger.error(f"❌ Нет ссылки для оплаты в ответе ЮKassa")
                 return {"success": False, "error": "Нет ссылки для оплаты"}
         else:
-            error_text = response.text[:500]
+            error_text = response.text[:500] if response.text else "Нет ответа"
             logger.error(f"❌ Ошибка ЮKassa {response.status_code}: {error_text}")
             return {"success": False, "error": f"Ошибка ЮKassa: {response.status_code}", "details": error_text}
             
     except Exception as e:
-        logger.error(f"❌ Исключение при создании платежа ЮKassa: {e}")
+        logger.error(f"❌ Исключение при создании платежа ЮKassa: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
 async def create_payment_advanced(user_id: int, profile_code: str, amount: float = 690.00) -> dict:
     """Создает платеж в БД и ЮKassa"""
     
     timestamp = int(time.time())
-    import random
     random_str = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=12))
     user_suffix = str(user_id)[-6:]
     payment_id = f"prod_{timestamp}_{random_str}_{user_suffix}"
@@ -259,12 +287,14 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
             "description": f"Полное описание профиля {profile_code} от виртуального психолога"
         }
         
-        import requests
+        logger.debug(f"📤 Отправка запроса в API: {API_URL}/api/create-payment-advanced")
         db_response = requests.post(
             f"{API_URL}/api/create-payment-advanced",
             json=db_payload,
             timeout=10
         )
+        
+        logger.debug(f"📥 Ответ API: {db_response.status_code}")
         
         if db_response.status_code in [200, 201]:
             db_data = db_response.json()
@@ -318,7 +348,7 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
                 return yookassa_result
                 
         else:
-            error_text = db_response.text[:200]
+            error_text = db_response.text[:200] if db_response.text else "Нет ответа"
             logger.error(f"❌ Ошибка БД {db_response.status_code}: {error_text}")
             return {
                 "success": False, 
@@ -327,7 +357,7 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
             }
             
     except Exception as e:
-        logger.error(f"❌ Ошибка подключения к API: {e}")
+        logger.error(f"❌ Ошибка подключения к API: {e}", exc_info=True)
         return {
             "success": False,
             "error": f"Ошибка подключения: {str(e)}"
@@ -336,14 +366,17 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
 async def check_payment_status_api(payment_id: str) -> dict:
     """Проверяет статус платежа через API"""
     try:
-        import requests
+        logger.debug(f"🔍 Проверка статуса платежа: {payment_id}")
         response = requests.get(
             f"{API_URL}/api/payment-status/{payment_id}",
             timeout=10
         )
         
+        logger.debug(f"📥 Ответ API: {response.status_code}")
+        
         if response.status_code == 200:
             result = response.json()
+            logger.debug(f"  Статус: {result.get('status', 'unknown')}")
             return {
                 "success": True,
                 "status": result.get("status", "unknown"),
@@ -351,12 +384,13 @@ async def check_payment_status_api(payment_id: str) -> dict:
                 "data": result
             }
         else:
+            logger.error(f"❌ API error: {response.status_code}")
             return {
                 "success": False,
                 "error": f"API error: {response.status_code}"
             }
     except Exception as e:
-        logger.error(f"Status check error: {e}")
+        logger.error(f"Status check error: {e}", exc_info=True)
         return {
             "success": False,
             "error": str(e)
@@ -365,16 +399,19 @@ async def check_payment_status_api(payment_id: str) -> dict:
 async def get_materials_link_api(payment_id: str, user_id: int) -> dict:
     """Получает ссылку на материалы через API"""
     try:
-        import requests
+        logger.debug(f"📦 Получение материалов: {payment_id}, user_id={user_id}")
         response = requests.get(
             f"{API_URL}/api/get-materials/{payment_id}",
             params={"user_id": user_id},
             timeout=10
         )
         
+        logger.debug(f"📥 Ответ API: {response.status_code}")
+        
         if response.status_code == 200:
             result = response.json()
             if result.get("success"):
+                logger.debug(f"✅ Материалы получены: {result.get('profile_code')}")
                 return {
                     "success": True,
                     "materials_link": result.get("materials_link"),
@@ -382,17 +419,19 @@ async def get_materials_link_api(payment_id: str, user_id: int) -> dict:
                     "profile_link": result.get("profile_link")
                 }
             else:
+                logger.error(f"❌ Ошибка API: {result.get('error')}")
                 return {
                     "success": False,
                     "error": result.get("error", "Unknown error")
                 }
         else:
+            logger.error(f"❌ API error: {response.status_code}")
             return {
                 "success": False,
                 "error": f"API error: {response.status_code}"
             }
     except Exception as e:
-        logger.error(f"Materials API error: {e}")
+        logger.error(f"Materials API error: {e}", exc_info=True)
         return {
             "success": False,
             "error": str(e)
@@ -584,17 +623,26 @@ async def show_results_screen(
 ):
     """ЭКРАН РЕЗУЛЬТАТОВ с 18+ кнопкой"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    log_callback("show_results_screen", update, context)
     
     has_shared = context.user_data.get("has_shared", False) or force_shared_view
     profile_data = context.user_data.get("profile_data")
     
+    logger.debug(f"📊 has_shared={has_shared}, profile_data={'есть' if profile_data else 'нет'}")
+    
     if not profile_data:
+        logger.debug("🔄 profile_data отсутствует, вычисляем...")
         profile_data = calculate_profile_final(context.user_data)
         context.user_data["profile_data"] = profile_data
+        logger.debug(f"✅ profile_data вычислен: {profile_data.get('display_name')}")
     
     try:
         profile = get_profile_fallback(profile_data)
+        logger.debug(f"✅ Профиль найден: {profile}")
     except ProfileNotFoundError as e:
+        logger.error(f"❌ Профиль не найден: {e}", exc_info=True)
         error_text = (
             f"🧠 <b>К сожалению, возникла техническая ошибка</b>\n\n"
             f"Как ваш виртуальный психолог, я не смог обработать все данные.\n\n"
@@ -684,6 +732,7 @@ async def show_results_screen(
             message_1 += f"{pain.strip()}"
     
     if message_1.strip():
+        logger.debug(f"📤 Отправка message_1 ({len(message_1)} символов)")
         await query.edit_message_text(message_1.strip(), parse_mode="HTML")
         await asyncio.sleep(0.5)
     
@@ -730,17 +779,21 @@ async def show_results_screen(
             [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
             sexual_button
         ]
+        logger.debug("🔘 Клавиатура: без подарка (has_shared=False)")
     else:
         keyboard = [
             [InlineKeyboardButton("🎁 Получить сказку «Мастер Меча»", callback_data="open_gift")],
             [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
             sexual_button
         ]
+        logger.debug(f"🔘 Клавиатура: с подарком, GIFT_PDF_LINK={GIFT_PDF_LINK}")
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
+    logger.debug(f"📤 Отправка message_2 ({len(message_2)} символов) с {len(keyboard)} рядами кнопок")
     await query.message.reply_text(message_2.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
+    logger.info(f"✅ Результаты показаны пользователю {user_id}")
     return RESULTS
 
 # ============================================
@@ -749,51 +802,55 @@ async def show_results_screen(
 
 async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к результатам"""
+    log_callback("back_to_results", update, context)
     query = update.callback_query
     await query.answer("🔄 Возвращаюсь к результатам...")
     
-    await show_results_screen(update, context, force_shared_view=True)
-    
+    result = await show_results_screen(update, context, force_shared_view=True)
     logger.info(f"🔄 User {update.effective_user.id}: back_to_results → RESULTS")
-    return RESULTS
+    return result
 
 async def back_to_results_after_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к результатам после подарка"""
+    log_callback("back_to_results_after_gift", update, context)
     query = update.callback_query
     await query.answer("🔄 Возвращаюсь к результатам...")
     
-    await show_results_screen(update, context, force_shared_view=True)
-    
+    result = await show_results_screen(update, context, force_shared_view=True)
     logger.info(f"🎁 User {update.effective_user.id}: back_to_results_after_gift → RESULTS")
-    return RESULTS
+    return result
 
 async def skip_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Пропуск шаринга"""
+    log_callback("skip_share", update, context)
     query = update.callback_query
     await query.answer("⏩ Продолжаем без репоста")
     
-    await show_results_screen(update, context, force_shared_view=True)
-    
+    result = await show_results_screen(update, context, force_shared_view=True)
     logger.info(f"🔄 User {update.effective_user.id}: skip_share → RESULTS")
-    return RESULTS
+    return result
 
 async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Подтверждение шаринга"""
+    log_callback("confirm_share", update, context)
     query = update.callback_query
     await query.answer("✅ Спасибо за репост! Ваш бонус готов!")
     
     context.user_data["has_shared"] = True
+    logger.info(f"✅ User {update.effective_user.id}: has_shared установлен в True")
     
     logger.info(f"✅ User {update.effective_user.id}: confirm_share → open_gift_screen")
     return await open_gift_screen(update, context)
 
 async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Перезапуск теста"""
+    log_callback("restart_test", update, context)
     query = update.callback_query
     await query.answer("🔄 Перезапускаю тест...")
     
     # Очищаем данные пользователя
     context.user_data.clear()
+    logger.debug(f"🧹 user_data очищена для {update.effective_user.id}")
     
     # Инициализируем новые данные
     context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
@@ -819,6 +876,7 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ЭКРАН: ДАЙТЕ ДРУГИМ ЗЕРКАЛО — ПОЛУЧИТЕ МЕЧ"""
+    log_callback("get_gift_screen", update, context)
     query = update.callback_query
     await query.answer()
     
@@ -848,16 +906,33 @@ async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(instruction_text, reply_markup=reply_markup, parse_mode="HTML")
+    logger.info(f"🪞 Gift screen показан пользователю {update.effective_user.id}")
     return GIFT_SCREEN
 
 async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ЭКРАН С ПОДАРКОМ"""
+    log_callback("open_gift_screen", update, context)
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.debug(f"🎁 open_gift_screen: user_id={user_id}, has_shared={context.user_data.get('has_shared', False)}")
+    logger.debug(f"🎁 GIFT_PDF_LINK из config: {GIFT_PDF_LINK}")
+    
     await query.answer()
     
     if not context.user_data.get("has_shared", False):
+        logger.warning(f"❌ Пользователь {user_id} пытается открыть подарок без has_shared")
         await query.answer(
             "❌ Сначала поделитесь зеркалом с друзьями, чтобы получить подарок!", 
+            show_alert=True
+        )
+        return await show_results_screen(update, context, force_shared_view=True)
+    
+    # Проверяем наличие ссылки
+    if not GIFT_PDF_LINK:
+        logger.error(f"❌ GIFT_PDF_LINK не установлен для пользователя {user_id}")
+        await query.answer(
+            "❌ Ссылка на подарок временно недоступна. Пожалуйста, попробуйте позже.",
             show_alert=True
         )
         return await show_results_screen(update, context, force_shared_view=True)
@@ -868,7 +943,7 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    logger.info(f"🎁 User {update.effective_user.id} opened gift (has_shared={context.user_data.get('has_shared', False)})")
+    logger.info(f"🎁 User {user_id} opened gift (has_shared={context.user_data.get('has_shared', False)})")
     
     await query.edit_message_text(
         GIFT_SCREEN_TEXT,
@@ -876,22 +951,27 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
     
+    logger.info(f"✅ Gift screen показан пользователю {user_id}")
     return OPEN_GIFT_SCREEN
 
 async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ЭКРАН: ПОЛНОЕ ОПИСАНИЕ ПРОФИЛЯ"""
+    log_callback("show_package_screen", update, context)
     query = update.callback_query
     await query.answer()
     
     profile_data = context.user_data.get("profile_data")
+    logger.debug(f"📦 profile_data: {'есть' if profile_data else 'нет'}")
     
     if profile_data:
         profile_code = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
         profile_info = f"\n📊 <b>Ваш профиль:</b> <code>{profile_code}</code>\n"
         personal_note = f"\n<i>Это описание будет создано персонально для вас на основе ваших ответов.</i>"
+        logger.debug(f"📊 Профиль пользователя: {profile_code}")
     else:
         profile_info = "\n📊 <b>Профиль:</b> будет определен после теста\n"
         personal_note = f"\n<i>После теста я подготовлю персональное описание именно для вас.</i>"
+        logger.debug("⚠️ profile_data отсутствует")
     
     package_text = (
         f"🧠 <b>ПОЛНОЕ ОПИСАНИЕ ВАШЕГО ПРОФИЛЯ</b>\n\n"
@@ -917,6 +997,7 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(package_text, reply_markup=reply_markup, parse_mode="HTML")
+    logger.info(f"📦 Package screen показан пользователю {update.effective_user.id}")
     return PACKAGE_SCREEN
 
 # ============================================
@@ -926,10 +1007,12 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /buy для получения описания профиля"""
     user_id = update.effective_user.id
+    logger.info(f"💳 buy_command вызван пользователем {user_id}")
     
     profile_data = context.user_data.get("profile_data")
     
     if not profile_data:
+        logger.debug(f"💳 profile_data отсутствует для {user_id}, показываем выбор")
         keyboard = [
             [InlineKeyboardButton("🧠 Пройти тест для знакомства", callback_data="start_test")],
             [InlineKeyboardButton("💎 Получить описание без теста", callback_data="buy_without_test")]
@@ -970,15 +1053,18 @@ async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     profile_code = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
     context.user_data["pending_payment_profile"] = profile_code
+    logger.info(f"💳 Профиль для оплаты: {profile_code}")
     
     return await show_payment_screen(update, context)
 
 async def buy_without_test_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Покупка без прохождения теста"""
+    log_callback("buy_without_test_callback", update, context)
     query = update.callback_query
     await query.answer("💳 Переход к оплате...")
     
     context.user_data["pending_payment_profile"] = "SA_1_DEF"
+    logger.info(f"💳 Покупка без теста, профиль по умолчанию: SA_1_DEF")
     
     return await show_payment_screen(update, context)
 
@@ -987,6 +1073,8 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query if hasattr(update, 'callback_query') else None
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
+    
+    logger.info(f"💳 show_payment_screen для пользователя {user_id}")
     
     profile_data = context.user_data.get("profile_data")
     
@@ -1010,11 +1098,14 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             parse_mode='Markdown'
         )
     
+    logger.debug(f"💳 Вызов create_payment_advanced для {profile_code}")
     payment_result = await create_payment_advanced(user_id, profile_code, 690.00)
     
     if not payment_result.get("success"):
         error_msg = payment_result.get("error", "Неизвестная ошибка")
         details = payment_result.get("details", "")
+        
+        logger.error(f"❌ Ошибка создания платежа: {error_msg}")
         
         keyboard = [
             [InlineKeyboardButton("🔄 Попробовать снова", callback_data="buy_without_test")],
@@ -1041,6 +1132,8 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     payment_id = payment_result["payment_id"]
     confirmation_url = payment_result["confirmation_url"]
+    
+    logger.info(f"✅ Платеж создан: {payment_id}, confirmation_url получен")
     
     context.user_data["last_payment_id"] = payment_id
     context.user_data["last_payment_profile"] = profile_code
@@ -1073,6 +1166,7 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     # Получаем ссылку на Яндекс.Диск для экрана оплаты
     profile_link = get_disk_link(profile_code)
+    logger.debug(f"📁 Ссылка на диск для {profile_code}: {profile_link}")
     
     keyboard = [
         [InlineKeyboardButton("💳 Оплатить 690 рублей", url=confirmation_url)],
@@ -1115,14 +1209,17 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             disable_web_page_preview=True
         )
     
+    logger.info(f"💳 Экран платежа показан пользователю {user_id}")
     return PAYMENT_SCREEN
 
 async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Проверка статуса платежа"""
+    log_callback("check_payment_callback", update, context)
     query = update.callback_query
     await query.answer()
     
     payment_id = query.data.split("_")[2]
+    logger.info(f"🔍 Проверка статуса платежа: {payment_id}")
     
     await query.edit_message_text(
         f"🔍 *ПРОВЕРЯЮ СТАТУС ПЛАТЕЖА...*\n\n"
@@ -1135,6 +1232,7 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
     
     if not status_result.get("success"):
         error_msg = status_result.get("error", "Неизвестная ошибка")
+        logger.error(f"❌ Ошибка проверки статуса: {error_msg}")
         
         keyboard = [
             [InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")],
@@ -1151,6 +1249,7 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
         return PAYMENT_SCREEN
     
     status = status_result.get("status", "unknown")
+    logger.info(f"📊 Статус платежа {payment_id}: {status}")
     
     if status == "succeeded":
         message = (
@@ -1207,11 +1306,14 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
 
 async def get_materials_callback_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Получение материалов после оплаты"""
+    log_callback("get_materials_callback_payment", update, context)
     query = update.callback_query
     await query.answer()
     
     payment_id = query.data.split("_")[2]
     user_id = update.effective_user.id
+    
+    logger.info(f"📦 Получение материалов для платежа {payment_id}, user_id={user_id}")
     
     await query.edit_message_text(
         f"📦 *ПОЛУЧАЮ МАТЕРИАЛЫ...*\n\n"
@@ -1224,6 +1326,7 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
     
     if not materials_result.get("success"):
         error_msg = materials_result.get("error", "Неизвестная ошибка")
+        logger.error(f"❌ Ошибка получения материалов: {error_msg}")
         
         keyboard = [
             [InlineKeyboardButton("🔄 Попробовать снова", callback_data=f"get_materials_{payment_id}")],
@@ -1243,6 +1346,7 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
     profile_code = materials_result.get("profile_code", "SA_1_DEF")
     
     if not materials_link:
+        logger.error(f"❌ Ссылка на материалы не найдена для платежа {payment_id}")
         await query.edit_message_text(
             f"❌ *ССЫЛКА НЕ НАЙДЕНА*\n\n"
             f"Материалы для платежа `{payment_id}` не найдены.\n"
@@ -1250,6 +1354,8 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
             parse_mode='Markdown'
         )
         return PAYMENT_SCREEN
+    
+    logger.info(f"✅ Материалы получены для профиля {profile_code}")
     
     keyboard = [
         [InlineKeyboardButton("📥 СКАЧАТЬ ПЕРСОНАЛЬНОЕ ОПИСАНИЕ", url=materials_link)],
@@ -1283,9 +1389,12 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     
+    logger.info(f"📦 materials_command вызван пользователем {user_id}")
+    
     last_payment_id = context.user_data.get("last_payment_id")
     
     if not last_payment_id:
+        logger.warning(f"📦 У пользователя {user_id} нет активных платежей")
         await update.message.reply_text(
             f"🧠 *У вас нет активных платежей*\n\n"
             f"👤 *{user_name}*, для получения персонального описания профиля необходимо приобрести полный пакет.\n\n"
@@ -1299,6 +1408,8 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
+    logger.info(f"📦 Последний платеж пользователя {user_id}: {last_payment_id}")
+    
     await update.message.reply_text(
         f"🔍 *ПОИСК ПЕРСОНАЛЬНОГО ОПИСАНИЯ...*\n\n"
         f"📋 *ID платежа:* `{last_payment_id}`\n\n"
@@ -1310,6 +1421,7 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not materials_result.get("success"):
         error_msg = materials_result.get("error", "Неизвестная ошибка")
+        logger.error(f"❌ Ошибка получения материалов: {error_msg}")
         
         keyboard = [[InlineKeyboardButton("💳 Получить описание профиля", callback_data="buy_without_test")]]
         
@@ -1327,6 +1439,7 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     profile_code = materials_result.get("profile_code", "SA_1_DEF")
     
     if not materials_link:
+        logger.error(f"❌ Ссылка на материалы не найдена для платежа {last_payment_id}")
         await update.message.reply_text(
             f"❌ *ССЫЛКА НЕ НАЙДЕНА*\n\n"
             f"Материалы для платежа `{last_payment_id}` не найдены.\n"
@@ -1334,6 +1447,8 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         return
+    
+    logger.info(f"✅ Материалы отправлены пользователю {user_id} для профиля {profile_code}")
     
     keyboard = [[InlineKeyboardButton("📥 СКАЧАТЬ ПЕРСОНАЛЬНОЕ ОПИСАНИЕ", url=materials_link)]]
     
@@ -1354,9 +1469,12 @@ async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /status для проверки статуса последнего платежа"""
     user_id = update.effective_user.id
+    logger.info(f"📊 status_command вызван пользователем {user_id}")
+    
     last_payment_id = context.user_data.get("last_payment_id")
     
     if not last_payment_id:
+        logger.warning(f"📊 У пользователя {user_id} нет последнего платежа")
         await update.message.reply_text(
             "📭 *Нет активных платежей*\n\n"
             "У вас нет последних платежей для проверки.\n"
@@ -1364,6 +1482,8 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         return
+    
+    logger.info(f"📊 Проверка статуса платежа {last_payment_id} для пользователя {user_id}")
     
     await update.message.reply_text(
         f"🔍 *ПРОВЕРЯЮ СТАТУС...*\n\n"
@@ -1376,6 +1496,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not status_result.get("success"):
         error_msg = status_result.get("error", "Неизвестная ошибка")
+        logger.error(f"❌ Ошибка проверки статуса: {error_msg}")
         
         await update.message.reply_text(
             f"❌ *ОШИБКА ПРИ ПРОВЕРКЕ*\n\n"
@@ -1386,6 +1507,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     status = status_result.get("status", "unknown")
+    logger.info(f"📊 Статус платежа {last_payment_id}: {status}")
     
     if status == "succeeded":
         message = (
@@ -1422,6 +1544,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Основная команда /start с поддержкой deep link для 18+"""
     user = update.effective_user
+    logger.info(f"🚀 /start вызван пользователем {user.id} (@{user.username})")
     
     # Инициализируем тестовые данные для нового пользователя
     init_test_data(user.id)
@@ -1434,6 +1557,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     current_state = context.user_data.get("conversation_state")
     if current_state is not None:
+        logger.debug(f"🔄 Сброс состояния пользователя {user.id}")
         await update.message.reply_text("🔄 Начинаем новое исследование...")
         context.user_data.clear()
     
@@ -1459,10 +1583,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+    logger.info(f"✅ Приветствие отправлено пользователю {user.id}")
     return None
 
 async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат в главное меню"""
+    log_callback("main_menu_callback", update, context)
     query = update.callback_query
     await query.answer("🏠 Возврат в главное меню...")
     
@@ -1509,6 +1635,7 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def why_details_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик кнопки 'Детали'"""
+    log_callback("why_details_callback", update, context)
     query = update.callback_query
     await query.answer()
     
@@ -1546,6 +1673,7 @@ async def why_details_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало теста"""
+    log_callback("start_test", update, context)
     query = update.callback_query
     await query.answer()
     
@@ -1568,6 +1696,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена теста"""
+    logger.info(f"❌ Тест отменен пользователем {update.effective_user.id}")
     await update.message.reply_text(
         f"🧠 *Исследование отменено.*\n\n"
         f"Если захотите продолжить наше знакомство, просто напишите:\n"
@@ -1602,11 +1731,11 @@ def main():
     print("   ✅ Конфигурация вынесена в config.py")
     print("="*70)
     
-    gift_link = os.getenv("GIFT_PDF_LINK")
-    if not gift_link:
+    # Проверка наличия GIFT_PDF_LINK
+    if not GIFT_PDF_LINK:
         logger.warning("⚠️ GIFT_PDF_LINK не установлена, используется ссылка по умолчанию")
     else:
-        logger.info(f"🎁 GIFT_PDF_LINK загружена: {gift_link[:30]}...")
+        logger.info(f"🎁 GIFT_PDF_LINK загружена: {GIFT_PDF_LINK[:30]}...")
     
     print("🔍 ПРОВЕРКА ЗАГРУЗКИ ПРОФИЛЕЙ")
     print("="*30)
@@ -1759,6 +1888,7 @@ def main():
     logger.info("✅ Вопросы вынесены в отдельный файл questions.py")
     logger.info("✅ Обработчики этапов вынесены в папку handlers/")
     logger.info("✅ Утилиты вынесены в папку utils/")
+    logger.info("✅ Супер-логирование активировано!")
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
