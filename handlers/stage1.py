@@ -7,7 +7,9 @@ import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from config import STAGE_1, STAGE_2, PSYCHOLOGIST_TIPS, STAGE1_FEEDBACK
+# ИСПРАВЛЕНО: Импортируем константы из constants.py вместо config.py
+from constants import STAGE_1, STAGE_2
+from config import PSYCHOLOGIST_TIPS, STAGE1_FEEDBACK
 from questions import STAGE_1_QUESTIONS
 from utils.calculations import determine_perception_type
 from utils.validators import need_clarification_stage1
