@@ -100,7 +100,6 @@ load_4f_content,     # ✅ правильно
     
     generate_payment_id,
     create_yookassa_invoice,
-    check_payment_status,
     
     show_my_sexual_profile,
     sexual_invite_start,
