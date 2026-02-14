@@ -1859,8 +1859,8 @@ def main():
                                     # ===== 18+ МОДУЛЬ =====
             SEXUAL_PROFILE_SCREEN: [
                 CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
-                CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
-                CallbackQueryHandler(my_invites_callback, pattern="^show_my_invites$"),
+                CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
             ],
             SEXUAL_INVITES_LIST: [
