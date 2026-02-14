@@ -1,4 +1,3 @@
-# handlers/common.py
 """
 Общие обработчики для уточняющих вопросов и навигации
 """
@@ -29,7 +28,9 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
         clarifications = context.user_data.get("stage1_clarifications", [])
         if current >= len(clarifications):
             context.user_data["stage1_clarified"] = True
-            return await finish_stage_1(update, context)
+            result = await finish_stage_1(update, context)
+            logger.info(f"🔄 User {update.effective_user.id}: clarification stage1 → возвращаю {result}")
+            return result
         
         clarification_type = clarifications[current]
         questions = CLARIFICATION_QUESTIONS.get(f"stage1_{clarification_type}", [])
@@ -44,21 +45,27 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
         questions = CLARIFICATION_QUESTIONS.get("stage2_borderline", [])
         if current >= len(questions):
             context.user_data["stage2_clarified"] = True
-            return await finish_stage_2(update, context)
+            result = await finish_stage_2(update, context)
+            logger.info(f"🔄 User {update.effective_user.id}: clarification stage2 → возвращаю {result}")
+            return result
         question = questions[current]
         
     elif clarification_stage == "stage3":
         questions = CLARIFICATION_QUESTIONS.get("stage3_discrepancy", [])
         if current >= len(questions):
             context.user_data["stage3_clarified"] = True
-            return await finish_stage_3(update, context)
+            result = await finish_stage_3(update, context)
+            logger.info(f"🔄 User {update.effective_user.id}: clarification stage3 → возвращаю {result}")
+            return result
         question = questions[current]
         
     elif clarification_stage == "stage4":
         questions = CLARIFICATION_QUESTIONS.get("stage4_tie", [])
         if current >= len(questions):
             context.user_data["stage4_clarified"] = True
-            return await finish_stage_4(update, context)
+            result = await finish_stage_4(update, context)
+            logger.info(f"🔄 User {update.effective_user.id}: clarification stage4 → возвращаю {result}")
+            return result
         question = questions[current]
     else:
         return STAGE_1
