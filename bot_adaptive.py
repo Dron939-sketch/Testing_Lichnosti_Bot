@@ -115,11 +115,11 @@ from sexual_18_plus import (
     safe_send_message,
 )
 
-# ===== ИСПРАВЛЕННЫЕ СОСТОЯНИЯ CONVERSATIONHANDLER =====
-# Основные состояния теста (начинаем с 10, чтобы не конфликтовать с 18+)
-STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS = range(10, 16)
-GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN = range(16, 19)
-PAYMENT_SCREEN = 19
+# ===== СОСТОЯНИЯ CONVERSATIONHANDLER =====
+# Основные состояния теста (начинаем с 0, как обычно)
+STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS = range(6)
+GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN = range(6, 9)
+PAYMENT_SCREEN = 9
 
 # Состояние для интимного профиля (18+)
 MY_SEXUAL_PROFILE = 1
