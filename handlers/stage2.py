@@ -7,7 +7,9 @@ import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from config import STAGE_2, STAGE_3, PSYCHOLOGIST_TIPS, STAGE2_FEEDBACK
+# ИСПРАВЛЕНО: Импортируем константы из constants.py вместо config.py
+from constants import STAGE_2, STAGE_3
+from config import PSYCHOLOGIST_TIPS, STAGE2_FEEDBACK
 from questions import STAGE_2_QUESTIONS, STAGE_2_SCORING
 from utils.calculations import calculate_thinking_level_by_scores, get_level_group
 from utils.validators import need_clarification_stage2
@@ -300,6 +302,6 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(result_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
-    # ВАЖНО: Возвращаем STAGE_3 (который теперь равен 2)
+    # ВАЖНО: Возвращаем STAGE_3 (который теперь равен 12)
     logger.info(f"🔄 User {user_id}: finish_stage_2 → возвращаю STAGE_3 = {STAGE_3}")
     return STAGE_3
