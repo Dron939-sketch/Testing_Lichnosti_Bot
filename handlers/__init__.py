@@ -3,6 +3,14 @@
 Версия 2.0 с расширенной диагностикой
 """
 
+# ===== АВАРИЙНАЯ ДИАГНОСТИКА =====
+import sys
+print("🚨🚨🚨 handlers/__init__.py ЗАГРУЖАЕТСЯ", file=sys.stderr)
+print(f"🚨 Текущий файл: {__file__}", file=sys.stderr)
+print(f"🚨 sys.path: {sys.path}", file=sys.stderr)
+sys.stderr.flush()
+# =================================
+
 import logging
 import sys
 import traceback
