@@ -1856,16 +1856,16 @@ def main():
                 CallbackQueryHandler(buy_without_test_callback, pattern="^buy_without_test$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
             ],
-            # ===== 18+ МОДУЛЬ =====
+                        # ===== 18+ МОДУЛЬ =====
             SEXUAL_PROFILE_SCREEN: [
                 CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
                 CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
-                CallbackQueryHandler(show_my_invites, pattern="^show_my_invites$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^show_my_invites$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
             ],
             SEXUAL_INVITES_LIST: [
                 CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
-                CallbackQueryHandler(show_my_invites, pattern="^show_my_invites$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^show_my_invites$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(copy_invite_callback, pattern="^copy_invite_"),
                 CallbackQueryHandler(check_invite_callback, pattern="^check_invite_"),
@@ -1882,11 +1882,11 @@ def main():
                 CallbackQueryHandler(check_4f_payment_callback, pattern="^check_4f_payment_"),
                 CallbackQueryHandler(open_4f_key_callback, pattern="^open_4f_key_"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(show_my_invites, pattern="^show_my_invites$")
+                CallbackQueryHandler(my_invites_callback, pattern="^show_my_invites$")
             ],
             FOUR_F_CONTENT_SCREEN: [
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(show_my_invites, pattern="^show_my_invites$")
+                CallbackQueryHandler(my_invites_callback, pattern="^show_my_invites$")
             ],
             # ===== КОНЕЦ 18+ =====
         },
