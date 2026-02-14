@@ -1093,6 +1093,44 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"❌ Ошибка в start: {e}\n{traceback.format_exc()}")
         await update.message.reply_text("❌ Произошла ошибка. Пожалуйста, попробуйте позже.")
         return RESULTS_SCREEN
+        # ===== ВСТАВЬТЕ СЮДА НОВУЮ ФУНКЦИЮ =====
+async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик приглашений для 18+ модуля
+    Вызывается при переходе по ссылке с параметром start=
+    """
+    try:
+        user = update.effective_user
+        logger.info(f"🔗 Пользователь {user.id} перешел по приглашению в 18+ модуль")
+        
+        # Получаем код приглашения из аргументов
+        args = context.args
+        invite_code = args[0] if args else None
+        
+        if not invite_code:
+            logger.warning("⚠️ Приглашение без кода")
+            await update.message.reply_text(
+                "❌ Неверная ссылка приглашения.\n"
+                "Пожалуйста, попросите друга отправить вам новую ссылку."
+            )
+            return await show_results_screen(update, context)
+        
+        # Здесь будет логика обработки приглашения
+        # Пока просто заглушка
+        
+        await update.message.reply_text(
+            f"🔞 Приглашение в 18+ модуль получено!\n\n"
+            f"Код приглашения: {invite_code}\n\n"
+            f"Функция в разработке."
+        )
+        
+        return await show_results_screen(update, context)
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в sexual_invite_start: {e}")
+        await update.message.reply_text("❌ Произошла ошибка при обработке приглашения.")
+        return RESULTS_SCREEN
+# ===== КОНЕЦ НОВОЙ ФУНКЦИИ =====
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
