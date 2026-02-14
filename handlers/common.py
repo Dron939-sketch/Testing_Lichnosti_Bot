@@ -11,11 +11,7 @@ from config import CLARIFICATION, STAGE_1, STAGE_2, STAGE_3, STAGE_4, logger
 from questions import CLARIFICATION_QUESTIONS
 from utils.helpers import generate_unique_callback
 
-# Импортируем функции завершения этапов
-from handlers.stage1 import finish_stage_1
-from handlers.stage2 import finish_stage_2
-from handlers.stage3 import finish_stage_3
-from handlers.stage4 import finish_stage_4
+# УБИРАЕМ ИМПОРТЫ ИЗ stage1, stage2, stage3, stage4
 
 async def ask_clarification_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт уточняющий вопрос"""
@@ -28,6 +24,8 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
         clarifications = context.user_data.get("stage1_clarifications", [])
         if current >= len(clarifications):
             context.user_data["stage1_clarified"] = True
+            # ИМПОРТ ВНУТРИ ФУНКЦИИ
+            from handlers.stage1 import finish_stage_1
             result = await finish_stage_1(update, context)
             logger.info(f"🔄 User {update.effective_user.id}: clarification stage1 → возвращаю {result}")
             return result
@@ -45,6 +43,8 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
         questions = CLARIFICATION_QUESTIONS.get("stage2_borderline", [])
         if current >= len(questions):
             context.user_data["stage2_clarified"] = True
+            # ИМПОРТ ВНУТРИ ФУНКЦИИ
+            from handlers.stage2 import finish_stage_2
             result = await finish_stage_2(update, context)
             logger.info(f"🔄 User {update.effective_user.id}: clarification stage2 → возвращаю {result}")
             return result
@@ -54,6 +54,8 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
         questions = CLARIFICATION_QUESTIONS.get("stage3_discrepancy", [])
         if current >= len(questions):
             context.user_data["stage3_clarified"] = True
+            # ИМПОРТ ВНУТРИ ФУНКЦИИ
+            from handlers.stage3 import finish_stage_3
             result = await finish_stage_3(update, context)
             logger.info(f"🔄 User {update.effective_user.id}: clarification stage3 → возвращаю {result}")
             return result
@@ -63,6 +65,8 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
         questions = CLARIFICATION_QUESTIONS.get("stage4_tie", [])
         if current >= len(questions):
             context.user_data["stage4_clarified"] = True
+            # ИМПОРТ ВНУТРИ ФУНКЦИИ
+            from handlers.stage4 import finish_stage_4
             result = await finish_stage_4(update, context)
             logger.info(f"🔄 User {update.effective_user.id}: clarification stage4 → возвращаю {result}")
             return result
@@ -214,7 +218,7 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
         return CLARIFICATION
         
     except Exception as e:
-        logger.error(f"Критическая ошибка в handle_clarification_answer: {e}", exc_info=True)
+        logger.error(f"❌ Критическая ошибка в handle_clarification_answer: {e}", exc_info=True)
         return await ask_clarification_question(update, context)
     finally:
         context.user_data["processing"] = False
