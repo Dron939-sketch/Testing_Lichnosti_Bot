@@ -1146,7 +1146,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
 # 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ
 # ============================================
 
-async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """🔞 Мой интимный профиль - 3 ЧАСТИ, КНОПКИ НА ЧАСТИ 3"""
     try:
         query = update.callback_query
