@@ -2,7 +2,7 @@
 """
 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА: ПУТЬ К САМОПОЗНАНИЮ
 4 этапа адаптивного исследования + персональное описание профиля
-ВЕРСИЯ 5.2: ИСПРАВЛЕН КОНФЛИКТ СОСТОЯНИЙ
+ВЕРСИЯ 5.3: ИСПРАВЛЕН КОНФЛИКТ СОСТОЯНИЙ И ИМПОРТОВ
 """
 
 import logging
@@ -62,7 +62,7 @@ from config import (
     logger as config_logger
 )
 
-# ===== ИМПОРТ 18+ МОДУЛЯ =====
+# ===== ИМПОРТ 18+ МОДУЛЯ (БЕЗ КОНФЛИКТУЮЩИХ ФУНКЦИЙ) =====
 from sexual_18_plus import (
     SEXUAL_DIVIDER,
     FREE_INVITE_LIMIT,
@@ -97,8 +97,7 @@ from sexual_18_plus import (
     sexual_invite_start,
     copy_invite_callback,
     check_invite_callback,
-    start,
-    show_results_screen,
+    # НЕ ИМПОРТИРУЕМ: start, show_results_screen
     my_invites_callback,
     friend_menu_callback,
     show_payment_access_screen,
@@ -116,10 +115,10 @@ from sexual_18_plus import (
 )
 
 # ===== СОСТОЯНИЯ CONVERSATIONHANDLER =====
-# Основные состояния теста (начинаем с 0, как обычно)
-STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS = range(6)
-GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN = range(6, 9)
-PAYMENT_SCREEN = 9
+# Основные состояния теста (начинаем с 10, чтобы не конфликтовать с 18+)
+STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS = range(10, 16)
+GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN = range(16, 19)
+PAYMENT_SCREEN = 19
 
 # Состояние для интимного профиля (18+)
 MY_SEXUAL_PROFILE = 1
@@ -172,55 +171,6 @@ from handlers import (
 
 from handlers.common import ask_clarification_question, handle_clarification_answer
 
-# ===== ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ВСЕХ ФУНКЦИЙ =====
-import sys
-print("\n" + "="*70, file=sys.stderr)
-print("🔍 ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ВСЕХ ФУНКЦИЙ", file=sys.stderr)
-print("="*70, file=sys.stderr)
-
-# Stage 1
-print(f"🔥 show_stage_1_intro = {show_stage_1_intro}", file=sys.stderr)
-print(f"🔥 show_stage_1_details = {show_stage_1_details}", file=sys.stderr)
-print(f"🔥 back_to_stage1_intro = {back_to_stage1_intro}", file=sys.stderr)
-print(f"🔥 start_stage_1 = {start_stage_1}", file=sys.stderr)
-print(f"🔥 ask_stage_1_question = {ask_stage_1_question}", file=sys.stderr)
-print(f"🔥 handle_stage_1_answer = {handle_stage_1_answer}", file=sys.stderr)
-print(f"🔥 finish_stage_1 = {finish_stage_1}", file=sys.stderr)
-
-# Stage 2
-print(f"🔥 show_stage_2_intro = {show_stage_2_intro}", file=sys.stderr)
-print(f"🔥 show_stage_2_details = {show_stage_2_details}", file=sys.stderr)
-print(f"🔥 back_to_stage2_intro = {back_to_stage2_intro}", file=sys.stderr)
-print(f"🔥 start_stage_2 = {start_stage_2}", file=sys.stderr)
-print(f"🔥 ask_stage_2_question = {ask_stage_2_question}", file=sys.stderr)
-print(f"🔥 handle_stage_2_answer = {handle_stage_2_answer}", file=sys.stderr)
-print(f"🔥 finish_stage_2 = {finish_stage_2}", file=sys.stderr)
-
-# Stage 3
-print(f"🔥 show_stage_3_intro = {show_stage_3_intro}", file=sys.stderr)
-print(f"🔥 show_stage_3_details = {show_stage_3_details}", file=sys.stderr)
-print(f"🔥 back_to_stage3_intro = {back_to_stage3_intro}", file=sys.stderr)
-print(f"🔥 start_stage_3 = {start_stage_3}", file=sys.stderr)
-print(f"🔥 ask_stage_3_question = {ask_stage_3_question}", file=sys.stderr)
-print(f"🔥 handle_stage_3_answer = {handle_stage_3_answer}", file=sys.stderr)
-print(f"🔥 finish_stage_3 = {finish_stage_3}", file=sys.stderr)
-
-# Stage 4
-print(f"🔥 show_stage_4_intro = {show_stage_4_intro}", file=sys.stderr)
-print(f"🔥 show_stage_4_details = {show_stage_4_details}", file=sys.stderr)
-print(f"🔥 back_to_stage4_intro = {back_to_stage4_intro}", file=sys.stderr)
-print(f"🔥 start_stage_4 = {start_stage_4}", file=sys.stderr)
-print(f"🔥 ask_stage_4_question = {ask_stage_4_question}", file=sys.stderr)
-print(f"🔥 handle_stage_4_answer = {handle_stage_4_answer}", file=sys.stderr)
-print(f"🔥 finish_stage_4 = {finish_stage_4}", file=sys.stderr)
-
-# Common
-print(f"🔥 ask_clarification_question = {ask_clarification_question}", file=sys.stderr)
-print(f"🔥 handle_clarification_answer = {handle_clarification_answer}", file=sys.stderr)
-
-print("="*70 + "\n", file=sys.stderr)
-sys.stderr.flush()
-
 # ===== ПРОВЕРКА ИМПОРТОВ =====
 logger.info("🔍 ПРОВЕРКА ИМПОРТОВ ИЗ handlers:")
 logger.info(f"  start_stage_1: {start_stage_1}")
@@ -229,6 +179,7 @@ logger.info(f"  ask_stage_1_question: {ask_stage_1_question}")
 logger.info(f"  finish_stage_1: {finish_stage_1}")
 
 # ===== ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ТИПОВ =====
+import sys
 print("\n" + "="*60, file=sys.stderr)
 print("🔍 ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ТИПОВ", file=sys.stderr)
 print("="*60, file=sys.stderr)
@@ -1644,16 +1595,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.info(f"🚀 /start вызван пользователем {user.id} (@{user.username})")
     
-    # 🔍 Проверка импорта функции
-    logger.info(f"🔍 Проверка функции start_stage_1: {start_stage_1}")
-    
     # Инициализируем тестовые данные для нового пользователя
     init_test_data(user.id)
     
     # ===== 18+ DEEP LINK =====
     if context.args and context.args[0].startswith("sex_"):
         logger.info(f"🔞 18+ переход по ссылке: {context.args[0]}")
-        return await handle_sexual_deeplink(update, context, context.args[0])
+        return await sexual_invite_start(update, context)
     # ===== КОНЕЦ 18+ =====
     
     current_state = context.user_data.get("conversation_state")
@@ -1831,7 +1779,7 @@ def main():
     print("="*50 + "\n")
     
     print("\n" + "="*70)
-    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.2)")
+    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.3)")
     print("="*70)
     print("🔞 ПОЛНАЯ ИНТЕГРАЦИЯ 18+ МОДУЛЯ")
     print("="*70)
@@ -1842,8 +1790,9 @@ def main():
     print("4. ✅ Платежная система ЮKassa")
     print("5. ✅ Интеграция с Яндекс.Диск (36 профилей)")
     print("="*70)
-    print("🔧 ИСПРАВЛЕНИЯ В 5.2:")
+    print("🔧 ИСПРАВЛЕНИЯ В 5.3:")
     print("   ✅ Исправлен конфликт состояний (тест теперь с 10, 18+ с 1)")
+    print("   ✅ Убраны конфликтующие импорты из sexual_18_plus")
     print("   ✅ Добавлен обработчик 18+ кнопки в состояние RESULTS")
     print("   ✅ Убрана ссылка на материалы из экрана платежа")
     print("   ✅ Ссылка появляется только после успешной оплаты")
@@ -2008,7 +1957,7 @@ def main():
     application.add_handler(conv_handler)
     
     logger.info("🧠 Виртуальный психолог Вариатика запущен!")
-    logger.info("✅ ВЕРСИЯ 5.2: ИСПРАВЛЕН КОНФЛИКТ СОСТОЯНИЙ!")
+    logger.info("✅ ВЕРСИЯ 5.3: ИСПРАВЛЕН КОНФЛИКТ СОСТОЯНИЙ И ИМПОРТОВ!")
     logger.info("✅ Вопросы вынесены в отдельный файл questions.py")
     logger.info("✅ Обработчики этапов вынесены в папку handlers/")
     logger.info("✅ Утилиты вынесены в папку utils/")
