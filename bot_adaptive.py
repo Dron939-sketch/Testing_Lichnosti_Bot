@@ -87,7 +87,7 @@ from sexual_18_plus import (
     can_create_invite,
     init_test_data,
     
-    get_disk_link,
+    get_disk_link_by_profile,
     load_intimate_profile,
     load_friend_profile,
     format_intimate_profile,
