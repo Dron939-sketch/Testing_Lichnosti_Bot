@@ -1708,11 +1708,19 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         total_invites = len(invites)
         total_reflections = len(used_invites)
         
-        user_profile = context.user_data.get("profile", USER_PROFILE)
-        user_profile_code = user_profile.get('display_name', 'SA-5_INT')
+        # Сначала пытаемся получить из profile_data (результат теста)
+profile_data = context.user_data.get("profile_data")
+if profile_data and 'display_name' in profile_data:
+    profile_code = profile_data['display_name']
+else:
+    # Если нет, берем из profile (по умолчанию)
+    user_profile = context.user_data.get("profile", USER_PROFILE)
+    profile_code = user_profile.get('display_name', 'SA-5_INT')
+
+logger.info(f"📊 ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ДЛЯ 18+: {profile_code}")
         
         # Получаем ссылку на профиль пользователя
-        user_profile_link = get_disk_link_by_profile(user_profile_code)
+        user_profile_link = get_disk_link_by_profile(profile_code)
         
         message = f"""<b>🪞 МОИ ОТРАЖЕНИЯ</b>
 ────────────────
