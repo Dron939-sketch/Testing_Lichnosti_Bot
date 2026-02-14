@@ -172,6 +172,55 @@ from handlers import (
 
 from handlers.common import ask_clarification_question, handle_clarification_answer
 
+# ===== ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ВСЕХ ФУНКЦИЙ =====
+import sys
+print("\n" + "="*70, file=sys.stderr)
+print("🔍 ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ВСЕХ ФУНКЦИЙ", file=sys.stderr)
+print("="*70, file=sys.stderr)
+
+# Stage 1
+print(f"🔥 show_stage_1_intro = {show_stage_1_intro}", file=sys.stderr)
+print(f"🔥 show_stage_1_details = {show_stage_1_details}", file=sys.stderr)
+print(f"🔥 back_to_stage1_intro = {back_to_stage1_intro}", file=sys.stderr)
+print(f"🔥 start_stage_1 = {start_stage_1}", file=sys.stderr)
+print(f"🔥 ask_stage_1_question = {ask_stage_1_question}", file=sys.stderr)
+print(f"🔥 handle_stage_1_answer = {handle_stage_1_answer}", file=sys.stderr)
+print(f"🔥 finish_stage_1 = {finish_stage_1}", file=sys.stderr)
+
+# Stage 2
+print(f"🔥 show_stage_2_intro = {show_stage_2_intro}", file=sys.stderr)
+print(f"🔥 show_stage_2_details = {show_stage_2_details}", file=sys.stderr)
+print(f"🔥 back_to_stage2_intro = {back_to_stage2_intro}", file=sys.stderr)
+print(f"🔥 start_stage_2 = {start_stage_2}", file=sys.stderr)
+print(f"🔥 ask_stage_2_question = {ask_stage_2_question}", file=sys.stderr)
+print(f"🔥 handle_stage_2_answer = {handle_stage_2_answer}", file=sys.stderr)
+print(f"🔥 finish_stage_2 = {finish_stage_2}", file=sys.stderr)
+
+# Stage 3
+print(f"🔥 show_stage_3_intro = {show_stage_3_intro}", file=sys.stderr)
+print(f"🔥 show_stage_3_details = {show_stage_3_details}", file=sys.stderr)
+print(f"🔥 back_to_stage3_intro = {back_to_stage3_intro}", file=sys.stderr)
+print(f"🔥 start_stage_3 = {start_stage_3}", file=sys.stderr)
+print(f"🔥 ask_stage_3_question = {ask_stage_3_question}", file=sys.stderr)
+print(f"🔥 handle_stage_3_answer = {handle_stage_3_answer}", file=sys.stderr)
+print(f"🔥 finish_stage_3 = {finish_stage_3}", file=sys.stderr)
+
+# Stage 4
+print(f"🔥 show_stage_4_intro = {show_stage_4_intro}", file=sys.stderr)
+print(f"🔥 show_stage_4_details = {show_stage_4_details}", file=sys.stderr)
+print(f"🔥 back_to_stage4_intro = {back_to_stage4_intro}", file=sys.stderr)
+print(f"🔥 start_stage_4 = {start_stage_4}", file=sys.stderr)
+print(f"🔥 ask_stage_4_question = {ask_stage_4_question}", file=sys.stderr)
+print(f"🔥 handle_stage_4_answer = {handle_stage_4_answer}", file=sys.stderr)
+print(f"🔥 finish_stage_4 = {finish_stage_4}", file=sys.stderr)
+
+# Common
+print(f"🔥 ask_clarification_question = {ask_clarification_question}", file=sys.stderr)
+print(f"🔥 handle_clarification_answer = {handle_clarification_answer}", file=sys.stderr)
+
+print("="*70 + "\n", file=sys.stderr)
+sys.stderr.flush()
+
 # ===== ПРОВЕРКА ИМПОРТОВ =====
 logger.info("🔍 ПРОВЕРКА ИМПОРТОВ ИЗ handlers:")
 logger.info(f"  start_stage_1: {start_stage_1}")
@@ -180,9 +229,8 @@ logger.info(f"  ask_stage_1_question: {ask_stage_1_question}")
 logger.info(f"  finish_stage_1: {finish_stage_1}")
 
 # ===== ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ТИПОВ =====
-import sys
 print("\n" + "="*60, file=sys.stderr)
-print("🔍 ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ИМПОРТА", file=sys.stderr)
+print("🔍 ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ТИПОВ", file=sys.stderr)
 print("="*60, file=sys.stderr)
 print(f"🔥 start_stage_1 = {start_stage_1}", file=sys.stderr)
 print(f"🔥 Тип start_stage_1 = {type(start_stage_1)}", file=sys.stderr)
