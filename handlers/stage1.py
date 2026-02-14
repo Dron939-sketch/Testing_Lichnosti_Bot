@@ -1,4 +1,3 @@
-# handlers/stage1.py
 """
 Обработчики для ЭТАПА 1: Конфигурация восприятия
 """
@@ -11,7 +10,7 @@ from telegram.ext import ContextTypes
 from config import STAGE_1, STAGE_2, PSYCHOLOGIST_TIPS, STAGE1_FEEDBACK
 from questions import STAGE_1_QUESTIONS
 from utils.calculations import determine_perception_type
-from utils.validators import need_clarification_stage1  # ИСПРАВЛЕНО: импорт из validators
+from utils.validators import need_clarification_stage1
 from utils.helpers import calculate_progress, generate_unique_callback
 
 logger = logging.getLogger(__name__)
@@ -222,7 +221,7 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     perception_type = determine_perception_type(scores)
     context.user_data["perception_type"] = perception_type
     
-    logger.info(f"User {update.effective_user.id}: Stage 1 complete, type={perception_type}")
+    logger.info(f"✅ User {update.effective_user.id}: Stage 1 complete, type={perception_type}")
     
     result_text = STAGE1_FEEDBACK.get(perception_type, STAGE1_FEEDBACK["СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ"])
     
@@ -230,4 +229,7 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(result_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
+    
+    # ВАЖНО: Возвращаем STAGE_2 (который теперь равен 11)
+    logger.info(f"🔄 User {update.effective_user.id}: finish_stage_1 → возвращаю STAGE_2 = {STAGE_2}")
     return STAGE_2
