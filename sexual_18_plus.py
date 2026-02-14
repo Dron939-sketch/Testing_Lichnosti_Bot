@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 19.3 - ДИНАМИЧЕСКАЯ ЗАГРУЗКА ПРОФИЛЕЙ
+Версия: 19.4 - ДИНАМИЧЕСКАЯ ЗАГРУЗКА ПРОФИЛЕЙ С ЛОГИРОВАНИЕМ
 ✅ Все 36 ссылок на профили добавлены
 ✅ Умная функция поиска ссылок по профилю
 ✅ Корректное отображение в "Моих отражениях"
@@ -11,6 +11,7 @@
 ✅ Сохранение приглашений в БД
 ✅ Обновление статуса после прохождения теста
 ✅ Динамическая загрузка интимных профилей по коду пользователя
+✅ Расширенное логирование поиска профилей
 """
 
 import logging
@@ -415,18 +416,96 @@ FOUR_F_DETAILED_TEXT = f"""
    • Номера ключа (1F, 2F, 3F, 4F)
 """
 
+# ===== ФУНКЦИЯ ДЛЯ ПРОВЕРКИ ДОСТУПНЫХ ПРОФИЛЕЙ =====
+def check_available_sexual_profiles() -> Dict[str, List[str]]:
+    """
+    Проверяет, какие интимные профили доступны в папке sexual_18/
+    Возвращает словарь с найденными файлами и список отсутствующих
+    """
+    logger.info("🔍 ПРОВЕРКА ДОСТУПНЫХ ИНТИМНЫХ ПРОФИЛЕЙ")
+    
+    # Все возможные комбинации профилей
+    all_profiles = []
+    types = ['sa', 'sp', 'ia', 'ip']
+    levels = range(1, 10)
+    suffixes = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
+    
+    for t in types:
+        for l in levels:
+            for s in suffixes:
+                profile = f"{t}_{l}_{s}"
+                all_profiles.append(profile)
+    
+    # Пути для поиска
+    search_paths = [
+        os.path.join(PROJECT_ROOT, "sexual_18"),
+        os.path.join("sexual_18"),
+        os.path.join(PROJECT_ROOT, "profiles", "sexual_18"),
+        os.path.join("profiles", "sexual_18"),
+        "/opt/render/project/src/sexual_18",
+        "/opt/render/project/src/profiles/sexual_18",
+    ]
+    
+    found_files = []
+    found_profiles = []
+    
+    for path in search_paths:
+        if os.path.exists(path):
+            logger.info(f"📁 Проверяем папку: {path}")
+            try:
+                files = os.listdir(path)
+                json_files = [f for f in files if f.endswith('.json')]
+                logger.info(f"   Найдено JSON файлов: {len(json_files)}")
+                
+                for file in json_files:
+                    file_path = os.path.join(path, file)
+                    found_files.append(file_path)
+                    profile_name = file.replace('.json', '')
+                    found_profiles.append(profile_name)
+                    
+            except Exception as e:
+                logger.error(f"   ❌ Ошибка чтения папки: {e}")
+    
+    # Убираем дубликаты
+    found_profiles = list(set(found_profiles))
+    found_files = list(set(found_files))
+    
+    # Определяем, каких профилей не хватает
+    missing_profiles = [p for p in all_profiles if p not in found_profiles]
+    
+    logger.info(f"📊 ВСЕГО НАЙДЕНО ПРОФИЛЕЙ: {len(found_profiles)}")
+    logger.info(f"📋 СПИСОК НАЙДЕННЫХ ПРОФИЛЕЙ:")
+    for profile in sorted(found_profiles):
+        logger.info(f"   ✅ {profile}.json")
+    
+    logger.info(f"❌ ОТСУТСТВУЮТ ПРОФИЛЕЙ: {len(missing_profiles)}")
+    logger.info(f"   Примеры отсутствующих: {missing_profiles[:10]}")
+    
+    return {
+        "found": found_profiles,
+        "missing": missing_profiles,
+        "total_found": len(found_profiles),
+        "total_missing": len(missing_profiles)
+    }
+
 # ===== ЗАГРУЗКА ИНТИМНОГО ПРОФИЛЯ =====
 def load_intimate_profile(profile_code: str = "SA-5_INT") -> dict:
     """
     Загружает интимный профиль по коду профиля
     Поддерживает форматы: SA-5_INT, sa_5_int, SA-5_INT, и т.д.
+    С расширенным логированием для отладки
     """
     try:
+        logger.info(f"🔍🔍🔍 НАЧАЛО ЗАГРУЗКИ ИНТИМНОГО ПРОФИЛЯ для кода: {profile_code}")
+        
         # Приводим к нижнему регистру и заменяем - на _ для имени файла
         file_name = profile_code.lower().replace('-', '_') + '.json'
-        logger.info(f"🔍 Поиск интимного профиля: {file_name} для кода {profile_code}")
+        logger.info(f"📄 Имя файла для поиска: {file_name}")
         
         bot_dir = os.path.dirname(os.path.abspath(__file__))
+        logger.info(f"📁 Текущая директория: {bot_dir}")
+        logger.info(f"📁 Корень проекта: {PROJECT_ROOT}")
+        
         possible_paths = [
             os.path.join(bot_dir, "sexual_18", file_name),
             os.path.join(PROJECT_ROOT, "sexual_18", file_name),
@@ -438,28 +517,48 @@ def load_intimate_profile(profile_code: str = "SA-5_INT") -> dict:
         ]
         
         logger.info(f"🔍 Поиск файла профиля для кода {profile_code}:")
-        for path in possible_paths:
-            logger.info(f"   Проверяем: {path}")
+        found_path = None
+        
+        for i, path in enumerate(possible_paths, 1):
+            logger.info(f"   {i}. Проверяем: {path}")
             if os.path.exists(path):
-                logger.info(f"   ✅ НАЙДЕН: {path}")
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    sections = data.get('sections', {})
-                    logger.info(f"   📊 Секций загружено: {len(sections)}")
-                    
-                    # Добавляем информацию о том, для какого профиля загружен
-                    data['loaded_for_profile'] = profile_code
-                    
-                    if sections:
-                        logger.info(f"   ✅ Профиль успешно загружен: {data.get('profile_type', 'unknown')} для {profile_code}")
-                        return data
-                    else:
-                        logger.warning("   ⚠️ Файл найден но секции пустые!")
-                        return data
-            logger.info(f"   ❌ Не найден")
+                logger.info(f"   ✅ НАЙДЕН! Файл существует: {path}")
+                found_path = path
+                
+                # Проверяем размер файла
+                file_size = os.path.getsize(path)
+                logger.info(f"   📊 Размер файла: {file_size} байт")
+                
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        sections = data.get('sections', {})
+                        logger.info(f"   📊 Секций загружено: {len(sections)}")
+                        
+                        # Проверяем структуру данных
+                        if 'archetype' in data:
+                            logger.info(f"   🧠 Архетип: {data['archetype']}")
+                        if 'quote' in data:
+                            logger.info(f"   💬 Цитата: {data['quote'][:50]}...")
+                        
+                        # Добавляем информацию о том, для какого профиля загружен
+                        data['loaded_for_profile'] = profile_code
+                        
+                        if sections:
+                            logger.info(f"   ✅ Профиль успешно загружен: {data.get('profile_type', 'unknown')} для {profile_code}")
+                            return data
+                        else:
+                            logger.warning("   ⚠️ Файл найден но секции пустые!")
+                            return data
+                except json.JSONDecodeError as e:
+                    logger.error(f"   ❌ Ошибка парсинга JSON: {e}")
+                except Exception as e:
+                    logger.error(f"   ❌ Ошибка чтения файла: {e}")
+            else:
+                logger.info(f"   ❌ Не найден")
         
         # Если файл не найден, пробуем загрузить default.json
-        logger.warning(f"⚠️ Файл {file_name} не найден, пробуем default.json")
+        logger.warning(f"⚠️ Файл {file_name} не найден ни в одном из путей, пробуем default.json")
         
         default_paths = [
             os.path.join(bot_dir, "sexual_18", "default.json"),
@@ -472,24 +571,26 @@ def load_intimate_profile(profile_code: str = "SA-5_INT") -> dict:
         ]
         
         for path in default_paths:
+            logger.info(f"   Проверяем default.json: {path}")
             if os.path.exists(path):
                 logger.info(f"   ✅ НАЙДЕН default.json: {path}")
                 with open(path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     data['loaded_for_profile'] = profile_code
                     data['is_default'] = True
+                    logger.info(f"   ⚠️ Использую default.json для профиля {profile_code}")
                     return data
         
         logger.error(f"❌ Не найден ни файл {file_name}, ни default.json!")
         return get_emergency_profile(profile_code)
         
     except Exception as e:
-        logger.error(f"❌ Ошибка загрузки: {e}\n{traceback.format_exc()}")
+        logger.error(f"❌ Критическая ошибка загрузки: {e}\n{traceback.format_exc()}")
         return get_emergency_profile(profile_code)
 
 def get_emergency_profile(profile_code: str = "SA-5_INT") -> dict:
     """Аварийный интимный профиль"""
-    logger.info(f"🆘 Используется аварийный профиль для {profile_code}")
+    logger.info(f"🆘 СОЗДАН АВАРИЙНЫЙ ПРОФИЛЬ для {profile_code}")
     return {
         "profile_type": profile_code.upper(),
         "archetype": "ЦЕРЕМОНИАЛЬНЫЙ",
@@ -1351,13 +1452,22 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
         # ПОЛУЧАЕМ ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ИЗ КОНТЕКСТА
         user_profile = context.user_data.get("profile", USER_PROFILE)
         profile_code = user_profile.get('display_name', 'SA-5_INT')
-        logger.info(f"📊 Профиль пользователя для 18+: {profile_code}")
+        logger.info(f"📊 ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ДЛЯ 18+: {profile_code}")
         
         user_name = query.from_user.first_name or "Пользователь"
         logger.debug(f"📝 Загружаем интимный профиль для пользователя: {user_name} с кодом {profile_code}")
         
         # ЗАГРУЖАЕМ ИНТИМНЫЙ ПРОФИЛЬ С ЭТИМ КОДОМ
         profile_data = load_intimate_profile(profile_code)
+        
+        # Логируем результат загрузки
+        if profile_data.get('is_emergency'):
+            logger.warning(f"⚠️ ЗАГРУЖЕН АВАРИЙНЫЙ ПРОФИЛЬ для {profile_code}")
+        elif profile_data.get('is_default'):
+            logger.warning(f"⚠️ ЗАГРУЖЕН ПРОФИЛЬ ПО УМОЛЧАНИЮ для {profile_code}")
+        else:
+            logger.info(f"✅ УСПЕШНО ЗАГРУЖЕН ПРОФИЛЬ: {profile_code}")
+        
         logger.debug(f"📊 Интимный профиль загружен: {profile_data.get('profile_type', 'unknown')} для {profile_code}")
         
         message_part1 = format_intimate_profile_part1(profile_data, user_name)
@@ -1441,14 +1551,23 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
         return RESULTS_SCREEN
 
 # ============================================
-# 🔗 ЭКРАН 3: СОЗДАНИЕ ПРИГЛАШЕНИЯ
+# 🔗 ЭКРАН 3: СОЗДАНИЕ ПРИГЛАШЕНИЯ (С ДОБАВЛЕННЫМ ЛОГИРОВАНИЕМ)
 # ============================================
 
 async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """🔗 СОЗДАНИЕ ПРИГЛАШЕНИЯ - С РАСШИРЕННЫМ ЛОГИРОВАНИЕМ"""
+    # ВРЕМЕННОЕ ЛОГИРОВАНИЕ ДЛЯ ОТЛАДКИ
+    logger.info(f"🔥🔥🔥 create_invite_callback ВЫЗВАН! User: {update.effective_user.id}")
+    print(f"🔥🔥🔥 create_invite_callback ВЫЗВАН! User: {update.effective_user.id}")
+    
     try:
         query = update.callback_query
         user_id = query.from_user.id
         await query.answer()
+        
+        # Добавляем подробное логирование
+        logger.info(f"✅ create_invite_callback: пользователь {user_id} успешно вызвал функцию")
+        logger.info(f"📊 Данные пользователя: username=@{query.from_user.username}, first_name={query.from_user.first_name}")
         
         context.user_data["conversation_state"] = INVITES_LIST
         
@@ -1456,13 +1575,22 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         invites = context.user_data.get("sexual_invites", [])
         total_invites = len(invites)
         
+        logger.info(f"📊 Статистика пользователя {user_id}:")
+        logger.info(f"   - Всего приглашений: {total_invites}")
+        logger.info(f"   - Лимиты: free_used={user_limits['free_used']}, total_purchased={user_limits['total_purchased']}")
+        
         can_create, is_free, limit_message = can_create_invite(user_limits, total_invites)
         
+        logger.info(f"   - Может создать: {can_create}, бесплатно: {is_free}")
+        logger.info(f"   - Сообщение: {limit_message}")
+        
         if not can_create:
+            logger.warning(f"❌ Лимит ссылок исчерпан для пользователя {user_id}")
             await query.answer("❌ Лимит ссылок исчерпан!", show_alert=True)
             return await buy_invite_packages_callback(update, context)
         
         profile = context.user_data.get("profile", USER_PROFILE)
+        logger.info(f"📊 Профиль пользователя для создания ссылки: {profile['display_name']}")
         
         invite_code = f"sex_{uuid.uuid4().hex[:8]}_{uuid.uuid4().hex[:4]}"
         invite_url = f"https://t.me/{BOT_USERNAME}?start={invite_code}"
@@ -1479,6 +1607,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         
         if is_free:
             user_limits["free_used"] += 1
+            logger.info(f"✅ Использован бесплатный лимит. Осталось: {FREE_INVITE_LIMIT - user_limits['free_used']}")
         
         text = f"""
 🔞 <b>✨ ВАША ССЫЛКА ГОТОВА! ✨</b>
@@ -1526,7 +1655,8 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         }
         
         # Сохраняем в БД
-        save_invite_to_api(invite_data)
+        save_success = save_invite_to_api(invite_data)
+        logger.info(f"💾 Сохранение в БД: {'успешно' if save_success else 'ошибка'}")
         
         invites.insert(0, invite_data)
         
@@ -1550,9 +1680,11 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
             disable_web_page_preview=True
         )
         
+        logger.info(f"✅ Сообщение с ссылкой отправлено пользователю {user_id}")
         return INVITES_LIST
+        
     except Exception as e:
-        logger.error(f"❌ Ошибка в create_invite_callback: {e}")
+        logger.error(f"❌ Ошибка в create_invite_callback: {e}\n{traceback.format_exc()}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
         return INVITES_LIST
 
@@ -2452,7 +2584,7 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("\n" + "="*70)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.3")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.4")
     print("="*70)
     print("✅ ПОЛНАЯ ИНТЕГРАЦИЯ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК")
     print("✅ Умная функция поиска ссылок по профилю")
@@ -2464,6 +2596,7 @@ def main():
     print("✅ Сохранение приглашений в БД")
     print("✅ Обновление статуса после прохождения теста")
     print("✅ Динамическая загрузка интимных профилей по коду пользователя")
+    print("✅ Расширенное логирование поиска профилей")
     print("="*70)
     print("📊 ДОСТУПНЫЕ ПРОФИЛИ:")
     print("   SA: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
@@ -2471,6 +2604,14 @@ def main():
     print("   IA: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
     print("   IP: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
     print("="*70)
+    
+    # Проверяем доступные интимные профили при запуске
+    print("\n🔍 ПРОВЕРКА ИНТИМНЫХ ПРОФИЛЕЙ")
+    print("="*30)
+    profile_stats = check_available_sexual_profiles()
+    print(f"📊 Найдено профилей: {profile_stats['total_found']}")
+    print(f"❌ Отсутствует: {profile_stats['total_missing']}")
+    print("="*30)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
         print("\n❌ ОШИБКА: Укажите TELEGRAM_BOT_TOKEN!")
@@ -2573,7 +2714,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 19.3")
+        print("\n🚀 Бот запущен! Версия 19.4")
         print("="*70)
         logger.info("✅ Бот успешно запущен")
         
@@ -2620,6 +2761,7 @@ __all__ = [
     'format_friend_intimate_profile',
     'get_friend_emergency_profile',
     'get_emergency_profile',
+    'check_available_sexual_profiles',
     
     # Функции для 4F
     'load_4f_content',
