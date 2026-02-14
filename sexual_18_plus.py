@@ -715,15 +715,9 @@ def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
         # Получаем код профиля для отображения
         profile_code = profile_data.get('loaded_for_profile', profile_data.get('profile_type', 'SA-5_INT'))
         
-        # Если есть информация о том, из какого файла загружено, добавляем примечание
-        loaded_from = profile_data.get('loaded_from_file', '')
-        file_note = ""
-        if loaded_from and not profile_data.get('is_default') and not profile_data.get('is_emergency'):
-            file_note = f"\n<i>Загружен из: {loaded_from}</i>"
-        
         message = f"""
 🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ</b>
-📊 {user_name}, {profile_code}{file_note}
+📊 {user_name}, {profile_code}
 
 🧠 Архетип: {profile_data.get('archetype', 'ЦЕРЕМОНИАЛЬНЫЙ')}
 
@@ -755,6 +749,13 @@ def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
             message += f"""
 
 ⚠️ <i>Используется профиль по умолчанию.
+Специальный профиль для {profile_code} находится в разработке.</i>
+"""
+        
+        return message
+    except Exception as e:
+        logger.error(f"❌ Ошибка форматирования части 1: {e}")
+        return "🔞 ИНТИМНЫЙ ПРОФИЛЬ\n\nПроизошла ошибка загрузки."
 Специальный профиль для {profile_code} находится в разработке.</i>
 """
         
