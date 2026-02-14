@@ -57,10 +57,6 @@ def log_callback(func_name: str, update: Update, context: ContextTypes.DEFAULT_T
 from config import (
     TOKEN, API_URL, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY,
     TELEGRAM_BOT_URL, BOT_LINK, AUTHOR_LINK, GIFT_PDF_LINK, SHARE_TEXT,
-    STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
-    GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
-    SEXUAL_PROFILE_SCREEN, SEXUAL_INVITES_LIST, SEXUAL_FRIEND_PROFILE,
-    FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN,
     GIFT_SCREEN_TEXT, STANDARD_SUFFIXES, CONFLICT_PHRASES, SUFFIX_TO_DILTS,
     EMERGENCY_PROFILES, LEVEL_DIFFS, PROFILE_LINKS, DEFAULT_PROFILE,
     logger as config_logger
@@ -76,11 +72,6 @@ from sexual_18_plus import (
     PROFILE_DISK_LINKS,
     FOUR_F_DESCRIPTIONS,
     SEXUAL_STATES,
-    SEXUAL_PROFILE_SCREEN,
-    SEXUAL_INVITES_LIST,
-    SEXUAL_FRIEND_PROFILE,
-    FOUR_F_PAYMENT_SCREEN,
-    FOUR_F_CONTENT_SCREEN,
     get_user_invites_from_api,
     get_user_limits,
     save_invite_to_api,
@@ -123,6 +114,33 @@ from sexual_18_plus import (
     split_long_message,
     safe_send_message,
 )
+
+# ===== СОСТОЯНИЯ CONVERSATIONHANDLER =====
+# Основные состояния теста
+STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS = range(6)
+GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN = range(6, 9)
+PAYMENT_SCREEN = 9
+
+# Состояние для интимного профиля (18+)
+MY_SEXUAL_PROFILE = 1
+
+# Состояния из 18+ модуля
+try:
+    SEXUAL_PROFILE_SCREEN = SEXUAL_STATES["SEXUAL_PROFILE_SCREEN"]
+    SEXUAL_INVITES_LIST = SEXUAL_STATES["SEXUAL_INVITES_LIST"]
+    SEXUAL_FRIEND_PROFILE = SEXUAL_STATES["SEXUAL_FRIEND_PROFILE"]
+    FOUR_F_PAYMENT_SCREEN = SEXUAL_STATES["FOUR_F_PAYMENT_SCREEN"]
+    FOUR_F_CONTENT_SCREEN = SEXUAL_STATES["FOUR_F_CONTENT_SCREEN"]
+except (ImportError, KeyError):
+    # Если модуль не загружен, создаем заглушки
+    logger.warning("⚠️ 18+ модуль не загружен, создаем заглушки для состояний")
+    SEXUAL_PROFILE_SCREEN = 10
+    SEXUAL_INVITES_LIST = 11
+    SEXUAL_FRIEND_PROFILE = 12
+    FOUR_F_PAYMENT_SCREEN = 13
+    FOUR_F_CONTENT_SCREEN = 14
+
+# ===== КОНЕЦ ОПРЕДЕЛЕНИЯ СОСТОЯНИЙ =====
 
 # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 async def noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -171,6 +189,8 @@ from utils.helpers import calculate_progress
 from loader import loader
 from base import VariaticaProfile
 
+# ===== ДАЛЬШЕ ИДУТ ВСЕ ВАШИ ФУНКЦИИ (show_results_screen, back_to_results и т.д.) =====
+# ... (весь остальной код вашего файла) ...
 # ============================================
 # ФУНКЦИИ ПЛАТЕЖНОЙ СИСТЕМЫ
 # ============================================
@@ -1850,14 +1870,19 @@ def main():
                 CallbackQueryHandler(back_to_results_after_gift, pattern="^back_to_results_after_gift$"),
                 CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
             ],
-            PAYMENT_SCREEN: [
+                        PAYMENT_SCREEN: [
                 CallbackQueryHandler(check_payment_callback, pattern="^check_payment_"),
                 CallbackQueryHandler(get_materials_callback_payment, pattern="^get_materials_"),
                 CallbackQueryHandler(buy_without_test_callback, pattern="^buy_without_test$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
             ],
-                                    # ===== 18+ МОДУЛЬ =====
-            SEXUAL_PROFILE_SCREEN: [
+            # ===== 18+ МОДУЛЬ =====
+            MY_SEXUAL_PROFILE: [  # Состояние 1 - после открытия интимного профиля
+                CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+            ],
+            SEXUAL_PROFILE_SCREEN: [  # Состояние из sexual_18_plus
                 CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
                 CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
                 CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
@@ -1865,10 +1890,11 @@ def main():
             ],
             SEXUAL_INVITES_LIST: [
                 CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
-                CallbackQueryHandler(my_invites_callback, pattern="^show_my_invites$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(copy_invite_callback, pattern="^copy_invite_"),
                 CallbackQueryHandler(check_invite_callback, pattern="^check_invite_"),
+                CallbackQueryHandler(create_invite_callback, pattern="^create_new_invite$"),
                 CallbackQueryHandler(noop_callback, pattern="^delete_invite_"),
                 CallbackQueryHandler(noop_callback, pattern="^buy_function_"),
                 CallbackQueryHandler(noop_callback, pattern="^open_4f_key_"),
@@ -1882,11 +1908,11 @@ def main():
                 CallbackQueryHandler(noop_callback, pattern="^check_4f_payment_"),
                 CallbackQueryHandler(noop_callback, pattern="^open_4f_key_"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(my_invites_callback, pattern="^show_my_invites$")
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
             ],
             FOUR_F_CONTENT_SCREEN: [
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(my_invites_callback, pattern="^show_my_invites$")
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
             ],
             # ===== КОНЕЦ 18+ =====
         },
