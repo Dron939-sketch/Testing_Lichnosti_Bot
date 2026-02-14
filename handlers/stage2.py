@@ -1,4 +1,3 @@
-# handlers/stage2.py
 """
 Обработчики для ЭТАПА 2: Конфигурация мышления
 """
@@ -11,7 +10,7 @@ from telegram.ext import ContextTypes
 from config import STAGE_2, STAGE_3, PSYCHOLOGIST_TIPS, STAGE2_FEEDBACK
 from questions import STAGE_2_QUESTIONS, STAGE_2_SCORING
 from utils.calculations import calculate_thinking_level_by_scores, get_level_group
-from utils.validators import need_clarification_stage2  # ИСПРАВЛЕНО: импорт из validators
+from utils.validators import need_clarification_stage2
 from utils.helpers import calculate_progress, generate_unique_callback
 
 logger = logging.getLogger(__name__)
@@ -233,7 +232,7 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
     level_group = get_level_group(thinking_level)
     
-    logger.info(f"User {update.effective_user.id}: Stage 2 complete, level={thinking_level}, group={level_group}")
+    logger.info(f"✅ User {update.effective_user.id}: Stage 2 complete, level={thinking_level}, group={level_group}")
     
     result_text = STAGE2_FEEDBACK.get((perception_type, level_group))
     if not result_text:
@@ -243,4 +242,7 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(result_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
+    
+    # ВАЖНО: Возвращаем STAGE_3 (который теперь равен 12)
+    logger.info(f"🔄 User {update.effective_user.id}: finish_stage_2 → возвращаю STAGE_3 = {STAGE_3}")
     return STAGE_3
