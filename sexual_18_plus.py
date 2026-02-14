@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 19.5 - ПОИСК ПРОФИЛЕЙ БЕЗ УЧЕТА СУФФИКСА
+Версия: 19.6 - ИНТЕГРАЦИЯ С CONSTANTS.PY
 ✅ Все 36 ссылок на профили добавлены
 ✅ Умная функция поиска ссылок по профилю
 ✅ Корректное отображение в "Моих отражениях"
-✅ Добавлены состояния для 18+ модуля
+✅ Импорт состояний из constants.py
 ✅ Полный экспорт всех необходимых компонентов
 ✅ Интеграция с БД через API (app.py)
 ✅ Сохранение приглашений в БД
 ✅ Обновление статуса после прохождения теста
 ✅ Динамическая загрузка интимных профилей по коду пользователя
 ✅ Поиск профилей без учета суффикса (EXP → любой файл типа_уровня_*)
-✅ Расширенное логирование поиска профилей
 """
 
 import logging
@@ -37,6 +36,60 @@ from telegram.ext import (
     ContextTypes,
     ConversationHandler,
 )
+
+# ===== ИМПОРТ КОНСТАНТ ИЗ CONSTANTS.PY =====
+try:
+    from constants import (
+        # Состояния теста
+        STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
+        GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
+        
+        # Состояния 18+ модуля
+        MY_SEXUAL_PROFILE,
+        SEXUAL_PROFILE_SCREEN,
+        SEXUAL_INVITES_LIST,
+        SEXUAL_FRIEND_PROFILE,
+        
+        # Состояния 4F
+        FOUR_F_PAYMENT_SCREEN,
+        FOUR_F_CONTENT_SCREEN,
+        FOUR_F_MAIN,
+        FOUR_F_DETAILED,
+        FOUR_F_MENU,
+        FOUR_F_CONTENT,
+        
+        # Дополнительные состояния
+        BUY_PACKAGES,
+        INVITES_LIST,
+        FRIEND_MENU,
+        FOUR_F_MAIN_MENU,
+        FOUR_F_DETAILED_VIEW,
+        FOUR_F_KEY_MENU,
+        FOUR_F_KEY_CONTENT,
+        
+        # Словарь состояний
+        SEXUAL_STATES,
+    )
+    logger.info("✅ Константы успешно импортированы из constants.py")
+except ImportError as e:
+    logger.error(f"❌ Ошибка импорта из constants.py: {e}")
+    # Заглушки на случай ошибки импорта
+    MY_SEXUAL_PROFILE = 1
+    SEXUAL_PROFILE_SCREEN = 2
+    SEXUAL_INVITES_LIST = 3
+    SEXUAL_FRIEND_PROFILE = 4
+    FOUR_F_PAYMENT_SCREEN = 5
+    FOUR_F_CONTENT_SCREEN = 6
+    FOUR_F_MAIN = 7
+    FOUR_F_DETAILED = 8
+    FOUR_F_MENU = 9
+    FOUR_F_CONTENT = 10
+    BUY_PACKAGES = 20
+    INVITES_LIST = 21
+    FRIEND_MENU = 22
+    RESULTS_SCREEN = 15  # Используем RESULTS из теста
+    SEXUAL_STATES = {}  # Пустой словарь
+    logger.warning("⚠️ Используются запасные значения констант")
 
 # ===== НАСТРОЙКА ЛОГИРОВАНИЯ =====
 logging.basicConfig(
@@ -88,32 +141,10 @@ os.chdir(PROJECT_ROOT)
 
 logger.info(f"📁 Корень проекта: {PROJECT_ROOT}")
 
-# ===== СОСТОЯНИЯ =====
-RESULTS_SCREEN = 0
-MY_SEXUAL_PROFILE = 1
-INVITES_LIST = 2
-FRIEND_MENU = 3
-FOUR_F_MENU = 4
-FOUR_F_CONTENT = 5
-FOUR_F_PAYMENT_SCREEN = 6
-BUY_PACKAGES = 7
-FOUR_F_MAIN = 8
-FOUR_F_DETAILED = 9
-
-# ===== СОСТОЯНИЯ ДЛЯ 18+ МОДУЛЯ (ЭКСПОРТИРУЮТСЯ) =====
-SEXUAL_STATES = {
-    "SEXUAL_PROFILE_SCREEN": 10,
-    "SEXUAL_INVITES_LIST": 11,
-    "SEXUAL_FRIEND_PROFILE": 12,
-    "FOUR_F_PAYMENT_SCREEN": 13,
-    "FOUR_F_CONTENT_SCREEN": 14
-}
-
-SEXUAL_PROFILE_SCREEN = SEXUAL_STATES["SEXUAL_PROFILE_SCREEN"]
-SEXUAL_INVITES_LIST = SEXUAL_STATES["SEXUAL_INVITES_LIST"]
-SEXUAL_FRIEND_PROFILE = SEXUAL_STATES["SEXUAL_FRIEND_PROFILE"]
-FOUR_F_PAYMENT_SCREEN = SEXUAL_STATES["FOUR_F_PAYMENT_SCREEN"]
-FOUR_F_CONTENT_SCREEN = SEXUAL_STATES["FOUR_F_CONTENT_SCREEN"]
+# ===== УДАЛЕНЫ СТАРЫЕ ОПРЕДЕЛЕНИЯ СОСТОЯНИЙ =====
+# Вместо них используем импортированные из constants.py
+# RESULTS_SCREEN оставляем как алиас для RESULTS
+RESULTS_SCREEN = RESULTS
 
 # ===== КОНСТАНТЫ =====
 SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━━━"
@@ -2611,20 +2642,18 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("\n" + "="*70)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.5")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.6")
     print("="*70)
     print("✅ ПОЛНАЯ ИНТЕГРАЦИЯ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК")
     print("✅ Умная функция поиска ссылок по профилю")
     print("✅ Корректное отображение в \"Моих отражениях\"")
     print("✅ Кнопки прикреплены к части 3 интимного профиля")
-    print("✅ Добавлены состояния для 18+ модуля")
-    print("✅ Полный экспорт всех необходимых компонентов")
+    print("✅ Импорт состояний из constants.py")
     print("✅ Интеграция с БД через API (app.py)")
     print("✅ Сохранение приглашений в БД")
     print("✅ Обновление статуса после прохождения теста")
     print("✅ Динамическая загрузка интимных профилей по коду пользователя")
     print("✅ Поиск профилей без учета суффикса (EXP → любой файл типа_уровня_*)")
-    print("✅ Расширенное логирование поиска профилей")
     print("="*70)
     print("📊 ДОСТУПНЫЕ ПРОФИЛИ:")
     print("   SA: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
@@ -2742,7 +2771,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 19.5")
+        print("\n🚀 Бот запущен! Версия 19.6")
         print("="*70)
         logger.info("✅ Бот успешно запущен")
         
