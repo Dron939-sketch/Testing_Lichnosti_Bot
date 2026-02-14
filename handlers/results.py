@@ -7,7 +7,9 @@ import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 
-from config import RESULTS, GIFT_PDF_LINK, BOT_LINK, SHARE_TEXT, GIFT_SCREEN_TEXT, logger
+# ИСПРАВЛЕНО: Импортируем константу из constants.py вместо config.py
+from constants import RESULTS
+from config import GIFT_PDF_LINK, BOT_LINK, SHARE_TEXT, GIFT_SCREEN_TEXT, logger
 from questions import STANDARD_SUFFIXES, SUFFIX_TO_DILTS, CONFLICT_PHRASES
 from utils.calculations import calculate_profile_final
 from utils.profile_utils import get_profile_fallback, get_discrepancy_note
@@ -30,6 +32,9 @@ async def show_results_screen(
 ):
     """ЭКРАН РЕЗУЛЬТАТОВ с 18+ кнопкой"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"📊 show_results_screen ВЫЗВАН для пользователя {user_id}")
     
     has_shared = context.user_data.get("has_shared", False) or force_shared_view
     profile_data = context.user_data.get("profile_data")
@@ -188,53 +193,73 @@ async def show_results_screen(
     await query.message.reply_text(message_2.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
     # ВАЖНО: Добавляем логирование возвращаемого значения
-    logger.info(f"✅ User {update.effective_user.id}: show_results_screen → возвращаю RESULTS = {RESULTS}")
+    logger.info(f"✅ User {user_id}: show_results_screen → возвращаю RESULTS = {RESULTS}")
     return RESULTS
 
 async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к результатам"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"⬅️ back_to_results ВЫЗВАН для пользователя {user_id}")
+    
     await query.answer("🔄 Возвращаюсь к результатам...")
     
     await show_results_screen(update, context, force_shared_view=True)
     
-    logger.info(f"🔄 User {update.effective_user.id}: back_to_results → RESULTS = {RESULTS}")
+    logger.info(f"🔄 User {user_id}: back_to_results → RESULTS = {RESULTS}")
     return RESULTS
 
 async def back_to_results_after_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к результатам после подарка"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"⬅️ back_to_results_after_gift ВЫЗВАН для пользователя {user_id}")
+    
     await query.answer("🔄 Возвращаюсь к результатам...")
     
     await show_results_screen(update, context, force_shared_view=True)
     
-    logger.info(f"🎁 User {update.effective_user.id}: back_to_results_after_gift → RESULTS = {RESULTS}")
+    logger.info(f"🎁 User {user_id}: back_to_results_after_gift → RESULTS = {RESULTS}")
     return RESULTS
 
 async def skip_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Пропуск шаринга"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"⏩ skip_share ВЫЗВАН для пользователя {user_id}")
+    
     await query.answer("⏩ Продолжаем без репоста")
     
     await show_results_screen(update, context, force_shared_view=True)
     
-    logger.info(f"🔄 User {update.effective_user.id}: skip_share → RESULTS = {RESULTS}")
+    logger.info(f"🔄 User {user_id}: skip_share → RESULTS = {RESULTS}")
     return RESULTS
 
 async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Подтверждение шаринга"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"✅ confirm_share ВЫЗВАН для пользователя {user_id}")
+    
     await query.answer("✅ Спасибо за репост! Ваш бонус готов!")
     
     context.user_data["has_shared"] = True
     
-    logger.info(f"✅ User {update.effective_user.id}: confirm_share → open_gift_screen")
+    logger.info(f"✅ User {user_id}: confirm_share → open_gift_screen")
     from handlers.gifts import open_gift_screen
     return await open_gift_screen(update, context)
 
 async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Перезапуск теста"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"🔄 restart_test ВЫЗВАН для пользователя {user_id}")
+    
     await query.answer("🔄 Перезапускаю тест...")
     
     # Очищаем данные пользователя
@@ -251,7 +276,6 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Инициализируем хранилище приглашений
     from sexual_18_plus import get_user_invites
-    user_id = query.from_user.id
     context.user_data["sexual_invites"] = get_user_invites(user_id)
     
     logger.info(f"User {user_id} перезапустил тест")
