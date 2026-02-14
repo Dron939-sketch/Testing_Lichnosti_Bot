@@ -1,4 +1,3 @@
-# handlers/stage4.py
 """
 Обработчики для ЭТАПА 4: Конфликт логических уровней
 """
@@ -16,7 +15,7 @@ from utils.calculations import (
     calculate_profile_final,
     check_profile_coherence
 )
-from utils.validators import need_clarification_stage4  # ИСПРАВЛЕНО: импорт из validators
+from utils.validators import need_clarification_stage4
 from utils.helpers import calculate_progress, generate_unique_callback
 
 logger = logging.getLogger(__name__)
@@ -221,10 +220,16 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     profile_data = calculate_profile_final(context.user_data)
     context.user_data["profile_data"] = profile_data
     
+    logger.info(f"✅ User {update.effective_user.id}: Stage 4 complete, profile={profile_data.get('display_name', 'unknown')}")
+    
     analysis_text = STAGE4_ANALYSIS_SCREEN
     await query.edit_message_text(analysis_text.strip(), parse_mode="HTML")
     
     await asyncio.sleep(3)
     
     from handlers.results import show_results_screen
-    return await show_results_screen(update, context)
+    
+    # ВАЖНО: Возвращаем результат от show_results_screen (который возвращает RESULTS = 14)
+    result = await show_results_screen(update, context)
+    logger.info(f"🔄 User {update.effective_user.id}: finish_stage_4 → возвращаю RESULTS = {RESULTS}")
+    return result
