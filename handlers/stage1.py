@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 1"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"🔵 show_stage_1_intro ВЫЗВАН для пользователя {user_id}")
     
     intro_text = (
         f"🧠 <b>ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ</b>\n\n"
@@ -39,6 +42,8 @@ async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(intro_text, reply_markup=reply_markup, parse_mode="HTML")
+    
+    logger.info(f"🔄 User {user_id}: show_stage_1_intro → возвращаю STAGE_1 = {STAGE_1}")
     return STAGE_1
 
 async def show_stage_1_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -73,19 +78,30 @@ async def back_to_stage1_intro(update: Update, context: ContextTypes.DEFAULT_TYP
 async def start_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало ЭТАПА 1"""
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"🔥🔥🔥 start_stage_1 ВЫЗВАН! User: {user_id}")
+    logger.info(f"📊 Данные пользователя: username=@{query.from_user.username}")
+    
     await query.answer()
     
     context.user_data["stage1_current"] = 0
     context.user_data["stage1_last_answered"] = -1
+    
+    logger.info(f"✅ stage1_current инициализирован: 0 для пользователя {user_id}")
+    
     return await ask_stage_1_question(update, context)
 
 async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт вопрос ЭТАПА 1"""
     query = update.callback_query
+    user_id = update.effective_user.id
     
     current = context.user_data.get("stage1_current", 0)
+    logger.info(f"📝 ask_stage_1_question для пользователя {user_id}: current={current}")
     
     if current >= len(STAGE_1_QUESTIONS):
+        logger.info(f"🏁 Все вопросы заданы для пользователя {user_id}, завершаем этап 1")
         return await finish_stage_1(update, context)
     
     question = STAGE_1_QUESTIONS[current]
@@ -117,6 +133,7 @@ async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYP
                 reply_markup=reply_markup, 
                 parse_mode="HTML"
             )
+            logger.info(f"✅ Вопрос {current+1}/{len(STAGE_1_QUESTIONS)} отправлен пользователю {user_id}")
     except Exception as e:
         error_str = str(e).lower()
         if "message is not modified" in error_str:
@@ -148,6 +165,7 @@ async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYP
 async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ответа ЭТАПА 1"""
     query = update.callback_query
+    user_id = update.effective_user.id
     
     try:
         await query.answer()
@@ -155,7 +173,7 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         logger.error(f"Ошибка при answer(): {e}")
     
     if context.user_data.get("processing", False):
-        logger.debug(f"Пользователь {update.effective_user.id}: пропускаем повторное нажатие")
+        logger.debug(f"Пользователь {user_id}: пропускаем повторное нажатие")
         return STAGE_1
     
     context.user_data["processing"] = True
@@ -169,6 +187,8 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         
         current = int(parts[1])
         option_id = parts[2]
+        
+        logger.info(f"📥 User {user_id}: получен ответ на вопрос {current}, option={option_id}")
         
         last_answered = context.user_data.get("stage1_last_answered", -1)
         if current <= last_answered:
@@ -188,8 +208,9 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         
         for axis, score in selected_option.get("scores", {}).items():
             context.user_data["scores"][axis] += score
+            logger.info(f"   +{score} к {axis}")
         
-        logger.info(f"User {update.effective_user.id}: Stage 1 Q{current} -> {option_id}")
+        logger.info(f"✅ User {user_id}: Stage 1 Q{current} -> {option_id}")
         
         context.user_data["stage1_last_answered"] = current
         context.user_data["stage1_current"] = current + 1
@@ -197,7 +218,7 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         return await ask_stage_1_question(update, context)
         
     except Exception as e:
-        logger.error(f"Критическая ошибка в handle_stage_1_answer: {e}", exc_info=True)
+        logger.error(f"❌ Критическая ошибка в handle_stage_1_answer: {e}", exc_info=True)
         return await ask_stage_1_question(update, context)
     finally:
         context.user_data["processing"] = False
@@ -205,7 +226,10 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
 async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Завершение ЭТАП 1 - МОТИВАЦИОННЫЙ ЭКРАН"""
     query = update.callback_query
+    user_id = update.effective_user.id
     scores = context.user_data.get("scores", {})
+    
+    logger.info(f"🎯 finish_stage_1 вызван для пользователя {user_id}")
     
     clarifications_needed = need_clarification_stage1(scores)
     
@@ -214,14 +238,14 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["clarification_current"] = 0
         context.user_data["clarification_stage"] = "stage1"
         
-        logger.info(f"User {update.effective_user.id}: Stage 1 needs clarification")
+        logger.info(f"User {user_id}: Stage 1 needs clarification")
         from handlers.common import ask_clarification_question
         return await ask_clarification_question(update, context)
     
     perception_type = determine_perception_type(scores)
     context.user_data["perception_type"] = perception_type
     
-    logger.info(f"✅ User {update.effective_user.id}: Stage 1 complete, type={perception_type}")
+    logger.info(f"✅ User {user_id}: Stage 1 complete, type={perception_type}")
     
     result_text = STAGE1_FEEDBACK.get(perception_type, STAGE1_FEEDBACK["СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ"])
     
@@ -231,5 +255,5 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(result_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
     # ВАЖНО: Возвращаем STAGE_2 (который теперь равен 11)
-    logger.info(f"🔄 User {update.effective_user.id}: finish_stage_1 → возвращаю STAGE_2 = {STAGE_2}")
+    logger.info(f"🔄 User {user_id}: finish_stage_1 → возвращаю STAGE_2 = {STAGE_2}")
     return STAGE_2
