@@ -1856,7 +1856,7 @@ def main():
                 CallbackQueryHandler(buy_without_test_callback, pattern="^buy_without_test$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
             ],
-                        # ===== 18+ МОДУЛЬ =====
+                                    # ===== 18+ МОДУЛЬ =====
             SEXUAL_PROFILE_SCREEN: [
                 CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
                 CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
@@ -1869,18 +1869,18 @@ def main():
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(copy_invite_callback, pattern="^copy_invite_"),
                 CallbackQueryHandler(check_invite_callback, pattern="^check_invite_"),
-                CallbackQueryHandler(delete_invite_callback, pattern="^delete_invite_"),
-                CallbackQueryHandler(buy_function_callback, pattern="^buy_function_"),
-                CallbackQueryHandler(open_4f_key_callback, pattern="^open_4f_key_"),
-                CallbackQueryHandler(buy_invite_packages, pattern="^buy_invite_packages$"),
+                CallbackQueryHandler(noop_callback, pattern="^delete_invite_"),
+                CallbackQueryHandler(noop_callback, pattern="^buy_function_"),
+                CallbackQueryHandler(noop_callback, pattern="^open_4f_key_"),
+                CallbackQueryHandler(noop_callback, pattern="^buy_invite_packages$"),
             ],
             SEXUAL_FRIEND_PROFILE: [
-                CallbackQueryHandler(friend_details_callback, pattern="^friend_details_"),
+                CallbackQueryHandler(noop_callback, pattern="^friend_details_"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
             ],
             FOUR_F_PAYMENT_SCREEN: [
-                CallbackQueryHandler(check_4f_payment_callback, pattern="^check_4f_payment_"),
-                CallbackQueryHandler(open_4f_key_callback, pattern="^open_4f_key_"),
+                CallbackQueryHandler(noop_callback, pattern="^check_4f_payment_"),
+                CallbackQueryHandler(noop_callback, pattern="^open_4f_key_"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(my_invites_callback, pattern="^show_my_invites$")
             ],
