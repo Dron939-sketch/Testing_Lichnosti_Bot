@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 19.1 - ПОЛНАЯ ИНТЕГРАЦИЯ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК + СОСТОЯНИЯ
+Версия: 19.2 - ПОЛНАЯ ИНТЕГРАЦИЯ С БД ЧЕРЕЗ API
 ✅ Все 36 ссылок на профили добавлены
 ✅ Умная функция поиска ссылок по профилю
 ✅ Корректное отображение в "Моих отражениях"
 ✅ Добавлены состояния для 18+ модуля
 ✅ Полный экспорт всех необходимых компонентов
+✅ Интеграция с БД через API (app.py)
+✅ Сохранение приглашений в БД
+✅ Обновление статуса после прохождения теста
 """
 
 import logging
@@ -18,8 +21,10 @@ import urllib.parse
 import traceback
 import asyncio
 import time
+import requests
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
+from collections import defaultdict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import Conflict, BadRequest
 from telegram.ext import (
@@ -50,6 +55,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "ВАШ_ТОКЕН_ЗДЕСЬ")
 BOT_USERNAME = "Testing_Lichnosti_bot"
 BOT_LINK = f"t.me/{BOT_USERNAME}"
+API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID", "ваш_shop_id")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY", "ваш_secret_key")
 
@@ -447,6 +453,97 @@ def get_emergency_profile() -> dict:
         "description": "Секс для вас — священнодействие. Ритуал. Мистерия.\nВам нужен сценарий, подготовка, правильная атмосфера.\nВы не занимаетесь любовью — вы служите ей.\nИ каждый раз — как в первый. И каждый раз — как в последний.",
         "sections": {}
     }
+
+# ===== ФУНКЦИИ ДЛЯ РАБОТЫ С БД ЧЕРЕЗ API =====
+
+def save_invite_to_api(invite_data: dict) -> bool:
+    """Сохраняет приглашение в БД через API"""
+    try:
+        api_data = {
+            "invite_id": invite_data['invite_id'],
+            "buyer_id": invite_data['user_id'],
+            "target_id": 0,
+            "target_name": None,
+            "target_profile_key": invite_data['profile_code']
+        }
+        
+        response = requests.post(
+            f"{API_URL}/api/sexual/create-invite",
+            json=api_data,
+            timeout=5
+        )
+        
+        if response.status_code in [200, 201]:
+            logger.info(f"✅ Приглашение {invite_data['invite_id']} сохранено в БД")
+            return True
+        else:
+            logger.error(f"❌ Ошибка сохранения приглашения: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка при сохранении в БД: {e}")
+        return False
+
+def find_invite_in_api(invite_id: str) -> Optional[dict]:
+    """Находит приглашение в БД по коду"""
+    try:
+        response = requests.get(
+            f"{API_URL}/api/sexual/get-invite/{invite_id}",
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            logger.info(f"✅ Приглашение {invite_id} найдено в БД")
+            return data.get('data', {})
+        else:
+            logger.warning(f"⚠️ Приглашение {invite_id} не найдено в БД")
+            return None
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка поиска приглашения: {e}")
+        return None
+
+def update_invite_in_api(invite_id: str, friend_data: dict) -> bool:
+    """Обновляет приглашение после прохождения теста"""
+    try:
+        response = requests.post(
+            f"{API_URL}/api/sexual/update-invite/{invite_id}",
+            json=friend_data,
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            logger.info(f"✅ Приглашение {invite_id} обновлено в БД")
+            return True
+        else:
+            logger.error(f"❌ Ошибка обновления приглашения: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка при обновлении в БД: {e}")
+        return False
+
+def get_user_invites_from_api(user_id: int) -> list:
+    """Получает все приглашения пользователя из БД"""
+    try:
+        response = requests.get(
+            f"{API_URL}/api/sexual/get-invites/{user_id}",
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            invites = data.get('invites', [])
+            logger.info(f"✅ Получено {len(invites)} приглашений для пользователя {user_id}")
+            return invites
+        else:
+            logger.warning(f"⚠️ Не удалось получить приглашения: {response.status_code}")
+            return []
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения приглашений: {e}")
+        return []
 
 # ===== ФУНКЦИИ ФОРМАТИРОВАНИЯ ИНТИМНОГО ПРОФИЛЯ =====
 def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
@@ -884,13 +981,20 @@ USER_PROFILE = {
     "dilts_code": "int"
 }
 
-# ===== ХРАНИЛИЩЕ ПРИГЛАШЕНИЙ =====
+# ===== ХРАНИЛИЩЕ ПРИГЛАШЕНИЙ (временное, для обратной совместимости) =====
 user_invites = {}
 
 def get_user_invites(user_id: int) -> list:
+    """Получает список приглашений пользователя (сначала из БД, потом из памяти)"""
+    # Пытаемся получить из БД
+    db_invites = get_user_invites_from_api(user_id)
+    if db_invites:
+        return db_invites
+    
+    # Если БД недоступна, используем память
     if user_id not in user_invites:
         user_invites[user_id] = []
-        logger.info(f"👤 Создано хранилище для пользователя {user_id}")
+        logger.info(f"👤 Создано хранилище в памяти для пользователя {user_id}")
     return user_invites[user_id]
 
 def count_free_friends(user_id: int) -> int:
@@ -1146,6 +1250,7 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
 async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         query = update.callback_query
+        user_id = query.from_user.id
         await query.answer()
         
         context.user_data["conversation_state"] = INVITES_LIST
@@ -1219,14 +1324,18 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
             "access_status": None,
             "purchased_functions": [],
             "is_free": is_free,
-            "invite_type": invite_type
+            "invite_type": invite_type,
+            "user_id": user_id  # Добавляем user_id для сохранения в БД
         }
+        
+        # Сохраняем в БД
+        save_invite_to_api(invite_data)
         
         invites.insert(0, invite_data)
         
-        user_id = query.from_user.id
         global_invites = get_user_invites(user_id)
-        global_invites.insert(0, invite_data)
+        if invite_data not in global_invites:
+            global_invites.insert(0, invite_data)
         
         logger.info(f"🔗 Пользователь {user_id} создал ссылку: {invite_code} (тип: {invite_type})")
         
@@ -1263,7 +1372,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.user_data["conversation_state"] = INVITES_LIST
         
         user_id = query.from_user.id
-        invites = get_user_invites(user_id)
+        invites = get_user_invites(user_id)  # Теперь получает из БД
         context.user_data["sexual_invites"] = invites
         
         used_invites = [inv for inv in invites if inv.get("status") == "used"]
@@ -1422,8 +1531,13 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
         
         invite_id = query.data.replace("check_status_", "")
         
-        invites = context.user_data.get("sexual_invites", [])
-        invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
+        # Пытаемся найти в БД
+        invite = find_invite_in_api(invite_id)
+        
+        if not invite:
+            # Если нет в БД, ищем в памяти
+            invites = context.user_data.get("sexual_invites", [])
+            invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
         
         if not invite:
             await query.answer("❌ Приглашение не найдено", show_alert=True)
@@ -2141,7 +2255,7 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("\n" + "="*70)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.1")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.2")
     print("="*70)
     print("✅ ПОЛНАЯ ИНТЕГРАЦИЯ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК")
     print("✅ Умная функция поиска ссылок по профилю")
@@ -2149,6 +2263,9 @@ def main():
     print("✅ Кнопки прикреплены к части 3 интимного профиля")
     print("✅ Добавлены состояния для 18+ модуля")
     print("✅ Полный экспорт всех необходимых компонентов")
+    print("✅ Интеграция с БД через API (app.py)")
+    print("✅ Сохранение приглашений в БД")
+    print("✅ Обновление статуса после прохождения теста")
     print("="*70)
     print("📊 ДОСТУПНЫЕ ПРОФИЛИ:")
     print("   SA: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
@@ -2258,7 +2375,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 19.1")
+        print("\n🚀 Бот запущен! Версия 19.2")
         print("="*70)
         logger.info("✅ Бот успешно запущен")
         
