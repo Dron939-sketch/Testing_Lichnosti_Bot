@@ -101,6 +101,8 @@ async def start_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"🔥🔥🔥 start_stage_1 ВЫЗВАН! User: {user_id}")
     logger.info(f"📊 Данные пользователя: username=@{query.from_user.username}")
+    logger.info(f"📊 callback_data: {query.data}")
+    logger.info(f"📊 Текущее состояние user_data: {context.user_data}")
     
     await query.answer()
     
@@ -110,10 +112,13 @@ async def start_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ✅ ВАЖНО: сохраняем состояние
     context.user_data["conversation_state"] = STAGE_1
     logger.info(f"💾 Сохраняю состояние STAGE_1 = {STAGE_1} для пользователя {user_id}")
+    logger.info(f"📊 После сохранения user_data: {context.user_data}")
     
     logger.info(f"✅ stage1_current инициализирован: 0 для пользователя {user_id}")
     
-    return await ask_stage_1_question(update, context)
+    result = await ask_stage_1_question(update, context)
+    logger.info(f"🔄 start_stage_1 → ask_stage_1_question вернул: {result}")
+    return result
 
 async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт вопрос ЭТАПА 1"""
@@ -192,6 +197,11 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     user_id = update.effective_user.id
     
+    # 🔍 ДОБАВЛЕНО РАСШИРЕННОЕ ЛОГИРОВАНИЕ
+    logger.info(f"🔍🔍🔍 handle_stage_1_answer ВЫЗВАН! User: {user_id}")
+    logger.info(f"🔍 Данные callback: {query.data}")
+    logger.info(f"🔍 Текущее состояние user_data: {context.user_data}")
+    
     try:
         await query.answer()
     except Exception as e:
@@ -242,8 +252,12 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         
         # ✅ ВАЖНО: сохраняем состояние
         context.user_data["conversation_state"] = STAGE_1
+        logger.info(f"💾 После ответа сохраняю состояние STAGE_1 = {STAGE_1}")
+        logger.info(f"📊 После сохранения user_data: {context.user_data}")
         
-        return await ask_stage_1_question(update, context)
+        result = await ask_stage_1_question(update, context)
+        logger.info(f"🔄 handle_stage_1_answer → ask_stage_1_question вернул: {result}")
+        return result
         
     except Exception as e:
         logger.error(f"❌ Критическая ошибка в handle_stage_1_answer: {e}", exc_info=True)
@@ -258,6 +272,7 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     scores = context.user_data.get("scores", {})
     
     logger.info(f"🎯 finish_stage_1 вызван для пользователя {user_id}")
+    logger.info(f"📊 Итоговые scores: {scores}")
     
     clarifications_needed = need_clarification_stage1(scores)
     
@@ -266,7 +281,7 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["clarification_current"] = 0
         context.user_data["clarification_stage"] = "stage1"
         
-        logger.info(f"User {user_id}: Stage 1 needs clarification")
+        logger.info(f"User {user_id}: Stage 1 needs clarification: {clarifications_needed}")
         from handlers.common import ask_clarification_question
         return await ask_clarification_question(update, context)
     
