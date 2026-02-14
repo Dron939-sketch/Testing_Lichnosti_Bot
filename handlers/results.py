@@ -15,7 +15,7 @@ from utils.profile_utils import get_profile_fallback, get_discrepancy_note
 from utils.text_utils import get_card_description_from_profile, format_profile_title
 
 # Импорт из 18+ модуля для ссылок
-from sexual_18_plus import get_disk_link
+from sexual_18_plus import get_disk_link_by_profile
 
 # Импорт загрузчика и профилей
 from loader import loader
