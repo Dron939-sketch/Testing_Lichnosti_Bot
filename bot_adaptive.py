@@ -2,7 +2,7 @@
 """
 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА: ПУТЬ К САМОПОЗНАНИЮ
 4 этапа адаптивного исследования + персональное описание профиля
-ВЕРСИЯ 5.0: ПОЛНАЯ ИНТЕГРАЦИЯ 18+ МОДУЛЯ
+ВЕРСИЯ 5.1: ИСПРАВЛЕНА 18+ КНОПКА И ЭКРАН ПЛАТЕЖА
 """
 
 import logging
@@ -1069,7 +1069,7 @@ async def buy_without_test_callback(update: Update, context: ContextTypes.DEFAUL
     return await show_payment_screen(update, context)
 
 async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Экран создания платежа"""
+    """Экран создания платежа (БЕЗ ССЫЛКИ НА МАТЕРИАЛЫ)"""
     query = update.callback_query if hasattr(update, 'callback_query') else None
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
@@ -1164,9 +1164,8 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             "• И другие\n"
         )
     
-    # Получаем ссылку на Яндекс.Диск для экрана оплаты
-    profile_link = get_disk_link(profile_code)
-    logger.debug(f"📁 Ссылка на диск для {profile_code}: {profile_link}")
+    # ✅ УБРАНА ссылка на материалы из экрана платежа
+    # Ссылка будет доступна ТОЛЬКО после оплаты
     
     keyboard = [
         [InlineKeyboardButton("💳 Оплатить 690 рублей", url=confirmation_url)],
@@ -1184,8 +1183,7 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"💰 *Сумма:* 690 рублей\n"
         f"{invoice_info}"
         f"\n🔒 *Защита от дублей:* ✅ активна\n"
-        f"📊 *Профиль сохранен:* ✅ `{profile_code}`\n"
-        f"📁 *Ссылка на материалы:* {profile_link}\n\n"
+        f"📊 *Профиль сохранен:* ✅ `{profile_code}`\n\n"
         f"*Для оплаты нажмите кнопку ниже:*\n"
         f"После успешной оплаты:\n"
         f"1. Вы получите уведомление\n"
@@ -1357,6 +1355,7 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
     
     logger.info(f"✅ Материалы получены для профиля {profile_code}")
     
+    # ✅ ЗДЕСЬ появляется ссылка на материалы - ТОЛЬКО ПОСЛЕ ОПЛАТЫ
     keyboard = [
         [InlineKeyboardButton("📥 СКАЧАТЬ ПЕРСОНАЛЬНОЕ ОПИСАНИЕ", url=materials_link)],
         [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
@@ -1563,12 +1562,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     welcome_text = (
         f"{user.first_name}, привет! 👋\n\n"
-        f"🧠 Я — Виртуальный психолог Вариатика.\n\n"
+        f"<b>🧠 Я — Виртуальный психолог Вариатика.</b>\n\n"
         f"🕒 За 15 минут узнаете о себе то, что обычно остаётся невидимым.\n"
         f"👁️ Увидите скрытые паттерны, которые управляют вашими решениями.\n\n"
         f"⚡ А главное — узнаете то, о себе знать действительно нужно.\n"
         f"🎯 То, что даст точку опоры для роста.\n\n"
-        f"📊 Вас ждёт:\n\n"
+        f"<b>📊 Вас ждёт:</b>\n\n"
         f"1️⃣ Адаптивный тест (4 этапа)\n"
         f"   ↳ Поймёте свой уникальный профиль\n\n"
         f"2️⃣ Персональные материалы\n"
@@ -1707,13 +1706,13 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# ГЛАВНАЯ ФУНКЦИЯ
+# ГЛАВНАЯ ФУНКЦИЯ С ИСПРАВЛЕННЫМ CONVERSATIONHANDLER
 # ============================================
 
 def main():
     """Запуск бота"""
     print("\n" + "="*70)
-    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.0)")
+    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.1)")
     print("="*70)
     print("🔞 ПОЛНАЯ ИНТЕГРАЦИЯ 18+ МОДУЛЯ")
     print("="*70)
@@ -1724,11 +1723,10 @@ def main():
     print("4. ✅ Платежная система ЮKassa")
     print("5. ✅ Интеграция с Яндекс.Диск (36 профилей)")
     print("="*70)
-    print("🔧 РЕФАКТОРИНГ:")
-    print("   ✅ Вопросы вынесены в отдельный файл questions.py")
-    print("   ✅ Обработчики этапов вынесены в папку handlers/")
-    print("   ✅ Утилиты вынесены в папку utils/")
-    print("   ✅ Конфигурация вынесена в config.py")
+    print("🔧 ИСПРАВЛЕНИЯ В 5.1:")
+    print("   ✅ Добавлен обработчик 18+ кнопки в состояние RESULTS")
+    print("   ✅ Убрана ссылка на материалы из экрана платежа")
+    print("   ✅ Ссылка появляется только после успешной оплаты")
     print("="*70)
     
     # Проверка наличия GIFT_PDF_LINK
@@ -1821,7 +1819,8 @@ def main():
                 CallbackQueryHandler(skip_share, pattern="^skip_share$"),
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
                 CallbackQueryHandler(restart_test, pattern="^restart_test$"),
-                # ❌ 18+ кнопка УДАЛЕНА - теперь она только в SEXUAL_PROFILE_SCREEN
+                # ✅ 18+ кнопка ДОБАВЛЕНА ОБРАТНО!
+                CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
             ],
             GIFT_SCREEN: [
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
@@ -1884,7 +1883,7 @@ def main():
     application.add_handler(conv_handler)
     
     logger.info("🧠 Виртуальный психолог Вариатика запущен!")
-    logger.info("✅ ВЕРСИЯ 5.0: ПОЛНАЯ ИНТЕГРАЦИЯ 18+ МОДУЛЯ!")
+    logger.info("✅ ВЕРСИЯ 5.1: ИСПРАВЛЕНА 18+ КНОПКА И ЭКРАН ПЛАТЕЖА!")
     logger.info("✅ Вопросы вынесены в отдельный файл questions.py")
     logger.info("✅ Обработчики этапов вынесены в папку handlers/")
     logger.info("✅ Утилиты вынесены в папку utils/")
