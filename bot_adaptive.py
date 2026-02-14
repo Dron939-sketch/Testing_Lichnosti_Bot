@@ -89,7 +89,7 @@ from sexual_18_plus import (
     
     get_disk_link_by_profile,
     load_intimate_profile,
-    load_friend_profile,
+    load_friend_intimate_profile,
     format_intimate_profile,
     format_friend_profile,
     format_4f_content,
