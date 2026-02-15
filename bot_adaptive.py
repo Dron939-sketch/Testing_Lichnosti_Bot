@@ -1838,7 +1838,31 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
+    # ✅ СОХРАНЯЕМ ВАЖНЫЕ ДАННЫЕ ПЕРЕД ОЧИСТКОЙ
+    current_invite = context.user_data.get("current_invite")
+    saved_limits = context.user_data.get("invite_limits", {})
+    saved_invites = context.user_data.get("sexual_invites", [])
+    
+    logger.info(f"🔍 start_test: current_invite = {current_invite}")
+    logger.info(f"🔍 start_test: saved_limits = {saved_limits}")
+    
+    # Очищаем данные пользователя
     context.user_data.clear()
+    
+    # ✅ ВОССТАНАВЛИВАЕМ ВАЖНЫЕ ДАННЫЕ
+    if current_invite:
+        context.user_data["current_invite"] = current_invite
+        logger.info(f"✅ current_invite сохранен при старте теста: {current_invite}")
+    
+    if saved_limits:
+        context.user_data["invite_limits"] = saved_limits
+        logger.info(f"✅ invite_limits сохранены: {saved_limits}")
+    
+    if saved_invites:
+        context.user_data["sexual_invites"] = saved_invites
+        logger.info(f"✅ sexual_invites сохранены: {len(saved_invites)} шт.")
+    
+    # Инициализируем новые данные для теста
     context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
     context.user_data["stage1_current"] = 0
     context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
@@ -1847,7 +1871,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["processing"] = False
     context.user_data["has_shared"] = False
     
-    # Инициализируем хранилище приглашений
+    # Инициализируем хранилище приглашений (обновляем из БД)
     user_id = query.from_user.id
     context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)
     
