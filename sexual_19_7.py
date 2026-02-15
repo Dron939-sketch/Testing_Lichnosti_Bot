@@ -1729,9 +1729,9 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
         
         keyboard = [
-            [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
-            [InlineKeyboardButton("⬅️ НАЗАД В ПРОФИЛЬ", callback_data="my_sexual_profile")]
-        ]
+    [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
+    [InlineKeyboardButton("⬅️ НАЗАД В ПРОФИЛЬ", callback_data="back_to_results")]
+]
         
         await query.edit_message_text(
             text,
