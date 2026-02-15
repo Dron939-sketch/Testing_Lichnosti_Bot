@@ -1901,10 +1901,10 @@ def main():
                 CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
             ],
-            SEXUAL_INVITES_LIST: [
+                        SEXUAL_INVITES_LIST: [
                 CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
                 CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
                 CallbackQueryHandler(copy_invite_callback, pattern="^copy_invite_"),
                 CallbackQueryHandler(check_invite_callback, pattern="^check_invite_"),
                 CallbackQueryHandler(create_invite_callback, pattern="^create_new_invite$"),
