@@ -2059,14 +2059,19 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         updated_invites = get_user_invites_from_api(user_id)
         context.user_data["sexual_invites"] = updated_invites
 
-        # ПЕРЕСЧИТЫВАЕМ ЛИМИТЫ (на всякий случай)
+        # 👇 ВАЖНО: ПЕРЕСЧИТЫВАЕМ free_used НА ОСНОВЕ РЕАЛЬНЫХ ДАННЫХ
         actual_free_used = 0
         for inv in updated_invites:
             if inv.get("invite_id", "").startswith("test_"):
                 continue
             if inv.get("is_free") or inv.get("invite_type") == "🆓":
                 actual_free_used += 1
+        
+        # Обновляем лимиты
         user_limits["free_used"] = min(actual_free_used, FREE_INVITE_LIMIT)
+        
+        # Логируем для проверки
+        logger.info(f"📊 После создания ссылки: free_used={user_limits['free_used']}, всего ссылок={len(updated_invites)}")
 
         logger.info(f"🔗 Пользователь {user_id} создал ссылку: {invite_code} (тип: {invite_type})")
 
@@ -2091,14 +2096,9 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
    После использования она станет неактивной.
 """
 
-        # ПОКАЗЫВАЕМ ОСТАТКИ
-        if is_free:
-            remaining_free = FREE_INVITE_LIMIT - user_limits["free_used"]
-            text += f"\n🆓 Осталось бесплатных: {remaining_free}"
-        else:
-            paid_invites_created = max(0, len(updated_invites) - FREE_INVITE_LIMIT)
-            paid_available = user_limits["total_purchased"] - paid_invites_created
-            text += f"\n💎 Осталось платных: {paid_available}"
+        # 👇 ПОКАЗЫВАЕМ АКТУАЛЬНЫЕ ОСТАТКИ
+        remaining_free = FREE_INVITE_LIMIT - user_limits["free_used"]
+        text += f"\n🆓 Осталось бесплатных: {remaining_free}"
 
         # КНОПКИ
         keyboard = [
@@ -2121,7 +2121,6 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.error(f"❌ Ошибка в send_invite_callback: {e}\n{traceback.format_exc()}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
         return INVITES_LIST
-
 
 # ============================================
 # 🔍 ЭКРАН: МОИ ОТРАЖЕНИЯ
