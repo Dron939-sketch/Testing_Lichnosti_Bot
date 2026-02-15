@@ -1761,6 +1761,57 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         user_id = query.from_user.id
         await query.answer()
         
+        # 👇 ДОБАВЛЯЕМ ПРОВЕРКУ: НЕ СОЗДАВАТЬ НОВУЮ ССЫЛКУ, ЕСЛИ ПРЕДЫДУЩАЯ НЕ ИСПОЛЬЗОВАНА
+        invites = context.user_data.get("sexual_invites", [])
+        
+        # Проверяем, есть ли активные неиспользованные ссылки
+        active_invites = [inv for inv in invites if inv.get("status") == "active"]
+        
+        if active_invites:
+            # Если есть активные ссылки, предлагаем использовать их
+            logger.info(f"⚠️ У пользователя {user_id} есть активные ссылки: {len(active_invites)}")
+            
+            # Берем самую свежую активную ссылку
+            latest_invite = active_invites[0]
+            invite_url = latest_invite.get("link")
+            invite_message = latest_invite.get("message", "✨ Есть одна штука.\nОпределяет твой ночной тип личности.\nУ меня — совпало процентов на 90.\n\n🤫 Интересно, у тебя тоже?")
+            
+            share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
+            
+            text = f"""
+🔞 <b>✨ У ВАС ЕСТЬ АКТИВНАЯ ССЫЛКА! ✨</b>
+
+🔗 <code>{invite_url}</code>
+
+💬 <b>📨 ТЕКСТ СООБЩЕНИЯ:</b>
+<blockquote>{invite_message}</blockquote>
+
+{SEXUAL_DIVIDER}
+🟢 <b>• АКТИВНО •</b> ожидает отправки
+📅 <b>Создано:</b> {datetime.fromtimestamp(latest_invite.get("created_at")).strftime('%d.%m.%Y %H:%M')}
+{SEXUAL_DIVIDER}
+
+⚠️ <b>Эта ссылка еще не использована!</b>
+   Вы можете отправить её другу.
+   Новая ссылка будет создана автоматически только после использования текущей.
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
+                [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")],
+                [InlineKeyboardButton("🪞 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")]
+            ]
+            
+            await query.edit_message_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML",
+                disable_web_page_preview=True
+            )
+            
+            return INVITES_LIST
+        
+        # 👇 ЕСЛИ АКТИВНЫХ ССЫЛОК НЕТ - СОЗДАЕМ НОВУЮ (весь существующий код создания)
         logger.info(f"✅ create_invite_callback: пользователь {user_id} успешно вызвал функцию")
         logger.info(f"📊 Данные пользователя: username=@{query.from_user.username}, first_name={query.from_user.first_name}")
         
@@ -1840,15 +1891,12 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
    вы увидите его <b>18+ профиль</b>.
 """
 
-        # 👇 ИСПРАВЛЯЕМ РАСЧЕТ ОСТАТКОВ ДЛЯ ОТОБРАЖЕНИЯ
+        # Правильный расчет остатков
         if is_free:
             remaining_free = FREE_INVITE_LIMIT - user_limits["free_used"]
             text += f"\n🆓 Осталось бесплатных: {remaining_free}"
         else:
-            # Пересчитываем актуальные остатки
-            updated_invites = get_user_invites_from_api(user_id)
-            updated_total = len(updated_invites)
-            paid_invites_created = max(0, updated_total - FREE_INVITE_LIMIT)
+            paid_invites_created = max(0, total_invites + 1 - FREE_INVITE_LIMIT)
             paid_available = user_limits["total_purchased"] - paid_invites_created
             text += f"\n💎 Осталось платных: {paid_available}"
 
@@ -1876,24 +1924,11 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         save_success = save_invite_to_api(invite_data)
         logger.info(f"💾 Сохранение в БД: {'успешно' if save_success else 'ошибка'}")
 
-        # 👇 ОБНОВЛЯЕМ ДАННЫЕ В ПАМЯТИ
-        # Получаем актуальные данные из БД
-        updated_invites = get_user_invites_from_api(user_id)
-        context.user_data["sexual_invites"] = updated_invites
-        
-        # Обновляем счетчики в user_limits на основе реальных данных
-        # Подсчитываем реальное количество бесплатных ссылок
-        actual_free_used = 0
-        for inv in updated_invites:
-            if inv.get("invite_id", "").startswith("test_"):
-                continue  # Пропускаем тестовые
-            if inv.get("is_free") or inv.get("invite_type") == "🆓":
-                actual_free_used += 1
-        
-        # Обновляем лимиты
-        user_limits["free_used"] = min(actual_free_used, FREE_INVITE_LIMIT)
-        
-        logger.info(f"🔄 Обновлены лимиты после создания ссылки: free_used={user_limits['free_used']}")
+        invites.insert(0, invite_data)
+
+        global_invites = get_user_invites(user_id)
+        if invite_data not in global_invites:
+            global_invites.insert(0, invite_data)
 
         logger.info(f"🔗 Пользователь {user_id} создал ссылку: {invite_code} (тип: {invite_type})")
 
