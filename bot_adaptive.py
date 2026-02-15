@@ -693,7 +693,7 @@ async def show_results_screen(
     context: ContextTypes.DEFAULT_TYPE,
     force_shared_view: bool = False
 ):
-    """ЭКРАН РЕЗУЛЬТАТОВ с 18+ кнопкой"""
+   """ЭКРАН РЕЗУЛЬТАТОВ с 18+ кнопкой"""
     query = update.callback_query
     user_id = update.effective_user.id
     
@@ -709,9 +709,48 @@ async def show_results_screen(
     
     if not profile_data:
         logger.debug("🔄 profile_data отсутствует, вычисляем...")
-        profile_data = calculate_profile_final(context.user_data)
+                profile_data = calculate_profile_final(context.user_data)
         context.user_data["profile_data"] = profile_data
         logger.debug(f"✅ profile_data вычислен: {profile_data.get('display_name')}")
+    
+    # Проверяем, есть ли активное приглашение (пользователь пришел по ссылке)
+    current_invite = context.user_data.get("current_invite")
+    if current_invite:
+        logger.info(f"🔍 Найдено активное приглашение: {current_invite}")
+        
+        friend_data = {
+            "target_id": update.effective_user.id,
+            "target_name": update.effective_user.username or update.effective_user.first_name,
+            "target_profile": profile_data.get('display_name', 'unknown')
+        }
+        
+        # Вызываем функцию обновления
+        try:
+            success = update_invite_in_api(current_invite["invite_id"], friend_data)
+            
+            if success:
+                logger.info(f"✅ Приглашение {current_invite['invite_id']} обновлено")
+                # Очищаем данные приглашения после использования
+                context.user_data.pop("current_invite", None)
+                
+                # Отправляем уведомление создателю ссылки
+                buyer_id = current_invite.get("buyer_id")
+                if buyer_id:
+                    try:
+                        await context.bot.send_message(
+                            chat_id=buyer_id,
+                            text=f"👤 Новое отражение!\n\n"
+                                 f"@{update.effective_user.username or update.effective_user.first_name} "
+                                 f"прошел тест по вашему приглашению.\n"
+                                 f"Его профиль: {profile_data.get('display_name')}\n\n"
+                                 f"🔍 Посмотреть в \"Моих отражениях\""
+                        )
+                    except Exception as e:
+                        logger.error(f"❌ Не удалось отправить уведомление: {e}")
+            else:
+                logger.error(f"❌ Не удалось обновить приглашение {current_invite['invite_id']}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при обновлении приглашения: {e}")
     
     try:
         profile = get_profile_fallback(profile_data)
