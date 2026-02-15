@@ -2,7 +2,7 @@
 """
 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА: ПУТЬ К САМОПОЗНАНИЮ
 4 этапа адаптивного исследования + персональное описание профиля
-ВЕРСИЯ 5.4: ИСПРАВЛЕН ЦИКЛИЧЕСКИЙ ИМПОРТ
+ВЕРСИЯ 5.6: ПОЛНАЯ ИНТЕГРАЦИЯ 4F МОДУЛЯ + ИСПРАВЛЕНИЕ ENTRY_POINTS
 """
 
 import logging
@@ -55,10 +55,17 @@ def log_callback(func_name: str, update: Update, context: ContextTypes.DEFAULT_T
 
 # ===== ИМПОРТ КОНСТАНТ СОСТОЯНИЙ =====
 from constants import (
+    # Состояния теста
     STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
     GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
+    
+    # Состояния 18+ модуля
     MY_SEXUAL_PROFILE, SEXUAL_PROFILE_SCREEN, SEXUAL_INVITES_LIST,
-    SEXUAL_FRIEND_PROFILE, FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN
+    SEXUAL_FRIEND_PROFILE, FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN,
+    
+    # 👇 ДОБАВЛЕННЫЕ СОСТОЯНИЯ ДЛЯ 4F
+    FOUR_F_MAIN, FOUR_F_DETAILED, FOUR_F_MENU, FOUR_F_CONTENT,
+    BUY_PACKAGES, INVITES_LIST, FRIEND_MENU
 )
 
 # ===== ИМПОРТ КОНФИГУРАЦИИ =====
@@ -70,7 +77,7 @@ from config import (
     logger as config_logger
 )
 
-# ===== ИМПОРТ 18+ МОДУЛЯ (БЕЗ КОНФЛИКТУЮЩИХ ФУНКЦИЙ) =====
+# ===== ИМПОРТ 18+ МОДУЛЯ (ПОЛНАЯ ВЕРСИЯ) =====
 from sexual_18_plus import (
     SEXUAL_DIVIDER,
     FREE_INVITE_LIMIT,
@@ -105,7 +112,6 @@ from sexual_18_plus import (
     sexual_invite_start,
     copy_invite_callback,
     check_invite_callback,
-    # НЕ ИМПОРТИРУЕМ: start, show_results_screen
     my_invites_callback,
     friend_menu_callback,
     show_payment_access_screen,
@@ -120,6 +126,13 @@ from sexual_18_plus import (
     dummy_callback,
     split_long_message,
     safe_send_message,
+    # 👇 ДОБАВЛЕННЫЕ ФУНКЦИИ ДЛЯ 4F
+    four_f_main_menu_callback,
+    four_f_detailed_callback,
+    check_status_callback,
+    buy_invite_packages_callback,
+    pay_package_callback,
+    process_package_payment_callback,
 )
 
 # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
@@ -151,6 +164,9 @@ from handlers import (
 )
 
 from handlers.common import ask_clarification_question, handle_clarification_answer
+from handlers.results import show_results_screen, back_to_results, back_to_results_after_gift, skip_share, confirm_share, restart_test
+from handlers.gifts import get_gift_screen, open_gift_screen, show_package_screen
+from handlers.payment import buy_command, buy_without_test_callback, show_payment_screen, check_payment_callback, get_materials_callback_payment, materials_command, status_command
 
 # ===== ПРОВЕРКА ИМПОРТОВ =====
 logger.info("🔍 ПРОВЕРКА ИМПОРТОВ ИЗ handlers:")
@@ -1760,7 +1776,7 @@ def main():
     print("="*50 + "\n")
     
     print("\n" + "="*70)
-    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.4)")
+    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.6)")
     print("="*70)
     print("🔞 ПОЛНАЯ ИНТЕГРАЦИЯ 18+ МОДУЛЯ")
     print("="*70)
@@ -1771,10 +1787,11 @@ def main():
     print("4. ✅ Платежная система ЮKassa")
     print("5. ✅ Интеграция с Яндекс.Диск (36 профилей)")
     print("="*70)
-    print("🔧 ИСПРАВЛЕНИЯ В 5.4:")
+    print("🔧 ИСПРАВЛЕНИЯ В 5.6:")
     print("   ✅ Исправлен циклический импорт (константы вынесены в constants.py)")
-    print("   ✅ Импорты STAGE_1, STAGE_2 теперь из constants.py")
-    print("   ✅ Устранена проблема с start_stage_1 = None")
+    print("   ✅ Добавлены все состояния для 4F модуля")
+    print("   ✅ Полная интеграция с 4F функциями")
+    print("   ✅ Добавлен start_stage_1 в entry_points и fallbacks")
     print("="*70)
     
     # Проверка наличия GIFT_PDF_LINK
@@ -1823,7 +1840,8 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
-            CallbackQueryHandler(start_test, pattern="^start_test$")
+            CallbackQueryHandler(start_test, pattern="^start_test$"),
+            CallbackQueryHandler(start_stage_1, pattern="^start_stage_1$"),  # ДОБАВЛЕНО
         ],
         states={
             STAGE_1: [
@@ -1889,55 +1907,138 @@ def main():
                 CallbackQueryHandler(buy_without_test_callback, pattern="^buy_without_test$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
             ],
-            # ===== 18+ МОДУЛЬ =====
+            # ===== 18+ МОДУЛЬ (ПОЛНАЯ ВЕРСИЯ) =====
             MY_SEXUAL_PROFILE: [
                 CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
                 CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
             ],
+            
             SEXUAL_PROFILE_SCREEN: [
                 CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
                 CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
                 CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
             ],
+            
             SEXUAL_INVITES_LIST: [
-                CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
                 CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(four_f_main_menu_callback, pattern="^four_f_main_menu$"),
+                CallbackQueryHandler(check_status_callback, pattern="^check_status_"),
+                CallbackQueryHandler(friend_menu_callback, pattern="^friend_"),
+                CallbackQueryHandler(show_my_sexual_profile, pattern="^my_sexual_profile$"),
+                CallbackQueryHandler(buy_invite_packages_callback, pattern="^buy_invite_packages$"),
+                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
                 CallbackQueryHandler(copy_invite_callback, pattern="^copy_invite_"),
                 CallbackQueryHandler(check_invite_callback, pattern="^check_invite_"),
                 CallbackQueryHandler(create_invite_callback, pattern="^create_new_invite$"),
-                CallbackQueryHandler(noop_callback, pattern="^delete_invite_"),
-                CallbackQueryHandler(noop_callback, pattern="^buy_function_"),
-                CallbackQueryHandler(noop_callback, pattern="^open_4f_key_"),
-                CallbackQueryHandler(noop_callback, pattern="^buy_invite_packages$"),
             ],
+            
             SEXUAL_FRIEND_PROFILE: [
+                CallbackQueryHandler(standard_profile_callback, pattern="^std_"),
+                CallbackQueryHandler(intimate_profile_callback, pattern="^int_"),
+                CallbackQueryHandler(four_f_menu_callback, pattern="^4f_"),
+                CallbackQueryHandler(four_f_explanation_callback, pattern="^4f_explain$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
+                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
                 CallbackQueryHandler(noop_callback, pattern="^friend_details_"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
             ],
+            
             FOUR_F_PAYMENT_SCREEN: [
+                CallbackQueryHandler(process_payment_callback, pattern="^process_payment_"),
+                CallbackQueryHandler(dummy_callback, pattern="^check_payment_"),
+                CallbackQueryHandler(dummy_callback, pattern="^pay_access_"),
+                CallbackQueryHandler(pay_package_callback, pattern="^pay_package_"),
+                CallbackQueryHandler(process_package_payment_callback, pattern="^process_package_payment_"),
+                CallbackQueryHandler(four_f_menu_callback, pattern="^4f_"),
+                CallbackQueryHandler(buy_invite_packages_callback, pattern="^buy_invite_packages$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
+                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
                 CallbackQueryHandler(noop_callback, pattern="^check_4f_payment_"),
                 CallbackQueryHandler(noop_callback, pattern="^open_4f_key_"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+            ],
+            
+            FOUR_F_CONTENT_SCREEN: [
+                CallbackQueryHandler(open_4f_key_callback, pattern="^open_4f_"),
+                CallbackQueryHandler(buy_4f_key_callback, pattern="^buy_4f_"),
+                CallbackQueryHandler(four_f_menu_callback, pattern="^4f_"),
+                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
                 CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
             ],
-            FOUR_F_CONTENT_SCREEN: [
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+            
+            # ===== НОВЫЕ СОСТОЯНИЯ ДЛЯ 4F =====
+            FOUR_F_MAIN: [
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
+                CallbackQueryHandler(four_f_detailed_callback, pattern="^four_f_detailed$"),
+                CallbackQueryHandler(four_f_explanation_callback, pattern="^4f_explain$"),
+                CallbackQueryHandler(show_my_sexual_profile, pattern="^my_sexual_profile$"),
+                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
+            ],
+            
+            FOUR_F_DETAILED: [
+                CallbackQueryHandler(four_f_main_menu_callback, pattern="^four_f_main_menu$"),
+                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
+            ],
+            
+            FOUR_F_MENU: [
+                CallbackQueryHandler(buy_4f_key_callback, pattern="^buy_4f_"),
+                CallbackQueryHandler(open_4f_key_callback, pattern="^open_4f_"),
+                CallbackQueryHandler(four_f_explanation_callback, pattern="^4f_explain$"),
+                CallbackQueryHandler(friend_menu_callback, pattern="^friend_"),
+                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
+            ],
+            
+            FOUR_F_CONTENT: [
+                CallbackQueryHandler(open_4f_key_callback, pattern="^open_4f_"),
+                CallbackQueryHandler(buy_4f_key_callback, pattern="^buy_4f_"),
+                CallbackQueryHandler(four_f_menu_callback, pattern="^4f_"),
+                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
+            ],
+            
+            BUY_PACKAGES: [
+                CallbackQueryHandler(pay_package_callback, pattern="^pay_package_"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
+                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
+            ],
+            
+            INVITES_LIST: [
                 CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
+                CallbackQueryHandler(four_f_main_menu_callback, pattern="^four_f_main_menu$"),
+                CallbackQueryHandler(check_status_callback, pattern="^check_status_"),
+                CallbackQueryHandler(friend_menu_callback, pattern="^friend_"),
+                CallbackQueryHandler(show_my_sexual_profile, pattern="^my_sexual_profile$"),
+                CallbackQueryHandler(buy_invite_packages_callback, pattern="^buy_invite_packages$"),
+                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
+            ],
+            
+            FRIEND_MENU: [
+                CallbackQueryHandler(standard_profile_callback, pattern="^std_"),
+                CallbackQueryHandler(intimate_profile_callback, pattern="^int_"),
+                CallbackQueryHandler(four_f_menu_callback, pattern="^4f_"),
+                CallbackQueryHandler(four_f_explanation_callback, pattern="^4f_explain$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
+                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
             ],
             # ===== КОНЕЦ 18+ =====
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[
+            CommandHandler("start", start),
+            CallbackQueryHandler(start_test, pattern="^start_test$"),
+            CallbackQueryHandler(start_stage_1, pattern="^start_stage_1$"),  # ДОБАВЛЕНО
+            CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
+            CallbackQueryHandler(show_my_sexual_profile, pattern="^my_sexual_profile$"),
+        ],
         allow_reentry=True
     )
     
     application.add_handler(conv_handler)
     
     logger.info("🧠 Виртуальный психолог Вариатика запущен!")
-    logger.info("✅ ВЕРСИЯ 5.4: ИСПРАВЛЕН ЦИКЛИЧЕСКИЙ ИМПОРТ!")
+    logger.info("✅ ВЕРСИЯ 5.6: ПОЛНАЯ ИНТЕГРАЦИЯ 4F МОДУЛЯ!")
     logger.info("✅ Константы вынесены в отдельный файл constants.py")
+    logger.info("✅ Все состояния для 4F добавлены")
+    logger.info("✅ Все функции для 4F импортированы")
+    logger.info("✅ Добавлен start_stage_1 в entry_points и fallbacks")
     logger.info("✅ Вопросы вынесены в отдельный файл questions.py")
     logger.info("✅ Обработчики этапов вынесены в папку handlers/")
     logger.info("✅ Утилиты вынесены в папку utils/")
