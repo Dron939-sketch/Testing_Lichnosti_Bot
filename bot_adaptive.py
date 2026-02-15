@@ -2061,7 +2061,7 @@ def main():
                 
                 # ===== 18+ МОДУЛЬ =====
                 MY_SEXUAL_PROFILE: [
-                    CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
+                    CallbackQueryHandler(send_invite_callback, pattern="^send_invite$"), 
                     CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
                     CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 ],
