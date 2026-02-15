@@ -2276,6 +2276,67 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return INVITES_LIST
 
 # ============================================
+# 💳 ЭКРАН: ПОКУПКА ПАКЕТОВ ССЫЛОК
+# ============================================
+
+async def buy_invite_packages_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """💳 ПОКАЗАТЬ ДОСТУПНЫЕ ПАКЕТЫ ПРИГЛАШЕНИЙ"""
+    try:
+        query = update.callback_query
+        await query.answer("📦 Загружаю пакеты...")
+        
+        context.user_data["conversation_state"] = BUY_PACKAGES
+        logger.info(f"📦 Пользователь {query.from_user.id} открыл покупку пакетов")
+        
+        message = f"""
+💎 <b>ПАКЕТЫ ПРИГЛАШЕНИЙ</b>
+
+<b>🆓 Бесплатные ссылки закончились!</b>
+У вас было {FREE_INVITE_LIMIT} бесплатных ссылок, и вы их использовали.
+
+<b>Выберите пакет для продолжения:</b>
+
+"""
+        
+        for package_id, data in INVITE_PACKAGES.items():
+            popular = " 🔥 ХИТ" if data.get("popular") else ""
+            price_per_link = data["price"] // data["links"]
+            message += f"""
+{data['emoji']} <b>{data['links']} ссылок</b> — {data['price']}₽{popular}
+   💎 {price_per_link}₽ за ссылку
+"""
+        
+        message += f"""
+
+{SEXUAL_DIVIDER}
+✅ После оплаты ссылки добавляются к вашему лимиту
+🎁 Чем больше пакет — тем выгоднее!
+"""
+        
+        keyboard = []
+        for package_id, data in INVITE_PACKAGES.items():
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"{data['emoji']} {data['links']} ССЫЛОК - {data['price']}₽",
+                    callback_data=f"pay_package_{package_id}"
+                )
+            ])
+        
+        keyboard.append([InlineKeyboardButton("◀️ НАЗАД", callback_data="my_invites")])
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
+        return BUY_PACKAGES
+    except Exception as e:
+        logger.error(f"❌ Ошибка в buy_invite_packages_callback: {e}")
+        await query.answer("❌ Произошла ошибка", show_alert=True)
+        return INVITES_LIST
+
+# ============================================
 # 💳 ЭКРАН: ОПЛАТА ПАКЕТА
 # ============================================
 
