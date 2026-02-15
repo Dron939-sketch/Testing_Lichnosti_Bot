@@ -93,6 +93,7 @@ from sexual_19_7 import (
     INVITE_PACKAGES,
     PROFILE_DISK_LINKS,
     FOUR_F_DESCRIPTIONS,
+    back_to_sexual_profile_callback,
     
     # Функции для работы с БД
     get_user_invites_from_api,
@@ -1963,6 +1964,7 @@ def main():
                     CallbackQueryHandler(check_status_callback, pattern="^check_status_"),
                     CallbackQueryHandler(friend_menu_callback, pattern="^friend_"),
                     CallbackQueryHandler(buy_invite_packages_callback, pattern="^buy_invite_packages$"),
+                    CallbackQueryHandler(back_to_sexual_profile_callback, pattern="^back_to_sexual_profile$"),
                 ],
                 FRIEND_MENU: [
                     CallbackQueryHandler(standard_profile_callback, pattern="^std_"),
