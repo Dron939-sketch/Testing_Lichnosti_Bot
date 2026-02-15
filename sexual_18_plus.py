@@ -1716,7 +1716,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         
         keyboard = [
             [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
-            [InlineKeyboardButton("⬅️ К ОТРАЖЕНИЯМ", callback_data="my_invites")]
+            [InlineKeyboardButton("⬅️ НАЗАД В ПРОФИЛЬ", callback_data="my_sexual_profile")]  # 👈 НА ЭТУ
         ]
         
         await query.edit_message_text(
