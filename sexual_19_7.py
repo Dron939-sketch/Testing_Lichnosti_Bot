@@ -1999,50 +1999,130 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
 # ============================================
 
 # ============================================
+# 💳 ЭКРАН: ПОКУПКА ПАКЕТОВ ССЫЛОК
+# ============================================
+
+async def buy_invite_packages_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """💳 ПОКАЗАТЬ ДОСТУПНЫЕ ПАКЕТЫ ПРИГЛАШЕНИЙ"""
+    try:
+        query = update.callback_query
+        await query.answer("📦 Загружаю пакеты...")
+        
+        context.user_data["conversation_state"] = BUY_PACKAGES
+        logger.info(f"📦 Пользователь {query.from_user.id} открыл покупку пакетов")
+        
+        message = f"""
+💎 <b>ПАКЕТЫ ПРИГЛАШЕНИЙ</b>
+
+<b>🆓 Бесплатные ссылки закончились!</b>
+У вас было {FREE_INVITE_LIMIT} бесплатных ссылок, и вы их использовали.
+
+<b>Выберите пакет для продолжения:</b>
+
+"""
+        
+        for package_id, data in INVITE_PACKAGES.items():
+            popular = " 🔥 ХИТ" if data.get("popular") else ""
+            price_per_link = data["price"] // data["links"]
+            message += f"""
+{data['emoji']} <b>{data['links']} ссылок</b> — {data['price']}₽{popular}
+   💎 {price_per_link}₽ за ссылку
+"""
+        
+        message += f"""
+
+{SEXUAL_DIVIDER}
+✅ После оплаты ссылки добавляются к вашему лимиту
+🎁 Чем больше пакет — тем выгоднее!
+"""
+        
+        keyboard = []
+        for package_id, data in INVITE_PACKAGES.items():
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"{data['emoji']} {data['links']} ССЫЛОК - {data['price']}₽",
+                    callback_data=f"pay_package_{package_id}"
+                )
+            ])
+        
+        keyboard.append([InlineKeyboardButton("◀️ НАЗАД", callback_data="my_invites")])
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
+        return BUY_PACKAGES
+    except Exception as e:
+        logger.error(f"❌ Ошибка в buy_invite_packages_callback: {e}")
+        await query.answer("❌ Произошла ошибка", show_alert=True)
+        return INVITES_LIST
+
+
+# ============================================
 # 💳 ЭКРАН: ОПЛАТА ПАКЕТА
 # ============================================
 
 async def pay_package_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """💳 СОЗДАНИЕ ПЛАТЕЖА ДЛЯ ПАКЕТА С РЕАЛЬНОЙ ССЫЛКОЙ НА ОПЛАТУ"""
     try:
         query = update.callback_query
-        await query.answer("💰 Формирую счёт...")
+        await query.answer("💰 Создаю платеж...")
         
         context.user_data["conversation_state"] = FOUR_F_PAYMENT_SCREEN
         
-        package_id = query.data.split("_")[2]  # "pay_package_3" -> "3"
+        # Получаем ID пакета из callback_data (формат: "pay_package_3")
+        package_id = query.data.split("_")[2]
         package = INVITE_PACKAGES.get(package_id)
         
         if not package:
+            logger.error(f"❌ Пакет {package_id} не найден")
             await query.answer("❌ Пакет не найден", show_alert=True)
-            return
+            return BUY_PACKAGES
+        
+        user_id = query.from_user.id
+        logger.info(f"💰 Пользователь {user_id} выбрал пакет {package_id} ({package['links']} ссылок за {package['price']}₽)")
         
         # Генерируем ID платежа
-        payment_id = generate_payment_id("package", query.from_user.id)
+        payment_id = generate_payment_id("package", user_id)
         
-        # Создаем платеж через API
+        # СОЗДАЕМ РЕАЛЬНЫЙ ПЛАТЕЖ ЧЕРЕЗ API
+        confirmation_url = None
+        
         try:
+            # Пробуем создать платеж через API
             response = requests.post(
                 f"{API_URL}/api/create-payment-advanced",
                 json={
-                    "user_id": query.from_user.id,
-                    "amount": package['price'],
-                    "description": f"Пакет {package['links']} ссылок для приглашений",
                     "payment_id": payment_id,
-                    "profile_code": "PACKAGE"
+                    "user_id": user_id,
+                    "amount": package['price'],
+                    "profile_code": f"PACKAGE_{package_id}",
+                    "description": f"Пакет {package['links']} ссылок для приглашений",
+                    "email": f"user_{user_id}@example.com"
                 },
-                timeout=10
+                timeout=15
             )
             
             if response.status_code == 200:
                 data = response.json()
                 confirmation_url = data.get("confirmation_url")
-                logger.info(f"✅ Платеж создан через API: {payment_id}")
+                logger.info(f"✅ Платеж {payment_id} создан через API, ссылка получена")
             else:
-                logger.warning(f"⚠️ API вернул {response.status_code}, использую тестовый режим")
-                confirmation_url = "https://test.payment.url"
+                logger.error(f"❌ Ошибка API: {response.status_code} - {response.text}")
+                await query.answer("❌ Ошибка платежной системы", show_alert=True)
+                return BUY_PACKAGES
+                
         except Exception as e:
             logger.error(f"❌ Ошибка при создании платежа: {e}")
-            confirmation_url = "https://test.payment.url"
+            await query.answer("❌ Ошибка соединения", show_alert=True)
+            return BUY_PACKAGES
+        
+        if not confirmation_url:
+            logger.error("❌ Не получена ссылка на оплату")
+            await query.answer("❌ Ошибка: нет ссылки на оплату", show_alert=True)
+            return BUY_PACKAGES
         
         # Сохраняем данные платежа
         if "payment_data" not in context.user_data:
@@ -2052,18 +2132,31 @@ async def pay_package_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "confirmation_url": confirmation_url,
             "package_id": package_id,
             "amount": package['price'],
-            "timestamp": time.time()
+            "links": package['links'],
+            "timestamp": time.time(),
+            "status": "pending"
         }
         
+        # Сохраняем ID платежа для быстрого доступа
+        context.user_data["last_payment_id"] = payment_id
+        
+        # Формируем сообщение с реальной ссылкой на оплату
         message = f"""
-💳 <b>ОПЛАТА ПАКЕТА</b>
+💳 <b>ПЛАТЕЖ СОЗДАН</b>
 
 {package['emoji']} <b>Пакет: {package['links']} ссылок</b>
 💰 <b>Сумма: {package['price']}₽</b>
+📋 <b>ID платежа:</b> <code>{payment_id}</code>
 
-✅ После оплаты ссылки будут добавлены к вашему аккаунту
+✅ <b>Для оплаты нажмите кнопку ниже</b>
+
+После успешной оплаты:
+1. Нажмите "ПРОВЕРИТЬ ОПЛАТУ"
+2. Ссылки будут добавлены к вашему аккаунту
+3. Вы сможете создавать новые приглашения
 """
         
+        # ВАЖНО: используем URL, а не callback_data для кнопки оплаты
         keyboard = [
             [InlineKeyboardButton(f"💳 ОПЛАТИТЬ {package['price']}₽", url=confirmation_url)],
             [InlineKeyboardButton("🔄 ПРОВЕРИТЬ ОПЛАТУ", callback_data=f"check_package_{payment_id}_{package_id}")],
@@ -2073,10 +2166,13 @@ async def pay_package_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(
             message,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
+            parse_mode="HTML",
+            disable_web_page_preview=True
         )
         
+        logger.info(f"✅ Пользователь {user_id} перенаправлен на оплату пакета {package_id}")
         return FOUR_F_PAYMENT_SCREEN
+        
     except Exception as e:
         logger.error(f"❌ Ошибка в pay_package_callback: {e}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
@@ -2088,6 +2184,7 @@ async def pay_package_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 # ============================================
 
 async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """✅ ПРОВЕРКА СТАТУСА ОПЛАТЫ ПАКЕТА И АКТИВАЦИЯ ССЫЛОК"""
     try:
         query = update.callback_query
         await query.answer("🔄 Проверяю оплату...")
@@ -2101,11 +2198,14 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
             await query.answer("❌ Пакет не найден", show_alert=True)
             return
         
-        # Получаем данные платежа
+        logger.info(f"🔍 Проверка платежа {payment_id} для пакета {package_id}")
+        
+        # Получаем данные платежа из памяти
         payment_data = context.user_data.get("payment_data", {})
         payment_info = payment_data.get(payment_id, {})
         
         # Проверяем статус через API
+        status = "pending"
         try:
             response = requests.get(
                 f"{API_URL}/api/payment-status/{payment_id}",
@@ -2113,17 +2213,15 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
             )
             if response.status_code == 200:
                 data = response.json()
-                status = data.get("status", "unknown")
+                status = data.get("status", "pending")
+                logger.info(f"📊 Статус платежа {payment_id}: {status}")
             else:
-                status = "pending"
+                logger.warning(f"⚠️ API вернул {response.status_code}")
         except Exception as e:
             logger.error(f"❌ Ошибка проверки статуса: {e}")
-            status = "pending"
-        
-        logger.info(f"📊 Статус платежа {payment_id}: {status}")
         
         if status == "succeeded":
-            # Добавляем ссылки пользователю
+            # ПЛАТЕЖ УСПЕШЕН - добавляем ссылки пользователю
             user_limits = get_user_limits(context)
             user_limits["total_purchased"] += package["links"]
             user_limits["paid_packages"].append({
@@ -2134,41 +2232,77 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
                 "purchased_at": datetime.now().timestamp()
             })
             
+            # Обновляем статус в payment_data
+            if payment_id in payment_data:
+                payment_data[payment_id]["status"] = "succeeded"
+            
+            # Получаем статистику
             invites = context.user_data.get("sexual_invites", [])
             total_invites = len(invites)
-            paid_available = user_limits["total_purchased"] - (total_invites - user_limits["free_used"])
+            free_used = user_limits["free_used"]
+            paid_available = user_limits["total_purchased"] - (total_invites - free_used)
             
             message = f"""
 ✅ <b>ОПЛАТА ПРОШЛА УСПЕШНО!</b>
 
-{package['emoji']} <b>{package['links']} ссылок</b> добавлено
+{package['emoji']} <b>Пакет: {package['links']} ссылок</b>
 💰 Сумма: {package['price']}₽
+📋 ID платежа: <code>{payment_id}</code>
 
-💎 <b>Теперь у вас:</b>
-   • Бесплатных использовано: {user_limits['free_used']}/{FREE_INVITE_LIMIT}
+💎 <b>НОВЫЙ ЛИМИТ ССЫЛОК:</b>
+   • Бесплатных использовано: {free_used}/{FREE_INVITE_LIMIT}
    • Платных доступно: {paid_available}
+   • Всего ссылок создано: {total_invites}
+
+🎉 <b>Теперь вы можете создавать новые приглашения!</b>
 """
             keyboard = [
                 [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
                 [InlineKeyboardButton("◀️ К ОТРАЖЕНИЯМ", callback_data="my_invites")]
             ]
             
-            # Очищаем данные платежа
+            logger.info(f"✅ Пользователь {query.from_user.id} получил пакет {package_id} ({package['links']} ссылок)")
+            
+            # Очищаем данные платежа после успешной активации
             if payment_id in payment_data:
                 del payment_data[payment_id]
-        else:
+                
+        elif status in ["pending", "waiting"]:
+            # ПЛАТЕЖ В ОЖИДАНИИ
+            confirmation_url = payment_info.get("confirmation_url")
+            if not confirmation_url:
+                # Если ссылка потеряна, пробуем создать новый платеж
+                logger.warning(f"⚠️ Ссылка на оплату не найдена для {payment_id}")
+                await query.answer("🔄 Создаю новый платеж...")
+                return await pay_package_callback(update, context)
+            
             message = f"""
-⏳ <b>ПЛАТЕЖ ЕЩЕ НЕ ОПЛАЧЕН</b>
+⏳ <b>ПЛАТЕЖ ОЖИДАЕТ ОПЛАТЫ</b>
 
-Платеж `{payment_id}` в статусе: {status}
+{package['emoji']} <b>Пакет: {package['links']} ссылок</b>
+💰 Сумма: {package['price']}₽
+📋 ID платежа: <code>{payment_id}</code>
+📊 Статус: {status}
 
-💳 Для оплаты используйте кнопку ниже
+💳 Для завершения оплаты нажмите кнопку ниже
 """
-            confirmation_url = payment_info.get("confirmation_url", "https://test.payment.url")
             keyboard = [
                 [InlineKeyboardButton("💳 ПЕРЕЙТИ К ОПЛАТЕ", url=confirmation_url)],
                 [InlineKeyboardButton("🔄 ПРОВЕРИТЬ СНОВА", callback_data=f"check_package_{payment_id}_{package_id}")],
                 [InlineKeyboardButton("◀️ НАЗАД", callback_data="buy_invite_packages")]
+            ]
+        else:
+            # ОШИБКА ИЛИ ПЛАТЕЖ НЕ НАЙДЕН
+            message = f"""
+❌ <b>ПЛАТЕЖ НЕ НАЙДЕН</b>
+
+Платеж <code>{payment_id}</code> не найден или произошла ошибка.
+
+Попробуйте создать новый платеж.
+"""
+            keyboard = [
+                [InlineKeyboardButton("📦 ВЫБРАТЬ ПАКЕТ", callback_data="buy_invite_packages")],
+                [InlineKeyboardButton("◀️ К ОТРАЖЕНИЯМ", callback_data="my_invites")]
             ]
         
         await query.edit_message_text(
@@ -2183,7 +2317,6 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
         logger.error(f"❌ Ошибка в check_package_callback: {e}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
         return BUY_PACKAGES
-
 
 # ============================================
 # ✅ ЭКРАН: ПОДТВЕРЖДЕНИЕ ОПЛАТЫ ПАКЕТА (старая версия для совместимости)
@@ -2204,22 +2337,6 @@ async def process_package_payment_callback(update: Update, context: ContextTypes
         new_query.callback_query.data = f"check_package_{payment_id}_{package_id}"
         return await check_package_callback(new_query, context)
         
-    except Exception as e:
-        logger.error(f"❌ Ошибка в process_package_payment_callback: {e}")
-        return INVITES_LIST
-        
-        keyboard = [
-            [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
-            [InlineKeyboardButton("◀️ К ОТРАЖЕНИЯМ", callback_data="my_invites")]
-        ]
-        
-        await query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
-        )
-        
-        return INVITES_LIST
     except Exception as e:
         logger.error(f"❌ Ошибка в process_package_payment_callback: {e}")
         return INVITES_LIST
