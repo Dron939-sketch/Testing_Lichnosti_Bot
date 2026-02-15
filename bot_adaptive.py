@@ -73,7 +73,9 @@ from config import (
 )
 
 # ===== ИМПОРТ 18+ МОДУЛЯ (БЕЗ КОНФЛИКТУЮЩИХ ФУНКЦИЙ) =====
+# ===== ИМПОРТ 18+ МОДУЛЯ (НОВАЯ ВЕРСИЯ 19.7) =====
 from sexual_19_7 import (
+    # Константы
     SEXUAL_DIVIDER,
     FREE_INVITE_LIMIT,
     FRIEND_ACCESS_PRICE,
@@ -82,15 +84,14 @@ from sexual_19_7 import (
     PROFILE_DISK_LINKS,
     FOUR_F_DESCRIPTIONS,
     SEXUAL_STATES,
+    
+    # Функции для работы с БД
     get_user_invites_from_api,
-    get_user_limits,
     save_invite_to_api,
     update_invite_in_api,
     find_invite_in_api,
-    get_friend_by_id,
-    count_free_friends,
-    can_create_invite,
-    init_test_data,
+    
+    # Функции для работы с профилями
     get_disk_link_by_profile,
     get_disk_link,
     load_intimate_profile,
@@ -99,30 +100,58 @@ from sexual_19_7 import (
     format_intimate_profile_part2,
     format_intimate_profile_part3,
     format_friend_intimate_profile,
+    
+    # Функции для 4F
     load_4f_content,
-    create_invite_callback,
-    generate_payment_id,
-    create_yookassa_invoice,
+    
+    # Функции для приглашений
+    get_user_invites,
+    get_user_limits,
+    count_free_friends,
+    can_create_invite,
+    init_test_data,
+    get_friend_by_id,
+    
+    # Основные callback-обработчики (ВСЕ, ЧТО НУЖНО ДЛЯ CONVERSATIONHANDLER)
     show_my_sexual_profile,
     sexual_invite_start,
+    create_invite_callback,
+    my_invites_callback,
     copy_invite_callback,
     check_invite_callback,
-    # НЕ ИМПОРТИРУЕМ: start, show_results_screen
-    my_invites_callback,
-    friend_menu_callback,
-    show_payment_access_screen,
-    standard_profile_callback,
-    intimate_profile_callback,
+    
+    # 4F обработчики
+    four_f_main_menu_callback,
+    four_f_detailed_callback,
     four_f_menu_callback,
     four_f_explanation_callback,
     buy_4f_key_callback,
     process_payment_callback,
     open_4f_key_callback,
+    
+    # Пакеты приглашений
+    buy_invite_packages_callback,
+    pay_package_callback,
+    process_package_payment_callback,
+    
+    # Меню друга
+    friend_menu_callback,
+    show_payment_access_screen,
+    standard_profile_callback,
+    intimate_profile_callback,
+    
+    # Вспомогательные обработчики
+    check_status_callback,
     back_to_results_callback,
     dummy_callback,
+    
+    # Вспомогательные функции
     split_long_message,
     safe_send_message,
-)
+    
+    # Функции платежей
+    generate_payment_id,
+    create_yookassa_invoice,
 
 # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 async def noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
