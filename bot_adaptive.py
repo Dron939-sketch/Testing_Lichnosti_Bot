@@ -107,7 +107,6 @@ from sexual_18_plus import (
     sexual_invite_start,
     copy_invite_callback,
     check_invite_callback,
-    # НЕ ИМПОРТИРУЕМ: start, show_results_screen
     my_invites_callback,
     friend_menu_callback,
     show_payment_access_screen,
@@ -122,6 +121,13 @@ from sexual_18_plus import (
     dummy_callback,
     split_long_message,
     safe_send_message,
+    # 👇 ДОБАВЬТЕ ЭТИ ДВЕ ФУНКЦИИ
+    four_f_main_menu_callback,
+    four_f_detailed_callback,
+    check_status_callback,
+    buy_invite_packages_callback,
+    pay_package_callback,
+    process_package_payment_callback,
 )
 
 # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
