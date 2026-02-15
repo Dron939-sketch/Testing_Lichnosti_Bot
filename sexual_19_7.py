@@ -1872,8 +1872,8 @@ async def four_f_main_menu_callback(update: Update, context: ContextTypes.DEFAUL
         keyboard = [
             [InlineKeyboardButton("📘 ПОДРОБНЕЕ", callback_data="four_f_detailed")],
             [InlineKeyboardButton("🔍 К ОТРАЖЕНИЯМ", callback_data="my_invites")],
-            [InlineKeyboardButton("◀️ В ПРОФИЛЬ", callback_data="my_sexual_profile")]
-        ]
+            [InlineKeyboardButton("◀️ В ПРОФИЛЬ", callback_data="back_to_results")]
+]
         
         await query.edit_message_text(
             message,
