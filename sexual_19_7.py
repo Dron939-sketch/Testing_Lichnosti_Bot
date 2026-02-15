@@ -1728,10 +1728,12 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         
         share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
         
+        # 👇 ИСПРАВЛЕННАЯ КНОПКА
         keyboard = [
-    [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
-    [InlineKeyboardButton("⬅️ НАЗАД В ПРОФИЛЬ", callback_data="back_to_results")]
-]
+            [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
+            [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")],
+            [InlineKeyboardButton("🪞 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")]
+        ]
         
         await query.edit_message_text(
             text,
@@ -1831,10 +1833,11 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 ────────────────
 💫 Каждое отражение — ключ к человеку."""
 
+        # 👇 ИСПРАВЛЕННЫЕ КНОПКИ
         keyboard = [
-    [InlineKeyboardButton("◀️ К РЕЗУЛЬТАТАМ ТЕСТА", callback_data="back_to_results")],
-    [InlineKeyboardButton("🔴 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")]
-]
+            [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")],
+            [InlineKeyboardButton("🔴 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")]
+        ]
 
         await query.edit_message_text(
             message,
@@ -1957,9 +1960,10 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
    Напомните ему о себе.
 """
         
+        # 👇 ИСПРАВЛЕННЫЕ КНОПКИ
         keyboard = [
             [InlineKeyboardButton("⬅️ К ОТРАЖЕНИЯМ", callback_data="my_invites")],
-            [InlineKeyboardButton("◀️ В ПРОФИЛЬ", callback_data="my_sexual_profile")]
+            [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")]
         ]
         
         await query.edit_message_text(
@@ -2598,6 +2602,25 @@ async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return FOUR_F_MENU
 
 # ============================================
+# 🔄 ВОЗВРАТ В ИНТИМНЫЙ ПРОФИЛЬ (НОВАЯ ФУНКЦИЯ)
+# ============================================
+
+async def back_to_sexual_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возврат в интимный профиль"""
+    try:
+        query = update.callback_query
+        await query.answer("🔄 Возвращаюсь в интимный профиль...")
+        
+        # Просто вызываем функцию показа интимного профиля
+        # Она сама загрузит профиль по коду из profile_data или profile
+        return await show_my_sexual_profile(update, context)
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в back_to_sexual_profile_callback: {e}")
+        await query.answer("❌ Произошла ошибка", show_alert=True)
+        return RESULTS_SCREEN
+
+# ============================================
 # ⬅️ ВОЗВРАТЫ И ЗАГЛУШКИ
 # ============================================
 
@@ -2716,6 +2739,7 @@ __all__ = [
     'process_payment_callback',
     'open_4f_key_callback',
     'back_to_results_callback',
+    'back_to_sexual_profile_callback',  # 👈 НОВАЯ ФУНКЦИЯ
     'dummy_callback',
     
     # Вспомогательные функции
