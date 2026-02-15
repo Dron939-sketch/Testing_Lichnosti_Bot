@@ -1922,7 +1922,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     return await show_stage_1_intro(update, context)
 
-async fn cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def intimate_4f_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена теста"""
     logger.info(f"❌ Тест отменен пользователем {update.effective_user.id}")
     await update.message.reply_text(
@@ -1938,7 +1938,7 @@ async fn cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ФУНКЦИИ 18+ МОДУЛЯ
 # ============================================
 
-async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """🔞 Мой интимный профиль - из 18+ модуля"""
     try:
         query = update.callback_query
