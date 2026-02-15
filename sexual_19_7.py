@@ -713,21 +713,31 @@ def find_invite_in_api(invite_id: str) -> Optional[dict]:
 def update_invite_in_api(invite_id: str, friend_data: dict) -> bool:
     """Обновляет приглашение после прохождения теста"""
     try:
+        logger.info(f"📤 ВЫЗОВ update_invite_in_api для {invite_id}")
+        logger.info(f"📦 friend_data = {friend_data}")
+        logger.info(f"📡 API_URL = {API_URL}")
+        logger.info(f"🔗 Полный URL: {API_URL}/api/sexual/update-invite/{invite_id}")
+        
         response = requests.post(
             f"{API_URL}/api/sexual/update-invite/{invite_id}",
             json=friend_data,
             timeout=5
         )
         
+        logger.info(f"📥 Статус ответа: {response.status_code}")
+        logger.info(f"📥 Тело ответа: {response.text[:200]}")
+        
         if response.status_code == 200:
             logger.info(f"✅ Приглашение {invite_id} обновлено в БД")
             return True
         else:
             logger.error(f"❌ Ошибка обновления приглашения: {response.status_code}")
+            logger.error(f"❌ Текст ошибки: {response.text}")
             return False
             
     except Exception as e:
         logger.error(f"❌ Ошибка при обновлении в БД: {e}")
+        logger.error(f"❌ Детали: {traceback.format_exc()}")
         return False
 
 def get_user_invites_from_api(user_id: int) -> list:
