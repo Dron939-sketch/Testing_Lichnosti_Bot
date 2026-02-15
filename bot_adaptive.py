@@ -699,6 +699,10 @@ async def show_results_screen(
     user_id = update.effective_user.id
     
     log_callback("show_results_screen", update, context)
+    
+    # 👇 ДОБАВЛЯЕМ ПРОВЕРКУ current_invite
+    logger.info(f"🔍 ПРОВЕРКА current_invite В НАЧАЛЕ show_results_screen: {context.user_data.get('current_invite')}")
+    
     if "temp_has_shared" in context.user_data:
         context.user_data["has_shared"] = context.user_data.pop("temp_has_shared")
         logger.info(f"🔄 Восстановлен has_shared = {context.user_data['has_shared']}")
@@ -734,7 +738,7 @@ async def show_results_screen(
                 # Очищаем данные приглашения после использования
                 context.user_data.pop("current_invite", None)
                 
-                               # Отправляем уведомление создателю ссылки
+                # Отправляем уведомление создателю ссылки
                 buyer_id = current_invite.get("buyer_id")
                 logger.info(f"📤 Попытка отправить уведомление: buyer_id={buyer_id}")
                 
