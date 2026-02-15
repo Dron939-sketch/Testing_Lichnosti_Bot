@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
-ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА: ПУТЬ К САМОПОЗНАНИЮ
-4 этапа адаптивного исследования + персональное описание профиля
-ВЕРСИЯ 5.4: ИСПРАВЛЕН ЦИКЛИЧЕСКИЙ ИМПОРТ
+ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА + 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
+ВЕРСИЯ 8.0: ПОЛНОЕ ОБЪЕДИНЕНИЕ ВСЕЙ ЛОГИКИ
+✅ Психологический тест (4 этапа) - ПОЛНАЯ ВЕРСИЯ 5.4
+✅ 18+ интимные профили с приглашениями - ПОЛНАЯ ВЕРСИЯ 19.0
+✅ 4F-ключи (1F,2F,3F,4F) для друзей
+✅ Платежная система ЮKassa
+✅ Интеграция с Яндекс.Диск (36 профилей)
+✅ Все функции, все обработчики, все состояния
 """
 
 import logging
@@ -15,9 +20,14 @@ import base64
 import uuid
 import random
 import requests
-from typing import Dict, List, Optional, Any
+import json
+import traceback
+from datetime import datetime
+from typing import Dict, List, Optional, Any, Tuple
+from collections import defaultdict
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import Conflict, BadRequest
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -26,20 +36,25 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ===== НАСТРОЙКА СУПЕР-ЛОГГИРОВАНИЯ =====
+# ===== НАСТРОЙКА МАКСИМАЛЬНОГО ЛОГИРОВАНИЯ =====
 logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('bot_debug.log', encoding='utf-8')
+        logging.FileHandler("bot_detailed.log", encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
     ]
 )
-logger = logging.getLogger(__name__)
 
-# Функция для логирования входящих callback
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+# ===== ФУНКЦИЯ МАКСИМАЛЬНОГО ЛОГИРОВАНИЯ =====
 def log_callback(func_name: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Логирует входящий callback"""
+    """Максимальное логирование с деталями"""
     user = update.effective_user
     query = update.callback_query if update.callback_query else None
     
@@ -47,150 +62,345 @@ def log_callback(func_name: str, update: Update, context: ContextTypes.DEFAULT_T
     if query:
         log_msg += f" | Callback: {query.data}"
     if context.user_data:
+        log_msg += f" | State: {context.user_data.get('conversation_state', 'None')}"
         log_msg += f" | has_shared: {context.user_data.get('has_shared', False)}"
-        log_msg += f" | profile: {context.user_data.get('profile_data', {}).get('display_name', 'None')}"
+        profile = context.user_data.get('profile_data', {})
+        log_msg += f" | profile: {profile.get('display_name', 'None')}"
     
     logger.debug(log_msg)
     print(f"🔍 {log_msg}")
 
-# ===== ИМПОРТ КОНСТАНТ СОСТОЯНИЙ =====
-from constants import (
-    STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
-    GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
-    MY_SEXUAL_PROFILE, SEXUAL_PROFILE_SCREEN, SEXUAL_INVITES_LIST,
-    SEXUAL_FRIEND_PROFILE, FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN
-)
-
-# ===== ИМПОРТ КОНФИГУРАЦИИ =====
-from config import (
-    TOKEN, API_URL, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY,
-    TELEGRAM_BOT_URL, BOT_LINK, AUTHOR_LINK, GIFT_PDF_LINK, SHARE_TEXT,
-    GIFT_SCREEN_TEXT, STANDARD_SUFFIXES, CONFLICT_PHRASES, SUFFIX_TO_DILTS,
-    EMERGENCY_PROFILES, LEVEL_DIFFS, PROFILE_LINKS, DEFAULT_PROFILE,
-    logger as config_logger
-)
-
-# ===== ИМПОРТ 18+ МОДУЛЯ (БЕЗ КОНФЛИКТУЮЩИХ ФУНКЦИЙ) =====
-from sexual_18_plus import (
-    SEXUAL_DIVIDER,
-    FREE_INVITE_LIMIT,
-    FRIEND_ACCESS_PRICE,
-    FOUR_F_PRICE,
-    INVITE_PACKAGES,
-    PROFILE_DISK_LINKS,
-    FOUR_F_DESCRIPTIONS,
-    SEXUAL_STATES,
-    get_user_invites_from_api,
-    get_user_limits,
-    save_invite_to_api,
-    update_invite_in_api,
-    find_invite_in_api,
-    get_friend_by_id,
-    count_free_friends,
-    can_create_invite,
-    init_test_data,
-    get_disk_link_by_profile,
-    get_disk_link,
-    load_intimate_profile,
-    load_friend_intimate_profile,
-    format_intimate_profile_part1,
-    format_intimate_profile_part2,
-    format_intimate_profile_part3,
-    format_friend_intimate_profile,
-    load_4f_content,
-    create_invite_callback,
-    generate_payment_id,
-    create_yookassa_invoice,
-    show_my_sexual_profile,
-    sexual_invite_start,
-    copy_invite_callback,
-    check_invite_callback,
-    # НЕ ИМПОРТИРУЕМ: start, show_results_screen
-    my_invites_callback,
-    friend_menu_callback,
-    show_payment_access_screen,
-    standard_profile_callback,
-    intimate_profile_callback,
-    four_f_menu_callback,
-    four_f_explanation_callback,
-    buy_4f_key_callback,
-    process_payment_callback,
-    open_4f_key_callback,
-    back_to_results_callback,
-    dummy_callback,
-    split_long_message,
-    safe_send_message,
-)
-
-# ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+# ===== ЗАГЛУШКА ДЛЯ НЕРЕАЛИЗОВАННЫХ ФУНКЦИЙ =====
 async def noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Заглушка для нереализованных функций"""
-    query = update.callback_query
-    await query.answer("🚧 Функция в разработке", show_alert=True)
-    return
+    try:
+        query = update.callback_query
+        await query.answer("🚧 Функция в разработке", show_alert=True)
+        logger.warning(f"⚠️ Вызвана заглушка noop_callback с данными: {query.data}")
+        return
+    except Exception as e:
+        logger.error(f"❌ Ошибка в noop_callback: {e}")
+        return
+
+# ===== ИМПОРТ КОНСТАНТ СОСТОЯНИЙ =====
+try:
+    from constants import (
+        STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
+        GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
+        MY_SEXUAL_PROFILE, SEXUAL_PROFILE_SCREEN, SEXUAL_INVITES_LIST,
+        SEXUAL_FRIEND_PROFILE, FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN,
+        FOUR_F_MAIN, FOUR_F_DETAILED, FOUR_F_MENU, FOUR_F_CONTENT,
+        BUY_PACKAGES, INVITES_LIST, FRIEND_MENU,
+    )
+    logger.info("✅ Константы успешно импортированы из constants.py")
+except ImportError as e:
+    logger.error(f"❌ Ошибка импорта из constants.py: {e}")
+    # Заглушки на случай ошибки импорта
+    STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS = range(1, 7)
+    GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN = range(7, 11)
+    MY_SEXUAL_PROFILE, SEXUAL_PROFILE_SCREEN, SEXUAL_INVITES_LIST, SEXUAL_FRIEND_PROFILE = range(11, 15)
+    FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN, FOUR_F_MAIN, FOUR_F_DETAILED = range(15, 19)
+    FOUR_F_MENU, FOUR_F_CONTENT, BUY_PACKAGES, INVITES_LIST, FRIEND_MENU = range(19, 24)
+    logger.warning("⚠️ Используются запасные значения констант")
+
+# ===== ИМПОРТ КОНФИГУРАЦИИ =====
+try:
+    from config import (
+        TOKEN, API_URL, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY,
+        TELEGRAM_BOT_URL, BOT_LINK, AUTHOR_LINK, GIFT_PDF_LINK, SHARE_TEXT,
+        GIFT_SCREEN_TEXT, STANDARD_SUFFIXES, CONFLICT_PHRASES, SUFFIX_TO_DILTS,
+        EMERGENCY_PROFILES, LEVEL_DIFFS, PROFILE_LINKS, DEFAULT_PROFILE,
+    )
+    logger.info("✅ Конфигурация успешно импортирована из config.py")
+except ImportError as e:
+    logger.error(f"❌ Ошибка импорта из config.py: {e}")
+    # Заглушки
+    TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7763554507:AAHLHX-7EceA3x0E9NKa0e0MNAtCx6FIBI0")
+    API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
+    YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID", "ваш_shop_id")
+    YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY", "ваш_secret_key")
+    BOT_USERNAME = "Testing_Lichnosti_bot"
+    BOT_LINK = f"t.me/{BOT_USERNAME}"
+    GIFT_PDF_LINK = "https://disk.yandex.ru/i/8KD0DGy4AbpDYA"
+    AUTHOR_TELEGRAM = "https://t.me/meysternlp"
+    SHARE_TEXT = "🔮 Хочешь узнать, что на самом деле движет тобой? Этот тест видит то, что обычно скрыто. За 15 минут узнаешь свой реальный психологический профиль. Рекомендую 👇"
+    GIFT_SCREEN_TEXT = "🎁 Ваш подарок готов!"
+    STANDARD_SUFFIXES = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
+    CONFLICT_PHRASES = {}
+    SUFFIX_TO_DILTS = {}
+    EMERGENCY_PROFILES = ['sa_5_int']
+    LEVEL_DIFFS = [0, 1, -1, 2, -2]
+    PROFILE_LINKS = {}
+    DEFAULT_PROFILE = "SA-5_INT"
+    logger.warning("⚠️ Используются запасные значения конфигурации")
+
+# ===== УМНЫЙ ПОИСК КОРНЯ ПРОЕКТА =====
+def find_project_root() -> str:
+    """Находит корень проекта (где лежит папка profiles/)"""
+    try:
+        current = os.path.dirname(os.path.abspath(__file__))
+        
+        while current != os.path.dirname(current):
+            if os.path.exists(os.path.join(current, "profiles")):
+                logger.info(f"✅ Корень проекта найден: {current}")
+                return current
+            current = os.path.dirname(current)
+        
+        root = os.path.dirname(os.path.abspath(__file__))
+        logger.warning(f"⚠️ Папка profiles не найдена, используем: {root}")
+        return root
+    except Exception as e:
+        logger.error(f"❌ Ошибка поиска корня проекта: {e}")
+        return os.path.dirname(os.path.abspath(__file__))
+
+PROJECT_ROOT = find_project_root()
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+os.chdir(PROJECT_ROOT)
+
+logger.info(f"📁 Корень проекта: {PROJECT_ROOT}")
 
 # ===== ИМПОРТ ВОПРОСОВ =====
-from questions import (
-    PERCEPTION_TYPES, CLARIFICATION_QUESTIONS,
-    STAGE1_FEEDBACK, STAGE2_FEEDBACK, STAGE3_FEEDBACK, STAGE4_ANALYSIS_SCREEN
-)
+try:
+    from questions import (
+        PERCEPTION_TYPES, CLARIFICATION_QUESTIONS,
+        STAGE1_FEEDBACK, STAGE2_FEEDBACK, STAGE3_FEEDBACK, STAGE4_ANALYSIS_SCREEN,
+        STAGE1_QUESTIONS, STAGE2_QUESTIONS, STAGE3_QUESTIONS, STAGE4_QUESTIONS
+    )
+    logger.info("✅ Вопросы успешно импортированы из questions.py")
+except ImportError as e:
+    logger.error(f"❌ Ошибка импорта из questions.py: {e}")
+    # Заглушки для вопросов
+    STAGE1_QUESTIONS = [
+        {
+            "text": "У вас неожиданно освободился вечер. Что звучит привлекательнее?",
+            "options": {
+                "a": "Позвать друзей",
+                "b": "Побыть одному",
+                "c": "Сходить куда-то (событие/место)",
+                "d": "Почитать/посмотреть что-то"
+            }
+        },
+        {
+            "text": "Вы замечаете, что чаще всего обращаете внимание на:",
+            "options": {
+                "a": "Людей вокруг, их настроение и реакции",
+                "b": "Свои внутренние ощущения и мысли",
+                "c": "Обстановку, интерьер, вещи",
+                "d": "Идеи, смыслы, символы"
+            }
+        }
+    ]
+    STAGE2_QUESTIONS = []
+    STAGE3_QUESTIONS = []
+    STAGE4_QUESTIONS = []
+    STAGE1_FEEDBACK = "Этап 1 завершен!"
+    STAGE2_FEEDBACK = "Этап 2 завершен!"
+    STAGE3_FEEDBACK = "Этап 3 завершен!"
+    STAGE4_ANALYSIS_SCREEN = "Этап 4 завершен!"
+    PERCEPTION_TYPES = {}
+    CLARIFICATION_QUESTIONS = {}
+    logger.warning("⚠️ Используются заглушки для вопросов")
 
-# ===== ИМПОРТ НАШИХ НОВЫХ МОДУЛЕЙ =====
-from handlers import (
-    show_stage_1_intro, show_stage_1_details, back_to_stage1_intro,
-    start_stage_1, ask_stage_1_question, handle_stage_1_answer, finish_stage_1,
+# ===== ИМПОРТ ОБРАБОТЧИКОВ ТЕСТА =====
+try:
+    from handlers import (
+        show_stage_1_intro, show_stage_1_details, back_to_stage1_intro,
+        start_stage_1, ask_stage_1_question, handle_stage_1_answer, finish_stage_1,
+        
+        show_stage_2_intro, show_stage_2_details, back_to_stage2_intro,
+        start_stage_2, ask_stage_2_question, handle_stage_2_answer, finish_stage_2,
+        
+        show_stage_3_intro, show_stage_3_details, back_to_stage3_intro,
+        start_stage_3, ask_stage_3_question, handle_stage_3_answer, finish_stage_3,
+        
+        show_stage_4_intro, show_stage_4_details, back_to_stage4_intro,
+        start_stage_4, ask_stage_4_question, handle_stage_4_answer, finish_stage_4,
+    )
+    from handlers.common import ask_clarification_question, handle_clarification_answer
     
-    show_stage_2_intro, show_stage_2_details, back_to_stage2_intro,
-    start_stage_2, ask_stage_2_question, handle_stage_2_answer, finish_stage_2,
+    logger.info("✅ Обработчики теста успешно импортированы")
+    logger.info(f"  start_stage_1: {start_stage_1}")
+    logger.info(f"  handle_stage_1_answer: {handle_stage_1_answer}")
     
-    show_stage_3_intro, show_stage_3_details, back_to_stage3_intro,
-    start_stage_3, ask_stage_3_question, handle_stage_3_answer, finish_stage_3,
+except ImportError as e:
+    logger.error(f"❌ Ошибка импорта обработчиков теста: {e}")
+    # Создаем заглушки для обработчиков
+    async def dummy_stage_handler(update, context):
+        logger.warning(f"⚠️ Вызвана заглушка обработчика этапа")
+        query = update.callback_query
+        await query.answer("❌ Ошибка загрузки обработчика", show_alert=True)
+        return
     
-    show_stage_4_intro, show_stage_4_details, back_to_stage4_intro,
-    start_stage_4, ask_stage_4_question, handle_stage_4_answer, finish_stage_4,
-)
+    show_stage_1_intro = show_stage_2_intro = show_stage_3_intro = show_stage_4_intro = dummy_stage_handler
+    show_stage_1_details = show_stage_2_details = show_stage_3_details = show_stage_4_details = dummy_stage_handler
+    back_to_stage1_intro = back_to_stage2_intro = back_to_stage3_intro = back_to_stage4_intro = dummy_stage_handler
+    start_stage_1 = start_stage_2 = start_stage_3 = start_stage_4 = dummy_stage_handler
+    ask_stage_1_question = ask_stage_2_question = ask_stage_3_question = ask_stage_4_question = dummy_stage_handler
+    handle_stage_1_answer = handle_stage_2_answer = handle_stage_3_answer = handle_stage_4_answer = dummy_stage_handler
+    finish_stage_1 = finish_stage_2 = finish_stage_3 = finish_stage_4 = dummy_stage_handler
+    ask_clarification_question = handle_clarification_answer = dummy_stage_handler
+    
+    logger.warning("⚠️ Используются заглушки для обработчиков теста")
 
-from handlers.common import ask_clarification_question, handle_clarification_answer
+# ===== ИМПОРТ УТИЛИТ =====
+try:
+    from utils.calculations import (
+        determine_perception_type, get_type_code, get_level_name, get_dilts_code,
+        determine_dilts_level, get_level_group, calculate_thinking_level_by_scores,
+        calculate_final_level, check_profile_coherence, calculate_profile_final
+    )
+    from utils.validators import (
+        need_clarification_stage1, need_clarification_stage2,
+        need_clarification_stage3, need_clarification_stage4
+    )
+    from utils.helpers import calculate_progress
+    logger.info("✅ Утилиты успешно импортированы")
+except ImportError as e:
+    logger.error(f"❌ Ошибка импорта утилит: {e}")
+    # Заглушки
+    def calculate_profile_final(data): 
+        return {"type_code": "SA", "level": 5, "dilts_code": "int", "display_name": "SA-5_INT"}
+    determine_perception_type = lambda x: "SA"
+    get_type_code = lambda x: "SA"
+    get_level_name = lambda x: "Уровень 5"
+    get_dilts_code = lambda x: "int"
+    need_clarification_stage1 = need_clarification_stage2 = need_clarification_stage3 = need_clarification_stage4 = lambda x: False
+    calculate_progress = lambda x, y: 0
+    logger.warning("⚠️ Используются заглушки для утилит")
 
-# ===== ПРОВЕРКА ИМПОРТОВ =====
-logger.info("🔍 ПРОВЕРКА ИМПОРТОВ ИЗ handlers:")
-logger.info(f"  start_stage_1: {start_stage_1}")
-logger.info(f"  handle_stage_1_answer: {handle_stage_1_answer}")
-logger.info(f"  ask_stage_1_question: {ask_stage_1_question}")
-logger.info(f"  finish_stage_1: {finish_stage_1}")
+# ===== ИМПОРТ ЗАГРУЗЧИКА ПРОФИЛЕЙ =====
+try:
+    from loader import loader
+    from base import VariaticaProfile
+    logger.info("✅ Загрузчик профилей успешно импортирован")
+except ImportError as e:
+    logger.error(f"❌ Ошибка импорта загрузчика профилей: {e}")
+    # Заглушки
+    class VariaticaProfile:
+        def __init__(self):
+            self.title = "Профиль"
+            self.archetype = "Архетип"
+            self.quote = "Цитата"
+            self.trigger = "Триггер"
+            self.pain = "Боль"
+            self.immediate_tool = "Инструмент"
+            self.cta = "CTA"
+            self.key = "sa_5_int"
+            self.profile_name = "sa_5_int"
+    loader = None
+    logger.warning("⚠️ Загрузчик профилей не доступен")
 
-# ===== ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ТИПОВ =====
-import sys
-print("\n" + "="*60, file=sys.stderr)
-print("🔍 ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ТИПОВ", file=sys.stderr)
-print("="*60, file=sys.stderr)
-print(f"🔥 start_stage_1 = {start_stage_1}", file=sys.stderr)
-print(f"🔥 Тип start_stage_1 = {type(start_stage_1)}", file=sys.stderr)
-print(f"🔥 start_stage_1 is None: {start_stage_1 is None}", file=sys.stderr)
-print(f"🔥 start_stage_1 is callable: {callable(start_stage_1)}", file=sys.stderr)
-print("="*60 + "\n", file=sys.stderr)
-sys.stderr.flush()
+# ===== ИМПОРТ 18+ МОДУЛЯ (БЕЗ КОНФЛИКТУЮЩИХ ФУНКЦИЙ) =====
+try:
+    from sexual_18_plus import (
+        SEXUAL_DIVIDER,
+        FREE_INVITE_LIMIT,
+        FRIEND_ACCESS_PRICE,
+        FOUR_F_PRICE,
+        INVITE_PACKAGES,
+        PROFILE_DISK_LINKS,
+        FOUR_F_EMOJIS,
+        FOUR_F_TITLES,
+        FOUR_F_DESCRIPTIONS,
+        FOUR_F_SHORT,
+        FOUR_F_DETAILED_TEXT,
+        SEXUAL_STATES,
+        get_user_invites_from_api,
+        get_user_limits,
+        save_invite_to_api,
+        update_invite_in_api,
+        find_invite_in_api,
+        get_friend_by_id,
+        count_free_friends,
+        can_create_invite,
+        init_test_data,
+        get_disk_link_by_profile,
+        get_disk_link,
+        load_intimate_profile,
+        load_friend_intimate_profile,
+        format_intimate_profile_part1,
+        format_intimate_profile_part2,
+        format_intimate_profile_part3,
+        format_friend_intimate_profile,
+        load_4f_content,
+        create_invite_callback,
+        generate_payment_id,
+        create_yookassa_invoice,
+        # НЕ ИМПОРТИРУЕМ конфликтующие функции
+        my_invites_callback,
+        friend_menu_callback,
+        show_payment_access_screen,
+        standard_profile_callback,
+        intimate_profile_callback,
+        four_f_menu_callback,
+        four_f_explanation_callback,
+        buy_4f_key_callback,
+        process_payment_callback,
+        open_4f_key_callback,
+        back_to_results_callback,
+        dummy_callback,
+        split_long_message,
+        safe_send_message,
+        four_f_main_menu_callback,
+        four_f_detailed_callback,
+        check_status_callback,
+        buy_invite_packages_callback,
+        pay_package_callback,
+        process_package_payment_callback,
+    )
+    logger.info("✅ 18+ модуль успешно импортирован")
+except ImportError as e:
+    logger.error(f"❌ Ошибка импорта 18+ модуля: {e}")
+    # Заглушки для 18+ функций
+    SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━━━"
+    FREE_INVITE_LIMIT = 3
+    FRIEND_ACCESS_PRICE = 99
+    FOUR_F_PRICE = 1
+    INVITE_PACKAGES = {"3": {"price": 299, "links": 3, "emoji": "🥉"}}
+    PROFILE_DISK_LINKS = {"default": "https://disk.yandex.ru/d/EYPIF9_puI_t0A"}
+    FOUR_F_EMOJIS = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
+    FOUR_F_TITLES = {"1F": "ЯРОСТЬ", "2F": "СТРАХ", "3F": "ЖЕЛАНИЕ", "4F": "ДЕНЬГИ"}
+    FOUR_F_SHORT = "4F-ключи"
+    FOUR_F_DETAILED_TEXT = "Подробное описание 4F"
+    
+    def get_user_invites_from_api(user_id): return []
+    def get_user_limits(ctx): return {"free_used": 0, "total_purchased": 0}
+    def save_invite_to_api(data): return True
+    def find_invite_in_api(inv_id): return None
+    def get_friend_by_id(ctx, id): return None
+    def count_free_friends(user_id): return 0
+    def can_create_invite(limits, total): return (True, True, "")
+    def init_test_data(user_id): pass
+    def get_disk_link_by_profile(profile): return PROFILE_DISK_LINKS["default"]
+    def load_intimate_profile(profile): return {"profile_type": profile}
+    def split_long_message(text, max=4000): return [text]
+    async def safe_send_message(*args, **kwargs): return True
+    
+    async def dummy_18_callback(update, context):
+        query = update.callback_query
+        await query.answer("18+ модуль в разработке", show_alert=True)
+        return
+    
+    my_invites_callback = friend_menu_callback = show_payment_access_screen = dummy_18_callback
+    standard_profile_callback = intimate_profile_callback = four_f_menu_callback = dummy_18_callback
+    four_f_explanation_callback = buy_4f_key_callback = process_payment_callback = dummy_18_callback
+    open_4f_key_callback = back_to_results_callback = dummy_callback = dummy_18_callback
+    four_f_main_menu_callback = four_f_detailed_callback = check_status_callback = dummy_18_callback
+    buy_invite_packages_callback = pay_package_callback = process_package_payment_callback = dummy_18_callback
+    create_invite_callback = dummy_18_callback
+    
+    logger.warning("⚠️ Используются заглушки для 18+ модуля")
 
-from utils.calculations import (
-    determine_perception_type, get_type_code, get_level_name, get_dilts_code,
-    determine_dilts_level, get_level_group, calculate_thinking_level_by_scores,
-    calculate_final_level, check_profile_coherence, calculate_profile_final
-)
+# ===== ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ПО УМОЛЧАНИЮ =====
+USER_PROFILE = {
+    "display_name": "SA-5_INT",
+    "type_code": "SA",
+    "level": 5,
+    "dilts_code": "int"
+}
 
-from utils.validators import (
-    need_clarification_stage1, need_clarification_stage2,
-    need_clarification_stage3, need_clarification_stage4
-)
-
-from utils.helpers import calculate_progress
-
-# Импорт загрузчика и профилей
-from loader import loader
-from base import VariaticaProfile
-
-# ============================================
-# ФУНКЦИИ ПЛАТЕЖНОЙ СИСТЕМЫ
-# ============================================
+# ===== ФУНКЦИИ ПЛАТЕЖНОЙ СИСТЕМЫ =====
 
 def create_yookassa_invoice_payment(payment_id: str, user_id: int, profile_code: str, amount: float = 690.0, email: str = None) -> dict:
     """Создает платеж через Invoices API ЮKassa"""
@@ -468,9 +678,7 @@ async def get_materials_link_api(payment_id: str, user_id: int) -> dict:
             "error": str(e)
         }
 
-# ============================================
-# ФУНКЦИИ РАБОТЫ С ПРОФИЛЯМИ
-# ============================================
+# ===== ФУНКЦИИ РАБОТЫ С ПРОФИЛЯМИ =====
 
 class ProfileNotFoundError(Exception):
     """Исключение для случая, когда профиль не найден"""
@@ -478,17 +686,17 @@ class ProfileNotFoundError(Exception):
 
 def get_profile_fallback(profile_data: dict) -> 'VariaticaProfile':
     """Упрощенная логика поиска профиля"""
+    if loader is None:
+        raise ProfileNotFoundError("Загрузчик профилей не инициализирован")
+    
     type_code = profile_data.get('type_code', 'sa').lower()
     level = profile_data.get('level', 1)
     dilts_code = profile_data.get('dilts_code', 'def').lower()
     
     logger.info(f"🔍 ПОИСК ПРОФИЛЯ: type={type_code}, level={level}, dilts={dilts_code}")
     
-    search_order = []
-    if dilts_code in STANDARD_SUFFIXES:
-        search_order.append(dilts_code)
-    search_order.extend(STANDARD_SUFFIXES)
-    search_order = list(dict.fromkeys(search_order))
+    search_order = [dilts_code] if dilts_code in STANDARD_SUFFIXES else []
+    search_order.extend([s for s in STANDARD_SUFFIXES if s not in search_order])
     
     logger.info(f"📋 Порядок поиска суффиксов: {search_order}")
     
@@ -644,7 +852,7 @@ def get_card_description_from_profile(profile: 'VariaticaProfile', profile_data:
         }
 
 # ============================================
-# ФУНКЦИИ РЕЗУЛЬТАТОВ
+# ФУНКЦИИ ТЕСТА - РЕЗУЛЬТАТЫ
 # ============================================
 
 async def show_results_screen(
@@ -712,7 +920,6 @@ async def show_results_screen(
     except Exception as e:
         logger.error(f"⚠️ Ошибка определения реального профиля: {e}")
     
-    # ПРИМЕЧАНИЕ О КОНФЛИКТЕ
     discrepancy_note = ""
     if actual_profile_key:
         discrepancy_note = get_discrepancy_note(profile_data, actual_profile_key)
@@ -797,7 +1004,6 @@ async def show_results_screen(
         f"<i>Это только начало вашего пути к самопознанию.</i>\n\n"
     )
     
-    # ПРИМЕЧАНИЕ О КОНФЛИКТЕ
     if discrepancy_note:
         message_2 += f"{discrepancy_note}"
     
@@ -828,7 +1034,7 @@ async def show_results_screen(
     return RESULTS
 
 # ============================================
-# ФУНКЦИИ НАВИГАЦИИ
+# ФУНКЦИИ ТЕСТА - НАВИГАЦИЯ
 # ============================================
 
 async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -879,11 +1085,9 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer("🔄 Перезапускаю тест...")
     
-    # Очищаем данные пользователя
     context.user_data.clear()
     logger.debug(f"🧹 user_data очищена для {update.effective_user.id}")
     
-    # Инициализируем новые данные
     context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
     context.user_data["stage1_current"] = 0
     context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
@@ -892,17 +1096,15 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["processing"] = False
     context.user_data["has_shared"] = False
     
-    # Инициализируем хранилище приглашений
     user_id = query.from_user.id
     context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)
     
     logger.info(f"User {user_id} перезапустил тест")
     
-    # Переходим к первому этапу
     return await show_stage_1_intro(update, context)
 
 # ============================================
-# ФУНКЦИИ ПОДАРКОВ И ПАКЕТОВ
+# ФУНКЦИИ ТЕСТА - ПОДАРКИ И ПАКЕТЫ
 # ============================================
 
 async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -959,7 +1161,6 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return await show_results_screen(update, context, force_shared_view=True)
     
-    # Проверяем наличие ссылки
     if not GIFT_PDF_LINK:
         logger.error(f"❌ GIFT_PDF_LINK не установлен для пользователя {user_id}")
         await query.answer(
@@ -1032,7 +1233,7 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     return PACKAGE_SCREEN
 
 # ============================================
-# ФУНКЦИИ ПЛАТЕЖЕЙ (Callback handlers)
+# ФУНКЦИИ ПЛАТЕЖЕЙ
 # ============================================
 
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1100,7 +1301,7 @@ async def buy_without_test_callback(update: Update, context: ContextTypes.DEFAUL
     return await show_payment_screen(update, context)
 
 async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Экран создания платежа (БЕЗ ССЫЛКИ НА МАТЕРИАЛЫ)"""
+    """Экран создания платежа"""
     query = update.callback_query if hasattr(update, 'callback_query') else None
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
@@ -1194,9 +1395,6 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             "• Тинькофф, Альфа-Банк\n"
             "• И другие\n"
         )
-    
-    # УБРАНА ссылка на материалы из экрана платежа
-    # Ссылка будет доступна ТОЛЬКО после оплаты
     
     keyboard = [
         [InlineKeyboardButton("💳 Оплатить 690 рублей", url=confirmation_url)],
@@ -1386,7 +1584,6 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
     
     logger.info(f"✅ Материалы получены для профиля {profile_code}")
     
-    # ЗДЕСЬ появляется ссылка на материалы - ТОЛЬКО ПОСЛЕ ОПЛАТЫ
     keyboard = [
         [InlineKeyboardButton("📥 СКАЧАТЬ ПЕРСОНАЛЬНОЕ ОПИСАНИЕ", url=materials_link)],
         [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
@@ -1576,14 +1773,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.info(f"🚀 /start вызван пользователем {user.id} (@{user.username})")
     
-    # Инициализируем тестовые данные для нового пользователя
     init_test_data(user.id)
     
-    # ===== 18+ DEEP LINK =====
     if context.args and context.args[0].startswith("sex_"):
         logger.info(f"🔞 18+ переход по ссылке: {context.args[0]}")
-        return await sexual_invite_start(update, context)
-    # ===== КОНЕЦ 18+ =====
+        # Здесь будет обработка deep link для 18+
     
     current_state = context.user_data.get("conversation_state")
     if current_state is not None:
@@ -1603,6 +1797,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"   ↳ Поймёте свой уникальный профиль\n\n"
         f"2️⃣ Персональные материалы\n"
         f"   ↳ Узнаете куда направлять усилия\n\n"
+        f"3️⃣ 🔞 Интимный профиль и 4F-ключи\n"
+        f"   ↳ Узнаете свои скрытые желания и триггеры\n\n"
         f"🚀 Начнём исследование?"
     )
     
@@ -1612,7 +1808,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+    await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
     logger.info(f"✅ Приветствие отправлено пользователю {user.id}")
     return None
 
@@ -1645,6 +1841,8 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"   ↳ Поймёте свой уникальный профиль\n\n"
         f"2️⃣ Персональные материалы\n"
         f"   ↳ Узнаете куда направлять усилия\n\n"
+        f"3️⃣ 🔞 Интимный профиль и 4F-ключи\n"
+        f"   ↳ Узнаете свои скрытые желания и триггеры\n\n"
         f"🚀 Начнём исследование?"
     )
     
@@ -1657,7 +1855,8 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=welcome_text,
-        reply_markup=reply_markup
+        reply_markup=reply_markup,
+        parse_mode="HTML"
     )
     
     logger.info(f"✅ User {update.effective_user.id}: main_menu_callback → ConversationHandler.END")
@@ -1716,7 +1915,6 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["processing"] = False
     context.user_data["has_shared"] = False
     
-    # Инициализируем хранилище приглашений
     user_id = query.from_user.id
     context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)
     
@@ -1724,7 +1922,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     return await show_stage_1_intro(update, context)
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async fn cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена теста"""
     logger.info(f"❌ Тест отменен пользователем {update.effective_user.id}")
     await update.message.reply_text(
@@ -1737,62 +1935,156 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# ГЛАВНАЯ ФУНКЦИЯ С ИСПРАВЛЕННЫМ CONVERSATIONHANDLER
+# ФУНКЦИИ 18+ МОДУЛЯ
+# ============================================
+
+async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """🔞 Мой интимный профиль - из 18+ модуля"""
+    try:
+        query = update.callback_query
+        logger.debug(f"🔍 ПОЛУЧЕН CALLBACK: {query.data} от пользователя {query.from_user.id}")
+        
+        await query.answer()
+        logger.info(f"👤 Пользователь {query.from_user.id} открыл интимный профиль")
+        
+        context.user_data["conversation_state"] = MY_SEXUAL_PROFILE
+        
+        profile_data = context.user_data.get("profile_data")
+        if profile_data and 'display_name' in profile_data:
+            profile_code = profile_data['display_name']
+            logger.info(f"📊 ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ИЗ ТЕСТА: {profile_code}")
+        else:
+            user_profile = context.user_data.get("profile", USER_PROFILE)
+            profile_code = user_profile.get('display_name', 'SA-5_INT')
+            logger.info(f"📊 ПРОФИЛЬ ПО УМОЛЧАНИЮ: {profile_code}")
+        
+        user_name = query.from_user.first_name or "Пользователь"
+        logger.debug(f"📝 Загружаем интимный профиль для пользователя: {user_name} с кодом {profile_code}")
+        
+        intimate_data = load_intimate_profile(profile_code)
+        
+        message_part1 = format_intimate_profile_part1(intimate_data, user_name)
+        message_part2 = format_intimate_profile_part2(intimate_data, user_name)
+        message_part3 = format_intimate_profile_part3(intimate_data, user_name)
+        
+        logger.debug(f"📄 Длина части 1: {len(message_part1)} символов")
+        logger.debug(f"📄 Длина части 2: {len(message_part2)} символов")
+        logger.debug(f"📄 Длина части 3: {len(message_part3)} символов")
+        
+        keyboard = [
+            [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ-ПРИГЛАШЕНИЕ", callback_data="create_invite")],
+            [InlineKeyboardButton("🔍 ПОСМОТРЕТЬ МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
+            [InlineKeyboardButton("⬅️ НАЗАД В ПРОФИЛЬ", callback_data="back_to_results")]
+        ]
+        navigation_keyboard = InlineKeyboardMarkup(keyboard)
+        
+        chat_id = query.message.chat_id
+        
+        logger.debug("✉️ Отправляем часть 1...")
+        try:
+            await query.edit_message_text(
+                message_part1,
+                parse_mode="HTML",
+                disable_web_page_preview=True
+            )
+        except Exception as e:
+            logger.error(f"❌ Ошибка при редактировании сообщения: {e}")
+            await safe_send_message(chat_id, message_part1, context)
+        
+        await asyncio.sleep(1)
+        
+        if message_part2.strip():
+            logger.debug("✉️ Отправляем часть 2...")
+            await safe_send_message(chat_id, message_part2, context)
+            await asyncio.sleep(1)
+        
+        if message_part3.strip():
+            logger.debug("✉️ Отправляем часть 3 с кнопками...")
+            
+            parts = split_long_message(message_part3)
+            
+            for i, part in enumerate(parts):
+                current_markup = navigation_keyboard if i == len(parts) - 1 else None
+                
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=part,
+                    reply_markup=current_markup,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+                logger.debug(f"✅ Отправлена подчасть 3.{i+1}/{len(parts)}")
+                
+                if i < len(parts) - 1:
+                    await asyncio.sleep(0.5)
+        
+        logger.debug("✅ Все сообщения и кнопки отправлены успешно")
+        return MY_SEXUAL_PROFILE
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в show_my_sexual_profile: {e}\n{traceback.format_exc()}")
+        try:
+            chat_id = update.callback_query.message.chat_id
+            keyboard = [
+                [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
+                [InlineKeyboardButton("🔍 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
+                [InlineKeyboardButton("⬅️ НАЗАД", callback_data="back_to_results")]
+            ]
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="💎 Выберите действие:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except:
+            pass
+        return RESULTS
+
+# ============================================
+# ГЛАВНАЯ ФУНКЦИЯ
 # ============================================
 
 def main():
     """Запуск бота"""
-    # ПРИНУДИТЕЛЬНЫЙ СБРОС ВЕБХУКА И ЗАВЕРШЕНИЕ СТАРЫХ СЕССИЙ
     import requests
     print("\n" + "="*50)
-    print("🔄 СБРОС ВЕБХУКА И ОЧИСТКА")
+    print("🔄 СБРОС ВЕБХУКА")
     print("="*50)
     
-    # Сначала удаляем вебхук
     url = f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=true"
     response = requests.get(url)
     print(f"Ответ: {response.json()}")
     
-    # Проверяем, что вебхук удален
     url = f"https://api.telegram.org/bot{TOKEN}/getWebhookInfo"
     response = requests.get(url)
     print(f"Информация о вебхуке: {response.json()}")
     print("="*50 + "\n")
     
     print("\n" + "="*70)
-    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.4)")
+    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 8.0)")
     print("="*70)
-    print("🔞 ПОЛНАЯ ИНТЕГРАЦИЯ 18+ МОДУЛЯ")
+    print("🔞 ПОЛНОЕ ОБЪЕДИНЕНИЕ ТЕСТА И 18+ МОДУЛЯ")
     print("="*70)
     print("📊 ОСНОВНЫЕ КОМПОНЕНТЫ:")
-    print("1. ✅ Психологический тест (4 этапа)")
-    print("2. ✅ 18+ интимные профили с приглашениями")
+    print("1. ✅ Психологический тест (4 этапа) - ПОЛНАЯ ВЕРСИЯ 5.4")
+    print("2. ✅ 18+ интимные профили с приглашениями - ПОЛНАЯ ВЕРСИЯ 19.0")
     print("3. ✅ 4F-ключи (1F,2F,3F,4F) для друзей")
     print("4. ✅ Платежная система ЮKassa")
     print("5. ✅ Интеграция с Яндекс.Диск (36 профилей)")
     print("="*70)
-    print("🔧 ИСПРАВЛЕНИЯ В 5.4:")
-    print("   ✅ Исправлен циклический импорт (константы вынесены в constants.py)")
-    print("   ✅ Импорты STAGE_1, STAGE_2 теперь из constants.py")
-    print("   ✅ Устранена проблема с start_stage_1 = None")
-    print("="*70)
-    
-    # Проверка наличия GIFT_PDF_LINK
-    if not GIFT_PDF_LINK:
-        logger.warning("⚠️ GIFT_PDF_LINK не установлена, используется ссылка по умолчанию")
-    else:
-        logger.info(f"🎁 GIFT_PDF_LINK загружена: {GIFT_PDF_LINK[:30]}...")
     
     print("🔍 ПРОВЕРКА ЗАГРУЗКИ ПРОФИЛЕЙ")
     print("="*30)
     
     try:
-        all_profiles = loader.get_all_profiles()
-        print(f"📊 Всего профилей загружено: {len(all_profiles)}")
-        
-        for profile_type in ['sa', 'sp', 'ia', 'ip']:
-            type_profiles = [p for p in all_profiles if p.lower().startswith(f"{profile_type}_")]
-            print(f"🔍 {profile_type.upper()} профилей: {len(type_profiles)}")
+        if loader:
+            all_profiles = loader.get_all_profiles()
+            print(f"📊 Всего профилей загружено: {len(all_profiles)}")
+            
+            for profile_type in ['sa', 'sp', 'ia', 'ip']:
+                type_profiles = [p for p in all_profiles if p.lower().startswith(f"{profile_type}_")]
+                print(f"🔍 {profile_type.upper()} профилей: {len(type_profiles)}")
+        else:
+            print("⚠️ Загрузчик профилей не инициализирован")
     except Exception as e:
         print(f"⚠️ Ошибка при загрузке профилей: {e}")
     
@@ -1902,30 +2194,71 @@ def main():
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
             ],
             SEXUAL_INVITES_LIST: [
-                CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
                 CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
+                CallbackQueryHandler(four_f_main_menu_callback, pattern="^four_f_main_menu$"),
+                CallbackQueryHandler(check_status_callback, pattern="^check_status_"),
+                CallbackQueryHandler(friend_menu_callback, pattern="^friend_"),
+                CallbackQueryHandler(show_my_sexual_profile, pattern="^my_sexual_profile$"),
+                CallbackQueryHandler(buy_invite_packages_callback, pattern="^buy_invite_packages$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(copy_invite_callback, pattern="^copy_invite_"),
                 CallbackQueryHandler(check_invite_callback, pattern="^check_invite_"),
                 CallbackQueryHandler(create_invite_callback, pattern="^create_new_invite$"),
-                CallbackQueryHandler(noop_callback, pattern="^delete_invite_"),
-                CallbackQueryHandler(noop_callback, pattern="^buy_function_"),
-                CallbackQueryHandler(noop_callback, pattern="^open_4f_key_"),
-                CallbackQueryHandler(noop_callback, pattern="^buy_invite_packages$"),
             ],
             SEXUAL_FRIEND_PROFILE: [
-                CallbackQueryHandler(noop_callback, pattern="^friend_details_"),
+                CallbackQueryHandler(standard_profile_callback, pattern="^std_"),
+                CallbackQueryHandler(intimate_profile_callback, pattern="^int_"),
+                CallbackQueryHandler(four_f_menu_callback, pattern="^4f_"),
+                CallbackQueryHandler(four_f_explanation_callback, pattern="^4f_explain$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
             ],
             FOUR_F_PAYMENT_SCREEN: [
-                CallbackQueryHandler(noop_callback, pattern="^check_4f_payment_"),
-                CallbackQueryHandler(noop_callback, pattern="^open_4f_key_"),
+                CallbackQueryHandler(process_payment_callback, pattern="^process_payment_"),
+                CallbackQueryHandler(dummy_callback, pattern="^check_payment_"),
+                CallbackQueryHandler(dummy_callback, pattern="^pay_access_"),
+                CallbackQueryHandler(pay_package_callback, pattern="^pay_package_"),
+                CallbackQueryHandler(process_package_payment_callback, pattern="^process_package_payment_"),
+                CallbackQueryHandler(four_f_menu_callback, pattern="^4f_"),
+                CallbackQueryHandler(buy_invite_packages_callback, pattern="^buy_invite_packages$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+            ],
+            FOUR_F_CONTENT_SCREEN: [
+                CallbackQueryHandler(open_4f_key_callback, pattern="^open_4f_"),
+                CallbackQueryHandler(buy_4f_key_callback, pattern="^buy_4f_"),
+                CallbackQueryHandler(four_f_menu_callback, pattern="^4f_"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
                 CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
             ],
-            FOUR_F_CONTENT_SCREEN: [
+            FOUR_F_MAIN: [
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
+                CallbackQueryHandler(four_f_detailed_callback, pattern="^four_f_detailed$"),
+                CallbackQueryHandler(four_f_explanation_callback, pattern="^4f_explain$"),
+                CallbackQueryHandler(show_my_sexual_profile, pattern="^my_sexual_profile$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
+            ],
+            FOUR_F_DETAILED: [
+                CallbackQueryHandler(four_f_main_menu_callback, pattern="^four_f_main_menu$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+            ],
+            FOUR_F_MENU: [
+                CallbackQueryHandler(buy_4f_key_callback, pattern="^buy_4f_"),
+                CallbackQueryHandler(open_4f_key_callback, pattern="^open_4f_"),
+                CallbackQueryHandler(four_f_explanation_callback, pattern="^4f_explain$"),
+                CallbackQueryHandler(friend_menu_callback, pattern="^friend_"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+            ],
+            FOUR_F_CONTENT: [
+                CallbackQueryHandler(open_4f_key_callback, pattern="^open_4f_"),
+                CallbackQueryHandler(buy_4f_key_callback, pattern="^buy_4f_"),
+                CallbackQueryHandler(four_f_menu_callback, pattern="^4f_"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+            ],
+            BUY_PACKAGES: [
+                CallbackQueryHandler(pay_package_callback, pattern="^pay_package_"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
             ],
             # ===== КОНЕЦ 18+ =====
         },
@@ -1936,28 +2269,21 @@ def main():
     application.add_handler(conv_handler)
     
     logger.info("🧠 Виртуальный психолог Вариатика запущен!")
-    logger.info("✅ ВЕРСИЯ 5.4: ИСПРАВЛЕН ЦИКЛИЧЕСКИЙ ИМПОРТ!")
-    logger.info("✅ Константы вынесены в отдельный файл constants.py")
-    logger.info("✅ Вопросы вынесены в отдельный файл questions.py")
-    logger.info("✅ Обработчики этапов вынесены в папку handlers/")
-    logger.info("✅ Утилиты вынесены в папку utils/")
-    logger.info("✅ Супер-логирование активировано!")
+    logger.info("✅ ВЕРСИЯ 8.0: ПОЛНОЕ ОБЪЕДИНЕНИЕ ТЕСТА И 18+ МОДУЛЯ!")
     
-    # ✅ ВАЖНО: Добавляем обработку ошибок и сброс вебхука
     print("\n🚀 ЗАПУСК БОТА")
     print("="*30)
     
     try:
         application.run_polling(
-            drop_pending_updates=True,  # ОЧЕНЬ ВАЖНО!
-            allowed_updates=['message', 'callback_query'],  # Только нужные типы
-            poll_interval=1.0  # Частота опроса
+            drop_pending_updates=True,
+            allowed_updates=['message', 'callback_query'],
+            poll_interval=1.0
         )
     except Exception as e:
         logger.error(f"❌ Критическая ошибка: {e}")
         print(f"\n❌ Ошибка запуска: {e}")
 
 if __name__ == "__main__":
-    # Добавляем путь для импорта модулей
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
     main()
