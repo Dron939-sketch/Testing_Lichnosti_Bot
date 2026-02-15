@@ -53,27 +53,6 @@ def log_callback(func_name: str, update: Update, context: ContextTypes.DEFAULT_T
     logger.debug(log_msg)
     print(f"🔍 {log_msg}")
 
-# ===== ИМПОРТ КОНСТАНТ СОСТОЯНИЙ =====
-from constants import (
-    STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
-    GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
-    MY_SEXUAL_PROFILE, SEXUAL_PROFILE_SCREEN, SEXUAL_INVITES_LIST,
-    SEXUAL_FRIEND_PROFILE, FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN,
-    FOUR_F_MAIN, FOUR_F_DETAILED, FOUR_F_MENU, FOUR_F_CONTENT,
-    BUY_PACKAGES, INVITES_LIST, FRIEND_MENU,
-    SEXUAL_STATES,  # 👈 ДОБАВЬТЕ ЭТУ СТРОКУ
-)
-
-# ===== ИМПОРТ КОНФИГУРАЦИИ =====
-from config import (
-    TOKEN, API_URL, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY,
-    TELEGRAM_BOT_URL, BOT_LINK, AUTHOR_LINK, GIFT_PDF_LINK, SHARE_TEXT,
-    GIFT_SCREEN_TEXT, STANDARD_SUFFIXES, CONFLICT_PHRASES, SUFFIX_TO_DILTS,
-    EMERGENCY_PROFILES, LEVEL_DIFFS, PROFILE_LINKS, DEFAULT_PROFILE,
-    logger as config_logger
-)
-
-# ===== ИМПОРТ 18+ МОДУЛЯ (БЕЗ КОНФЛИКТУЮЩИХ ФУНКЦИЙ) =====
 # ===== ИМПОРТ 18+ МОДУЛЯ (НОВАЯ ВЕРСИЯ 19.7) =====
 from sexual_19_7 import (
     # Константы
@@ -84,7 +63,7 @@ from sexual_19_7 import (
     INVITE_PACKAGES,
     PROFILE_DISK_LINKS,
     FOUR_F_DESCRIPTIONS,
-    SEXUAL_STATES,
+    # SEXUAL_STATES,  # 👈 УДАЛИТЬ - уже есть из constants
     
     # Функции для работы с БД
     get_user_invites_from_api,
@@ -113,7 +92,7 @@ from sexual_19_7 import (
     init_test_data,
     get_friend_by_id,
     
-    # Основные callback-обработчики (ВСЕ, ЧТО НУЖНО ДЛЯ CONVERSATIONHANDLER)
+    # Основные callback-обработчики
     show_my_sexual_profile,
     sexual_invite_start,
     create_invite_callback,
@@ -153,6 +132,7 @@ from sexual_19_7 import (
     # Функции платежей
     generate_payment_id,
     create_yookassa_invoice,
+)
 
 # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 async def noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
