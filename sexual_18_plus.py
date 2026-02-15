@@ -56,36 +56,32 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 # ===== ИМПОРТ КОНСТАНТ ИЗ CONSTANTS.PY =====
 try:
     from constants import (
-        # Состояния теста
-        STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
-        GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
-        
-        # Состояния 18+ модуля
-        MY_SEXUAL_PROFILE,
-        SEXUAL_PROFILE_SCREEN,
-        SEXUAL_INVITES_LIST,
-        SEXUAL_FRIEND_PROFILE,
-        
-        # Состояния 4F
-        FOUR_F_PAYMENT_SCREEN,
-        FOUR_F_CONTENT_SCREEN,
-        FOUR_F_MAIN,
-        FOUR_F_DETAILED,
-        FOUR_F_MENU,
-        FOUR_F_CONTENT,
-        
-        # Дополнительные состояния
-        BUY_PACKAGES,
-        INVITES_LIST,
-        FRIEND_MENU,
-        FOUR_F_MAIN_MENU,
-        FOUR_F_DETAILED_VIEW,
-        FOUR_F_KEY_MENU,
-        FOUR_F_KEY_CONTENT,
-        
-        # Словарь состояний
-        SEXUAL_STATES,
-    )
+    # Состояния теста
+    STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
+    GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
+    
+    # Состояния 18+ модуля
+    MY_SEXUAL_PROFILE,
+    SEXUAL_PROFILE_SCREEN,
+    SEXUAL_INVITES_LIST,
+    SEXUAL_FRIEND_PROFILE,
+    
+    # Состояния 4F
+    FOUR_F_PAYMENT_SCREEN,
+    FOUR_F_CONTENT_SCREEN,
+    FOUR_F_MAIN,
+    FOUR_F_DETAILED,
+    FOUR_F_MENU,
+    FOUR_F_CONTENT,
+    
+    # Дополнительные состояния
+    BUY_PACKAGES,
+    INVITES_LIST,        # 👈 ЭТО НУЖНО ДЛЯ НАВИГАЦИИ
+    FRIEND_MENU,          # 👈 ЭТО ТОЖЕ
+    
+    # Словарь состояний
+    SEXUAL_STATES,
+)
     logger.info("✅ Константы успешно импортированы из constants.py")
 except ImportError as e:
     logger.error(f"❌ Ошибка импорта из constants.py: {e}")
