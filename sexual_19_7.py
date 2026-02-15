@@ -1523,6 +1523,95 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
             "Пожалуйста, попробуйте позже."
         )
         return RESULTS_SCREEN
+        # ============================================
+# 📋 КОПИРОВАНИЕ ПРИГЛАШЕНИЯ
+# ============================================
+
+async def copy_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик для копирования текста приглашения
+    """
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Извлекаем ID приглашения из callback_data
+        invite_id = query.data.replace("copy_invite_", "")
+        
+        # Ищем приглашение в данных пользователя
+        invites = context.user_data.get("sexual_invites", [])
+        invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
+        
+        if not invite:
+            await query.answer("❌ Приглашение не найдено", show_alert=True)
+            return
+        
+        # Текст приглашения для копирования
+        invite_text = f"{invite.get('message', '')}\n\n{invite.get('link', '')}"
+        
+        # Отправляем сообщение с текстом для копирования
+        await query.message.reply_text(
+            f"📋 <b>Текст для отправки другу:</b>\n\n"
+            f"<code>{invite_text}</code>\n\n"
+            f"Просто скопируйте и отправьте другу!",
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"📋 Пользователь {query.from_user.id} скопировал приглашение {invite_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в copy_invite_callback: {e}")
+        await query.answer("❌ Произошла ошибка", show_alert=True)
+
+
+# ============================================
+# ✅ ПРОВЕРКА ПРИГЛАШЕНИЯ
+# ============================================
+
+async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик для проверки статуса приглашения
+    """
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Извлекаем ID приглашения из callback_data
+        invite_id = query.data.replace("check_invite_", "")
+        
+        # Ищем приглашение в данных пользователя
+        invites = context.user_data.get("sexual_invites", [])
+        invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
+        
+        if not invite:
+            await query.answer("❌ Приглашение не найдено", show_alert=True)
+            return
+        
+        # Формируем сообщение со статусом
+        status_text = "🟢 АКТИВНО" if invite.get("status") == "active" else "🔴 ИСПОЛЬЗОВАНО"
+        created_date = datetime.fromtimestamp(invite.get("created_at", datetime.now().timestamp())).strftime('%d.%m.%Y %H:%M')
+        
+        message = f"""
+📋 <b>СТАТУС ПРИГЛАШЕНИЯ</b>
+
+🔗 <code>{invite.get('link', '')}</code>
+📊 Статус: {status_text}
+📅 Создано: {created_date}
+"""
+        
+        if invite.get("status") == "used" and invite.get("friend_name"):
+            message += f"\n👤 Использовано: {invite.get('friend_name')}"
+        
+        await query.message.reply_text(
+            message,
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"✅ Пользователь {query.from_user.id} проверил статус приглашения {invite_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в check_invite_callback: {e}")
+        await query.answer("❌ Произошла ошибка", show_alert=True)
 
 # ============================================
 # 🔗 ЭКРАН: СОЗДАНИЕ ПРИГЛАШЕНИЯ
