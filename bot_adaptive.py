@@ -1283,7 +1283,7 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     return PAYMENT_SCREEN
 
 async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Проверка статуса платежа"""
+    """Проверка статуса платежа через API"""
     log_callback("check_payment_callback", update, context)
     query = update.callback_query
     await query.answer()
@@ -1291,28 +1291,37 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
     payment_id = "_".join(query.data.split("_")[2:])
     logger.info(f"🔍 Проверка статуса платежа: {payment_id}")
     
-    # Получаем данные платежа из памяти
+    # Показываем сообщение о проверке
+    await query.edit_message_text(
+        f"🔍 *ПРОВЕРЯЮ СТАТУС ПЛАТЕЖА...*\n\n"
+        f"📋 *ID:* `{payment_id}`\n\n"
+        f"⏳ Запрашиваю информацию...",
+        parse_mode='Markdown'
+    )
+    
+    # Получаем данные платежа из памяти (только для ссылки на оплату)
     payment_data = context.user_data.get("payment_data", {})
     payment_info = payment_data.get(payment_id, {})
     
-    if not payment_info:
-        # Если нет в памяти, пытаемся через API
-        try:
-            response = requests.get(
-                f"{API_URL}/api/payment-status/{payment_id}",
-                timeout=5
-            )
-            if response.status_code == 200:
-                data = response.json()
-                status = data.get("status", "unknown")
-            else:
-                status = "unknown"
-        except:
-            status = "unknown"
-    else:
-        # Для теста считаем, что если есть в памяти - оплачено
-        status = "succeeded"
+    # Реальная проверка через API (без тестового режима)
+    try:
+        response = requests.get(
+            f"{API_URL}/api/payment-status/{payment_id}",
+            timeout=5
+        )
+        if response.status_code == 200:
+            data = response.json()
+            status = data.get("status", "unknown")
+        else:
+            logger.error(f"❌ API error: {response.status_code}")
+            status = "error"
+    except Exception as e:
+        logger.error(f"❌ Ошибка при проверке статуса: {e}")
+        status = "error"
     
+    logger.info(f"📊 Статус платежа {payment_id}: {status}")
+    
+    # Формируем ответ в зависимости от статуса
     if status == "succeeded":
         message = (
             f"✅ *ОПЛАТА ПОДТВЕРЖДЕНА!*\n\n"
@@ -1348,64 +1357,10 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
             ]
     else:
         message = (
-            f"📊 *СТАТУС ПЛАТЕЖА:* `{status}`\n\n"
-            f"📋 *ID:* `{payment_id}`"
-        )
-        keyboard = [
-            [InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")],
-            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
-        ]
-    
-    await query.edit_message_text(
-        message,
-        parse_mode='Markdown',
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    
-    return PAYMENT_SCREEN
-    
-    status = status_result.get("status", "unknown")
-    logger.info(f"📊 Статус платежа {payment_id}: {status}")
-    
-    if status == "succeeded":
-        message = (
-            f"✅ *ОПЛАТА ПОДТВЕРЖДЕНА!*\n\n"
-            f"🎉 Платеж `{payment_id}` успешно завершен!\n\n"
-            f"📦 *ПЕРСОНАЛЬНОЕ ОПИСАНИЕ ГОТОВО!*\n"
-            f"Для получения персонального описания профиля нажмите кнопку ниже:"
-        )
-        
-        keyboard = [
-            [InlineKeyboardButton("📥 ПОЛУЧИТЬ ОПИСАНИЕ ПРОФИЛЯ", callback_data=f"get_materials_{payment_id}")],
-            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
-        ]
-        
-    elif status in ["pending", "waiting"]:
-        message = (
-            f"⏳ *ОЖИДАЕТ ОПЛАТЫ*\n\n"
-            f"Платеж `{payment_id}` еще не оплачен.\n\n"
-            f"💳 *Для оплаты нажмите кнопку ниже:*"
-        )
-        
-        payment_data = context.user_data.get("payment_data", {})
-        payment_info = payment_data.get(payment_id, {})
-        confirmation_url = payment_info.get("confirmation_url")
-        
-        if confirmation_url:
-            keyboard = [
-                [InlineKeyboardButton("💳 ПЕРЕЙТИ К ОПЛАТЕ", url=confirmation_url)],
-                [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
-            ]
-        else:
-            keyboard = [
-                [InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")],
-                [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
-            ]
-        
-    else:
-        message = (
-            f"📊 *СТАТУС ПЛАТЕЖА:* `{status}`\n\n"
-            f"📋 *ID:* `{payment_id}`"
+            f"❌ *ОШИБКА ПРИ ПРОВЕРКЕ*\n\n"
+            f"Статус: `{status}`\n"
+            f"Платеж `{payment_id}` не найден или произошла ошибка.\n\n"
+            f"Попробуйте позже."
         )
         keyboard = [
             [InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")],
