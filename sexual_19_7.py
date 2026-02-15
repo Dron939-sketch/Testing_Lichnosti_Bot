@@ -2821,7 +2821,8 @@ __all__ = [
     'process_payment_callback',
     'open_4f_key_callback',
     'back_to_results_callback',
-    'back_to_sexual_profile_callback',  # 👈 НОВАЯ ФУНКЦИЯ
+    'back_to_sexual_profile_callback',
+    'check_package_callback',
     'dummy_callback',
     
     # Вспомогательные функции
