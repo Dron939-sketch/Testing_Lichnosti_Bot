@@ -733,24 +733,43 @@ async def show_results_screen(
                 # Очищаем данные приглашения после использования
                 context.user_data.pop("current_invite", None)
                 
-                # Отправляем уведомление создателю ссылки
+                               # Отправляем уведомление создателю ссылки
                 buyer_id = current_invite.get("buyer_id")
+                logger.info(f"📤 Попытка отправить уведомление: buyer_id={buyer_id}")
+                
                 if buyer_id:
                     try:
+                        # Формируем имя пользователя
+                        username = update.effective_user.username or update.effective_user.first_name
+                        profile_name = profile_data.get('display_name', 'неизвестно')
+                        
+                        logger.info(f"👤 Данные друга: username={username}, profile={profile_name}")
+                        
+                        message_text = (
+                            f"👤 <b>Новое отражение!</b>\n\n"
+                            f"@{username} прошел тест по вашему приглашению.\n"
+                            f"Его профиль: {profile_name}\n\n"
+                            f"🔍 Посмотреть в \"Моих отражениях\""
+                        )
+                        
                         await context.bot.send_message(
                             chat_id=buyer_id,
-                            text=f"👤 Новое отражение!\n\n"
-                                 f"@{update.effective_user.username or update.effective_user.first_name} "
-                                 f"прошел тест по вашему приглашению.\n"
-                                 f"Его профиль: {profile_data.get('display_name')}\n\n"
-                                 f"🔍 Посмотреть в \"Моих отражениях\""
+                            text=message_text,
+                            parse_mode="HTML"
                         )
+                        logger.info(f"✅ Уведомление успешно отправлено пользователю {buyer_id}")
+                        
                     except Exception as e:
                         logger.error(f"❌ Не удалось отправить уведомление: {e}")
+                        logger.error(f"❌ Детали ошибки: {traceback.format_exc()}")
+                else:
+                    logger.warning(f"⚠️ buyer_id отсутствует в current_invite. current_invite={current_invite}")
+            
             else:
                 logger.error(f"❌ Не удалось обновить приглашение {current_invite['invite_id']}")
         except Exception as e:
             logger.error(f"❌ Ошибка при обновлении приглашения: {e}")
+            logger.error(f"❌ Детали ошибки: {traceback.format_exc()}")
     
     try:
         profile = get_profile_fallback(profile_data)
