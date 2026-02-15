@@ -1494,7 +1494,7 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
         
         # 3 КНОПКИ (будут прикреплены к части 3)
         keyboard = [
-            [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ-ПРИГЛАШЕНИЕ", callback_data="create_invite")],
+            [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ-ПРИГЛАШЕНИЕ", callback_data="send_invite")],  # 👈 НАЗВАНИЕ СТАРОЕ, НО CALLBACK НОВЫЙ
             [InlineKeyboardButton("🔍 ПОСМОТРЕТЬ МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
             [InlineKeyboardButton("⬅️ НАЗАД В ПРОФИЛЬ", callback_data="back_to_results")]
         ]
