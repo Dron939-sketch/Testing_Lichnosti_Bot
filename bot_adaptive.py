@@ -1649,8 +1649,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
-    logger.info(f"✅ Приветствие отправлено пользователю {user.id}")
+    await update.message.reply_text(
+        welcome_text,
+        reply_markup=reply_markup,
+        parse_mode="HTML"  # 👈 ЭТО РЕШАЕТ ПРОБЛЕМУ
+    )
     return None
 
 async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
