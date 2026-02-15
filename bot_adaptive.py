@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """
 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА: ПУТЬ К САМОПОЗНАНИЮ
-ПОЛНАЯ ИНТЕГРАЦИЯ:
-- 4 этапа адаптивного тестирования (ПОЛНАЯ ЛОГИКА)
-- 18+ интимные профили (36 профилей на Яндекс.Диске)
-- 4F-ключи для управления состояниями
-- Система приглашений для друзей
-
-ВЕРСИЯ 7.0: ПОЛНАЯ ИНТЕГРАЦИЯ С СОХРАНЕНИЕМ ВСЕЙ ЛОГИКИ
+4 этапа адаптивного исследования + персональное описание профиля
+ВЕРСИЯ 5.4: ИСПРАВЛЕН ЦИКЛИЧЕСКИЙ ИМПОРТ
 """
 
 import logging
@@ -19,10 +14,8 @@ import time
 import base64
 import uuid
 import random
-import json
-import traceback
-from datetime import datetime
-from typing import Dict, List, Optional, Any, Tuple
+import requests
+from typing import Dict, List, Optional, Any
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -33,7 +26,7 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ===== НАСТРОЙКА ЛОГГИРОВАНИЯ =====
+# ===== НАСТРОЙКА СУПЕР-ЛОГГИРОВАНИЯ =====
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -44,7 +37,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Функция для логирования
+# Функция для логирования входящих callback
 def log_callback(func_name: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Логирует входящий callback"""
     user = update.effective_user
@@ -58,2225 +51,1781 @@ def log_callback(func_name: str, update: Update, context: ContextTypes.DEFAULT_T
         log_msg += f" | profile: {context.user_data.get('profile_data', {}).get('display_name', 'None')}"
     
     logger.debug(log_msg)
+    print(f"🔍 {log_msg}")
 
-# ===== СОСТОЯНИЯ ТЕСТА =====
-STAGE_1 = 1
-STAGE_2 = 2
-STAGE_3 = 3
-STAGE_4 = 4
-CLARIFICATION = 5
-RESULTS = 6
-GIFT_SCREEN = 7
-PACKAGE_SCREEN = 8
-OPEN_GIFT_SCREEN = 9
-PAYMENT_SCREEN = 10
+# ===== ИМПОРТ КОНСТАНТ СОСТОЯНИЙ =====
+from constants import (
+    STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
+    GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
+    MY_SEXUAL_PROFILE, SEXUAL_PROFILE_SCREEN, SEXUAL_INVITES_LIST,
+    SEXUAL_FRIEND_PROFILE, FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN
+)
 
-# ===== СОСТОЯНИЯ ИНТИМНОГО МОДУЛЯ =====
-MY_SEXUAL_PROFILE = 50
-INVITES_LIST = 51
-FRIEND_MENU = 52
-FOUR_F_MENU = 53
-FOUR_F_CONTENT = 54
-FOUR_F_PAYMENT_SCREEN = 55
-BUY_PACKAGES = 56
-FOUR_F_MAIN = 57
-FOUR_F_DETAILED = 58
+# ===== ИМПОРТ КОНФИГУРАЦИИ =====
+from config import (
+    TOKEN, API_URL, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY,
+    TELEGRAM_BOT_URL, BOT_LINK, AUTHOR_LINK, GIFT_PDF_LINK, SHARE_TEXT,
+    GIFT_SCREEN_TEXT, STANDARD_SUFFIXES, CONFLICT_PHRASES, SUFFIX_TO_DILTS,
+    EMERGENCY_PROFILES, LEVEL_DIFFS, PROFILE_LINKS, DEFAULT_PROFILE,
+    logger as config_logger
+)
 
-# ===== КОНСТАНТЫ ТЕСТА =====
-PERCEPTION_TYPES = {
-    "EXTERNAL": "Внешний",
-    "INTERNAL": "Внутренний", 
-    "SYMBOLIC": "Символический",
-    "MATERIAL": "Материальный"
-}
-
-TYPE_CODES = {
-    "EXTERNAL": "E",
-    "INTERNAL": "I",
-    "SYMBOLIC": "S",
-    "MATERIAL": "M"
-}
-
-DILTS_LEVELS = {
-    "ENVIRONMENT": "Окружение",
-    "BEHAVIOR": "Поведение",
-    "CAPABILITIES": "Способности",
-    "VALUES": "Ценности",
-    "IDENTITY": "Идентичность",
-    "MISSION": "Миссия"
-}
-
-STANDARD_SUFFIXES = ["def", "sit", "con", "exp", "int", "aut", "val", "tra", "ide"]
-
-# Вопросы для этапов
-STAGE1_QUESTIONS = [
-    {
-        "text": "Когда вы принимаете важное решение, на что вы больше опираетесь?",
-        "options": {
-            "EXTERNAL": "На мнение авторитетных людей, экспертов",
-            "INTERNAL": "На свои внутренние ощущения и чутье",
-            "SYMBOLIC": "На знаки, символы, совпадения",
-            "MATERIAL": "На факты, цифры, конкретные данные"
-        }
-    },
-    {
-        "text": "Что для вас важнее в общении с людьми?",
-        "options": {
-            "EXTERNAL": "Их реакция и обратная связь",
-            "INTERNAL": "Мои ощущения от разговора",
-            "SYMBOLIC": "Глубинный смысл сказанного",
-            "MATERIAL": "Конкретный результат общения"
-        }
-    },
-    {
-        "text": "Как вы обычно оцениваете результаты своей работы?",
-        "options": {
-            "EXTERNAL": "По оценкам и мнению других",
-            "INTERNAL": "По своему внутреннему удовлетворению",
-            "SYMBOLIC": "По тому, насколько это соответствует моим идеалам",
-            "MATERIAL": "По конкретным достижениям и результатам"
-        }
-    },
-    {
-        "text": "Что вас больше вдохновляет?",
-        "options": {
-            "EXTERNAL": "Примеры успешных людей",
-            "INTERNAL": "Внутренний порыв и желание",
-            "SYMBOLIC": "Идеи, мечты, образы будущего",
-            "MATERIAL": "Конкретные цели и планы"
-        }
-    },
-    {
-        "text": "В какой среде вы наиболее продуктивны?",
-        "options": {
-            "EXTERNAL": "В окружении людей, в команде",
-            "INTERNAL": "В одиночестве, наедине с собой",
-            "SYMBOLIC": "В творческом беспорядке, с книгами, символами",
-            "MATERIAL": "В хорошо организованном, удобном пространстве"
-        }
-    }
-]
-
-STAGE1_FEEDBACK = {
-    "EXTERNAL": "Вы ориентируетесь на внешние сигналы и мнения. Для вас важно, что думают другие, вы чувствительны к обратной связи и социальным нормам.",
-    "INTERNAL": "Вы доверяете внутренним ощущениям. Ваш внутренний компас — главный советчик, вы хорошо слышите свои чувства и интуицию.",
-    "SYMBOLIC": "Вы видите символы и знаки. Для вас мир полон скрытых смыслов, вы ищете паттерны и глубинные связи там, где другие видят хаос.",
-    "MATERIAL": "Вы цените материальные аспекты. Для вас важны конкретные, осязаемые результаты, факты и цифры — то, что можно потрогать и измерить."
-}
-
-# Вопросы для 2 этапа (мышление)
-STAGE2_QUESTIONS = [
-    {
-        "text": "Как вы обычно объясняете сложные вещи?",
-        "1": "Показываю на конкретном примере из жизни",
-        "3": "Использую аналогии и сравнения",
-        "5": "Строю логическую схему или модель",
-        "7": "Описываю общие принципы и закономерности",
-        "9": "Связываю с фундаментальными концепциями"
-    },
-    {
-        "text": "Когда вы сталкиваетесь с проблемой, с чего начинаете?",
-        "1": "Ищу конкретное решение здесь и сейчас",
-        "3": "Вспоминаю похожие ситуации из прошлого",
-        "5": "Анализирую причины и следствия",
-        "7": "Ищу закономерности и общие принципы",
-        "9": "Рассматриваю проблему в контексте более общей системы"
-    }
-]
-
-STAGE2_FEEDBACK = {
-    1: "Конкретно-ситуативное мышление. Вы фокусируетесь на деталях и конкретных действиях.",
-    3: "Аналитическое мышление. Вы ищете причинно-следственные связи.",
-    5: "Системное мышление. Вы видите взаимосвязи и структуры.",
-    7: "Абстрактное мышление. Вы оперируете общими принципами.",
-    9: "Мета-мышление. Вы видите картину целиком, включая контекст."
-}
-
-# Вопросы для 3 этапа (поведение)
-STAGE3_QUESTIONS = [
-    {
-        "text": "В стрессовой ситуации вы обычно...",
-        "A": "Действуете быстро, иногда импульсивно",
-        "B": "Замираете, наблюдаете, анализируете",
-        "C": "Ищете поддержку у других",
-        "D": "Уходите в себя, обдумываете"
-    },
-    {
-        "text": "В конфликте вы скорее...",
-        "A": "Отстаиваете свои границы активно",
-        "B": "Пытаетесь понять позицию другого",
-        "C": "Ищете компромисс",
-        "D": "Уклоняетесь, избегаете"
-    }
-]
-
-STAGE3_FEEDBACK = "Ваш стиль поведения характеризуется..."
-
-# Вопросы для 4 этапа (Дилтс)
-STAGE4_QUESTIONS = [
-    {
-        "text": "Что для вас важнее всего в жизни?",
-        "ENVIRONMENT": "Комфортное окружение и условия",
-        "BEHAVIOR": "Мои действия и поступки",
-        "CAPABILITIES": "Мои навыки и способности",
-        "VALUES": "Мои ценности и убеждения",
-        "IDENTITY": "Кто я есть на самом деле",
-        "MISSION": "Мое предназначение, миссия"
-    },
-    {
-        "text": "На каком уровне вы чаще всего ищете изменения?",
-        "ENVIRONMENT": "Хочу изменить обстоятельства",
-        "BEHAVIOR": "Хочу изменить свои привычки",
-        "CAPABILITIES": "Хочу развить новые навыки",
-        "VALUES": "Пересматриваю свои ценности",
-        "IDENTITY": "Меняю представление о себе",
-        "MISSION": "Ищу свое призвание"
-    }
-]
-
-CONFLICT_PHRASES = {
-    "ENVIRONMENT": {
-        "note": "⚠️ Интересное наблюдение: ваше мышление работает на уровне Окружения, но ваша точка роста — в изменении паттернов поведения. Это классическое расхождение между тем, что вы думаете, и что делаете."
-    },
-    "BEHAVIOR": {
-        "note": "⚠️ Любопытный парадокс: вы мыслите на уровне Поведения, но ваши убеждения находятся на уровне Способностей. Это создает внутреннее напряжение между действиями и верой в свои силы."
-    },
-    "CAPABILITIES": {
-        "note": "⚠️ Вы обнаруживаете несоответствие: ваши способности развиты, но ценности требуют пересмотра. Тело уже умеет, а душа еще не решила."
-    },
-    "VALUES": {
-        "note": "⚠️ Ваши ценности работают на одном уровне, а идентичность требует другого. Вы знаете, что важно, но не до конца понимаете, кто вы в этом."
-    },
-    "IDENTITY": {
-        "note": "⚠️ Интересный конфликт: вы уже осознали себя по-новому, но миссия требует иного. Самоощущение опережает предназначение."
-    },
-    "MISSION": {
-        "note": "⚠️ У вас высокий уровень осознания миссии, но окружение пока не готово. Вы видите дальше, чем можете реализовать сейчас."
-    }
-}
-
-# ===== КОНСТАНТЫ ИНТИМНОГО МОДУЛЯ =====
-SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━━━"
-FREE_FRIEND_LIMIT = 2
-FRIEND_ACCESS_PRICE = 99
-FOUR_F_PRICE = 1
-FREE_INVITE_LIMIT = 3
-
-INVITE_PACKAGES = {
-    "3": {"price": 299, "links": 3, "emoji": "🥉", "popular": False},
-    "5": {"price": 499, "links": 5, "emoji": "🥈", "popular": True},
-    "10": {"price": 899, "links": 10, "emoji": "🥇", "popular": False}
-}
-
-FOUR_F_EMOJIS = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
-FOUR_F_TITLES = {
-    "1F": "НАПАДЕНИЕ / ЯРОСТЬ",
-    "2F": "БЕГСТВО / СТРАХ", 
-    "3F": "СЕКС / ЖЕЛАНИЕ",
-    "4F": "ПОГЛОЩЕНИЕ / ДЕНЬГИ"
-}
-
-FOUR_F_SHORT = """
-📘 <b>ЧТО ТАКОЕ 4F-КЛЮЧИ?</b>
-
-🧬 4F — это 4 базовые реакции психики:
-Нападение, бегство, секс, поглощение.
-Ключи к управлению состояниями другого человека.
-
-🔥 <b>1F - НАПАДЕНИЕ / ЯРОСТЬ</b>
-└ Что включает его агрессию
-└ Как быстро её погасить
-
-🏃 <b>2F - БЕГСТВО / СТРАХ</b>
-└ Чего он боится на самом деле
-└ Как стать для него безопасностью
-
-🧬 <b>3F - СЕКС / ЖЕЛАНИЕ</b>
-└ Что реально его заводит
-└ 3 слова и 3 касания-ключа
-
-🍽 <b>4F - ПОГЛОЩЕНИЕ / ДЕНЬГИ</b>
-└ Что запускает режим заработка
-└ Как говорить с ним о деньгах
-"""
-
-FOUR_F_DESCRIPTIONS = {
-    "1F": """😤 <b>СТИМУЛЫ, ЗАПУСКАЮЩИЕ ЯРОСТЬ</b>
-
-Его агрессия не возникает из ниоткуда.
-Это реакция на конкретные ТРИГГЕРЫ — слова, интонации, ситуации.
-
-<b>🎯 ЧТО ЯВЛЯЕТСЯ ПУСКОВЫМ КЛЮЧОМ:</b>
-   • Критика при свидетелях
-   • Обесценивание его усилий
-   • Игнорирование его границ
-   • Определенные интонации голоса
-
-<b>🔑 ЭТОТ КЛЮЧ ДАЁТ ДОСТУП К:</b>
-   • Списку его ЛИЧНЫХ триггеров
-   • 3 фразам-гасителям
-   • Пониманию, почему он срывается на вас
-   • Технике «Торможение»
-
-<b>⚡️ ЧТО ВЫ ПОЛУЧИТЕ:</b>
-Управление его состоянием гнева.""",
-    
-    "2F": """🏃 <b>СТИМУЛЫ, ЗАПУСКАЮЩИЕ БЕГСТВО</b>
-
-Страх — это реакция избегания.
-Она включается, когда мозг видит СТИМУЛ, похожий на прошлую угрозу.
-
-<b>🎯 ЧТО ЯВЛЯЕТСЯ ПУСКОВЫМ КЛЮЧОМ:</b>
-   • Повышение голоса
-   • Вопросы о будущем
-   • Давление и требования
-   • Определенные темы разговоров
-
-<b>🔑 ЭТОТ КЛЮЧ ДАЁТ ДОСТУП К:</b>
-   • Его личным триггерам страха
-   • 3 якорям безопасности
-   • Пониманию, почему он закрывается
-   • Технике «Безопасная среда»
-
-<b>⚡️ ЧТО ВЫ ПОЛУЧИТЕ:</b>
-Управление его состоянием тревоги.""",
-    
-    "3F": """🧬 <b>СТИМУЛЫ, ЗАПУСКАЮЩИЕ ЖЕЛАНИЕ</b>
-
-Сексуальное влечение — это цепочка стимулов.
-Определенные слова, взгляды, касания работают как ПАРОЛЬ.
-
-<b>🎯 ЧТО ЯВЛЯЕТСЯ ПУСКОВЫМ КЛЮЧОМ:</b>
-   • Особая интонация голоса
-   • Зрительный контакт определенной длины
-   • Неожиданные касания
-   • Контекст и обстановка
-
-<b>🔑 ЭТОТ КЛЮЧ ДАЁТ ДОСТУП К:</b>
-   • 3 словам-паролям
-   • 3 касаниям-ключам
-   • Его эротическому сценарию
-   • Пониманию, что ГАСИТ желание
-
-<b>⚡️ ЧТО ВЫ ПОЛУЧИТЕ:</b>
-Управление его состоянием возбуждения.""",
-    
-    "4F": """🍽 <b>СТИМУЛЫ, ЗАПУСКАЮЩИЕ РЕЖИМ «ДЕНЬГИ»</b>
-
-Для него деньги = безопасность, статус, свобода.
-Это состояние включается определенными ТРИГГЕРАМИ.
-
-<b>🎯 ЧТО ЯВЛЯЕТСЯ ПУСКОВЫМ КЛЮЧОМ:</b>
-   • Упоминание возможностей
-   • Разговоры о конкурентах
-   • Идеи для заработка
-   • Определенные фразы-мотиваторы
-
-<b>🔑 ЭТОТ КЛЮЧ ДАЁТ ДОСТУП К:</b>
-   • 3 фразам, которые включают «режим предпринимателя»
-   • Пониманию, что тормозит его заработок
-   • Технике «Топливо»
-   • Сценарию просьбы
-
-<b>⚡️ ЧТО ВЫ ПОЛУЧИТЕ:</b>
-Управление его состоянием мотивации."""
-}
-
-# ===== ССЫЛКИ НА ЯНДЕКС.ДИСК - ВСЕ 36 ПРОФИЛЕЙ =====
-PROFILE_DISK_LINKS = {
-    # SA Profiles
-    "SA-1_DEF": "https://disk.yandex.ru/d/k-MqapaI3zmb_w",
-    "SA-2_SIT": "https://disk.yandex.ru/d/1v8xNz0m6cPzTg",
-    "SA-3_CON": "https://disk.yandex.ru/d/8kqMEvs7OC86PQ",
-    "SA-4_EXP": "https://disk.yandex.ru/d/PzCDu_jfJpzgqg",
-    "SA-5_INT": "https://disk.yandex.ru/d/EYPIF9_puI_t0A",
-    "SA-6_AUT": "https://disk.yandex.ru/d/lfRe4hOGoneJUA",
-    "SA-7_VAL": "https://disk.yandex.ru/d/TRFjXAPoxH8_Yw",
-    "SA-8_TRA": "https://disk.yandex.ru/d/kUTCtJTez59G3g",
-    "SA-9_IDE": "https://disk.yandex.ru/d/p54mj-rRgW54zg",
-    
-    # SP Profiles
-    "SP-1_DEF": "https://disk.yandex.ru/d/F07HTDrGplwgWg",
-    "SP-2_SIT": "https://disk.yandex.ru/d/MoXCgdUamEnmfA",
-    "SP-3_CON": "https://disk.yandex.ru/d/9Sp--f1UF1WCrg",
-    "SP-4_EXP": "https://disk.yandex.ru/d/K869xbd1mmLwWA",
-    "SP-5_INT": "https://disk.yandex.ru/d/5Ip1IllKjF1TQg",
-    "SP-6_AUT": "https://disk.yandex.ru/d/saOXkhBzFdGO6A",
-    "SP-7_VAL": "https://disk.yandex.ru/d/1umIAOuQVec-nw",
-    "SP-8_TRA": "https://disk.yandex.ru/d/lqhpsMCnQaXkzw",
-    "SP-9_IDE": "https://disk.yandex.ru/d/RsvI8Kw1G367Mg",
-    
-    # IA Profiles
-    "IA-1_DEF": "https://disk.yandex.ru/d/Ca6qVNiaScceHA",
-    "IA-2_SIT": "https://disk.yandex.ru/d/fQiK3NQ6kJB0vw",
-    "IA-3_CON": "https://disk.yandex.ru/d/44CwOGbfN2304g",
-    "IA-4_EXP": "https://disk.yandex.ru/d/vukRKPMMWiJUZw",
-    "IA-5_INT": "https://disk.yandex.ru/d/ERvhVQqxEgafsw",
-    "IA-6_AUT": "https://disk.yandex.ru/d/41U2jQq-SZBVPg",
-    "IA-7_VAL": "https://disk.yandex.ru/d/7cs7v7_phz5BjQ",
-    "IA-8_TRA": "https://disk.yandex.ru/d/3QpBmWsO8l3xlw",
-    "IA-9_IDE": "https://disk.yandex.ru/d/EjTrACZrYgjFEg",
-    
-    # IP Profiles
-    "IP-1_DEF": "https://disk.yandex.ru/d/MTfoxMFHrfP-Lw",
-    "IP-2_SIT": "https://disk.yandex.ru/d/L6X5a5rRT4FPWQ",
-    "IP-3_CON": "https://disk.yandex.ru/d/larM19K4iVyy6Q",
-    "IP-4_EXP": "https://disk.yandex.ru/d/jSvbjNOi3BuVAw",
-    "IP-5_INT": "https://disk.yandex.ru/d/ny-cnsvdtj_fDw",
-    "IP-6_AUT": "https://disk.yandex.ru/d/kDd9tKyKVughag",
-    "IP-7_VAL": "https://disk.yandex.ru/d/DNAG15nsH0-wYA",
-    "IP-8_TRA": "https://disk.yandex.ru/d/K90BW0SSTOuAhA",
-    "IP-9_IDE": "https://disk.yandex.ru/d/VIgdg8gFVp10aw",
-    
-    # Default
-    "default": "https://disk.yandex.ru/d/EYPIF9_puI_t0A"
-}
-
-# ===== КОНФИГУРАЦИЯ =====
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "ВАШ_ТОКЕН_ЗДЕСЬ")
-BOT_USERNAME = os.getenv("BOT_USERNAME", "YourBot")
-BOT_LINK = f"t.me/{BOT_USERNAME}"
-AUTHOR_LINK = "https://t.me/author"
-YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID", "")
-YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY", "")
-API_URL = os.getenv("API_URL", "http://localhost:8000")
-GIFT_PDF_LINK = os.getenv("GIFT_PDF_LINK", "https://disk.yandex.ru/d/example")
-
-SHARE_TEXT = "🔮 Узнай свой психологический профиль за 15 минут"
-GIFT_SCREEN_TEXT = "🎁 Ваш подарок готов!"
+# ===== ИМПОРТ 18+ МОДУЛЯ (БЕЗ КОНФЛИКТУЮЩИХ ФУНКЦИЙ) =====
+from sexual_18_plus import (
+    SEXUAL_DIVIDER,
+    FREE_INVITE_LIMIT,
+    FRIEND_ACCESS_PRICE,
+    FOUR_F_PRICE,
+    INVITE_PACKAGES,
+    PROFILE_DISK_LINKS,
+    FOUR_F_DESCRIPTIONS,
+    SEXUAL_STATES,
+    get_user_invites_from_api,
+    get_user_limits,
+    save_invite_to_api,
+    update_invite_in_api,
+    find_invite_in_api,
+    get_friend_by_id,
+    count_free_friends,
+    can_create_invite,
+    init_test_data,
+    get_disk_link_by_profile,
+    get_disk_link,
+    load_intimate_profile,
+    load_friend_intimate_profile,
+    format_intimate_profile_part1,
+    format_intimate_profile_part2,
+    format_intimate_profile_part3,
+    format_friend_intimate_profile,
+    load_4f_content,
+    create_invite_callback,
+    generate_payment_id,
+    create_yookassa_invoice,
+    show_my_sexual_profile,
+    sexual_invite_start,
+    copy_invite_callback,
+    check_invite_callback,
+    # НЕ ИМПОРТИРУЕМ: start, show_results_screen
+    my_invites_callback,
+    friend_menu_callback,
+    show_payment_access_screen,
+    standard_profile_callback,
+    intimate_profile_callback,
+    four_f_menu_callback,
+    four_f_explanation_callback,
+    buy_4f_key_callback,
+    process_payment_callback,
+    open_4f_key_callback,
+    back_to_results_callback,
+    dummy_callback,
+    split_long_message,
+    safe_send_message,
+)
 
 # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+async def noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Заглушка для нереализованных функций"""
+    query = update.callback_query
+    await query.answer("🚧 Функция в разработке", show_alert=True)
+    return
 
-def get_disk_link_by_profile(profile_code: str) -> str:
-    """Умный поиск ссылки на Яндекс.Диск по коду профиля"""
-    if not profile_code:
-        return PROFILE_DISK_LINKS["default"]
-    
-    profile_upper = profile_code.upper().strip()
-    
-    # Прямое совпадение
-    if profile_upper in PROFILE_DISK_LINKS:
-        return PROFILE_DISK_LINKS[profile_upper]
-    
-    # Замена _ на -
-    profile_with_hyphen = profile_upper.replace('_', '-')
-    if profile_with_hyphen in PROFILE_DISK_LINKS:
-        return PROFILE_DISK_LINKS[profile_with_hyphen]
-    
-    # Замена - на _
-    profile_with_underscore = profile_upper.replace('-', '_')
-    if profile_with_underscore in PROFILE_DISK_LINKS:
-        return PROFILE_DISK_LINKS[profile_with_underscore]
-    
-    # Поиск по начальным символам
-    for key in PROFILE_DISK_LINKS:
-        if key.startswith(profile_upper[:5]):
-            return PROFILE_DISK_LINKS[key]
-    
-    return PROFILE_DISK_LINKS["default"]
+# ===== ИМПОРТ ВОПРОСОВ =====
+from questions import (
+    PERCEPTION_TYPES, CLARIFICATION_QUESTIONS,
+    STAGE1_FEEDBACK, STAGE2_FEEDBACK, STAGE3_FEEDBACK, STAGE4_ANALYSIS_SCREEN
+)
 
-def split_long_message(text: str, max_length: int = 4000) -> List[str]:
-    """Разбивает длинное сообщение на части"""
-    if len(text) <= max_length:
-        return [text]
+# ===== ИМПОРТ НАШИХ НОВЫХ МОДУЛЕЙ =====
+from handlers import (
+    show_stage_1_intro, show_stage_1_details, back_to_stage1_intro,
+    start_stage_1, ask_stage_1_question, handle_stage_1_answer, finish_stage_1,
     
-    parts = []
-    current_part = ""
-    lines = text.split('\n')
+    show_stage_2_intro, show_stage_2_details, back_to_stage2_intro,
+    start_stage_2, ask_stage_2_question, handle_stage_2_answer, finish_stage_2,
     
-    for line in lines:
-        if len(line) > max_length:
-            if current_part:
-                parts.append(current_part)
-                current_part = ""
-            for i in range(0, len(line), max_length):
-                parts.append(line[i:i+max_length])
-        else:
-            test_part = current_part + ("\n" if current_part else "") + line
-            if len(test_part) <= max_length:
-                current_part = test_part
-            else:
-                if current_part:
-                    parts.append(current_part)
-                current_part = line
+    show_stage_3_intro, show_stage_3_details, back_to_stage3_intro,
+    start_stage_3, ask_stage_3_question, handle_stage_3_answer, finish_stage_3,
     
-    if current_part:
-        parts.append(current_part)
-    
-    return parts
+    show_stage_4_intro, show_stage_4_details, back_to_stage4_intro,
+    start_stage_4, ask_stage_4_question, handle_stage_4_answer, finish_stage_4,
+)
 
-async def safe_send_message(chat_id: int, text: str, context: ContextTypes.DEFAULT_TYPE, 
-                           reply_markup=None, parse_mode: str = "HTML", max_retries: int = 3) -> bool:
-    """Безопасная отправка сообщения"""
+from handlers.common import ask_clarification_question, handle_clarification_answer
+
+# ===== ПРОВЕРКА ИМПОРТОВ =====
+logger.info("🔍 ПРОВЕРКА ИМПОРТОВ ИЗ handlers:")
+logger.info(f"  start_stage_1: {start_stage_1}")
+logger.info(f"  handle_stage_1_answer: {handle_stage_1_answer}")
+logger.info(f"  ask_stage_1_question: {ask_stage_1_question}")
+logger.info(f"  finish_stage_1: {finish_stage_1}")
+
+# ===== ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ТИПОВ =====
+import sys
+print("\n" + "="*60, file=sys.stderr)
+print("🔍 ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ТИПОВ", file=sys.stderr)
+print("="*60, file=sys.stderr)
+print(f"🔥 start_stage_1 = {start_stage_1}", file=sys.stderr)
+print(f"🔥 Тип start_stage_1 = {type(start_stage_1)}", file=sys.stderr)
+print(f"🔥 start_stage_1 is None: {start_stage_1 is None}", file=sys.stderr)
+print(f"🔥 start_stage_1 is callable: {callable(start_stage_1)}", file=sys.stderr)
+print("="*60 + "\n", file=sys.stderr)
+sys.stderr.flush()
+
+from utils.calculations import (
+    determine_perception_type, get_type_code, get_level_name, get_dilts_code,
+    determine_dilts_level, get_level_group, calculate_thinking_level_by_scores,
+    calculate_final_level, check_profile_coherence, calculate_profile_final
+)
+
+from utils.validators import (
+    need_clarification_stage1, need_clarification_stage2,
+    need_clarification_stage3, need_clarification_stage4
+)
+
+from utils.helpers import calculate_progress
+
+# Импорт загрузчика и профилей
+from loader import loader
+from base import VariaticaProfile
+
+# ============================================
+# ФУНКЦИИ ПЛАТЕЖНОЙ СИСТЕМЫ
+# ============================================
+
+def create_yookassa_invoice_payment(payment_id: str, user_id: int, profile_code: str, amount: float = 690.0, email: str = None) -> dict:
+    """Создает платеж через Invoices API ЮKassa"""
     try:
-        parts = split_long_message(text)
+        logger.info(f"📤 Создаю платеж ЮKassa: {payment_id}, профиль: {profile_code}")
         
-        for i, part in enumerate(parts):
-            current_markup = reply_markup if i == len(parts) - 1 else None
-            
-            for attempt in range(max_retries):
-                try:
-                    await context.bot.send_message(
-                        chat_id=chat_id,
-                        text=part,
-                        reply_markup=current_markup,
-                        parse_mode=parse_mode,
-                        disable_web_page_preview=True
-                    )
-                    break
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(1)
-                    else:
-                        logger.error(f"❌ Не удалось отправить сообщение: {e}")
-                        return False
-            
-            if i < len(parts) - 1:
-                await asyncio.sleep(0.5)
+        if not YOOKASSA_SHOP_ID or not YOOKASSA_SECRET_KEY:
+            logger.error("❌ YOOKASSA ключи не установлены!")
+            return {"success": False, "error": "Платежная система не настроена"}
         
-        return True
+        auth_string = f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}"
+        auth_encoded = base64.b64encode(auth_string.encode()).decode()
+        
+        unique_id = uuid.uuid4().hex[:16]
+        idempotence_key = f"{payment_id}_{unique_id}_{int(time.time())}"
+        
+        headers = {
+            'Authorization': f'Basic {auth_encoded}',
+            'Content-Type': 'application/json',
+            'Idempotence-Key': idempotence_key
+        }
+        
+        if not email:
+            email = f"user_{user_id}@example.com"
+        
+        description = f"Полное описание профиля {profile_code} от виртуального психолога"
+        
+        payload = {
+            "amount": {
+                "value": f"{amount:.2f}",
+                "currency": "RUB"
+            },
+            "confirmation": {
+                "type": "redirect",
+                "return_url": TELEGRAM_BOT_URL
+            },
+            "capture": True,
+            "description": description,
+            "metadata": {
+                "payment_id": payment_id,
+                "user_id": user_id,
+                "telegram_id": str(user_id),
+                "profile_code": profile_code,
+                "is_test": "false"
+            },
+            "receipt": {
+                "customer": {
+                    "email": email
+                },
+                "items": [
+                    {
+                        "description": f"Полное описание профиля {profile_code} от виртуального психолога",
+                        "quantity": "1.00",
+                        "amount": {
+                            "value": f"{amount:.2f}",
+                            "currency": "RUB"
+                        },
+                        "vat_code": "1",
+                        "payment_subject": "service",
+                        "payment_mode": "full_payment"
+                    }
+                ]
+            }
+        }
+        
+        logger.info(f"💳 Отправляю запрос в ЮKassa...")
+        
+        response = requests.post(
+            "https://api.yookassa.ru/v3/payments",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        
+        logger.info(f"📥 Ответ ЮKassa: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            confirmation_url = data.get('confirmation', {}).get('confirmation_url')
+            
+            if confirmation_url:
+                logger.info(f"✅ Платеж создан в ЮKassa: {data.get('id')}")
+                
+                return {
+                    "success": True,
+                    "payment_id": payment_id,
+                    "confirmation_url": confirmation_url,
+                    "yookassa_id": data.get('id'),
+                    "amount": amount,
+                    "profile_code": profile_code,
+                    "invoice_type": "yookassa_invoice",
+                    "available_methods": "all",
+                    "status": data.get('status', 'pending')
+                }
+            else:
+                logger.error(f"❌ Нет ссылки для оплаты в ответе ЮKassa")
+                return {"success": False, "error": "Нет ссылки для оплаты"}
+        else:
+            error_text = response.text[:500] if response.text else "Нет ответа"
+            logger.error(f"❌ Ошибка ЮKassa {response.status_code}: {error_text}")
+            return {"success": False, "error": f"Ошибка ЮKassa: {response.status_code}", "details": error_text}
+            
     except Exception as e:
-        logger.error(f"❌ Ошибка в safe_send_message: {e}")
-        return False
+        logger.error(f"❌ Исключение при создании платежа ЮKassa: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
 
-# ===== ФУНКЦИИ РАСЧЕТА ПРОФИЛЯ =====
+async def create_payment_advanced(user_id: int, profile_code: str, amount: float = 690.00) -> dict:
+    """Создает платеж в БД и ЮKassa"""
+    
+    timestamp = int(time.time())
+    random_str = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=12))
+    user_suffix = str(user_id)[-6:]
+    payment_id = f"prod_{timestamp}_{random_str}_{user_suffix}"
+    
+    logger.info(f"💳 Создаю платеж: {payment_id}, профиль: {profile_code}, сумма: {amount}")
+    
+    try:
+        db_payload = {
+            "payment_id": payment_id,
+            "user_id": user_id,
+            "profile_code": profile_code.upper(),
+            "amount": amount,
+            "email": f"user_{user_id}@example.com",
+            "description": f"Полное описание профиля {profile_code} от виртуального психолога"
+        }
+        
+        logger.debug(f"📤 Отправка запроса в API: {API_URL}/api/create-payment-advanced")
+        db_response = requests.post(
+            f"{API_URL}/api/create-payment-advanced",
+            json=db_payload,
+            timeout=10
+        )
+        
+        logger.debug(f"📥 Ответ API: {db_response.status_code}")
+        
+        if db_response.status_code in [200, 201]:
+            db_data = db_response.json()
+            
+            if db_data.get("confirmation_url"):
+                logger.info(f"✅ Платеж создан через API: {payment_id}")
+                return {
+                    "success": True,
+                    "payment_id": payment_id,
+                    "confirmation_url": db_data["confirmation_url"],
+                    "amount": amount,
+                    "profile_code": profile_code,
+                    "yookassa_id": db_data.get("yookassa_id"),
+                    "invoice_type": db_data.get("invoice_type", "yookassa_invoice"),
+                    "available_methods": db_data.get("available_methods", "all"),
+                    "status": db_data.get("status", "pending")
+                }
+            
+            logger.info(f"🔄 Создаю платеж через ЮKassa напрямую: {payment_id}")
+            yookassa_result = create_yookassa_invoice_payment(
+                payment_id=payment_id,
+                user_id=user_id,
+                profile_code=profile_code,
+                amount=amount,
+                email=f"user_{user_id}@example.com"
+            )
+            
+            if yookassa_result["success"]:
+                try:
+                    update_response = requests.post(
+                        f"{API_URL}/api/update-yookassa-id",
+                        json={
+                            "payment_id": payment_id,
+                            "yookassa_id": yookassa_result.get("yookassa_id"),
+                            "profile_code": profile_code,
+                            "status": "waiting"
+                        },
+                        timeout=5
+                    )
+                    
+                    if update_response.status_code in [200, 201]:
+                        logger.info(f"✅ ID ЮKassa сохранен в БД")
+                    else:
+                        logger.warning(f"⚠️ Не удалось сохранить ID ЮKassa: {update_response.status_code}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Ошибка при сохранении ID ЮKassa: {e}")
+                
+                return yookassa_result
+            else:
+                logger.error(f"❌ Ошибка создания платежа в ЮKassa: {yookassa_result.get('error')}")
+                return yookassa_result
+                
+        else:
+            error_text = db_response.text[:200] if db_response.text else "Нет ответа"
+            logger.error(f"❌ Ошибка БД {db_response.status_code}: {error_text}")
+            return {
+                "success": False, 
+                "error": f"Ошибка API: {db_response.status_code}",
+                "details": error_text
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка подключения к API: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": f"Ошибка подключения: {str(e)}"
+        }
 
-def determine_perception_type(scores: Dict[str, int]) -> str:
-    """Определяет тип восприятия по набранным баллам"""
-    return max(scores, key=scores.get)
+async def check_payment_status_api(payment_id: str) -> dict:
+    """Проверяет статус платежа через API"""
+    try:
+        logger.debug(f"🔍 Проверка статуса платежа: {payment_id}")
+        response = requests.get(
+            f"{API_URL}/api/payment-status/{payment_id}",
+            timeout=10
+        )
+        
+        logger.debug(f"📥 Ответ API: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            logger.debug(f"  Статус: {result.get('status', 'unknown')}")
+            return {
+                "success": True,
+                "status": result.get("status", "unknown"),
+                "payment_id": payment_id,
+                "data": result
+            }
+        else:
+            logger.error(f"❌ API error: {response.status_code}")
+            return {
+                "success": False,
+                "error": f"API error: {response.status_code}"
+            }
+    except Exception as e:
+        logger.error(f"Status check error: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
-def get_type_code(perception_type: str) -> str:
-    """Преобразует тип восприятия в код"""
-    mapping = {
-        "EXTERNAL": "E",
-        "INTERNAL": "I",
-        "SYMBOLIC": "S",
-        "MATERIAL": "M"
+async def get_materials_link_api(payment_id: str, user_id: int) -> dict:
+    """Получает ссылку на материалы через API"""
+    try:
+        logger.debug(f"📦 Получение материалов: {payment_id}, user_id={user_id}")
+        response = requests.get(
+            f"{API_URL}/api/get-materials/{payment_id}",
+            params={"user_id": user_id},
+            timeout=10
+        )
+        
+        logger.debug(f"📥 Ответ API: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("success"):
+                logger.debug(f"✅ Материалы получены: {result.get('profile_code')}")
+                return {
+                    "success": True,
+                    "materials_link": result.get("materials_link"),
+                    "profile_code": result.get("profile_code"),
+                    "profile_link": result.get("profile_link")
+                }
+            else:
+                logger.error(f"❌ Ошибка API: {result.get('error')}")
+                return {
+                    "success": False,
+                    "error": result.get("error", "Unknown error")
+                }
+        else:
+            logger.error(f"❌ API error: {response.status_code}")
+            return {
+                "success": False,
+                "error": f"API error: {response.status_code}"
+            }
+    except Exception as e:
+        logger.error(f"Materials API error: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+# ============================================
+# ФУНКЦИИ РАБОТЫ С ПРОФИЛЯМИ
+# ============================================
+
+class ProfileNotFoundError(Exception):
+    """Исключение для случая, когда профиль не найден"""
+    pass
+
+def get_profile_fallback(profile_data: dict) -> 'VariaticaProfile':
+    """Упрощенная логика поиска профиля"""
+    type_code = profile_data.get('type_code', 'sa').lower()
+    level = profile_data.get('level', 1)
+    dilts_code = profile_data.get('dilts_code', 'def').lower()
+    
+    logger.info(f"🔍 ПОИСК ПРОФИЛЯ: type={type_code}, level={level}, dilts={dilts_code}")
+    
+    search_order = []
+    if dilts_code in STANDARD_SUFFIXES:
+        search_order.append(dilts_code)
+    search_order.extend(STANDARD_SUFFIXES)
+    search_order = list(dict.fromkeys(search_order))
+    
+    logger.info(f"📋 Порядок поиска суффиксов: {search_order}")
+    
+    for suffix in search_order:
+        profile_key = f"{type_code}_{level}_{suffix}"
+        profile = loader.get_profile(profile_key)
+        if profile:
+            logger.info(f"✅ Найден профиль: {profile_key}")
+            return profile
+    
+    logger.warning(f"⚠️ Не найдено профилей для {type_code}_{level}_*")
+    
+    for diff in LEVEL_DIFFS:
+        test_level = level + diff
+        if 1 <= test_level <= 9:
+            for suffix in STANDARD_SUFFIXES:
+                profile_key = f"{type_code}_{test_level}_{suffix}"
+                profile = loader.get_profile(profile_key)
+                if profile:
+                    logger.info(f"✅ Найден на уровне {test_level} (разница {diff}): {profile_key}")
+                    return profile
+    
+    logger.error(f"❌ Не найдено профилей типа {type_code} на уровнях 1-9")
+    
+    for emergency_key in EMERGENCY_PROFILES:
+        profile = loader.get_profile(emergency_key)
+        if profile:
+            logger.warning(f"🚨 Использую аварийный профиль: {emergency_key}")
+            return profile
+    
+    error_msg = f"Не найден профиль для type={type_code}, level={level}"
+    logger.critical(f"💥 {error_msg}")
+    raise ProfileNotFoundError(error_msg)
+
+def get_discrepancy_note(profile_data: dict, actual_profile_key: str) -> str:
+    """Возвращает примечание о конфликте Дилтса"""
+    if not actual_profile_key:
+        logger.warning("⚠️ get_discrepancy_note: actual_profile_key отсутствует")
+        return ""
+    
+    try:
+        key_lower = actual_profile_key.lower()
+        logger.info(f"🔍 Поиск суффикса в ключе: {key_lower}")
+        
+        found_suffix = None
+        for suffix in STANDARD_SUFFIXES:
+            if f"_{suffix}" in key_lower or key_lower.startswith(f"{suffix}_") or key_lower.endswith(f"_{suffix}") or key_lower == suffix:
+                found_suffix = suffix
+                logger.info(f"✅ Найден суффикс: {found_suffix}")
+                break
+        
+        if found_suffix:
+            dilts_level = SUFFIX_TO_DILTS.get(found_suffix, "ENVIRONMENT")
+            conflict_phrase = CONFLICT_PHRASES.get(dilts_level, {})
+            note = conflict_phrase.get("note", "")
+            
+            if note:
+                logger.info(f"✅ Сформировано примечание о конфликте: суффикс={found_suffix}, dilts={dilts_level}")
+                return f"{note}\n\n"
+            else:
+                return f"🔥 Примечание: Обнаружено несоответствие в вашем профиле.\n\n"
+        
+        logger.info(f"❌ Суффикс не найден в ключе: {key_lower}")
+        return ""
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в get_discrepancy_note: {e}", exc_info=True)
+        return ""
+
+def clean_duplicate_headers(text: str, field_type: str) -> str:
+    """Убирает заголовки, которые уже есть в тексте профиля"""
+    if not text:
+        return ""
+    
+    lines = text.strip().split('\n')
+    if not lines:
+        return text
+    
+    headers = {
+        'trigger': ['ЭТО ТЫ, ЕСЛИ...', 'ЭТО ТЫ, ЕСЛИ:'],
+        'pain': ['СУТЬ ПРОБЛЕМЫ:', 'СУТЬ ПРОБЛЕМЫ: ПОЧЕМУ ЭТО ЛОМАЕТ ТВОЮ ЖИЗНЬ?'],
+        'immediate_tool': ['ПЕРВЫЙ ШАГ / ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:', 'ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:'],
+        'cta': ['ЧТО ДАЛЬШЕ?', 'ДАЛЬШЕ:']
     }
-    return mapping.get(perception_type, "E")
+    
+    if field_type in headers and lines:
+        first_line = lines[0].strip()
+        for header in headers[field_type]:
+            if header in first_line:
+                lines.pop(0)
+                if lines and not lines[0].strip():
+                    lines.pop(0)
+                break
+    
+    return '\n'.join(lines).strip()
 
-def calculate_thinking_level_by_scores(stage2_scores: Dict[str, int]) -> int:
-    """Рассчитывает уровень мышления"""
-    # Простая формула: средневзвешенное
-    total = 0
-    count = 0
-    for level, score in stage2_scores.items():
-        total += int(level) * score
-        count += score
+def format_profile_title(profile_title: str, profile_header: str) -> str:
+    """Форматирует заголовок профиля"""
+    if not profile_title:
+        return f"🎯 {profile_header}"
     
-    if count == 0:
-        return 5
+    profile_title = profile_title.strip()
+    lines = profile_title.split('\n')
     
-    return round(total / count)
+    if len(lines) == 1:
+        title = lines[0].strip()
+        return f"🎯 {profile_header} / {title}"
+    
+    elif len(lines) >= 2:
+        line1 = lines[0].strip()
+        line2 = lines[1].strip()
+        
+        if line2 == profile_header or line2.replace('_', ' ').lower() == profile_header.replace('_', ' ').lower():
+            return f"🎯 {profile_header} / {line1}"
+        else:
+            return f"🎯 {profile_header} / {line1}"
+    
+    return f"🎯 {profile_header}"
 
-def determine_dilts_level(answers: List[str]) -> str:
-    """Определяет уровень Дилтса по ответам"""
-    if not answers:
-        return "BEHAVIOR"
+def get_card_description_from_profile(profile: 'VariaticaProfile', profile_data: dict) -> dict:
+    """Получает описание профиля с очисткой заголовков"""
+    is_new_format = hasattr(profile, 'archetype') and profile.archetype
     
-    # Считаем частоту ответов
-    freq = {}
-    for a in answers:
-        freq[a] = freq.get(a, 0) + 1
-    
-    # Возвращаем самый частый
-    return max(freq, key=freq.get) if freq else "BEHAVIOR"
+    if is_new_format:
+        clean_trigger = clean_duplicate_headers(profile.trigger, 'trigger')
+        clean_pain = clean_duplicate_headers(profile.pain, 'pain')
+        clean_tool = clean_duplicate_headers(profile.immediate_tool, 'immediate_tool')
+        clean_cta = clean_duplicate_headers(profile.cta, 'cta')
+        
+        return {
+            "title": profile.title,
+            "archetype": profile.archetype,
+            "quote": profile.quote,
+            "trigger": clean_trigger,
+            "pain": clean_pain,
+            "immediate_tool": clean_tool,
+            "cta": clean_cta,
+            "type_code": profile_data['type_code'],
+            "level": profile_data['level'],
+            "dilts_code": profile_data['dilts_code'],
+        }
+    else:
+        return {
+            "title": profile.title if hasattr(profile, 'title') else f"{profile_data['type_code']} Профиль",
+            "profile_name": profile.profile_name if hasattr(profile, 'profile_name') else f"{profile_data['type_code']} Уровень {profile_data['level']}",
+            "thinking_level": profile.thinking_level if hasattr(profile, 'thinking_level') else profile_data['level'],
+            "dilts_level": profile.dilts_level if hasattr(profile, 'dilts_level') else profile_data['dilts_level'],
+            "pain": profile.pain if hasattr(profile, 'pain') else "",
+            "world": profile.world if hasattr(profile, 'world') else "",
+            "superpower": profile.superpower if hasattr(profile, 'superpower') else "",
+            "growth": profile.growth if hasattr(profile, 'growth') else f"Точка роста на уровне {profile_data['level']}",
+            "cta": profile.cta if hasattr(profile, 'cta') else ""
+        }
 
-def get_dilts_code(dilts_level: str) -> str:
-    """Преобразует уровень Дилтса в код"""
-    mapping = {
-        "ENVIRONMENT": "env",
-        "BEHAVIOR": "beh",
-        "CAPABILITIES": "cap",
-        "VALUES": "val",
-        "IDENTITY": "id",
-        "MISSION": "mis"
-    }
-    return mapping.get(dilts_level, "beh")
+# ============================================
+# ФУНКЦИИ РЕЗУЛЬТАТОВ
+# ============================================
 
-def calculate_final_level(type_code: str, thinking_level: int, dilts_code: str) -> int:
-    """Рассчитывает финальный уровень профиля"""
-    # Базовая формула: уровень мышления корректируется на основе типа и дилтса
-    base_level = thinking_level
-    
-    # Корректировка по типу
-    type_adjustments = {
-        "E": 0,
-        "I": 1,
-        "S": -1,
-        "M": 0
-    }
-    
-    # Корректировка по дилтсу
-    dilts_adjustments = {
-        "env": -1,
-        "beh": 0,
-        "cap": 1,
-        "val": 1,
-        "id": 2,
-        "mis": 2
-    }
-    
-    level = base_level + type_adjustments.get(type_code, 0) + dilts_adjustments.get(dilts_code, 0)
-    
-    # Ограничиваем от 1 до 9
-    return max(1, min(9, level))
-
-def calculate_profile_final(user_data: dict) -> dict:
-    """Рассчитывает финальный профиль"""
-    scores = user_data.get("scores", {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0})
-    perception_type = determine_perception_type(scores)
-    type_code = get_type_code(perception_type)
-    
-    stage2_scores = user_data.get("stage2_level_scores_dict", {})
-    thinking_level = calculate_thinking_level_by_scores(stage2_scores)
-    
-    stage4_answers = user_data.get("stage4_dilts_answers", [])
-    dilts_level = determine_dilts_level(stage4_answers)
-    dilts_code = get_dilts_code(dilts_level)
-    
-    final_level = calculate_final_level(type_code, thinking_level, dilts_code)
-    
-    # Формируем отображаемое имя
-    type_prefix = type_code
-    if type_code == "E":
-        type_prefix = "SA"
-    elif type_code == "I":
-        type_prefix = "SP"
-    elif type_code == "S":
-        type_prefix = "IA"
-    elif type_code == "M":
-        type_prefix = "IP"
-    
-    display_name = f"{type_prefix}-{final_level}_{dilts_code.upper()}"
-    
-    return {
-        "perception_type": perception_type,
-        "type_code": type_prefix,
-        "thinking_level": thinking_level,
-        "dilts_level": dilts_level,
-        "dilts_code": dilts_code.upper(),
-        "level": final_level,
-        "display_name": display_name
-    }
-
-# ===== ФУНКЦИИ ТЕСТА =====
-
-# --- ЭТАП 1 ---
-
-async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает введение в 1 этап"""
+async def show_results_screen(
+    update: Update, 
+    context: ContextTypes.DEFAULT_TYPE,
+    force_shared_view: bool = False
+):
+    """ЭКРАН РЕЗУЛЬТАТОВ с 18+ кнопкой"""
     query = update.callback_query
-    await query.answer()
+    user_id = update.effective_user.id
     
-    text = (
-        "🧠 <b>ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ</b>\n\n"
-        "Как ваш разум фильтрует реальность?\n"
-        "На что вы обращаете внимание в первую очередь?\n\n"
-        "Я задам вам 5 вопросов, чтобы понять "
-        "базовую настройку вашего восприятия."
+    log_callback("show_results_screen", update, context)
+    
+    has_shared = context.user_data.get("has_shared", False) or force_shared_view
+    profile_data = context.user_data.get("profile_data")
+    
+    logger.debug(f"📊 has_shared={has_shared}, profile_data={'есть' if profile_data else 'нет'}")
+    
+    if not profile_data:
+        logger.debug("🔄 profile_data отсутствует, вычисляем...")
+        profile_data = calculate_profile_final(context.user_data)
+        context.user_data["profile_data"] = profile_data
+        logger.debug(f"✅ profile_data вычислен: {profile_data.get('display_name')}")
+    
+    try:
+        profile = get_profile_fallback(profile_data)
+        logger.debug(f"✅ Профиль найден: {profile}")
+    except ProfileNotFoundError as e:
+        logger.error(f"❌ Профиль не найден: {e}", exc_info=True)
+        error_text = (
+            f"🧠 <b>К сожалению, возникла техническая ошибка</b>\n\n"
+            f"Как ваш виртуальный психолог, я не смог обработать все данные.\n\n"
+            f"Попробуйте пройти тест заново, чтобы я мог помочь вам лучше:\n"
+            f"/start\n\n"
+            f"<i>Приношу извинения за неудобства.</i>"
+        )
+        await query.edit_message_text(error_text, parse_mode="HTML")
+        return ConversationHandler.END
+    
+    profile_card = get_card_description_from_profile(profile, profile_data)
+    context.user_data["profile_card"] = profile_card
+    
+    actual_profile_key = None
+    try:
+        if hasattr(profile, 'key'):
+            actual_profile_key = profile.key.lower()
+            logger.info(f"🔍 Найден ключ профиля: {actual_profile_key}")
+            context.user_data["actual_profile_key"] = actual_profile_key
+        elif hasattr(profile, 'profile_name'):
+            actual_profile_key = profile.profile_name.lower()
+            context.user_data["actual_profile_key"] = actual_profile_key
+        else:
+            actual_profile_key = f"{profile_card.get('type_code', 'sa')}_{profile_card.get('level', 1)}_{profile_card.get('dilts_code', 'def')}".lower()
+            context.user_data["actual_profile_key"] = actual_profile_key
+        
+        parts = actual_profile_key.split('_')
+        if len(parts) >= 3:
+            profile_data['type_code'] = parts[0].upper()
+            profile_data['level'] = int(parts[1])
+            profile_data['dilts_code'] = parts[2].lower()
+            profile_data['display_name'] = actual_profile_key.upper()
+            context.user_data["profile_data"] = profile_data
+            logger.info(f"✅ Обновлен profile_data реальным профилем: {profile_data['display_name']}")
+            
+    except Exception as e:
+        logger.error(f"⚠️ Ошибка определения реального профиля: {e}")
+    
+    # ПРИМЕЧАНИЕ О КОНФЛИКТЕ
+    discrepancy_note = ""
+    if actual_profile_key:
+        discrepancy_note = get_discrepancy_note(profile_data, actual_profile_key)
+        logger.info(f"📝 Примечание о конфликте: {'✅ Есть' if discrepancy_note else '❌ Нет'}")
+    
+    message_1 = (
+        f"🧠 <b>ВАШИ ПЕРВЫЕ ИНСАЙТЫ</b>\n\n"
+        f"<i>Как ваш виртуальный психолог, я проанализировал ваши ответы.</i>\n\n"
+        f"Вот что я увидел:\n\n"
     )
     
-    keyboard = [
-        [InlineKeyboardButton("📖 Подробнее об этапе", callback_data="stage1_details")],
-        [InlineKeyboardButton("🚀 Начать этап 1", callback_data="start_stage_1")]
-    ]
-    
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return STAGE_1
-
-async def show_stage_1_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Детали 1 этапа"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = (
-        "📖 <b>О ВОСПРИЯТИИ</b>\n\n"
-        "Я определю ваш доминирующий канал восприятия:\n\n"
-        "🌍 <b>Внешний (EXTERNAL)</b> — вы ориентируетесь на мнения других, "
-        "социальные нормы, обратную связь.\n\n"
-        "🧠 <b>Внутренний (INTERNAL)</b> — вы доверяете своим ощущениям, "
-        "внутреннему компасу.\n\n"
-        "🔮 <b>Символический (SYMBOLIC)</b> — вы ищете смыслы, знаки, "
-        "паттерны, символы.\n\n"
-        "💰 <b>Материальный (MATERIAL)</b> — вы цените конкретные, "
-        "осязаемые результаты и вещи."
+    psychologist_comment = (
+        f"<i>На основе ваших ответов я вижу характерные паттерны мышления и поведения. "
+        f"Это хорошая отправная точка для самопознания.</i>\n\n"
     )
     
-    keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_to_stage1_intro")]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return STAGE_1
-
-async def back_to_stage1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат к введению 1 этапа"""
-    return await show_stage_1_intro(update, context)
-
-async def start_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начинает 1 этап"""
-    query = update.callback_query
-    await query.answer()
+    message_1 += psychologist_comment
     
-    context.user_data["stage1_current"] = 0
-    context.user_data["stage1_answers"] = []
-    context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
+    profile_header = profile_data.get('display_name', f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}")
+    raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
+    formatted_title = format_profile_title(raw_title, profile_header)
+    message_1 += f"<b>{formatted_title}</b>\n\n"
     
-    return await ask_stage_1_question(update, context)
-
-async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Задает вопрос 1 этапа"""
-    query = update.callback_query
-    await query.answer()
+    archetype = profile_card.get('archetype', '')
+    if archetype:
+        message_1 += f"<i>{archetype}</i>\n\n"
     
-    current = context.user_data.get("stage1_current", 0)
+    quote = profile_card.get('quote', '')
+    if quote:
+        message_1 += f"<b>💬 ЦИТАТА:</b>\n{quote}\n\n"
     
-    if current >= len(STAGE1_QUESTIONS):
-        return await finish_stage_1(update, context)
+    trigger = profile_card.get('trigger', '')
+    if trigger:
+        if trigger.startswith('🔍 ЭТО ТЫ, ЕСЛИ...'):
+            trigger = trigger.replace('🔍 ЭТО ТЫ, ЕСЛИ...\n\n', '').replace('🔍 ЭТО ТЫ, ЕСЛИ...', '')
+        
+        message_1 += f"<b>🔍 ЭТО ВЫ, ЕСЛИ...</b>\n\n"
+        message_1 += f"{trigger}\n\n"
     
-    question = STAGE1_QUESTIONS[current]
+    pain = profile_card.get('pain', '')
+    if pain:
+        pain_lines = pain.strip().split('\n')
+        if pain_lines and any(h in pain_lines[0] for h in ['СУТЬ ПРОБЛЕМЫ:', 'СУТЬ ПРОБЛЕМЫ']):
+            pain = '\n'.join(pain_lines[1:]) if len(pain_lines) > 1 else ""
+        
+        if pain.strip():
+            message_1 += f"<b>💔 СУТЬ ПРОБЛЕМЫ</b>\n\n"
+            message_1 += f"{pain.strip()}"
     
-    keyboard = [
-        [InlineKeyboardButton(f"🌍 {question['options']['EXTERNAL']}", callback_data="stage1_EXTERNAL")],
-        [InlineKeyboardButton(f"🧠 {question['options']['INTERNAL']}", callback_data="stage1_INTERNAL")],
-        [InlineKeyboardButton(f"🔮 {question['options']['SYMBOLIC']}", callback_data="stage1_SYMBOLIC")],
-        [InlineKeyboardButton(f"💰 {question['options']['MATERIAL']}", callback_data="stage1_MATERIAL")]
-    ]
+    if message_1.strip():
+        logger.debug(f"📤 Отправка message_1 ({len(message_1)} символов)")
+        await query.edit_message_text(message_1.strip(), parse_mode="HTML")
+        await asyncio.sleep(0.5)
     
-    await query.edit_message_text(
-        f"Вопрос {current + 1}/{len(STAGE1_QUESTIONS)}:\n\n{question['text']}",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return STAGE_1
-
-async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает ответ 1 этапа"""
-    query = update.callback_query
-    await query.answer()
+    message_2 = ""
     
-    answer = query.data.replace("stage1_", "")
+    tool = profile_card.get('immediate_tool', '')
+    if tool:
+        tool_lines = tool.strip().split('\n')
+        if tool_lines and any(h in tool_lines[0] for h in ['ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:', 'ПЕРВЫЙ ШАГ / ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:']):
+            tool = '\n'.join(tool_lines[1:]) if len(tool_lines) > 1 else ""
+        
+        if tool.strip():
+            message_2 += f"<b>🛠 ПРАКТИЧЕСКИЙ ИНСТРУМЕНТ</b>\n\n"
+            message_2 += f"<i>Что можно сделать прямо сейчас:</i>\n\n"
+            message_2 += f"{tool.strip()}\n\n"
     
-    # Сохраняем ответ
-    context.user_data.setdefault("stage1_answers", []).append(answer)
+    cta = profile_card.get('cta', '')
+    if cta:
+        cta_lines = cta.strip().split('\n')
+        if cta_lines and cta_lines[0].strip() == 'ЧТО ДАЛЬШЕ?':
+            cta = '\n'.join(cta_lines[1:]) if len(cta_lines) > 1 else ""
+        
+        if cta.strip():
+            message_2 += f"<b>🚀 СЛЕДУЮЩИЕ ШАГИ</b>\n\n"
+            message_2 += f"{cta.strip()}\n\n"
     
-    # Увеличиваем счетчик для этого типа
-    scores = context.user_data.setdefault("scores", {})
-    scores[answer] = scores.get(answer, 0) + 1
+    message_2 += "\n"
     
-    context.user_data["stage1_current"] = context.user_data.get("stage1_current", 0) + 1
-    
-    return await ask_stage_1_question(update, context)
-
-async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершает 1 этап"""
-    query = update.callback_query
-    await query.answer()
-    
-    scores = context.user_data.get("scores", {})
-    perception_type = determine_perception_type(scores)
-    
-    context.user_data["perception_type"] = perception_type
-    
-    text = f"""
-✅ <b>ЭТАП 1 ЗАВЕРШЕН</b>
-
-{STAGE1_FEEDBACK.get(perception_type, "Спасибо за ответы!")}
-
-Переходим к этапу 2?
-"""
-    keyboard = [
-        [InlineKeyboardButton("🚀 Перейти к этапу 2", callback_data="show_stage_2_intro")],
-        [InlineKeyboardButton("📖 Подробнее об этапе 2", callback_data="stage2_details")]
-    ]
-    
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return STAGE_2
-
-# --- ЭТАП 2 ---
-
-async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает введение в 2 этап"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = (
-        "🧠 <b>ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ</b>\n\n"
-        "Как вы обрабатываете информацию?\n"
-        "На каком уровне абстракции вы мыслите?\n\n"
-        "Я задам вам несколько вопросов, чтобы определить "
-        "уровень вашего мышления (от 1 до 9)."
+    message_2 += (
+        f"🧠 <b>ЧТО ДАЛЬШЕ В НАШЕМ ПУТЕШЕСТВИИ?</b>\n\n"
+        f"<i>Это только начало вашего пути к самопознанию.</i>\n\n"
     )
     
-    keyboard = [
-        [InlineKeyboardButton("📖 Подробнее об этапе", callback_data="stage2_details")],
-        [InlineKeyboardButton("🚀 Начать этап 2", callback_data="start_stage_2")]
-    ]
+    # ПРИМЕЧАНИЕ О КОНФЛИКТЕ
+    if discrepancy_note:
+        message_2 += f"{discrepancy_note}"
     
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return STAGE_2
-
-async def show_stage_2_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Детали 2 этапа"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = (
-        "📖 <b>О МЫШЛЕНИИ</b>\n\n"
-        "Уровни мышления (по Роберту Дилтсу):\n\n"
-        "1️⃣ Конкретный — факты, детали, действия\n"
-        "2️⃣ Ситуативный — контекст, обстоятельства\n"
-        "3️⃣ Аналитический — причины, связи\n"
-        "4️⃣ Системный — структуры, паттерны\n"
-        "5️⃣ Стратегический — стратегии, планы\n"
-        "6️⃣ Принципиальный — принципы, законы\n"
-        "7️⃣ Абстрактный — концепции, модели\n"
-        "8️⃣ Философский — фундаментальные вопросы\n"
-        "9️⃣ Мета-уровень — мышление о мышлении"
-    )
-    
-    keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_to_stage2_intro")]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return STAGE_2
-
-async def back_to_stage2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат к введению 2 этапа"""
-    return await show_stage_2_intro(update, context)
-
-async def start_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начинает 2 этап"""
-    query = update.callback_query
-    await query.answer()
-    
-    context.user_data["stage2_current"] = 0
-    context.user_data["stage2_answers"] = []
-    context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
-    
-    return await ask_stage_2_question(update, context)
-
-async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Задает вопрос 2 этапа"""
-    query = update.callback_query
-    await query.answer()
-    
-    current = context.user_data.get("stage2_current", 0)
-    
-    if current >= len(STAGE2_QUESTIONS):
-        return await finish_stage_2(update, context)
-    
-    question = STAGE2_QUESTIONS[current]
-    
-    keyboard = [
-        [InlineKeyboardButton(f"1️⃣ {question['1']}", callback_data="stage2_1")],
-        [InlineKeyboardButton(f"3️⃣ {question['3']}", callback_data="stage2_3")],
-        [InlineKeyboardButton(f"5️⃣ {question['5']}", callback_data="stage2_5")],
-        [InlineKeyboardButton(f"7️⃣ {question['7']}", callback_data="stage2_7")],
-        [InlineKeyboardButton(f"9️⃣ {question['9']}", callback_data="stage2_9")]
-    ]
-    
-    await query.edit_message_text(
-        f"Вопрос {current + 1}/{len(STAGE2_QUESTIONS)}:\n\n{question['text']}",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return STAGE_2
-
-async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает ответ 2 этапа"""
-    query = update.callback_query
-    await query.answer()
-    
-    level = query.data.replace("stage2_", "")
-    
-    # Сохраняем ответ
-    context.user_data.setdefault("stage2_answers", []).append(int(level))
-    
-    # Увеличиваем счетчик для этого уровня
-    scores = context.user_data.setdefault("stage2_level_scores_dict", {})
-    scores[level] = scores.get(level, 0) + 1
-    
-    context.user_data["stage2_current"] = context.user_data.get("stage2_current", 0) + 1
-    
-    return await ask_stage_2_question(update, context)
-
-async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершает 2 этап"""
-    query = update.callback_query
-    await query.answer()
-    
-    scores = context.user_data.get("stage2_level_scores_dict", {})
-    thinking_level = calculate_thinking_level_by_scores(scores)
-    
-    context.user_data["thinking_level"] = thinking_level
-    
-    text = f"""
-✅ <b>ЭТАП 2 ЗАВЕРШЕН</b>
-
-{STAGE2_FEEDBACK.get(thinking_level, f"Ваш уровень мышления: {thinking_level}")}
-
-Переходим к этапу 3?
-"""
-    keyboard = [
-        [InlineKeyboardButton("🚀 Перейти к этапу 3", callback_data="show_stage_3_intro")],
-        [InlineKeyboardButton("📖 Подробнее об этапе 3", callback_data="stage3_details")]
-    ]
-    
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return STAGE_3
-
-# --- ЭТАП 3 ---
-
-async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает введение в 3 этап"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = (
-        "🧠 <b>ЭТАП 3: КОНФИГУРАЦИЯ ПОВЕДЕНИЯ</b>\n\n"
-        "Как вы действуете в разных ситуациях?\n"
-        "Какие паттерны поведения для вас характерны?\n\n"
-        "Я задам вам несколько вопросов, чтобы понять "
-        "ваш поведенческий профиль."
-    )
-    
-    keyboard = [
-        [InlineKeyboardButton("📖 Подробнее об этапе", callback_data="stage3_details")],
-        [InlineKeyboardButton("🚀 Начать этап 3", callback_data="start_stage_3")]
-    ]
-    
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return STAGE_3
-
-async def show_stage_3_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Детали 3 этапа"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = (
-        "📖 <b>О ПОВЕДЕНИИ</b>\n\n"
-        "Я проанализирую ваши поведенческие паттерны:\n\n"
-        "⚡️ Реакция на стресс\n"
-        "🤝 Стиль в конфликте\n"
-        "🗣 Коммуникативные стратегии\n"
-        "🎯 Способы достижения целей\n\n"
-        "Это поможет понять, почему вы действуете "
-        "так, а не иначе."
-    )
-    
-    keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_to_stage3_intro")]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return STAGE_3
-
-async def back_to_stage3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат к введению 3 этапа"""
-    return await show_stage_3_intro(update, context)
-
-async def start_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начинает 3 этап"""
-    query = update.callback_query
-    await query.answer()
-    
-    context.user_data["stage3_current"] = 0
-    context.user_data["stage3_answers"] = []
-    context.user_data["stage3_level_scores"] = []
-    
-    return await ask_stage_3_question(update, context)
-
-async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Задает вопрос 3 этапа"""
-    query = update.callback_query
-    await query.answer()
-    
-    current = context.user_data.get("stage3_current", 0)
-    
-    if current >= len(STAGE3_QUESTIONS):
-        return await finish_stage_3(update, context)
-    
-    question = STAGE3_QUESTIONS[current]
-    
-    keyboard = [
-        [InlineKeyboardButton(f"A. {question['A']}", callback_data="stage3_A")],
-        [InlineKeyboardButton(f"B. {question['B']}", callback_data="stage3_B")],
-        [InlineKeyboardButton(f"C. {question['C']}", callback_data="stage3_C")],
-        [InlineKeyboardButton(f"D. {question['D']}", callback_data="stage3_D")]
-    ]
-    
-    await query.edit_message_text(
-        f"Вопрос {current + 1}/{len(STAGE3_QUESTIONS)}:\n\n{question['text']}",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return STAGE_3
-
-async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает ответ 3 этапа"""
-    query = update.callback_query
-    await query.answer()
-    
-    answer = query.data.replace("stage3_", "")
-    
-    context.user_data.setdefault("stage3_answers", []).append(answer)
-    context.user_data.setdefault("stage3_level_scores", []).append(ord(answer) - ord('A') + 1)
-    
-    context.user_data["stage3_current"] = context.user_data.get("stage3_current", 0) + 1
-    
-    return await ask_stage_3_question(update, context)
-
-async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершает 3 этап"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-✅ <b>ЭТАП 3 ЗАВЕРШЕН</b>
-
-{STAGE3_FEEDBACK}
-
-Переходим к этапу 4?
-"""
-    keyboard = [
-        [InlineKeyboardButton("🚀 Перейти к этапу 4", callback_data="show_stage_4_intro")],
-        [InlineKeyboardButton("📖 Подробнее об этапе 4", callback_data="stage4_details")]
-    ]
-    
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return STAGE_4
-
-# --- ЭТАП 4 ---
-
-async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает введение в 4 этап"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = (
-        "🧠 <b>ЭТАП 4: ТОЧКА РОСТА</b>\n\n"
-        "На каком уровне вы ищете изменения?\n"
-        "Где находится ваша зона ближайшего развития?\n\n"
-        "Я помогу определить ваш текущий уровень "
-        "по пирамиде Дилтса."
-    )
-    
-    keyboard = [
-        [InlineKeyboardButton("📖 Подробнее об этапе", callback_data="stage4_details")],
-        [InlineKeyboardButton("🚀 Начать этап 4", callback_data="start_stage_4")]
-    ]
-    
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return STAGE_4
-
-async def show_stage_4_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Детали 4 этапа"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = (
-        "📖 <b>О ТОЧКЕ РОСТА</b>\n\n"
-        "Пирамида Дилтса (логические уровни):\n\n"
-        "🌍 <b>Окружение</b> — где и когда\n"
-        "🏃 <b>Поведение</b> — что делаю\n"
-        "🧠 <b>Способности</b> — как, какими навыками\n"
-        "💎 <b>Ценности</b> — почему, зачем\n"
-        "👤 <b>Идентичность</b> — кто я\n"
-        "🌟 <b>Миссия</b> — ради чего\n\n"
-        "Ваша точка роста — уровень, на котором "
-        "изменения дадут максимальный эффект."
-    )
-    
-    keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_to_stage4_intro")]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return STAGE_4
-
-async def back_to_stage4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат к введению 4 этапа"""
-    return await show_stage_4_intro(update, context)
-
-async def start_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начинает 4 этап"""
-    query = update.callback_query
-    await query.answer()
-    
-    context.user_data["stage4_current"] = 0
-    context.user_data["stage4_dilts_answers"] = []
-    
-    return await ask_stage_4_question(update, context)
-
-async def ask_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Задает вопрос 4 этапа"""
-    query = update.callback_query
-    await query.answer()
-    
-    current = context.user_data.get("stage4_current", 0)
-    
-    if current >= len(STAGE4_QUESTIONS):
-        return await finish_stage_4(update, context)
-    
-    question = STAGE4_QUESTIONS[current]
-    
-    keyboard = [
-        [InlineKeyboardButton(f"🌍 {question['ENVIRONMENT']}", callback_data="stage4_ENVIRONMENT")],
-        [InlineKeyboardButton(f"🏃 {question['BEHAVIOR']}", callback_data="stage4_BEHAVIOR")],
-        [InlineKeyboardButton(f"🧠 {question['CAPABILITIES']}", callback_data="stage4_CAPABILITIES")],
-        [InlineKeyboardButton(f"💎 {question['VALUES']}", callback_data="stage4_VALUES")],
-        [InlineKeyboardButton(f"👤 {question['IDENTITY']}", callback_data="stage4_IDENTITY")],
-        [InlineKeyboardButton(f"🌟 {question['MISSION']}", callback_data="stage4_MISSION")]
-    ]
-    
-    await query.edit_message_text(
-        f"Вопрос {current + 1}/{len(STAGE4_QUESTIONS)}:\n\n{question['text']}",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return STAGE_4
-
-async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает ответ 4 этапа"""
-    query = update.callback_query
-    await query.answer()
-    
-    answer = query.data.replace("stage4_", "")
-    
-    context.user_data.setdefault("stage4_dilts_answers", []).append(answer)
-    context.user_data["stage4_current"] = context.user_data.get("stage4_current", 0) + 1
-    
-    return await ask_stage_4_question(update, context)
-
-async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершает 4 этап и показывает результаты"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Рассчитываем финальный профиль
-    profile_data = calculate_profile_final(context.user_data)
-    context.user_data["profile_data"] = profile_data
-    
-    # Показываем анализ
-    dilts_level = profile_data.get("dilts_level", "BEHAVIOR")
-    analysis = STAGE4_ANALYSIS_SCREEN if 'STAGE4_ANALYSIS_SCREEN' in globals() else "Анализ завершен."
-    
-    text = f"""
-✅ <b>ЭТАП 4 ЗАВЕРШЕН</b>
-
-{analysis}
-
-🎉 <b>ТЕСТ ПРОЙДЕН!</b>
-Ваш профиль: {profile_data['display_name']}
-
-Нажмите кнопку ниже, чтобы увидеть результаты.
-"""
-    
-    keyboard = [[InlineKeyboardButton("📊 ПОСМОТРЕТЬ РЕЗУЛЬТАТЫ", callback_data="show_results")]]
-    
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return RESULTS
-
-# --- УТОЧНЯЮЩИЕ ВОПРОСЫ ---
-
-async def ask_clarification_question(update: Update, context: ContextTypes.DEFAULT_TYPE, question: str):
-    """Задает уточняющий вопрос"""
-    query = update.callback_query
-    
-    keyboard = [
-        [InlineKeyboardButton("✅ Да", callback_data="clarify_yes")],
-        [InlineKeyboardButton("❌ Нет", callback_data="clarify_no")]
-    ]
-    
-    await query.edit_message_text(question, reply_markup=InlineKeyboardMarkup(keyboard))
-    return CLARIFICATION
-
-async def handle_clarification_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает ответ на уточняющий вопрос"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Здесь можно обработать ответ и вернуться к тесту
-    return RESULTS
-
-# ===== ФУНКЦИИ РЕЗУЛЬТАТОВ =====
-
-async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает экран результатов"""
-    query = update.callback_query
-    await query.answer()
-    
-    profile_data = context.user_data.get("profile_data", {"display_name": "SA-5_INT"})
-    profile_code = profile_data.get("display_name", "SA-5_INT")
-    disk_link = get_disk_link_by_profile(profile_code)
-    
-    message = f"""
-🧠 <b>ВАШ ПРОФИЛЬ ГОТОВ</b>
-
-📊 {profile_code}
-
-💬 <b>ЦИТАТА:</b>
-«Я не ищу — я нахожу»
-
-💔 <b>СУТЬ ПРОБЛЕМЫ</b>
-Вам сложно просить о помощи, даже когда она нужна.
-Вы привыкли справляться сами, но это истощает.
-
-🛠 <b>ИНСТРУМЕНТ</b>
-Сегодня: попросите кого-то о маленькой услуге.
-Заметьте, что мир не рухнул.
-
-📁 <b>ССЫЛКА НА ПРОФИЛЬ:</b>
-{disk_link}
-"""
-    
-    has_shared = context.user_data.get("has_shared", False)
+    # КНОПКА 18+ ПРОФИЛЯ
+    sexual_button = [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_my_sexual_profile")]
     
     if not has_shared:
         keyboard = [
             [InlineKeyboardButton("🪞 Поделиться зеркалом", callback_data="get_gift")],
             [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
-            [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="my_sexual_profile")]
+            sexual_button
         ]
+        logger.debug("🔘 Клавиатура: без подарка (has_shared=False)")
     else:
         keyboard = [
             [InlineKeyboardButton("🎁 Получить сказку «Мастер Меча»", callback_data="open_gift")],
             [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
-            [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="my_sexual_profile")]
+            sexual_button
         ]
+        logger.debug(f"🔘 Клавиатура: с подарком, GIFT_PDF_LINK={GIFT_PDF_LINK}")
     
-    await query.edit_message_text(
-        message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML",
-        disable_web_page_preview=True
-    )
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
+    logger.debug(f"📤 Отправка message_2 ({len(message_2)} символов) с {len(keyboard)} рядами кнопок")
+    await query.message.reply_text(message_2.strip(), reply_markup=reply_markup, parse_mode="HTML")
+    
+    logger.info(f"✅ Результаты показаны пользователю {user_id}")
     return RESULTS
 
+# ============================================
+# ФУНКЦИИ НАВИГАЦИИ
+# ============================================
+
+async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возврат к результатам"""
+    log_callback("back_to_results", update, context)
+    query = update.callback_query
+    await query.answer("🔄 Возвращаюсь к результатам...")
+    
+    result = await show_results_screen(update, context, force_shared_view=True)
+    logger.info(f"🔄 User {update.effective_user.id}: back_to_results → RESULTS")
+    return result
+
+async def back_to_results_after_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возврат к результатам после подарка"""
+    log_callback("back_to_results_after_gift", update, context)
+    query = update.callback_query
+    await query.answer("🔄 Возвращаюсь к результатам...")
+    
+    result = await show_results_screen(update, context, force_shared_view=True)
+    logger.info(f"🎁 User {update.effective_user.id}: back_to_results_after_gift → RESULTS")
+    return result
+
+async def skip_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пропуск шаринга"""
+    log_callback("skip_share", update, context)
+    query = update.callback_query
+    await query.answer("⏩ Продолжаем без репоста")
+    
+    result = await show_results_screen(update, context, force_shared_view=True)
+    logger.info(f"🔄 User {update.effective_user.id}: skip_share → RESULTS")
+    return result
+
+async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Подтверждение шаринга"""
+    log_callback("confirm_share", update, context)
+    query = update.callback_query
+    await query.answer("✅ Спасибо за репост! Ваш бонус готов!")
+    
+    context.user_data["has_shared"] = True
+    logger.info(f"✅ User {update.effective_user.id}: has_shared установлен в True")
+    
+    logger.info(f"✅ User {update.effective_user.id}: confirm_share → open_gift_screen")
+    return await open_gift_screen(update, context)
+
+async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Перезапуск теста"""
+    log_callback("restart_test", update, context)
+    query = update.callback_query
+    await query.answer("🔄 Перезапускаю тест...")
+    
+    # Очищаем данные пользователя
+    context.user_data.clear()
+    logger.debug(f"🧹 user_data очищена для {update.effective_user.id}")
+    
+    # Инициализируем новые данные
+    context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
+    context.user_data["stage1_current"] = 0
+    context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
+    context.user_data["stage3_level_scores"] = []
+    context.user_data["stage4_dilts_answers"] = []
+    context.user_data["processing"] = False
+    context.user_data["has_shared"] = False
+    
+    # Инициализируем хранилище приглашений
+    user_id = query.from_user.id
+    context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)
+    
+    logger.info(f"User {user_id} перезапустил тест")
+    
+    # Переходим к первому этапу
+    return await show_stage_1_intro(update, context)
+
+# ============================================
+# ФУНКЦИИ ПОДАРКОВ И ПАКЕТОВ
+# ============================================
+
 async def get_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Экран подарка за репост"""
+    """ЭКРАН: ДАЙТЕ ДРУГИМ ЗЕРКАЛО — ПОЛУЧИТЕ МЕЧ"""
+    log_callback("get_gift_screen", update, context)
     query = update.callback_query
     await query.answer()
+    
+    instruction_text = (
+        f"🧠 <b>ДАЙТЕ ДРУГИМ ЗЕРКАЛО — ПОЛУЧИТЕ МЕЧ</b>\n\n"
+        f"Иногда самое полезное, что мы можем сделать для близких —\n"
+        f"дать им зеркало.\n\n"
+        f"<i>Поделитесь этим зеркалом с теми, кому оно может быть важно.</i>\n\n"
+        f"⚔️ <b>А в благодарность — получите свой Меч:</b>\n"
+        f"Терапевтическая сказка <b>«Мастер Меча»</b>\n\n"
+        f"📖 <b>Эта сказка работает с тем, что мешает вам\n"
+        f"«расправить плечи» на уровне убеждений.</b>\n\n"
+        f"Она мягко трансформирует те ограничивающие установки,\n"
+        f"которые создают невидимую тяжесть на ваших плечах.\n\n"
+        f"🔗 <i>Просто нажмите кнопку ниже —\n"
+        f"я подготовлю сообщение для друзей.</i>"
+    )
     
     encoded_text = urllib.parse.quote(SHARE_TEXT)
     share_url = f"https://t.me/share/url?url={BOT_LINK}&text={encoded_text}"
     
     keyboard = [
         [InlineKeyboardButton("🪞 Поделиться зеркалом", url=share_url)],
-        [InlineKeyboardButton("✅ Я поделился(ась)", callback_data="confirm_share")],
-        [InlineKeyboardButton("Продолжить без этого", callback_data="skip_share")]
+        [InlineKeyboardButton("✅ Я поделился(ась) — получить подарок", callback_data="confirm_share")],
+        [InlineKeyboardButton("Продолжить без этого →", callback_data="skip_share")]
     ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(
-        "🪞 <b>ПОДЕЛИТЕСЬ ЗЕРКАЛОМ</b>\n\nПоделитесь с друзьями и получите подарок!",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    await query.edit_message_text(instruction_text, reply_markup=reply_markup, parse_mode="HTML")
+    logger.info(f"🪞 Gift screen показан пользователю {update.effective_user.id}")
     return GIFT_SCREEN
 
-async def confirm_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Подтверждение репоста"""
-    query = update.callback_query
-    await query.answer("✅ Спасибо!")
-    context.user_data["has_shared"] = True
-    return await open_gift_screen(update, context)
-
-async def skip_share(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Пропуск репоста"""
-    query = update.callback_query
-    await query.answer()
-    return await show_results_screen(update, context)
-
 async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Открытие подарка"""
+    """ЭКРАН С ПОДАРКОМ"""
+    log_callback("open_gift_screen", update, context)
     query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.debug(f"🎁 open_gift_screen: user_id={user_id}, has_shared={context.user_data.get('has_shared', False)}")
+    logger.debug(f"🎁 GIFT_PDF_LINK из config: {GIFT_PDF_LINK}")
+    
     await query.answer()
     
+    if not context.user_data.get("has_shared", False):
+        logger.warning(f"❌ Пользователь {user_id} пытается открыть подарок без has_shared")
+        await query.answer(
+            "❌ Сначала поделитесь зеркалом с друзьями, чтобы получить подарок!", 
+            show_alert=True
+        )
+        return await show_results_screen(update, context, force_shared_view=True)
+    
+    # Проверяем наличие ссылки
+    if not GIFT_PDF_LINK:
+        logger.error(f"❌ GIFT_PDF_LINK не установлен для пользователя {user_id}")
+        await query.answer(
+            "❌ Ссылка на подарок временно недоступна. Пожалуйста, попробуйте позже.",
+            show_alert=True
+        )
+        return await show_results_screen(update, context, force_shared_view=True)
+    
     keyboard = [
-        [InlineKeyboardButton("⚔️ Открыть сказку", url=GIFT_PDF_LINK)],
-        [InlineKeyboardButton("⬅️ Вернуться", callback_data="back_to_results")]
+        [InlineKeyboardButton("⚔️ Открыть сказку «Мастер Меча»", url=GIFT_PDF_LINK)],
+        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results_after_gift")]
     ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    logger.info(f"🎁 User {user_id} opened gift (has_shared={context.user_data.get('has_shared', False)})")
     
     await query.edit_message_text(
         GIFT_SCREEN_TEXT,
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_markup=reply_markup, 
         parse_mode="HTML"
     )
+    
+    logger.info(f"✅ Gift screen показан пользователю {user_id}")
     return OPEN_GIFT_SCREEN
 
 async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Экран полного описания"""
+    """ЭКРАН: ПОЛНОЕ ОПИСАНИЕ ПРОФИЛЯ"""
+    log_callback("show_package_screen", update, context)
     query = update.callback_query
     await query.answer()
     
-    profile_data = context.user_data.get("profile_data", {})
-    profile_code = profile_data.get('display_name', 'SA-5_INT') if profile_data else "SA-5_INT"
+    profile_data = context.user_data.get("profile_data")
+    logger.debug(f"📦 profile_data: {'есть' if profile_data else 'нет'}")
     
-    text = f"""
-📖 <b>ПОЛНОЕ ОПИСАНИЕ ПРОФИЛЯ</b>
-
-• Детальный анализ личности
-• Ключевые паттерны поведения
-• Точки роста и рекомендации
-• Практические инструменты
-
-📊 Ваш профиль: {profile_code}
-💰 Стоимость: 690 ₽
-"""
+    if profile_data:
+        profile_code = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
+        profile_info = f"\n📊 <b>Ваш профиль:</b> <code>{profile_code}</code>\n"
+        personal_note = f"\n<i>Это описание будет создано персонально для вас на основе ваших ответов.</i>"
+        logger.debug(f"📊 Профиль пользователя: {profile_code}")
+    else:
+        profile_info = "\n📊 <b>Профиль:</b> будет определен после теста\n"
+        personal_note = f"\n<i>После теста я подготовлю персональное описание именно для вас.</i>"
+        logger.debug("⚠️ profile_data отсутствует")
+    
+    package_text = (
+        f"🧠 <b>ПОЛНОЕ ОПИСАНИЕ ВАШЕГО ПРОФИЛЯ</b>\n\n"
+        f"<i>Как ваш виртуальный психолог, я подготовлю для вас:</i>\n\n"
+        f"• 📖 <b>Детальный анализ личности</b> (15+ страниц)\n"
+        f"• 🎯 <b>Ключевые паттерны поведения</b> с примерами\n"
+        f"• 🚀 <b>Точки роста</b> и рекомендации по развитию\n"
+        f"• ⚠️ <b>Потенциальные ограничения</b> и как их обходить\n"
+        f"• 💡 <b>Практические инструменты</b> для ежедневного применения\n"
+        f"• 🔍 <b>Сильные стороны</b> и как их использовать\n\n"
+        f"{profile_info}"
+        f"<b>Стоимость:</b> 690 ₽\n\n"
+        f"💳 <b>Все способы оплаты:</b> СБП, ЮMoney, банковские карты\n\n"
+        f"{personal_note}\n\n"
+        f"<b>Это ваше персональное руководство по самопознанию!</b>"
+    )
+    
     keyboard = [
-        [InlineKeyboardButton("💳 Купить за 690 ₽", callback_data="buy_package")],
-        [InlineKeyboardButton("⬅️ Вернуться", callback_data="back_to_results")]
+        [InlineKeyboardButton("🧠 Получить описание профиля за 690 ₽", callback_data="buy_package")],
+        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
     ]
     
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(package_text, reply_markup=reply_markup, parse_mode="HTML")
+    logger.info(f"📦 Package screen показан пользователю {update.effective_user.id}")
     return PACKAGE_SCREEN
 
-async def buy_package_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Покупка полного описания"""
-    query = update.callback_query
-    await query.answer("💳 Функция оплаты в разработке")
-    return await show_results_screen(update, context)
+# ============================================
+# ФУНКЦИИ ПЛАТЕЖЕЙ (Callback handlers)
+# ============================================
 
-async def back_to_results_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат к результатам"""
-    return await show_results_screen(update, context)
-
-# ===== ФУНКЦИИ ЗАГРУЗКИ ИНТИМНОГО ПРОФИЛЯ =====
-
-def find_project_root() -> str:
-    """Находит корень проекта"""
-    try:
-        current = os.path.dirname(os.path.abspath(__file__))
-        
-        while current != os.path.dirname(current):
-            if os.path.exists(os.path.join(current, "profiles")):
-                return current
-            current = os.path.dirname(current)
-        
-        return os.path.dirname(os.path.abspath(__file__))
-    except Exception:
-        return os.path.dirname(os.path.abspath(__file__))
-
-PROJECT_ROOT = find_project_root()
-
-def load_intimate_profile() -> dict:
-    """Загружает интимный профиль"""
-    try:
-        possible_paths = [
-            os.path.join(PROJECT_ROOT, "profiles", "sexual_18", "sa_5_int.json"),
-            os.path.join(PROJECT_ROOT, "sexual_18", "sa_5_int.json"),
-            os.path.join("profiles", "sexual_18", "sa_5_int.json"),
-            os.path.join("sexual_18", "sa_5_int.json"),
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                with open(path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-        
-        return get_emergency_profile()
-    except Exception:
-        return get_emergency_profile()
-
-def get_emergency_profile() -> dict:
-    """Аварийный интимный профиль"""
-    return {
-        "profile_type": "SA-5_INT",
-        "archetype": "ЦЕРЕМОНИАЛЬНЫЙ",
-        "role": "Жрец/Жрица сексуальной мистерии",
-        "quote": "«Со мной не скучно. Со мной — вкусно.»",
-        "description": "Секс для вас — священнодействие. Ритуал. Мистерия.",
-        "sections": {
-            "what_turns_on": {
-                "title": "🔴 ВКЛЮЧАЕТ",
-                "items": [
-                    "Долгие прелюдии",
-                    "Ролевые игры",
-                    "Шёпот на ухо"
-                ]
-            },
-            "what_turns_off": {
-                "title": "⚠️ ВЫКЛЮЧАЕТ",
-                "items": [
-                    "Спешка",
-                    "Отсутствие атмосферы"
-                ]
-            }
-        }
-    }
-
-def load_friend_intimate_profile(friend_name: str, friend_profile: str = None) -> dict:
-    """Загружает интимный профиль друга"""
-    profile = load_intimate_profile()
-    profile["profile_type"] = friend_profile or "SA-5_INT"
-    profile["friend_name"] = friend_name
-    return profile
-
-def load_friend_standard_profile() -> dict:
-    """Стандартный профиль друга"""
-    return {
-        "archetype": "Автономный стратег",
-        "quote": "«Я не ищу одобрения — я ищу эффективность.»",
-        "pain": "Вам сложно делегировать.",
-        "immediate_tool": "Передайте кому-то одну задачу полностью."
-    }
-
-def load_4f_content(function: str) -> dict:
-    """Загружает 4F контент"""
-    base_triggers = {
-        "1F": ["«Я понимаю, почему ты так реагируешь»", "«Ты имеешь полное право злиться»"],
-        "2F": ["«Ты не обязан это делать»", "«Здесь безопасно»"],
-        "3F": ["«Ты такой...»", "Взгляд в глаза"],
-        "4F": ["«Ты можешь заработать на этом»", "«Это твой шанс»"]
-    }
+async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /buy для получения описания профиля"""
+    user_id = update.effective_user.id
+    logger.info(f"💳 buy_command вызван пользователем {user_id}")
     
-    return {
-        "function": function,
-        "emoji": FOUR_F_EMOJIS.get(function, "🔑"),
-        "title": FOUR_F_TITLES.get(function, "КЛЮЧ"),
-        "description": FOUR_F_DESCRIPTIONS.get(function, ""),
-        "triggers": base_triggers.get(function, []),
-        "analysis": "Анализ состояния...",
-        "protocol": "Протокол управления..."
-    }
-
-def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
-    """Часть 1 интимного профиля"""
-    profile_code = profile_data.get('profile_type', 'SA-5_INT')
-    disk_link = get_disk_link_by_profile(profile_code)
+    profile_data = context.user_data.get("profile_data")
     
-    message = f"""
-🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ</b>
-📊 {user_name}, {profile_code}
-
-🧠 Архетип: {profile_data.get('archetype', 'ЦЕРЕМОНИАЛЬНЫЙ')}
-
-💬 <b>ЦИТАТА:</b>
-{profile_data.get('quote', '«Со мной не скучно. Со мной — вкусно.»')}
-
-🧠 <b>ВАША ПРИРОДА:</b>
-{profile_data.get('description', '')}
-
-📁 <b>ПОЛНАЯ ВЕРСИЯ:</b>
-{disk_link}
-"""
-    
-    sections = profile_data.get('sections', {})
-    section = sections.get("what_turns_on", {})
-    if section:
-        title = section.get('title', '')
-        message += f"\n\n{title}"
-        if 'items' in section:
-            for item in section['items']:
-                message += f"\n• {item}"
-    
-    return message
-
-def format_intimate_profile_part2(profile_data: dict, user_name: str) -> str:
-    """Часть 2 интимного профиля"""
-    message = ""
-    sections = profile_data.get('sections', {})
-    
-    section = sections.get("what_turns_off", {})
-    if section:
-        title = section.get('title', '')
-        message += f"\n\n{title}"
-        if 'items' in section:
-            for item in section['items']:
-                message += f"\n• {item}"
-    
-    section = sections.get("erogenous_zone", {})
-    if section:
-        title = section.get('title', '')
-        message += f"\n\n{title}"
-        if 'trigger' in section:
-            message += f"\n{section['trigger']}"
-    
-    return message
-
-def format_intimate_profile_part3(profile_data: dict, user_name: str) -> str:
-    """Часть 3 интимного профиля с кнопками"""
-    message = f"""
-
-{SEXUAL_DIVIDER}
-
-💎 <b>ТАМ, ЗА ЗЕРКАЛОМ...</b>
-
-Вы увидели только что 🪞 СВОЁ отражение.
-Но у <b>каждого друга</b> — своя тайна.
-
-<b>⬇️ КАК УВИДЕТЬ ИХ:</b>
-
-<b>1.</b> 🚀 Нажмите «🔞 СОЗДАТЬ ССЫЛКУ»
-<b>2.</b> 💌 Отправьте ссылку другу
-<b>3.</b> 🔓 Друг проходит тест → вам открывается ЕГО профиль
-"""
-    return message
-
-def format_friend_intimate_profile(profile_data: dict, friend_name: str) -> str:
-    """Форматирует профиль друга"""
-    friend_profile = profile_data.get('profile_type', 'SA-5_INT')
-    disk_link = get_disk_link_by_profile(friend_profile)
-    
-    message = f"""
-🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ ДРУГА</b>
-👤 {friend_name}
-
-📊 Тип: {friend_profile}
-🧠 Архетип: {profile_data.get('archetype', 'ЦЕРЕМОНИАЛЬНЫЙ')}
-
-💬 <b>ЦИТАТА:</b>
-{profile_data.get('quote', f'«{friend_name}, со мной не скучно. Со мной — вкусно.»')}
-
-📁 <b>ПОЛНАЯ ВЕРСИЯ:</b>
-{disk_link}
-"""
-    
-    sections = profile_data.get('sections', {})
-    section = sections.get("what_turns_on", {})
-    if section and 'items' in section:
-        message += f"\n\n{section.get('title', '')}"
-        for item in section['items'][:3]:
-            message += f"\n• {item}"
-    
-    return message
-
-# ===== ХРАНИЛИЩЕ ПРИГЛАШЕНИЙ =====
-
-user_invites = {}
-
-def get_user_invites(user_id: int) -> list:
-    """Получает список приглашений"""
-    if user_id not in user_invites:
-        user_invites[user_id] = []
-    return user_invites[user_id]
-
-def count_free_friends(user_id: int) -> int:
-    """Считает количество бесплатных друзей"""
-    invites = get_user_invites(user_id)
-    return len([inv for inv in invites if inv.get("status") == "used" and inv.get("access_status") == "free"])
-
-def init_test_data(user_id: int):
-    """Инициализирует тестовые данные"""
-    invites = get_user_invites(user_id)
-    if len(invites) > 0:
-        return
-    
-    current_time = datetime.now().timestamp()
-    
-    test_friends = [
-        {
-            "invite_id": f"test_free_1_{user_id}",
-            "friend_id": 1001,
-            "friend_name": "@alex",
-            "friend_profile": "SA-3_CON",
-            "status": "used",
-            "access_status": "free",
-            "created_at": current_time,
-            "purchased_functions": [],
-            "invite_type": "🆓"
-        },
-        {
-            "invite_id": f"test_free_2_{user_id}",
-            "friend_id": 1002,
-            "friend_name": "@maria",
-            "friend_profile": "IP-5_INT",
-            "status": "used",
-            "access_status": "free",
-            "created_at": current_time,
-            "purchased_functions": ["1F"],
-            "invite_type": "🆓"
-        }
-    ]
-    
-    invites.extend(test_friends)
-
-def get_user_limits(context: ContextTypes.DEFAULT_TYPE) -> dict:
-    """Получает лимиты пользователя"""
-    return context.user_data.setdefault("invite_limits", {
-        "free_used": 0,
-        "total_purchased": 0,
-        "paid_packages": []
-    })
-
-def can_create_invite(user_limits: dict, total_invites: int) -> Tuple[bool, bool, str]:
-    """Проверяет возможность создания приглашения"""
-    free_used = user_limits["free_used"]
-    
-    if free_used < FREE_INVITE_LIMIT:
-        return True, True, f"Осталось бесплатных: {FREE_INVITE_LIMIT - free_used}"
-    
-    paid_available = user_limits["total_purchased"] - (total_invites - FREE_INVITE_LIMIT)
-    if paid_available > 0:
-        return True, False, f"Осталось платных: {paid_available}"
-    
-    return False, False, "Лимит исчерпан"
-
-def get_friend_by_id(context: ContextTypes.DEFAULT_TYPE, friend_id: int) -> Optional[dict]:
-    """Получает данные друга по ID"""
-    invites = context.user_data.get("sexual_invites", [])
-    return next((inv for inv in invites if inv.get("friend_id") == friend_id), None)
-
-# ===== ПЛАТЕЖНАЯ СИСТЕМА =====
-
-def generate_payment_id(prefix: str = "4f", user_id: int = None) -> str:
-    """Генерирует ID платежа"""
-    timestamp = int(datetime.now().timestamp())
-    random_str = uuid.uuid4().hex[:8]
-    user_suffix = str(user_id)[-6:] if user_id else "000000"
-    return f"{prefix}_{timestamp}_{random_str}_{user_suffix}"
-
-def create_yookassa_invoice(payment_id: str, user_id: int, amount: float = 1.0, description: str = "") -> dict:
-    """Создает счет"""
-    return {
-        "success": True,
-        "payment_id": payment_id,
-        "confirmation_url": "https://test.payment.url",
-        "amount": amount,
-        "status": "pending"
-    }
-
-# ===== ФУНКЦИИ ИНТИМНОГО МОДУЛЯ =====
-
-async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Мой интимный профиль"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        context.user_data["conversation_state"] = MY_SEXUAL_PROFILE
-        
-        user_name = query.from_user.first_name or "Пользователь"
-        profile_data = load_intimate_profile()
-        
-        # Добавляем данные из основного теста
-        main_profile = context.user_data.get("profile_data", {})
-        if main_profile:
-            profile_data["profile_type"] = main_profile.get('display_name', 'SA-5_INT')
-        
-        message_part1 = format_intimate_profile_part1(profile_data, user_name)
-        message_part2 = format_intimate_profile_part2(profile_data, user_name)
-        message_part3 = format_intimate_profile_part3(profile_data, user_name)
-        
+    if not profile_data:
+        logger.debug(f"💳 profile_data отсутствует для {user_id}, показываем выбор")
         keyboard = [
-            [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
-            [InlineKeyboardButton("🔍 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
-            [InlineKeyboardButton("⬅️ НАЗАД", callback_data="back_to_results")]
+            [InlineKeyboardButton("🧠 Пройти тест для знакомства", callback_data="start_test")],
+            [InlineKeyboardButton("💎 Получить описание без теста", callback_data="buy_without_test")]
         ]
-        nav_keyboard = InlineKeyboardMarkup(keyboard)
         
-        chat_id = query.message.chat_id
-        
-        # Отправляем части
-        try:
-            await query.edit_message_text(message_part1, parse_mode="HTML", disable_web_page_preview=True)
-        except:
-            await safe_send_message(chat_id, message_part1, context)
-        
-        await asyncio.sleep(1)
-        
-        if message_part2.strip():
-            await safe_send_message(chat_id, message_part2, context)
-            await asyncio.sleep(1)
-        
-        if message_part3.strip():
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=message_part3,
-                reply_markup=nav_keyboard,
-                parse_mode="HTML"
+        if hasattr(update, 'callback_query') and update.callback_query:
+            await update.callback_query.edit_message_text(
+                f"🧠 *Чтобы я как ваш виртуальный психолог мог подготовить персональное описание, "
+                f"давайте сначала познакомимся поближе через тест.*\n\n"
+                f"💎 *Что вы получите в полном описании профиля:*\n"
+                f"• 📖 Детальный анализ вашей личности (15+ страниц)\n"
+                f"• 🎯 Конкретные паттерны поведения и мышления\n"
+                f"• 🚀 Рекомендации по развитию от психолога\n"
+                f"• 💡 Практические инструменты для жизни\n\n"
+                f"💰 *Стоимость:* 690 рублей\n"
+                f"💳 *Все способы оплаты:* СБП, ЮMoney, банковские карты\n\n"
+                f"*Выберите действие:*",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        else:
+            await update.message.reply_text(
+                f"🧠 *Чтобы я как ваш виртуальный психолог мог подготовить персональное описание, "
+                f"давайте сначала познакомимся поближе через тест.*\n\n"
+                f"💎 *Что вы получите в полном описании профиля:*\n"
+                f"• 📖 Детальный анализ вашей личности (15+ страниц)\n"
+                f"• 🎯 Конкретные паттерны поведения и мышления\n"
+                f"• 🚀 Рекомендации по развитию от психолога\n"
+                f"• 💡 Практические инструменты для жизни\n\n"
+                f"💰 *Стоимость:* 690 рублей\n"
+                f"💳 *Все способы оплаты:* СБП, ЮMoney, банковские карты\n\n"
+                f"*Выберите действие:*",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
         
-        return MY_SEXUAL_PROFILE
-    except Exception as e:
-        logger.error(f"Ошибка: {e}")
-        return RESULTS
+        return PAYMENT_SCREEN
+    
+    profile_code = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
+    context.user_data["pending_payment_profile"] = profile_code
+    logger.info(f"💳 Профиль для оплаты: {profile_code}")
+    
+    return await show_payment_screen(update, context)
 
-async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Создание приглашения"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        context.user_data["conversation_state"] = INVITES_LIST
-        
-        user_limits = get_user_limits(context)
-        invites = context.user_data.get("sexual_invites", [])
-        if not invites:
-            user_id = query.from_user.id
-            invites = get_user_invites(user_id)
-            context.user_data["sexual_invites"] = invites
-        
-        total_invites = len([inv for inv in invites if inv.get("status") in ["active", "used"]])
-        
-        can_create, is_free, message = can_create_invite(user_limits, total_invites)
-        
-        if not can_create:
-            await query.answer("❌ Лимит ссылок исчерпан!", show_alert=True)
-            return await buy_invite_packages_callback(update, context)
-        
-        profile = context.user_data.get("profile_data", {"display_name": "SA-5_INT"})
-        
-        invite_code = f"sex_{uuid.uuid4().hex[:8]}"
-        invite_url = f"https://t.me/{BOT_USERNAME}?start={invite_code}"
-        
-        if is_free:
-            user_limits["free_used"] += 1
-        
-        invite_data = {
-            "invite_id": invite_code,
-            "link": invite_url,
-            "profile_code": profile.get('display_name', 'SA-5_INT'),
-            "status": "active",
-            "created_at": datetime.now().timestamp(),
-            "is_free": is_free,
-            "invite_type": "🆓" if is_free else "💎"
-        }
-        
-        invites.insert(0, invite_data)
-        
-        text = f"""
-🔞 <b>ВАША ССЫЛКА ГОТОВА!</b>
+async def buy_without_test_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Покупка без прохождения теста"""
+    log_callback("buy_without_test_callback", update, context)
+    query = update.callback_query
+    await query.answer("💳 Переход к оплате...")
+    
+    context.user_data["pending_payment_profile"] = "SA_1_DEF"
+    logger.info(f"💳 Покупка без теста, профиль по умолчанию: SA_1_DEF")
+    
+    return await show_payment_screen(update, context)
 
-🔗 <code>{invite_url}</code>
-
-{SEXUAL_DIVIDER}
-🟢 <b>АКТИВНА</b>
-"""
+async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Экран создания платежа (БЕЗ ССЫЛКИ НА МАТЕРИАЛЫ)"""
+    query = update.callback_query if hasattr(update, 'callback_query') else None
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    logger.info(f"💳 show_payment_screen для пользователя {user_id}")
+    
+    profile_data = context.user_data.get("profile_data")
+    
+    if profile_data and 'display_name' in profile_data:
+        profile_code = profile_data['display_name']
+        logger.info(f"✅ Использую РЕАЛЬНЫЙ профиль из теста: {profile_code}")
+    else:
+        profile_code = context.user_data.get("pending_payment_profile", "SA_1_DEF")
+        logger.info(f"⚠️ Использую запасной профиль: {profile_code}")
+    
+    context.user_data["pending_payment_profile"] = profile_code
+    
+    if query:
+        await query.edit_message_text(
+            f"💳 *СОЗДАЮ ПЛАТЕЖ...*\n\n"
+            f"🧠 *Виртуальный психолог Вариатика*\n"
+            f"👤 *Клиент:* {user_name}\n"
+            f"📊 *Профиль:* `{profile_code}`\n"
+            f"💰 *Сумма:* 690 рублей\n\n"
+            f"⏳ *Создаю ссылку для оплаты...*",
+            parse_mode='Markdown'
+        )
+    
+    logger.debug(f"💳 Вызов create_payment_advanced для {profile_code}")
+    payment_result = await create_payment_advanced(user_id, profile_code, 690.00)
+    
+    if not payment_result.get("success"):
+        error_msg = payment_result.get("error", "Неизвестная ошибка")
+        details = payment_result.get("details", "")
         
-        share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}"
+        logger.error(f"❌ Ошибка создания платежа: {error_msg}")
         
         keyboard = [
-            [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
-            [InlineKeyboardButton("⬅️ К ОТРАЖЕНИЯМ", callback_data="my_invites")]
+            [InlineKeyboardButton("🔄 Попробовать снова", callback_data="buy_without_test")],
+            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
         ]
         
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
-        )
+        error_text = f"❌ *Ошибка при создании платежа:*\n`{error_msg}`"
+        if details:
+            error_text += f"\n\n`{details[:100]}`"
         
-        return INVITES_LIST
-    except Exception as e:
-        logger.error(f"Ошибка: {e}")
-        return INVITES_LIST
-
-async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Мои отражения"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        context.user_data["conversation_state"] = INVITES_LIST
-        
-        user_id = query.from_user.id
-        invites = get_user_invites(user_id)
-        context.user_data["sexual_invites"] = invites
-        
-        used_invites = [inv for inv in invites if inv.get("status") == "used"]
-        
-        user_profile = context.user_data.get("profile_data", {"display_name": "SA-5_INT"})
-        user_profile_code = user_profile.get('display_name', 'SA-5_INT')
-        user_profile_link = get_disk_link_by_profile(user_profile_code)
-        
-        message = f"""<b>🪞 МОИ ОТРАЖЕНИЯ</b>
-────────────────
-
-<b>📊 СТАТИСТИКА</b>
-🪞 Всего ссылок: {len(invites)}
-👥 Посмотрелись: {len(used_invites)}
-
-<b>🪞 МОЁ ОТРАЖЕНИЕ</b>
-📌 {user_profile_code}
-📁 {user_profile_link}
-"""
-
-        if used_invites:
-            message += f"\n<b>👥 ДРУЗЬЯ ({len(used_invites)})</b>\n"
-            for inv in used_invites[:3]:
-                name = inv.get("friend_name", "друг")
-                profile = inv.get("friend_profile", "SA-3_CON")
-                message += f"\n• {name} • {profile}"
-        
-        keyboard = [
-            [InlineKeyboardButton("◀️ К ПРОФИЛЮ", callback_data="my_sexual_profile")],
-            [InlineKeyboardButton("🔴 4F КЛЮЧИ", callback_data="four_f_main_menu")]
-        ]
-        
-        await query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML",
-            disable_web_page_preview=True
-        )
-        
-        return INVITES_LIST
-    except Exception as e:
-        logger.error(f"Ошибка: {e}")
-        return INVITES_LIST
-
-async def four_f_main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Главное меню 4F"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        context.user_data["conversation_state"] = FOUR_F_MAIN
-        
-        keyboard = [
-            [InlineKeyboardButton("📘 ПОДРОБНЕЕ", callback_data="four_f_detailed")],
-            [InlineKeyboardButton("🔍 К ОТРАЖЕНИЯМ", callback_data="my_invites")],
-            [InlineKeyboardButton("◀️ В ПРОФИЛЬ", callback_data="my_sexual_profile")]
-        ]
-        
-        await query.edit_message_text(
-            FOUR_F_SHORT,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
-        )
-        
-        return FOUR_F_MAIN
-    except Exception:
-        return INVITES_LIST
-
-async def four_f_detailed_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Подробное описание 4F"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        context.user_data["conversation_state"] = FOUR_F_DETAILED
-        
-        example_link = get_disk_link_by_profile("SA-3_CON")
-        
-        message = f"""
-🔥 <b>1F - ЯРОСТЬ / НАПАДЕНИЕ</b>
-🎯 Критика при свидетелях, обесценивание
-🔑 Список триггеров, 3 фразы-гасителя
-
-🏃 <b>2F - СТРАХ / БЕГСТВО</b>
-🎯 Повышение голоса, давление
-🔑 3 якоря безопасности
-
-🧬 <b>3F - СЕКС / ЖЕЛАНИЕ</b>
-🎯 Особая интонация, взгляд
-🔑 3 слова-пароля, 3 касания
-
-🍽 <b>4F - ДЕНЬГИ / ПОГЛОЩЕНИЕ</b>
-🎯 Возможности, конкуренты
-🔑 3 фразы-мотиватора
-
-📎 <b>ПРИМЕР:</b> {example_link}
-"""
-        
-        keyboard = [[InlineKeyboardButton("◀️ НАЗАД", callback_data="four_f_main_menu")]]
-        
-        await query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML",
-            disable_web_page_preview=True
-        )
-        
-        return FOUR_F_DETAILED
-    except Exception:
-        return FOUR_F_MAIN
-
-async def buy_invite_packages_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Покупка пакетов"""
-    query = update.callback_query
-    await query.answer()
-    
-    message = f"""
-💎 <b>ПАКЕТЫ ПРИГЛАШЕНИЙ</b>
-
-🥉 3 ссылки — 299₽
-🥈 5 ссылок — 499₽ 🔥
-🥇 10 ссылок — 899₽
-"""
-    
-    keyboard = [
-        [InlineKeyboardButton("🥉 3 ссылки - 299₽", callback_data="pay_package_3")],
-        [InlineKeyboardButton("🥈 5 ссылок - 499₽", callback_data="pay_package_5")],
-        [InlineKeyboardButton("🥇 10 ссылок - 899₽", callback_data="pay_package_10")],
-        [InlineKeyboardButton("◀️ НАЗАД", callback_data="my_invites")]
-    ]
-    
-    await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    return BUY_PACKAGES
-
-async def pay_package_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Оплата пакета"""
-    query = update.callback_query
-    await query.answer()
-    
-    package_id = query.data.split("_")[2]
-    package = INVITE_PACKAGES.get(package_id, {"links": package_id, "price": 299, "emoji": "🥉"})
-    
-    message = f"""
-💳 <b>ОПЛАТА ПАКЕТА</b>
-
-{package['emoji']} {package['links']} ссылок — {package['price']}₽
-"""
-    
-    payment_id = generate_payment_id("package", query.from_user.id)
-    
-    keyboard = [
-        [InlineKeyboardButton(f"💳 ОПЛАТИТЬ {package['price']}₽", callback_data=f"process_package_payment_{payment_id}_{package_id}")],
-        [InlineKeyboardButton("◀️ НАЗАД", callback_data="buy_invite_packages")]
-    ]
-    
-    await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    return FOUR_F_PAYMENT_SCREEN
-
-async def process_package_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка оплаты пакета"""
-    query = update.callback_query
-    await query.answer()
-    
-    parts = query.data.split("_")
-    package_id = parts[4]
-    package = INVITE_PACKAGES.get(package_id, {"links": int(package_id), "emoji": "🥉"})
-    
-    user_limits = get_user_limits(context)
-    user_limits["total_purchased"] += package["links"]
-    
-    message = f"""
-✅ <b>ОПЛАТА ПРОШЛА!</b>
-
-{package['emoji']} +{package['links']} ссылок
-"""
-    
-    keyboard = [
-        [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
-        [InlineKeyboardButton("◀️ К ОТРАЖЕНИЯМ", callback_data="my_invites")]
-    ]
-    
-    await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    return INVITES_LIST
-
-async def friend_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Меню друга"""
-    query = update.callback_query
-    await query.answer()
-    
-    friend_id = int(query.data.split("_")[1])
-    friend_data = get_friend_by_id(context, friend_id)
-    
-    if not friend_data:
-        await query.answer("❌ Друг не найден", show_alert=True)
-        return INVITES_LIST
-    
-    context.user_data["current_friend_id"] = friend_id
-    
-    friend_name = friend_data.get("friend_name", "друг")
-    friend_profile = friend_data.get("friend_profile", "SA-3_CON")
-    friend_link = get_disk_link_by_profile(friend_profile)
-    
-    message = f"""
-👤 <b>{friend_name}</b>
-
-📊 {friend_profile}
-📁 {friend_link}
-"""
-    
-    keyboard = [
-        [InlineKeyboardButton("🔞 ИНТИМ", callback_data=f"int_{friend_id}")],
-        [InlineKeyboardButton("🧬 4F", callback_data=f"4f_{friend_id}")],
-        [InlineKeyboardButton("⬅️ НАЗАД", callback_data="my_invites")]
-    ]
-    
-    await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    return FRIEND_MENU
-
-async def intimate_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Интимный профиль друга"""
-    query = update.callback_query
-    await query.answer()
-    
-    friend_id = int(query.data.split("_")[1])
-    friend_data = get_friend_by_id(context, friend_id)
-    
-    if not friend_data:
-        await query.answer("❌ Друг не найден", show_alert=True)
-        return FRIEND_MENU
-    
-    friend_name = friend_data.get("friend_name", "друг")
-    friend_profile = friend_data.get("friend_profile", "SA-3_CON")
-    
-    profile = load_friend_intimate_profile(friend_name, friend_profile)
-    message = format_friend_intimate_profile(profile, friend_name)
-    
-    keyboard = [[InlineKeyboardButton("⬅️ НАЗАД", callback_data=f"friend_{friend_id}")]]
-    
-    await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    return FRIEND_MENU
-
-async def four_f_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Меню 4F для друга"""
-    query = update.callback_query
-    await query.answer()
-    
-    friend_id = int(query.data.split("_")[1])
-    friend_data = get_friend_by_id(context, friend_id)
-    
-    if not friend_data:
-        await query.answer("❌ Друг не найден", show_alert=True)
-        return FRIEND_MENU
-    
-    friend_name = friend_data.get("friend_name", "друг")
-    purchased = friend_data.get("purchased_functions", [])
-    
-    message = f"""
-🧬 <b>4F ДЛЯ {friend_name}</b>
-
-🔥 1F: НАПАДЕНИЕ {"✅" if "1F" in purchased else "🔒"}
-🏃 2F: СТРАХ {"✅" if "2F" in purchased else "🔒"}
-🧬 3F: СЕКС {"✅" if "3F" in purchased else "🔒"}
-🍽 4F: ДЕНЬГИ {"✅" if "4F" in purchased else "🔒"}
-"""
-    
-    keyboard = []
-    for f in ["1F", "2F", "3F", "4F"]:
-        if f in purchased:
-            keyboard.append([InlineKeyboardButton(f"{FOUR_F_EMOJIS[f]} {f} - ОТКРЫТЬ", callback_data=f"open_4f_{friend_id}_{f}")])
+        if query:
+            await query.edit_message_text(
+                error_text,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
         else:
-            keyboard.append([InlineKeyboardButton(f"{FOUR_F_EMOJIS[f]} {f} - 1₽", callback_data=f"buy_4f_{friend_id}_{f}")])
+            await update.message.reply_text(
+                error_text,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        return PAYMENT_SCREEN
     
-    keyboard.append([InlineKeyboardButton("⬅️ НАЗАД", callback_data=f"friend_{friend_id}")])
+    payment_id = payment_result["payment_id"]
+    confirmation_url = payment_result["confirmation_url"]
     
-    await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    return FOUR_F_MENU
-
-async def buy_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Покупка 4F ключа"""
-    query = update.callback_query
-    await query.answer()
+    logger.info(f"✅ Платеж создан: {payment_id}, confirmation_url получен")
     
-    parts = query.data.split("_")
-    friend_id = int(parts[2])
-    function = parts[3]
+    context.user_data["last_payment_id"] = payment_id
+    context.user_data["last_payment_profile"] = profile_code
     
-    content = load_4f_content(function)
+    if "payment_data" not in context.user_data:
+        context.user_data["payment_data"] = {}
     
-    message = f"""
-{content['emoji']} <b>{content['title']}</b>
-
-{content['description'][:200]}...
-
-💰 <b>1₽</b>
-"""
+    context.user_data["payment_data"][payment_id] = {
+        "confirmation_url": confirmation_url,
+        "profile_code": profile_code,
+        "timestamp": time.time(),
+        "user_id": user_id
+    }
     
-    payment_id = generate_payment_id("4f", query.from_user.id)
+    logger.info(f"💾 Сохранён payment_id {payment_id} с confirmation_url")
+    
+    invoice_info = ""
+    invoice_type = payment_result.get('invoice_type', 'yookassa_invoice')
+    available_methods = payment_result.get('available_methods', 'all')
+    
+    if invoice_type == 'yookassa_invoice' and available_methods == 'all':
+        invoice_info = (
+            "\n💡 *ВСЕ способы оплаты доступны:*\n"
+            "• СБП (Сбербанк Онлайн)\n"
+            "• ЮMoney\n"
+            "• Банковские карты (Visa/Mastercard/Мир)\n"
+            "• Тинькофф, Альфа-Банк\n"
+            "• И другие\n"
+        )
+    
+    # УБРАНА ссылка на материалы из экрана платежа
+    # Ссылка будет доступна ТОЛЬКО после оплаты
     
     keyboard = [
-        [InlineKeyboardButton("💳 ОПЛАТИТЬ 1₽", callback_data=f"process_payment_{payment_id}_{friend_id}_{function}")],
-        [InlineKeyboardButton("⬅️ НАЗАД", callback_data=f"4f_{friend_id}")]
+        [InlineKeyboardButton("💳 Оплатить 690 рублей", url=confirmation_url)],
+        [InlineKeyboardButton("🔄 Проверить статус", callback_data=f"check_payment_{payment_id}")],
+        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")],
+        [InlineKeyboardButton("🏠 В меню", callback_data="main_menu")]
     ]
     
-    await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    return FOUR_F_PAYMENT_SCREEN
+    message_text = (
+        f"✅ *ПЛАТЕЖ СОЗДАН!*\n\n"
+        f"🧠 *Виртуальный психолог Вариатика*\n\n"
+        f"👤 *Клиент:* {user_name}\n"
+        f"📊 *Ваш профиль:* `{profile_code}`\n"
+        f"📋 *ID платежа:* `{payment_id}`\n"
+        f"💰 *Сумма:* 690 рублей\n"
+        f"{invoice_info}"
+        f"\n🔒 *Защита от дублей:* ✅ активна\n"
+        f"📊 *Профиль сохранен:* ✅ `{profile_code}`\n\n"
+        f"*Для оплаты нажмите кнопку ниже:*\n"
+        f"После успешной оплаты:\n"
+        f"1. Вы получите уведомление\n"
+        f"2. Ссылка на персональное описание профиля придет автоматически\n"
+        f"3. Профиль `{profile_code}` будет сохранен\n\n"
+        f"<i>Вы также можете вернуться к результатам теста и продолжить позже.</i>"
+    )
+    
+    if query:
+        await query.edit_message_text(
+            message_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown',
+            disable_web_page_preview=True
+        )
+    else:
+        await update.message.reply_text(
+            message_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown',
+            disable_web_page_preview=True
+        )
+    
+    logger.info(f"💳 Экран платежа показан пользователю {user_id}")
+    return PAYMENT_SCREEN
 
-async def process_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка платежа"""
+async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверка статуса платежа"""
+    log_callback("check_payment_callback", update, context)
     query = update.callback_query
     await query.answer()
     
-    parts = query.data.split("_")
-    friend_id = int(parts[3])
-    function = parts[4]
+    payment_id = query.data.split("_")[2]
+    logger.info(f"🔍 Проверка статуса платежа: {payment_id}")
     
-    # Разблокируем ключ
-    for inv in context.user_data.get("sexual_invites", []):
-        if inv.get("friend_id") == friend_id:
-            inv.setdefault("purchased_functions", []).append(function)
-            break
+    await query.edit_message_text(
+        f"🔍 *ПРОВЕРЯЮ СТАТУС ПЛАТЕЖА...*\n\n"
+        f"📋 *ID:* `{payment_id}`\n\n"
+        f"⏳ Запрашиваю информацию...",
+        parse_mode='Markdown'
+    )
     
-    # Открываем ключ
-    new_query = update
-    new_query.callback_query.data = f"open_4f_{friend_id}_{function}"
-    return await open_4f_key_callback(new_query, context)
+    status_result = await check_payment_status_api(payment_id)
+    
+    if not status_result.get("success"):
+        error_msg = status_result.get("error", "Неизвестная ошибка")
+        logger.error(f"❌ Ошибка проверки статуса: {error_msg}")
+        
+        keyboard = [
+            [InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")],
+            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+        ]
+        
+        await query.edit_message_text(
+            f"❌ *ОШИБКА ПРИ ПРОВЕРКЕ*\n\n"
+            f"`{error_msg}`\n\n"
+            f"Попробуйте позже.",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return PAYMENT_SCREEN
+    
+    status = status_result.get("status", "unknown")
+    logger.info(f"📊 Статус платежа {payment_id}: {status}")
+    
+    if status == "succeeded":
+        message = (
+            f"✅ *ОПЛАТА ПОДТВЕРЖДЕНА!*\n\n"
+            f"🎉 Платеж `{payment_id}` успешно завершен!\n\n"
+            f"📦 *ПЕРСОНАЛЬНОЕ ОПИСАНИЕ ГОТОВО!*\n"
+            f"Для получения персонального описания профиля нажмите кнопку ниже:"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("📥 ПОЛУЧИТЬ ОПИСАНИЕ ПРОФИЛЯ", callback_data=f"get_materials_{payment_id}")],
+            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+        ]
+        
+    elif status in ["pending", "waiting"]:
+        message = (
+            f"⏳ *ОЖИДАЕТ ОПЛАТЫ*\n\n"
+            f"Платеж `{payment_id}` еще не оплачен.\n\n"
+            f"💳 *Для оплаты нажмите кнопку ниже:*"
+        )
+        
+        payment_data = context.user_data.get("payment_data", {})
+        payment_info = payment_data.get(payment_id, {})
+        confirmation_url = payment_info.get("confirmation_url")
+        
+        if confirmation_url:
+            keyboard = [
+                [InlineKeyboardButton("💳 ПЕРЕЙТИ К ОПЛАТЕ", url=confirmation_url)],
+                [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+            ]
+        else:
+            keyboard = [
+                [InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")],
+                [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+            ]
+        
+    else:
+        message = (
+            f"📊 *СТАТУС ПЛАТЕЖА:* `{status}`\n\n"
+            f"📋 *ID:* `{payment_id}`"
+        )
+        keyboard = [
+            [InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_payment_{payment_id}")],
+            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+        ]
+    
+    await query.edit_message_text(
+        message,
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    
+    return PAYMENT_SCREEN
 
-async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Открытие 4F ключа"""
+async def get_materials_callback_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Получение материалов после оплаты"""
+    log_callback("get_materials_callback_payment", update, context)
     query = update.callback_query
     await query.answer()
     
-    parts = query.data.split("_")
-    friend_id = int(parts[2])
-    function = parts[3]
+    payment_id = query.data.split("_")[2]
+    user_id = update.effective_user.id
     
-    content = load_4f_content(function)
+    logger.info(f"📦 Получение материалов для платежа {payment_id}, user_id={user_id}")
     
-    message = f"""
-🎉 <b>КЛЮЧ АКТИВИРОВАН!</b>
-
-{content['emoji']} <b>{content['title']}</b>
-
-<b>🎯 ТРИГГЕРЫ:</b>
-"""
-    for t in content['triggers']:
-        message += f"\n• {t}"
+    await query.edit_message_text(
+        f"📦 *ПОЛУЧАЮ МАТЕРИАЛЫ...*\n\n"
+        f"📋 *ID платежа:* `{payment_id}`\n\n"
+        f"⏳ Загружаю ссылки...",
+        parse_mode='Markdown'
+    )
     
-    message += f"""
-
-<b>🧠 РАЗБОР:</b>
-{content['analysis']}
-"""
+    materials_result = await get_materials_link_api(payment_id, user_id)
     
-    next_keys = {"1F": "2F", "2F": "3F", "3F": "4F", "4F": "1F"}
-    next_f = next_keys.get(function)
+    if not materials_result.get("success"):
+        error_msg = materials_result.get("error", "Неизвестная ошибка")
+        logger.error(f"❌ Ошибка получения материалов: {error_msg}")
+        
+        keyboard = [
+            [InlineKeyboardButton("🔄 Попробовать снова", callback_data=f"get_materials_{payment_id}")],
+            [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+        ]
+        
+        await query.edit_message_text(
+            f"❌ *ОШИБКА ПРИ ПОЛУЧЕНИИ МАТЕРИАЛОВ*\n\n"
+            f"`{error_msg}`\n\n"
+            f"Попробуйте позже или обратитесь в поддержку.",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return PAYMENT_SCREEN
     
+    materials_link = materials_result.get("materials_link")
+    profile_code = materials_result.get("profile_code", "SA_1_DEF")
+    
+    if not materials_link:
+        logger.error(f"❌ Ссылка на материалы не найдена для платежа {payment_id}")
+        await query.edit_message_text(
+            f"❌ *ССЫЛКА НЕ НАЙДЕНА*\n\n"
+            f"Материалы для платежа `{payment_id}` не найдены.\n"
+            f"Обратитесь в поддержку.",
+            parse_mode='Markdown'
+        )
+        return PAYMENT_SCREEN
+    
+    logger.info(f"✅ Материалы получены для профиля {profile_code}")
+    
+    # ЗДЕСЬ появляется ссылка на материалы - ТОЛЬКО ПОСЛЕ ОПЛАТЫ
     keyboard = [
-        [InlineKeyboardButton(f"{FOUR_F_EMOJIS[next_f]} КУПИТЬ {next_f} - 1₽", callback_data=f"buy_4f_{friend_id}_{next_f}")],
-        [InlineKeyboardButton("⬅️ НАЗАД", callback_data=f"4f_{friend_id}")]
-    ]
-    
-    await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    return FOUR_F_CONTENT
-
-async def four_f_explanation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Объяснение 4F"""
-    query = update.callback_query
-    await query.answer()
-    
-    friend_id = context.user_data.get("current_friend_id")
-    
-    keyboard = [[InlineKeyboardButton("⬅️ НАЗАД", callback_data=f"friend_{friend_id}" if friend_id else "my_invites")]]
-    
-    await query.edit_message_text(FOUR_F_SHORT, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    return FOUR_F_MENU
-
-async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Проверка статуса"""
-    query = update.callback_query
-    await query.answer()
-    
-    keyboard = [
-        [InlineKeyboardButton("⬅️ К ОТРАЖЕНИЯМ", callback_data="my_invites")],
-        [InlineKeyboardButton("◀️ В ПРОФИЛЬ", callback_data="my_sexual_profile")]
+        [InlineKeyboardButton("📥 СКАЧАТЬ ПЕРСОНАЛЬНОЕ ОПИСАНИЕ", url=materials_link)],
+        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
     ]
     
     await query.edit_message_text(
-        "🔍 Статус приглашения: АКТИВНО",
+        f"✅ *ПЕРСОНАЛЬНОЕ ОПИСАНИЕ ГОТОВО!*\n\n"
+        f"🧠 *Виртуальный психолог Вариатика*\n\n"
+        f"🎉 Ваше персональное описание профиля успешно подготовлено!\n\n"
+        f"📋 *ID заказа:* `{payment_id}`\n"
+        f"📊 *Ваш профиль:* `{profile_code}`\n"
+        f"💰 *Сумма:* 690 рублей\n\n"
+        f"📚 *Что вы получили:*\n"
+        f"• 📖 <b>Полное описание вашего профиля</b> (15+ страниц)\n"
+        f"• 🎯 Ключевые паттерны поведения и мышления\n"
+        f"• 🚀 Рекомендации по развитию от психолога\n"
+        f"• ⚠️ Ограничения и как их обходить\n"
+        f"• 💡 Практические инструменты для ежедневного применения\n\n"
+        f"🔗 *Ссылка на Яндекс.Диск:*\n"
+        f"Нажмите кнопку ниже для скачивания вашего персонального руководства:",
+        parse_mode='HTML',
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
+        disable_web_page_preview=True
     )
     
-    return INVITES_LIST
+    return PAYMENT_SCREEN
 
-async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Заглушка"""
-    query = update.callback_query
-    await query.answer("✅ Демо-режим")
-    return RESULTS
+async def materials_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /materials для получения материалов после оплаты"""
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    logger.info(f"📦 materials_command вызван пользователем {user_id}")
+    
+    last_payment_id = context.user_data.get("last_payment_id")
+    
+    if not last_payment_id:
+        logger.warning(f"📦 У пользователя {user_id} нет активных платежей")
+        await update.message.reply_text(
+            f"🧠 *У вас нет активных платежей*\n\n"
+            f"👤 *{user_name}*, для получения персонального описания профиля необходимо приобрести полный пакет.\n\n"
+            f"💎 *Полное описание профиля от виртуального психолога:*\n"
+            f"• Стоимость: 690 рублей\n"
+            f"• Все способы оплаты (СБП, ЮMoney, карты)\n"
+            f"• Мгновенный доступ после оплаты\n"
+            f"• Ваше персональное руководство по самопознанию\n\n"
+            f"Используйте команду `/buy` для покупки",
+            parse_mode='Markdown'
+        )
+        return
+    
+    logger.info(f"📦 Последний платеж пользователя {user_id}: {last_payment_id}")
+    
+    await update.message.reply_text(
+        f"🔍 *ПОИСК ПЕРСОНАЛЬНОГО ОПИСАНИЯ...*\n\n"
+        f"📋 *ID платежа:* `{last_payment_id}`\n\n"
+        f"⏳ Проверяю доступ...",
+        parse_mode='Markdown'
+    )
+    
+    materials_result = await get_materials_link_api(last_payment_id, user_id)
+    
+    if not materials_result.get("success"):
+        error_msg = materials_result.get("error", "Неизвестная ошибка")
+        logger.error(f"❌ Ошибка получения материалов: {error_msg}")
+        
+        keyboard = [[InlineKeyboardButton("💳 Получить описание профиля", callback_data="buy_without_test")]]
+        
+        await update.message.reply_text(
+            f"❌ *НЕ УДАЛОСЬ ПОЛУЧИТЬ МАТЕРИАЛЫ*\n\n"
+            f"`{error_msg}`\n\n"
+            f"Возможно, платеж еще не обработан или возникла ошибка.\n"
+            f"Попробуйте позже или приобретите описание заново.",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    materials_link = materials_result.get("materials_link")
+    profile_code = materials_result.get("profile_code", "SA_1_DEF")
+    
+    if not materials_link:
+        logger.error(f"❌ Ссылка на материалы не найдена для платежа {last_payment_id}")
+        await update.message.reply_text(
+            f"❌ *ССЫЛКА НЕ НАЙДЕНА*\n\n"
+            f"Материалы для платежа `{last_payment_id}` не найдены.\n"
+            f"Обратитесь в поддержку.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    logger.info(f"✅ Материалы отправлены пользователю {user_id} для профиля {profile_code}")
+    
+    keyboard = [[InlineKeyboardButton("📥 СКАЧАТЬ ПЕРСОНАЛЬНОЕ ОПИСАНИЕ", url=materials_link)]]
+    
+    await update.message.reply_text(
+        f"✅ *ПЕРСОНАЛЬНОЕ ОПИСАНИЕ ГОТОВО!*\n\n"
+        f"🧠 *Виртуальный психолог Вариатика*\n\n"
+        f"👤 *{user_name}*, вот ваше персональное описание профиля:\n\n"
+        f"📋 *ID заказа:* `{last_payment_id}`\n"
+        f"📊 *Ваш профиль:* `{profile_code}`\n"
+        f"💰 *Сумма:* 690 рублей\n\n"
+        f"🔗 *Ссылка на Яндекс.Диск:*\n"
+        f"Нажмите кнопку ниже для скачивания:",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        disable_web_page_preview=True
+    )
 
-# ===== ОСНОВНЫЕ ФУНКЦИИ =====
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /status для проверки статуса последнего платежа"""
+    user_id = update.effective_user.id
+    logger.info(f"📊 status_command вызван пользователем {user_id}")
+    
+    last_payment_id = context.user_data.get("last_payment_id")
+    
+    if not last_payment_id:
+        logger.warning(f"📊 У пользователя {user_id} нет последнего платежа")
+        await update.message.reply_text(
+            "📭 *Нет активных платежей*\n\n"
+            "У вас нет последних платежей для проверки.\n"
+            "Используйте `/buy` для создания нового платежа.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    logger.info(f"📊 Проверка статуса платежа {last_payment_id} для пользователя {user_id}")
+    
+    await update.message.reply_text(
+        f"🔍 *ПРОВЕРЯЮ СТАТУС...*\n\n"
+        f"📋 *ID платежа:* `{last_payment_id}`\n\n"
+        f"⏳ Запрашиваю информацию...",
+        parse_mode='Markdown'
+    )
+    
+    status_result = await check_payment_status_api(last_payment_id)
+    
+    if not status_result.get("success"):
+        error_msg = status_result.get("error", "Неизвестная ошибка")
+        logger.error(f"❌ Ошибка проверки статуса: {error_msg}")
+        
+        await update.message.reply_text(
+            f"❌ *ОШИБКА ПРИ ПРОВЕРКЕ*\n\n"
+            f"`{error_msg}`\n\n"
+            f"Попробуйте позже.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    status = status_result.get("status", "unknown")
+    logger.info(f"📊 Статус платежа {last_payment_id}: {status}")
+    
+    if status == "succeeded":
+        message = (
+            f"✅ *ОПЛАТА ПОДТВЕРЖДЕНА!*\n\n"
+            f"🎉 Платеж `{last_payment_id}` успешно завершен!\n\n"
+            f"📦 *ПЕРСОНАЛЬНОЕ ОПИСАНИЕ ГОТОВО!*\n"
+            f"Для получения персонального описания используйте команду:\n"
+            f"`/materials`\n\n"
+            f"✅ Вы получите мгновенный доступ к вашему руководству."
+        )
+        
+    elif status in ["pending", "waiting"]:
+        message = (
+            f"⏳ *ОЖИДАЕТ ОПЛАТЫ*\n\n"
+            f"Платеж `{last_payment_id}` еще не оплачен.\n\n"
+            f"💳 *Для оплаты используйте команду:*\n"
+            f"`/buy`\n\n"
+            f"Или дождитесь обработки платежа."
+        )
+        
+    else:
+        message = (
+            f"📊 *СТАТУС ПЛАТЕЖА:* `{status.upper()}`\n\n"
+            f"📋 *ID:* `{last_payment_id}`\n\n"
+            f"Если статус не меняется, попробуйте создать новый платеж: `/buy`"
+        )
+    
+    await update.message.reply_text(message, parse_mode='Markdown')
+
+# ============================================
+# ФУНКЦИЯ СТАРТА
+# ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /start"""
+    """Основная команда /start с поддержкой deep link для 18+"""
     user = update.effective_user
-    logger.info(f"🚀 Старт: {user.id}")
+    logger.info(f"🚀 /start вызван пользователем {user.id} (@{user.username})")
     
-    # Инициализация данных
+    # Инициализируем тестовые данные для нового пользователя
+    init_test_data(user.id)
+    
+    # ===== 18+ DEEP LINK =====
+    if context.args and context.args[0].startswith("sex_"):
+        logger.info(f"🔞 18+ переход по ссылке: {context.args[0]}")
+        return await sexual_invite_start(update, context)
+    # ===== КОНЕЦ 18+ =====
+    
+    current_state = context.user_data.get("conversation_state")
+    if current_state is not None:
+        logger.debug(f"🔄 Сброс состояния пользователя {user.id}")
+        await update.message.reply_text("🔄 Начинаем новое исследование...")
+        context.user_data.clear()
+    
+    welcome_text = (
+        f"{user.first_name}, привет! 👋\n\n"
+        f"<b>🧠 Я — Виртуальный психолог Вариатика.</b>\n\n"
+        f"🕒 За 15 минут узнаете о себе то, что обычно остаётся невидимым.\n"
+        f"👁️ Увидите скрытые паттерны, которые управляют вашими решениями.\n\n"
+        f"⚡ А главное — узнаете то, о себе знать действительно нужно.\n"
+        f"🎯 То, что даст точку опоры для роста.\n\n"
+        f"<b>📊 Вас ждёт:</b>\n\n"
+        f"1️⃣ Адаптивный тест (4 этапа)\n"
+        f"   ↳ Поймёте свой уникальный профиль\n\n"
+        f"2️⃣ Персональные материалы\n"
+        f"   ↳ Узнаете куда направлять усилия\n\n"
+        f"🚀 Начнём исследование?"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("🚀 Начать исследование →", callback_data="start_test")],
+        [InlineKeyboardButton("🤔 А зачем это вообще?", callback_data="why_details")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+    logger.info(f"✅ Приветствие отправлено пользователю {user.id}")
+    return None
+
+async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возврат в главное меню"""
+    log_callback("main_menu_callback", update, context)
+    query = update.callback_query
+    await query.answer("🏠 Возврат в главное меню...")
+    
+    try:
+        await query.message.delete()
+        logger.info(f"✅ User {update.effective_user.id}: Удалено сообщение при main_menu")
+    except Exception as e:
+        logger.warning(f"⚠️ User {update.effective_user.id}: Не удалось удалить сообщение: {e}")
+    
+    context.user_data.clear()
+    logger.info(f"🧹 User {update.effective_user.id}: user_data полностью очищена")
+    
+    user = update.effective_user
+    
+    welcome_text = (
+        f"{user.first_name}, привет! 👋\n\n"
+        f"🧠 Я — Виртуальный психолог Вариатика.\n\n"
+        f"🕒 За 15 минут узнаете о себе то, что обычно остаётся невидимым.\n"
+        f"👁️ Увидите скрытые паттерны, которые управляют вашими решениями.\n\n"
+        f"⚡ А главное — узнаете то, о себе знать действительно нужно.\n"
+        f"🎯 То, что даст точку опоры для роста.\n\n"
+        f"📊 Вас ждёт:\n\n"
+        f"1️⃣ Адаптивный тест (4 этапа)\n"
+        f"   ↳ Поймёте свой уникальный профиль\n\n"
+        f"2️⃣ Персональные материалы\n"
+        f"   ↳ Узнаете куда направлять усилия\n\n"
+        f"🚀 Начнём исследование?"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("🚀 Начать исследование →", callback_data="start_test")],
+        [InlineKeyboardButton("🤔 А зачем это вообще?", callback_data="why_details")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=welcome_text,
+        reply_markup=reply_markup
+    )
+    
+    logger.info(f"✅ User {update.effective_user.id}: main_menu_callback → ConversationHandler.END")
+    return ConversationHandler.END
+
+async def why_details_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик кнопки 'Детали'"""
+    log_callback("why_details_callback", update, context)
+    query = update.callback_query
+    await query.answer()
+    
+    details_text = """🎭 Немного правды с юмором...
+
+Как говорится: 'Нет здоровых, есть не дообследованные!' 
+Я ваш виртуальный психолог — дообследую 😉
+
+🧠 Что я умею (кроме шуток):
+• Вижу паттерны там, где вы видите хаос
+• Нахожу систему там, где вы видите случайности  
+• Обнаруживаю 'прошивку' вашего восприятия
+
+🎯 Конкретно в тесте:
+
+1️⃣ Конфигурация восприятия
+   ↳ Как ваш разум фильтрует реальность
+
+2️⃣ Конфигурация мышления  
+   ↳ Как обрабатываете информацию
+
+3️⃣ Конфигурация поведения
+   ↳ Что делаете 'на автомате'
+
+4️⃣ Точка роста
+   ↳ Куда двигаться осознанно
+
+⏱ 15 минут вместо лет терапии!
+Потому что в 21 веке даже самопознание должно быть эффективным!"""
+    
+    keyboard = [[InlineKeyboardButton("👌 Понял(а). Начинаем →", callback_data="start_test")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(details_text, reply_markup=reply_markup)
+
+async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало теста"""
+    log_callback("start_test", update, context)
+    query = update.callback_query
+    await query.answer()
+    
     context.user_data.clear()
     context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
     context.user_data["stage1_current"] = 0
     context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
     context.user_data["stage3_level_scores"] = []
     context.user_data["stage4_dilts_answers"] = []
+    context.user_data["processing"] = False
     context.user_data["has_shared"] = False
     
-    # Инициализация интимных данных
-    init_test_data(user.id)
-    context.user_data["sexual_invites"] = get_user_invites(user.id)
-    get_user_limits(context)
+    # Инициализируем хранилище приглашений
+    user_id = query.from_user.id
+    context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)
     
-    welcome_text = f"""
-{user.first_name}, привет! 👋
-
-<b>🧠 Я — Виртуальный психолог Вариатика.</b>
-
-🕒 За 15 минут узнаете о себе то, что обычно остаётся невидимым.
-
-<b>📊 Вас ждёт:</b>
-
-1️⃣ Адаптивный тест (4 этапа)
-2️⃣ Персональный профиль
-3️⃣ 🔞 Интимный профиль и 4F-ключи
-
-🚀 Начнём?
-"""
+    logger.info(f"User {update.effective_user.id} начал знакомство с психологом")
     
-    keyboard = [
-        [InlineKeyboardButton("🚀 Начать", callback_data="start_test")],
-        [InlineKeyboardButton("🤔 Подробнее", callback_data="why_details")]
-    ]
-    
-    await update.message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return None
-
-async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало теста"""
-    query = update.callback_query
-    await query.answer()
     return await show_stage_1_intro(update, context)
 
-async def why_details_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Подробности"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = """
-🎭 <b>Немного правды с юмором...</b>
-
-🧠 Что я умею:
-• Вижу паттерны там, где вы видите хаос
-• Нахожу систему там, где вы видите случайности
-
-🎯 Конкретно в тесте:
-
-1️⃣ Конфигурация восприятия
-2️⃣ Конфигурация мышления
-3️⃣ Конфигурация поведения
-4️⃣ Точка роста
-
-🔞 После теста откроется интимный профиль
-   и 4F-ключи для управления состояниями
-
-⏱ 15 минут вместо лет терапии!
-"""
-    
-    keyboard = [[InlineKeyboardButton("👌 Понял. Начинаем →", callback_data="start_test")]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Главное меню"""
-    return await start(update, context)
-
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отмена"""
-    await update.message.reply_text("❌ Тест отменен. /start чтобы начать заново")
+    """Отмена теста"""
+    logger.info(f"❌ Тест отменен пользователем {update.effective_user.id}")
+    await update.message.reply_text(
+        f"🧠 *Исследование отменено.*\n\n"
+        f"Если захотите продолжить наше знакомство, просто напишите:\n"
+        f"`/start`\n\n"
+        f"*Всегда готов помочь,\nВаш виртуальный психолог Вариатика* 🧠",
+        parse_mode='Markdown'
+    )
     return ConversationHandler.END
 
-# ===== ОСНОВНАЯ ФУНКЦИЯ =====
+# ============================================
+# ГЛАВНАЯ ФУНКЦИЯ С ИСПРАВЛЕННЫМ CONVERSATIONHANDLER
+# ============================================
 
 def main():
     """Запуск бота"""
+    # ПРИНУДИТЕЛЬНЫЙ СБРОС ВЕБХУКА И ЗАВЕРШЕНИЕ СТАРЫХ СЕССИЙ
+    import requests
+    print("\n" + "="*50)
+    print("🔄 СБРОС ВЕБХУКА И ОЧИСТКА")
+    print("="*50)
+    
+    # Сначала удаляем вебхук
+    url = f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=true"
+    response = requests.get(url)
+    print(f"Ответ: {response.json()}")
+    
+    # Проверяем, что вебхук удален
+    url = f"https://api.telegram.org/bot{TOKEN}/getWebhookInfo"
+    response = requests.get(url)
+    print(f"Информация о вебхуке: {response.json()}")
+    print("="*50 + "\n")
+    
     print("\n" + "="*70)
-    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА v7.0")
+    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.4)")
     print("="*70)
-    print("✅ ПОЛНАЯ ЛОГИКА ТЕСТИРОВАНИЯ (4 этапа)")
-    print("✅ 36 ИНТИМНЫХ ПРОФИЛЕЙ НА ЯНДЕКС.ДИСКЕ")
-    print("✅ 4F-КЛЮЧИ ДЛЯ УПРАВЛЕНИЯ СОСТОЯНИЯМИ")
-    print("✅ СИСТЕМА ПРИГЛАШЕНИЙ ДЛЯ ДРУЗЕЙ")
+    print("🔞 ПОЛНАЯ ИНТЕГРАЦИЯ 18+ МОДУЛЯ")
+    print("="*70)
+    print("📊 ОСНОВНЫЕ КОМПОНЕНТЫ:")
+    print("1. ✅ Психологический тест (4 этапа)")
+    print("2. ✅ 18+ интимные профили с приглашениями")
+    print("3. ✅ 4F-ключи (1F,2F,3F,4F) для друзей")
+    print("4. ✅ Платежная система ЮKassa")
+    print("5. ✅ Интеграция с Яндекс.Диск (36 профилей)")
+    print("="*70)
+    print("🔧 ИСПРАВЛЕНИЯ В 5.4:")
+    print("   ✅ Исправлен циклический импорт (константы вынесены в constants.py)")
+    print("   ✅ Импорты STAGE_1, STAGE_2 теперь из constants.py")
+    print("   ✅ Устранена проблема с start_stage_1 = None")
     print("="*70)
     
-    if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
-        print("\n❌ ОШИБКА: Укажите TELEGRAM_BOT_TOKEN!")
-        print("   export TELEGRAM_BOT_TOKEN=ваш_токен\n")
-        return
+    # Проверка наличия GIFT_PDF_LINK
+    if not GIFT_PDF_LINK:
+        logger.warning("⚠️ GIFT_PDF_LINK не установлена, используется ссылка по умолчанию")
+    else:
+        logger.info(f"🎁 GIFT_PDF_LINK загружена: {GIFT_PDF_LINK[:30]}...")
     
-    # Создаем приложение
+    print("🔍 ПРОВЕРКА ЗАГРУЗКИ ПРОФИЛЕЙ")
+    print("="*30)
+    
+    try:
+        all_profiles = loader.get_all_profiles()
+        print(f"📊 Всего профилей загружено: {len(all_profiles)}")
+        
+        for profile_type in ['sa', 'sp', 'ia', 'ip']:
+            type_profiles = [p for p in all_profiles if p.lower().startswith(f"{profile_type}_")]
+            print(f"🔍 {profile_type.upper()} профилей: {len(type_profiles)}")
+    except Exception as e:
+        print(f"⚠️ Ошибка при загрузке профилей: {e}")
+    
+    print("\n💳 ПРОВЕРКА ПЛАТЕЖНОЙ СИСТЕМЫ")
+    print("="*30)
+    print(f"📡 API URL: {API_URL}")
+    print(f"🏪 YooKassa Shop ID: {YOOKASSA_SHOP_ID if YOOKASSA_SHOP_ID else '❌ НЕ УСТАНОВЛЕН'}")
+    print(f"🔑 YooKassa Secret Key: {'✅ УСТАНОВЛЕН' if YOOKASSA_SECRET_KEY else '❌ НЕ УСТАНОВЛЕН'}")
+    print(f"💰 Стоимость профиля: 690 рублей")
+    print(f"💰 Стоимость 4F ключа: {FOUR_F_PRICE} рублей")
+    print(f"💰 Стоимость доступа к другу: {FRIEND_ACCESS_PRICE} рублей")
+    print("="*30)
+    
     application = Application.builder().token(TOKEN).build()
     
-    # Основной ConversationHandler
+    # Команды
+    application.add_handler(CommandHandler("buy", buy_command))
+    application.add_handler(CommandHandler("materials", materials_command))
+    application.add_handler(CommandHandler("status", status_command))
+    
+    # Общие callback-обработчики
+    application.add_handler(CallbackQueryHandler(why_details_callback, pattern="^why_details$"))
+    application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
+    
+    # Заглушки для 18+ модуля
+    application.add_handler(CallbackQueryHandler(noop_callback, pattern="^noop$"))
+    
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
             CallbackQueryHandler(start_test, pattern="^start_test$")
         ],
         states={
-            # Этапы теста
             STAGE_1: [
                 CallbackQueryHandler(show_stage_1_details, pattern="^stage1_details$"),
                 CallbackQueryHandler(back_to_stage1_intro, pattern="^back_to_stage1_intro$"),
@@ -2307,108 +1856,108 @@ def main():
             CLARIFICATION: [
                 CallbackQueryHandler(handle_clarification_answer, pattern="^clarify_")
             ],
-            
-            # Результаты
             RESULTS: [
                 CallbackQueryHandler(get_gift_screen, pattern="^get_gift$"),
                 CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
                 CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
-                CallbackQueryHandler(buy_package_callback, pattern="^buy_package$"),
-                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
+                CallbackQueryHandler(buy_command, pattern="^buy_package$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(back_to_results_after_gift, pattern="^back_to_results_after_gift$"),
                 CallbackQueryHandler(show_results_screen, pattern="^show_results$"),
                 CallbackQueryHandler(skip_share, pattern="^skip_share$"),
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
-                CallbackQueryHandler(my_sexual_profile_callback, pattern="^my_sexual_profile$"),
+                CallbackQueryHandler(restart_test, pattern="^restart_test$"),
+                CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
             ],
             GIFT_SCREEN: [
                 CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
                 CallbackQueryHandler(skip_share, pattern="^skip_share$"),
+                CallbackQueryHandler(get_gift_screen, pattern="^get_gift$")
             ],
             PACKAGE_SCREEN: [
-                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
-                CallbackQueryHandler(buy_package_callback, pattern="^buy_package$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(show_package_screen, pattern="^show_package$"),
+                CallbackQueryHandler(buy_command, pattern="^buy_package$"),
             ],
             OPEN_GIFT_SCREEN: [
-                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
+                CallbackQueryHandler(back_to_results_after_gift, pattern="^back_to_results_after_gift$"),
+                CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"),
             ],
             PAYMENT_SCREEN: [
-                CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
+                CallbackQueryHandler(check_payment_callback, pattern="^check_payment_"),
+                CallbackQueryHandler(get_materials_callback_payment, pattern="^get_materials_"),
+                CallbackQueryHandler(buy_without_test_callback, pattern="^buy_without_test$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
             ],
-            
-            # Интимный модуль
+            # ===== 18+ МОДУЛЬ =====
             MY_SEXUAL_PROFILE: [
-                CallbackQueryHandler(create_invite_callback, pattern='^create_invite$'),
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
-                CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
+                CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
             ],
-            INVITES_LIST: [
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
-                CallbackQueryHandler(four_f_main_menu_callback, pattern='^four_f_main_menu$'),
-                CallbackQueryHandler(check_status_callback, pattern='^check_status_'),
-                CallbackQueryHandler(friend_menu_callback, pattern='^friend_'),
-                CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
-                CallbackQueryHandler(buy_invite_packages_callback, pattern='^buy_invite_packages$'),
-                CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
+            SEXUAL_PROFILE_SCREEN: [
+                CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
+                CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
             ],
-            FRIEND_MENU: [
-                CallbackQueryHandler(intimate_profile_callback, pattern='^int_'),
-                CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
-                CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+            SEXUAL_INVITES_LIST: [
+                CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(copy_invite_callback, pattern="^copy_invite_"),
+                CallbackQueryHandler(check_invite_callback, pattern="^check_invite_"),
+                CallbackQueryHandler(create_invite_callback, pattern="^create_new_invite$"),
+                CallbackQueryHandler(noop_callback, pattern="^delete_invite_"),
+                CallbackQueryHandler(noop_callback, pattern="^buy_function_"),
+                CallbackQueryHandler(noop_callback, pattern="^open_4f_key_"),
+                CallbackQueryHandler(noop_callback, pattern="^buy_invite_packages$"),
             ],
-            FOUR_F_MENU: [
-                CallbackQueryHandler(buy_4f_key_callback, pattern='^buy_4f_'),
-                CallbackQueryHandler(open_4f_key_callback, pattern='^open_4f_'),
-                CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
-                CallbackQueryHandler(friend_menu_callback, pattern='^friend_'),
-            ],
-            FOUR_F_CONTENT: [
-                CallbackQueryHandler(buy_4f_key_callback, pattern='^buy_4f_'),
-                CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
+            SEXUAL_FRIEND_PROFILE: [
+                CallbackQueryHandler(noop_callback, pattern="^friend_details_"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
             ],
             FOUR_F_PAYMENT_SCREEN: [
-                CallbackQueryHandler(process_payment_callback, pattern='^process_payment_'),
-                CallbackQueryHandler(pay_package_callback, pattern='^pay_package_'),
-                CallbackQueryHandler(process_package_payment_callback, pattern='^process_package_payment_'),
-                CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
-                CallbackQueryHandler(buy_invite_packages_callback, pattern='^buy_invite_packages$'),
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+                CallbackQueryHandler(noop_callback, pattern="^check_4f_payment_"),
+                CallbackQueryHandler(noop_callback, pattern="^open_4f_key_"),
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
             ],
-            BUY_PACKAGES: [
-                CallbackQueryHandler(pay_package_callback, pattern='^pay_package_'),
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
+            FOUR_F_CONTENT_SCREEN: [
+                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
             ],
-            FOUR_F_MAIN: [
-                CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
-                CallbackQueryHandler(four_f_detailed_callback, pattern='^four_f_detailed$'),
-                CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
-                CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
-            ],
-            FOUR_F_DETAILED: [
-                CallbackQueryHandler(four_f_main_menu_callback, pattern='^four_f_main_menu$'),
-            ],
+            # ===== КОНЕЦ 18+ =====
         },
-        fallbacks=[
-            CommandHandler("cancel", cancel),
-            CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
-        ],
+        fallbacks=[CommandHandler("cancel", cancel)],
         allow_reentry=True
     )
     
-    # Добавляем обработчики
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(why_details_callback, pattern="^why_details$"))
-    application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
     application.add_handler(conv_handler)
     
-    print("\n🚀 Бот запущен!")
-    print("="*70)
+    logger.info("🧠 Виртуальный психолог Вариатика запущен!")
+    logger.info("✅ ВЕРСИЯ 5.4: ИСПРАВЛЕН ЦИКЛИЧЕСКИЙ ИМПОРТ!")
+    logger.info("✅ Константы вынесены в отдельный файл constants.py")
+    logger.info("✅ Вопросы вынесены в отдельный файл questions.py")
+    logger.info("✅ Обработчики этапов вынесены в папку handlers/")
+    logger.info("✅ Утилиты вынесены в папку utils/")
+    logger.info("✅ Супер-логирование активировано!")
     
-    # Запуск
-    application.run_polling(
-        drop_pending_updates=True,
-        allowed_updates=['message', 'callback_query']
-    )
+    # ✅ ВАЖНО: Добавляем обработку ошибок и сброс вебхука
+    print("\n🚀 ЗАПУСК БОТА")
+    print("="*30)
+    
+    try:
+        application.run_polling(
+            drop_pending_updates=True,  # ОЧЕНЬ ВАЖНО!
+            allowed_updates=['message', 'callback_query'],  # Только нужные типы
+            poll_interval=1.0  # Частота опроса
+        )
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка: {e}")
+        print(f"\n❌ Ошибка запуска: {e}")
 
 if __name__ == "__main__":
+    # Добавляем путь для импорта модулей
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
     main()
