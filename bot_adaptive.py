@@ -1901,49 +1901,52 @@ def main():
                 CallbackQueryHandler(buy_without_test_callback, pattern="^buy_without_test$"),
                 CallbackQueryHandler(back_to_results, pattern="^back_to_results$")
             ],
-            # ===== 18+ МОДУЛЬ =====
-            MY_SEXUAL_PROFILE: [
-                CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
-                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-            ],
-            SEXUAL_PROFILE_SCREEN: [
-                CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
-                CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
-                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-            ],
-            SEXUAL_INVITES_LIST: [
-                CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
-                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(copy_invite_callback, pattern="^copy_invite_"),
-                CallbackQueryHandler(check_invite_callback, pattern="^check_invite_"),
-                CallbackQueryHandler(create_invite_callback, pattern="^create_new_invite$"),
-                CallbackQueryHandler(noop_callback, pattern="^delete_invite_"),
-                CallbackQueryHandler(noop_callback, pattern="^buy_function_"),
-                CallbackQueryHandler(noop_callback, pattern="^open_4f_key_"),
-                CallbackQueryHandler(noop_callback, pattern="^buy_invite_packages$"),
-            ],
-            SEXUAL_FRIEND_PROFILE: [
-                CallbackQueryHandler(noop_callback, pattern="^friend_details_"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-            ],
-            FOUR_F_PAYMENT_SCREEN: [
-                CallbackQueryHandler(noop_callback, pattern="^check_4f_payment_"),
-                CallbackQueryHandler(noop_callback, pattern="^open_4f_key_"),
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
-            ],
-            FOUR_F_CONTENT_SCREEN: [
-                CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
-                CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
-            ],
-            # ===== КОНЕЦ 18+ =====
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        allow_reentry=True
-    )
+            # ===== 18+ МОДУЛЬ (ИСПРАВЛЕННАЯ ВЕРСИЯ) =====
+MY_SEXUAL_PROFILE: [
+    CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
+    CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
+    CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+],
+SEXUAL_PROFILE_SCREEN: [
+    CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
+    CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
+    CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
+    CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+],
+# 👇 ИСПРАВЛЕНО: используем INVITES_LIST вместо SEXUAL_INVITES_LIST
+INVITES_LIST: [
+    CallbackQueryHandler(sexual_invite_start, pattern="^sexual_invite_start$"),
+    CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
+    CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+    CallbackQueryHandler(copy_invite_callback, pattern="^copy_invite_"),
+    CallbackQueryHandler(check_invite_callback, pattern="^check_invite_"),
+    CallbackQueryHandler(create_invite_callback, pattern="^create_new_invite$"),
+    CallbackQueryHandler(four_f_main_menu_callback, pattern="^four_f_main_menu$"),
+    CallbackQueryHandler(check_status_callback, pattern="^check_status_"),
+    CallbackQueryHandler(friend_menu_callback, pattern="^friend_"),
+    CallbackQueryHandler(buy_invite_packages_callback, pattern="^buy_invite_packages$"),
+],
+# 👇 ИСПРАВЛЕНО: используем FRIEND_MENU вместо SEXUAL_FRIEND_PROFILE
+FRIEND_MENU: [
+    CallbackQueryHandler(standard_profile_callback, pattern="^std_"),
+    CallbackQueryHandler(intimate_profile_callback, pattern="^int_"),
+    CallbackQueryHandler(four_f_menu_callback, pattern="^4f_"),
+    CallbackQueryHandler(four_f_explanation_callback, pattern="^4f_explain$"),
+    CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+],
+FOUR_F_PAYMENT_SCREEN: [
+    CallbackQueryHandler(process_payment_callback, pattern="^process_payment_"),
+    CallbackQueryHandler(pay_package_callback, pattern="^pay_package_"),
+    CallbackQueryHandler(process_package_payment_callback, pattern="^process_package_payment_"),
+    CallbackQueryHandler(four_f_menu_callback, pattern="^4f_"),
+    CallbackQueryHandler(buy_invite_packages_callback, pattern="^buy_invite_packages$"),
+    CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
+],
+FOUR_F_CONTENT_SCREEN: [
+    CallbackQueryHandler(open_4f_key_callback, pattern="^open_4f_"),
+    CallbackQueryHandler(four_f_menu_callback, pattern="^4f_"),
+    CallbackQueryHandler(back_to_results, pattern="^back_to_results$"),
+],
     
     application.add_handler(conv_handler)
     
