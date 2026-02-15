@@ -1132,97 +1132,34 @@ def send_telegram_notification(user_id, payment_id, access_token=None, is_recove
 # ============================================
 
 def create_yookassa_invoice(payment_id, amount, user_id, description="Оплата курса ВАРИАТИКА"):
-    """Создает СЧЕТ в ЮKassa (дает пользователю выбор способа оплаты)"""
-    if not YOOKASSA_SDK_AVAILABLE:
-        logger.error("❌ YooKassa SDK не установлен")
-        return {
-            "id": None,
-            "status": "pending",
-            "confirmation_url": None,
-            "method": "invoice_fallback",
-            "available_methods": ["bank_card"],
-            "note": "YooKassa SDK недоступен"
-        }
-    
+    """Создает ПЛАТЕЖ в ЮKassa через прямой API (работает без SDK)"""
     try:
+        logger.info(f"💰 Создание платежа: {payment_id}, сумма: {amount}, пользователь: {user_id}")
+        
+        # Проверяем наличие ключей
         shop_id = os.getenv('YOOKASSA_SHOP_ID')
         secret_key = os.getenv('YOOKASSA_SECRET_KEY')
         
         if not shop_id or not secret_key:
-            raise ValueError("YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY не настроены")
+            logger.error("❌ Не настроены ключи ЮKassa")
+            return {
+                "id": None,
+                "status": "error",
+                "confirmation_url": None,
+                "method": "error",
+                "available_methods": [],
+                "note": "ЮKassa не настроена"
+            }
         
-        Configuration.account_id = shop_id
-        Configuration.secret_key = secret_key
+        # Создаем базовую авторизацию
+        import base64
+        auth = base64.b64encode(f"{shop_id}:{secret_key}".encode()).decode()
         
-        expires_at = (datetime.utcnow() + timedelta(hours=24)).isoformat() + "Z"
-        
-        invoice_data = {
+        # Формируем данные для платежа
+        payload = {
             "amount": {
                 "value": f"{amount:.2f}",
                 "currency": "RUB"
-            },
-            "description": description,
-            "metadata": {
-                "payment_id": payment_id,
-                "user_id": str(user_id),
-                "telegram_id": str(user_id)
-            },
-            "confirmation": {
-                "type": "redirect",
-                "return_url": "https://t.me/Testing_Lichnosti_bot"
-            },
-            "capture": True
-        }
-        
-        invoice = Invoice.create(invoice_data)
-        
-        confirmation_url = None
-        if hasattr(invoice, 'confirmation') and invoice.confirmation:
-            confirmation_url = invoice.confirmation.confirmation_url
-        
-        logger.info(f"✅ Счет создан (Invoices API): {payment_id} → {invoice.id}")
-        
-        return {
-            "id": invoice.id,
-            "status": invoice.status,
-            "confirmation_url": confirmation_url,
-            "method": "invoice",
-            "available_methods": "all",
-            "expires_at": expires_at
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка создания счета: {e}")
-        raise
-
-def create_yookassa_payment_legacy(payment_id, amount, user_id, description="Оплата курса ВАРИАТИКА"):
-    """Создает ПЛАТЕЖ в ЮKassa (старая функция для обратной совместимости)"""
-    if not YOOKASSA_SDK_AVAILABLE:
-        logger.error("❌ YooKassa SDK не установлен")
-        return {
-            "id": None,
-            "status": "pending",
-            "confirmation_url": None,
-            "method": "bank_card"
-        }
-    
-    try:
-        shop_id = os.getenv('YOOKASSA_SHOP_ID')
-        secret_key = os.getenv('YOOKASSA_SECRET_KEY')
-        
-        if not shop_id or not secret_key:
-            raise ValueError("YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY не настроены")
-        
-        Configuration.account_id = shop_id
-        Configuration.secret_key = secret_key
-        
-        payment_data = {
-            "amount": {
-                "value": f"{amount:.2f}",
-                "currency": "RUB"
-            },
-            "payment_method_data": {
-                "type": "bank_card"
             },
             "confirmation": {
                 "type": "redirect",
@@ -1234,27 +1171,136 @@ def create_yookassa_payment_legacy(payment_id, amount, user_id, description="О�
                 "payment_id": payment_id,
                 "user_id": str(user_id),
                 "telegram_id": str(user_id)
+            },
+            "receipt": {
+                "customer": {
+                    "email": f"user_{user_id}@example.com"
+                },
+                "items": [
+                    {
+                        "description": description,
+                        "quantity": "1.00",
+                        "amount": {
+                            "value": f"{amount:.2f}",
+                            "currency": "RUB"
+                        },
+                        "vat_code": "1",
+                        "payment_mode": "full_payment",
+                        "payment_subject": "service"
+                    }
+                ]
             }
         }
         
-        payment = Payment.create(payment_data)
-        
-        confirmation_url = None
-        if hasattr(payment.confirmation, 'confirmation_url'):
-            confirmation_url = payment.confirmation.confirmation_url
-        
-        logger.info(f"✅ Платеж создан (старая версия): {payment_id} → {payment.id}")
-        
-        return {
-            "id": payment.id,
-            "status": payment.status,
-            "confirmation_url": confirmation_url,
-            "method": "bank_card"
+        headers = {
+            "Authorization": f"Basic {auth}",
+            "Content-Type": "application/json",
+            "Idempotence-Key": payment_id
         }
         
+        logger.info(f"📤 Отправка запроса в ЮKassa для payment_id={payment_id}")
+        
+        response = requests.post(
+            "https://api.yookassa.ru/v3/payments",
+            json=payload,
+            headers=headers,
+            timeout=15
+        )
+        
+        logger.info(f"📥 Ответ от ЮKassa: статус {response.status_code}")
+        
+        if response.status_code == 200 or response.status_code == 201:
+            data = response.json()
+            confirmation_url = data.get("confirmation", {}).get("confirmation_url")
+            
+            logger.info(f"✅ Платеж создан в ЮKassa, id={data.get('id')}")
+            
+            return {
+                "id": data.get("id"),
+                "status": data.get("status", "pending"),
+                "confirmation_url": confirmation_url,
+                "method": "bank_card",
+                "available_methods": ["bank_card", "sbp", "yoo_money", "sberbank", "alfabank", "tinkoff_bank"],
+                "expires_at": None,
+                "note": "Платеж создан через прямой API"
+            }
+        else:
+            error_text = response.text[:500] if response.text else "Нет ответа"
+            logger.error(f"❌ Ошибка ЮKassa {response.status_code}: {error_text}")
+            
+            # Пробуем упрощенный вариант без чека
+            if response.status_code == 400 and "receipt" in error_text:
+                logger.info("🔄 Пробую без чека...")
+                
+                # Убираем receipt
+                simple_payload = {
+                    "amount": {
+                        "value": f"{amount:.2f}",
+                        "currency": "RUB"
+                    },
+                    "confirmation": {
+                        "type": "redirect",
+                        "return_url": "https://t.me/Testing_Lichnosti_bot"
+                    },
+                    "capture": True,
+                    "description": description,
+                    "metadata": {
+                        "payment_id": payment_id,
+                        "user_id": str(user_id)
+                    }
+                }
+                
+                response2 = requests.post(
+                    "https://api.yookassa.ru/v3/payments",
+                    json=simple_payload,
+                    headers=headers,
+                    timeout=15
+                )
+                
+                if response2.status_code == 200 or response2.status_code == 201:
+                    data2 = response2.json()
+                    confirmation_url2 = data2.get("confirmation", {}).get("confirmation_url")
+                    
+                    logger.info(f"✅ Платеж создан (без чека)")
+                    
+                    return {
+                        "id": data2.get("id"),
+                        "status": data2.get("status", "pending"),
+                        "confirmation_url": confirmation_url2,
+                        "method": "bank_card",
+                        "available_methods": ["bank_card"],
+                        "expires_at": None,
+                        "note": "Платеж создан без чека"
+                    }
+            
+            return {
+                "id": None,
+                "status": "error",
+                "confirmation_url": None,
+                "method": "error",
+                "available_methods": [],
+                "note": f"Ошибка ЮKassa: {response.status_code}"
+            }
+            
     except Exception as e:
-        logger.error(f"❌ Ошибка создания платежа (старая версия): {e}")
-        raise
+        logger.error(f"❌ Исключение в create_yookassa_invoice: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {
+            "id": None,
+            "status": "error",
+            "confirmation_url": None,
+            "method": "error",
+            "available_methods": [],
+            "note": str(e)
+        }
+
+
+def create_yookassa_payment_legacy(payment_id, amount, user_id, description="Оплата курса ВАРИАТИКА"):
+    """Создает ПЛАТЕЖ в ЮKassa (старая функция для обратной совместимости)"""
+    # Просто перенаправляем на новую функцию
+    logger.info(f"⚠️ Вызвана устаревшая функция create_yookassa_payment_legacy, перенаправляю...")
+    return create_yookassa_invoice(payment_id, amount, user_id, description)
 
 # ============================================
 # НОВЫЕ АРХИТЕКТУРНЫЕ ФУНКЦИИ ДЛЯ ВЕБХУКА
