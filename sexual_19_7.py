@@ -1183,15 +1183,110 @@ def generate_payment_id(prefix: str = "4f", user_id: int = None) -> str:
     return f"{prefix}_{timestamp}_{random_str}_{user_suffix}"
 
 def create_yookassa_invoice(payment_id: str, user_id: int, amount: float = 1.0, description: str = "") -> dict:
+    """СОЗДАЕТ РЕАЛЬНЫЙ ПЛАТЕЖ В ЮKASSA через API бэкенда"""
     try:
-        logger.info(f"💰 Создание счета: {payment_id}, сумма: {amount}, пользователь: {user_id}")
-        return {
-            "success": True,
-            "payment_id": payment_id,
-            "confirmation_url": "https://test.payment.url",
-            "amount": amount,
-            "status": "pending"
-        }
+        logger.info(f"💰 Создание реального платежа: {payment_id}, сумма: {amount}, пользователь: {user_id}")
+        
+        # Проверяем настройки API
+        if not API_URL:
+            logger.error("❌ API_URL не настроен")
+            return {"success": False, "error": "API не настроен"}
+        
+        # Создаем платеж через API бэкенда
+        response = requests.post(
+            f"{API_URL}/api/create-payment-advanced",
+            json={
+                "payment_id": payment_id,
+                "user_id": user_id,
+                "amount": amount,
+                "profile_code": "PACKAGE",
+                "description": description or f"Оплата на сумму {amount}₽",
+                "email": f"user_{user_id}@example.com"
+            },
+            timeout=15
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            confirmation_url = data.get("confirmation_url")
+            
+            if confirmation_url:
+                logger.info(f"✅ Реальный платеж создан: {payment_id}, ссылка получена")
+                return {
+                    "success": True,
+                    "payment_id": payment_id,
+                    "confirmation_url": confirmation_url,
+                    "amount": amount,
+                    "status": "pending",
+                    "yookassa_id": data.get("yookassa_id")
+                }
+            else:
+                logger.error(f"❌ Нет confirmation_url в ответе: {data}")
+                return {"success": False, "error": "Нет ссылки на оплату"}
+        else:
+            error_text = response.text[:200] if response.text else "Нет ответа"
+            logger.error(f"❌ Ошибка API: {response.status_code} - {error_text}")
+            
+            # Пробуем создать платеж напрямую через ЮKassa (запасной вариант)
+            try:
+                logger.info("🔄 Пробую создать платеж напрямую через ЮKassa...")
+                
+                import base64
+                
+                auth = base64.b64encode(f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}".encode()).decode()
+                
+                payload = {
+                    "amount": {
+                        "value": f"{amount:.2f}",
+                        "currency": "RUB"
+                    },
+                    "confirmation": {
+                        "type": "redirect",
+                        "return_url": f"https://t.me/{BOT_USERNAME}"
+                    },
+                    "capture": True,
+                    "description": description or f"Оплата на сумму {amount}₽",
+                    "metadata": {
+                        "payment_id": payment_id,
+                        "user_id": user_id
+                    }
+                }
+                
+                headers = {
+                    "Authorization": f"Basic {auth}",
+                    "Content-Type": "application/json",
+                    "Idempotence-Key": payment_id
+                }
+                
+                response = requests.post(
+                    "https://api.yookassa.ru/v3/payments",
+                    json=payload,
+                    headers=headers,
+                    timeout=15
+                )
+                
+                if response.status_code == 200 or response.status_code == 201:
+                    data = response.json()
+                    confirmation_url = data.get("confirmation", {}).get("confirmation_url")
+                    
+                    if confirmation_url:
+                        logger.info(f"✅ Прямой платеж через ЮKassa создан: {payment_id}")
+                        return {
+                            "success": True,
+                            "payment_id": payment_id,
+                            "confirmation_url": confirmation_url,
+                            "amount": amount,
+                            "status": "pending",
+                            "yookassa_id": data.get("id")
+                        }
+                
+                logger.error(f"❌ Ошибка прямого платежа: {response.status_code}")
+                return {"success": False, "error": f"Ошибка ЮKassa: {response.status_code}"}
+                
+            except Exception as e2:
+                logger.error(f"❌ Ошибка прямого платежа: {e2}")
+                return {"success": False, "error": str(e2)}
+            
     except Exception as e:
         logger.error(f"❌ Ошибка создания платежа: {e}")
         return {"success": False, "error": str(e)}
