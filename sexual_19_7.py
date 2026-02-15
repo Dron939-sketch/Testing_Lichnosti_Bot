@@ -213,8 +213,8 @@ PROFILE_DISK_LINKS = {
     "default": "https://disk.yandex.ru/d/EYPIF9_puI_t0A"
 }
 
-USER_DISK_LINK = PROFILE_DISK_LINKS["SA-5_INT"]  # Ссылка на профиль пользователя
-EXAMPLE_DISK_LINK = PROFILE_DISK_LINKS["SA-3_CON"]  # Пример для демо
+USER_DISK_LINK = PROFILE_DISK_LINKS["SA_5_INT"]  
+EXAMPLE_DISK_LINK = PROFILE_DISK_LINKS["SA_3_CON"]
 AUTHOR_TELEGRAM = "https://t.me/meysternlp"
 
 def get_disk_link_by_profile(profile_code: str) -> str:
