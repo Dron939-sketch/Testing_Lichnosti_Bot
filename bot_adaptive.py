@@ -693,7 +693,7 @@ async def show_results_screen(
     context: ContextTypes.DEFAULT_TYPE,
     force_shared_view: bool = False
 ):
-   """ЭКРАН РЕЗУЛЬТАТОВ с 18+ кнопкой"""
+       """ЭКРАН РЕЗУЛЬТАТОВ с 18+ кнопкой"""
     query = update.callback_query
     user_id = update.effective_user.id
     
