@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 """
-ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА + 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-ВЕРСИЯ 6.0: ИСПРАВЛЕННЫЙ ИМПОРТ (на основе рабочей версии 5.4)
-✅ Психологический тест (4 этапа) - версия 5.4
-✅ 18+ интимные профили с приглашениями - версия 19.0
-✅ 4F-ключи (1F,2F,3F,4F) для друзей
-✅ Платежная система ЮKassa
-✅ Интеграция с Яндекс.Диск (36 профилей)
+ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА: ПУТЬ К САМОПОЗНАНИЮ
+4 этапа адаптивного исследования + персональное описание профиля
+ВЕРСИЯ 5.4: ИСПРАВЛЕН ЦИКЛИЧЕСКИЙ ИМПОРТ
 """
 
 import logging
@@ -19,9 +15,6 @@ import base64
 import uuid
 import random
 import requests
-import json
-import traceback
-from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -33,7 +26,7 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ===== НАСТРОЙКА ЛОГИРОВАНИЯ =====
+# ===== НАСТРОЙКА СУПЕР-ЛОГГИРОВАНИЯ =====
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -60,21 +53,12 @@ def log_callback(func_name: str, update: Update, context: ContextTypes.DEFAULT_T
     logger.debug(log_msg)
     print(f"🔍 {log_msg}")
 
-# ===== ЗАГЛУШКА ДЛЯ НЕРЕАЛИЗОВАННЫХ ФУНКЦИЙ =====
-async def noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Заглушка для нереализованных функций"""
-    query = update.callback_query
-    await query.answer("🚧 Функция в разработке", show_alert=True)
-    return
-
 # ===== ИМПОРТ КОНСТАНТ СОСТОЯНИЙ =====
 from constants import (
     STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
     GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
     MY_SEXUAL_PROFILE, SEXUAL_PROFILE_SCREEN, SEXUAL_INVITES_LIST,
-    SEXUAL_FRIEND_PROFILE, FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN,
-    FOUR_F_MAIN, FOUR_F_DETAILED, FOUR_F_MENU, FOUR_F_CONTENT,
-    BUY_PACKAGES, INVITES_LIST, FRIEND_MENU,
+    SEXUAL_FRIEND_PROFILE, FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN
 )
 
 # ===== ИМПОРТ КОНФИГУРАЦИИ =====
@@ -83,6 +67,7 @@ from config import (
     TELEGRAM_BOT_URL, BOT_LINK, AUTHOR_LINK, GIFT_PDF_LINK, SHARE_TEXT,
     GIFT_SCREEN_TEXT, STANDARD_SUFFIXES, CONFLICT_PHRASES, SUFFIX_TO_DILTS,
     EMERGENCY_PROFILES, LEVEL_DIFFS, PROFILE_LINKS, DEFAULT_PROFILE,
+    logger as config_logger
 )
 
 # ===== ИМПОРТ 18+ МОДУЛЯ (БЕЗ КОНФЛИКТУЮЩИХ ФУНКЦИЙ) =====
@@ -116,7 +101,11 @@ from sexual_18_plus import (
     create_invite_callback,
     generate_payment_id,
     create_yookassa_invoice,
-    # НЕ ИМПОРТИРУЕМ конфликтующие функции
+    show_my_sexual_profile,
+    sexual_invite_start,
+    copy_invite_callback,
+    check_invite_callback,
+    # НЕ ИМПОРТИРУЕМ: start, show_results_screen
     my_invites_callback,
     friend_menu_callback,
     show_payment_access_screen,
@@ -133,13 +122,20 @@ from sexual_18_plus import (
     safe_send_message,
 )
 
+# ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+async def noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Заглушка для нереализованных функций"""
+    query = update.callback_query
+    await query.answer("🚧 Функция в разработке", show_alert=True)
+    return
+
 # ===== ИМПОРТ ВОПРОСОВ =====
 from questions import (
     PERCEPTION_TYPES, CLARIFICATION_QUESTIONS,
     STAGE1_FEEDBACK, STAGE2_FEEDBACK, STAGE3_FEEDBACK, STAGE4_ANALYSIS_SCREEN
 )
 
-# ===== ИМПОРТ ОБРАБОТЧИКОВ ТЕСТА =====
+# ===== ИМПОРТ НАШИХ НОВЫХ МОДУЛЕЙ =====
 from handlers import (
     show_stage_1_intro, show_stage_1_details, back_to_stage1_intro,
     start_stage_1, ask_stage_1_question, handle_stage_1_answer, finish_stage_1,
@@ -156,7 +152,25 @@ from handlers import (
 
 from handlers.common import ask_clarification_question, handle_clarification_answer
 
-# ===== ИМПОРТ УТИЛИТ =====
+# ===== ПРОВЕРКА ИМПОРТОВ =====
+logger.info("🔍 ПРОВЕРКА ИМПОРТОВ ИЗ handlers:")
+logger.info(f"  start_stage_1: {start_stage_1}")
+logger.info(f"  handle_stage_1_answer: {handle_stage_1_answer}")
+logger.info(f"  ask_stage_1_question: {ask_stage_1_question}")
+logger.info(f"  finish_stage_1: {finish_stage_1}")
+
+# ===== ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ТИПОВ =====
+import sys
+print("\n" + "="*60, file=sys.stderr)
+print("🔍 ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА ТИПОВ", file=sys.stderr)
+print("="*60, file=sys.stderr)
+print(f"🔥 start_stage_1 = {start_stage_1}", file=sys.stderr)
+print(f"🔥 Тип start_stage_1 = {type(start_stage_1)}", file=sys.stderr)
+print(f"🔥 start_stage_1 is None: {start_stage_1 is None}", file=sys.stderr)
+print(f"🔥 start_stage_1 is callable: {callable(start_stage_1)}", file=sys.stderr)
+print("="*60 + "\n", file=sys.stderr)
+sys.stderr.flush()
+
 from utils.calculations import (
     determine_perception_type, get_type_code, get_level_name, get_dilts_code,
     determine_dilts_level, get_level_group, calculate_thinking_level_by_scores,
@@ -170,55 +184,9 @@ from utils.validators import (
 
 from utils.helpers import calculate_progress
 
-# ===== ИМПОРТ ЗАГРУЗЧИКА ПРОФИЛЕЙ =====
+# Импорт загрузчика и профилей
 from loader import loader
 from base import VariaticaProfile
-
-# ===== ЛОКАЛЬНЫЕ ФУНКЦИИ 18+ МОДУЛЯ =====
-async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔞 Мой интимный профиль (локальная версия)"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        user_id = query.from_user.id
-        logger.info(f"🔞 Пользователь {user_id} открыл интимный профиль")
-        
-        # Здесь будет код из sexual_18_plus.py
-        # Пока заглушка
-        await query.edit_message_text(
-            "🔞 ИНТИМНЫЙ ПРОФИЛЬ\n\nРаздел в разработке",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("⬅️ Назад", callback_data="back_to_results")
-            ]])
-        )
-        
-        return MY_SEXUAL_PROFILE
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
-        return RESULTS
-
-async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик 18+ приглашений"""
-    try:
-        user = update.effective_user
-        logger.info(f"🔗 Пользователь {user.id} перешел по 18+ приглашению")
-        
-        await update.message.reply_text(
-            "🔞 18+ модуль в разработке"
-        )
-        
-        return RESULTS
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
-        return RESULTS
-
-# ===== ПРОВЕРКА ИМПОРТОВ =====
-logger.info("🔍 ПРОВЕРКА ИМПОРТОВ:")
-logger.info(f"  start_stage_1: {start_stage_1}")
-logger.info(f"  handle_stage_1_answer: {handle_stage_1_answer}")
 
 # ============================================
 # ФУНКЦИИ ПЛАТЕЖНОЙ СИСТЕМЫ
@@ -744,6 +712,7 @@ async def show_results_screen(
     except Exception as e:
         logger.error(f"⚠️ Ошибка определения реального профиля: {e}")
     
+    # ПРИМЕЧАНИЕ О КОНФЛИКТЕ
     discrepancy_note = ""
     if actual_profile_key:
         discrepancy_note = get_discrepancy_note(profile_data, actual_profile_key)
@@ -828,10 +797,11 @@ async def show_results_screen(
         f"<i>Это только начало вашего пути к самопознанию.</i>\n\n"
     )
     
+    # ПРИМЕЧАНИЕ О КОНФЛИКТЕ
     if discrepancy_note:
         message_2 += f"{discrepancy_note}"
     
-    # КНОПКА 18+ ПРОФИЛЯ - используем локальную функцию
+    # КНОПКА 18+ ПРОФИЛЯ
     sexual_button = [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_my_sexual_profile")]
     
     if not has_shared:
@@ -909,9 +879,11 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer("🔄 Перезапускаю тест...")
     
+    # Очищаем данные пользователя
     context.user_data.clear()
     logger.debug(f"🧹 user_data очищена для {update.effective_user.id}")
     
+    # Инициализируем новые данные
     context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
     context.user_data["stage1_current"] = 0
     context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
@@ -920,11 +892,13 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["processing"] = False
     context.user_data["has_shared"] = False
     
+    # Инициализируем хранилище приглашений
     user_id = query.from_user.id
     context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)
     
     logger.info(f"User {user_id} перезапустил тест")
     
+    # Переходим к первому этапу
     return await show_stage_1_intro(update, context)
 
 # ============================================
@@ -985,6 +959,7 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return await show_results_screen(update, context, force_shared_view=True)
     
+    # Проверяем наличие ссылки
     if not GIFT_PDF_LINK:
         logger.error(f"❌ GIFT_PDF_LINK не установлен для пользователя {user_id}")
         await query.answer(
@@ -1125,7 +1100,7 @@ async def buy_without_test_callback(update: Update, context: ContextTypes.DEFAUL
     return await show_payment_screen(update, context)
 
 async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Экран создания платежа"""
+    """Экран создания платежа (БЕЗ ССЫЛКИ НА МАТЕРИАЛЫ)"""
     query = update.callback_query if hasattr(update, 'callback_query') else None
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
@@ -1219,6 +1194,9 @@ async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             "• Тинькофф, Альфа-Банк\n"
             "• И другие\n"
         )
+    
+    # УБРАНА ссылка на материалы из экрана платежа
+    # Ссылка будет доступна ТОЛЬКО после оплаты
     
     keyboard = [
         [InlineKeyboardButton("💳 Оплатить 690 рублей", url=confirmation_url)],
@@ -1408,6 +1386,7 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
     
     logger.info(f"✅ Материалы получены для профиля {profile_code}")
     
+    # ЗДЕСЬ появляется ссылка на материалы - ТОЛЬКО ПОСЛЕ ОПЛАТЫ
     keyboard = [
         [InlineKeyboardButton("📥 СКАЧАТЬ ПЕРСОНАЛЬНОЕ ОПИСАНИЕ", url=materials_link)],
         [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
@@ -1597,11 +1576,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.info(f"🚀 /start вызван пользователем {user.id} (@{user.username})")
     
+    # Инициализируем тестовые данные для нового пользователя
     init_test_data(user.id)
     
+    # ===== 18+ DEEP LINK =====
     if context.args and context.args[0].startswith("sex_"):
         logger.info(f"🔞 18+ переход по ссылке: {context.args[0]}")
         return await sexual_invite_start(update, context)
+    # ===== КОНЕЦ 18+ =====
     
     current_state = context.user_data.get("conversation_state")
     if current_state is not None:
@@ -1621,8 +1603,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"   ↳ Поймёте свой уникальный профиль\n\n"
         f"2️⃣ Персональные материалы\n"
         f"   ↳ Узнаете куда направлять усилия\n\n"
-        f"3️⃣ 🔞 Интимный профиль и 4F-ключи\n"
-        f"   ↳ Узнаете свои скрытые желания и триггеры\n\n"
         f"🚀 Начнём исследование?"
     )
     
@@ -1632,7 +1612,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
+    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
     logger.info(f"✅ Приветствие отправлено пользователю {user.id}")
     return None
 
@@ -1665,8 +1645,6 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"   ↳ Поймёте свой уникальный профиль\n\n"
         f"2️⃣ Персональные материалы\n"
         f"   ↳ Узнаете куда направлять усилия\n\n"
-        f"3️⃣ 🔞 Интимный профиль и 4F-ключи\n"
-        f"   ↳ Узнаете свои скрытые желания и триггеры\n\n"
         f"🚀 Начнём исследование?"
     )
     
@@ -1679,8 +1657,7 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=welcome_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
+        reply_markup=reply_markup
     )
     
     logger.info(f"✅ User {update.effective_user.id}: main_menu_callback → ConversationHandler.END")
@@ -1739,6 +1716,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["processing"] = False
     context.user_data["has_shared"] = False
     
+    # Инициализируем хранилище приглашений
     user_id = query.from_user.id
     context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)
     
@@ -1759,22 +1737,30 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# ГЛАВНАЯ ФУНКЦИЯ
+# ГЛАВНАЯ ФУНКЦИЯ С ИСПРАВЛЕННЫМ CONVERSATIONHANDLER
 # ============================================
 
 def main():
     """Запуск бота"""
+    # ПРИНУДИТЕЛЬНЫЙ СБРОС ВЕБХУКА И ЗАВЕРШЕНИЕ СТАРЫХ СЕССИЙ
     import requests
     print("\n" + "="*50)
-    print("🔄 СБРОС ВЕБХУКА")
+    print("🔄 СБРОС ВЕБХУКА И ОЧИСТКА")
     print("="*50)
     
+    # Сначала удаляем вебхук
     url = f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=true"
     response = requests.get(url)
     print(f"Ответ: {response.json()}")
     
+    # Проверяем, что вебхук удален
+    url = f"https://api.telegram.org/bot{TOKEN}/getWebhookInfo"
+    response = requests.get(url)
+    print(f"Информация о вебхуке: {response.json()}")
+    print("="*50 + "\n")
+    
     print("\n" + "="*70)
-    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 6.0)")
+    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.4)")
     print("="*70)
     print("🔞 ПОЛНАЯ ИНТЕГРАЦИЯ 18+ МОДУЛЯ")
     print("="*70)
@@ -1785,11 +1771,40 @@ def main():
     print("4. ✅ Платежная система ЮKassa")
     print("5. ✅ Интеграция с Яндекс.Диск (36 профилей)")
     print("="*70)
-    
-    print("🔍 ПРОВЕРКА ИМПОРТОВ:")
-    print(f"  start_stage_1: {start_stage_1}")
-    print(f"  handle_stage_1_answer: {handle_stage_1_answer}")
+    print("🔧 ИСПРАВЛЕНИЯ В 5.4:")
+    print("   ✅ Исправлен циклический импорт (константы вынесены в constants.py)")
+    print("   ✅ Импорты STAGE_1, STAGE_2 теперь из constants.py")
+    print("   ✅ Устранена проблема с start_stage_1 = None")
     print("="*70)
+    
+    # Проверка наличия GIFT_PDF_LINK
+    if not GIFT_PDF_LINK:
+        logger.warning("⚠️ GIFT_PDF_LINK не установлена, используется ссылка по умолчанию")
+    else:
+        logger.info(f"🎁 GIFT_PDF_LINK загружена: {GIFT_PDF_LINK[:30]}...")
+    
+    print("🔍 ПРОВЕРКА ЗАГРУЗКИ ПРОФИЛЕЙ")
+    print("="*30)
+    
+    try:
+        all_profiles = loader.get_all_profiles()
+        print(f"📊 Всего профилей загружено: {len(all_profiles)}")
+        
+        for profile_type in ['sa', 'sp', 'ia', 'ip']:
+            type_profiles = [p for p in all_profiles if p.lower().startswith(f"{profile_type}_")]
+            print(f"🔍 {profile_type.upper()} профилей: {len(type_profiles)}")
+    except Exception as e:
+        print(f"⚠️ Ошибка при загрузке профилей: {e}")
+    
+    print("\n💳 ПРОВЕРКА ПЛАТЕЖНОЙ СИСТЕМЫ")
+    print("="*30)
+    print(f"📡 API URL: {API_URL}")
+    print(f"🏪 YooKassa Shop ID: {YOOKASSA_SHOP_ID if YOOKASSA_SHOP_ID else '❌ НЕ УСТАНОВЛЕН'}")
+    print(f"🔑 YooKassa Secret Key: {'✅ УСТАНОВЛЕН' if YOOKASSA_SECRET_KEY else '❌ НЕ УСТАНОВЛЕН'}")
+    print(f"💰 Стоимость профиля: 690 рублей")
+    print(f"💰 Стоимость 4F ключа: {FOUR_F_PRICE} рублей")
+    print(f"💰 Стоимость доступа к другу: {FRIEND_ACCESS_PRICE} рублей")
+    print("="*30)
     
     application = Application.builder().token(TOKEN).build()
     
@@ -1921,21 +1936,28 @@ def main():
     application.add_handler(conv_handler)
     
     logger.info("🧠 Виртуальный психолог Вариатика запущен!")
-    logger.info("✅ ВЕРСИЯ 6.0: ПОЛНАЯ ИНТЕГРАЦИЯ ТЕСТА И 18+ МОДУЛЯ!")
+    logger.info("✅ ВЕРСИЯ 5.4: ИСПРАВЛЕН ЦИКЛИЧЕСКИЙ ИМПОРТ!")
+    logger.info("✅ Константы вынесены в отдельный файл constants.py")
+    logger.info("✅ Вопросы вынесены в отдельный файл questions.py")
+    logger.info("✅ Обработчики этапов вынесены в папку handlers/")
+    logger.info("✅ Утилиты вынесены в папку utils/")
+    logger.info("✅ Супер-логирование активировано!")
     
+    # ✅ ВАЖНО: Добавляем обработку ошибок и сброс вебхука
     print("\n🚀 ЗАПУСК БОТА")
     print("="*30)
     
     try:
         application.run_polling(
-            drop_pending_updates=True,
-            allowed_updates=['message', 'callback_query'],
-            poll_interval=1.0
+            drop_pending_updates=True,  # ОЧЕНЬ ВАЖНО!
+            allowed_updates=['message', 'callback_query'],  # Только нужные типы
+            poll_interval=1.0  # Частота опроса
         )
     except Exception as e:
         logger.error(f"❌ Критическая ошибка: {e}")
         print(f"\n❌ Ошибка запуска: {e}")
 
 if __name__ == "__main__":
+    # Добавляем путь для импорта модулей
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
     main()
