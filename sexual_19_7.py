@@ -1735,8 +1735,9 @@ async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TY
         logger.error(f"❌ Ошибка в check_invite_callback: {e}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
 
+
 # ============================================
-# 🔗 ЭКРАН: СОЗДАНИЕ ПРИГЛАШЕНИЯ
+# 🔗 ЭКРАН: СОЗДАНИЕ ПРИГЛАШЕНИЯ (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 # ============================================
 
 async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1753,6 +1754,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         
         context.user_data["conversation_state"] = INVITES_LIST
         
+        # Получаем лимиты и статистику
         user_limits = get_user_limits(context)
         invites = context.user_data.get("sexual_invites", [])
         total_invites = len(invites)
@@ -1760,37 +1762,55 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         logger.info(f"📊 Статистика пользователя {user_id}:")
         logger.info(f"   - Всего приглашений: {total_invites}")
         logger.info(f"   - Лимиты: free_used={user_limits['free_used']}, total_purchased={user_limits['total_purchased']}")
-        
-        can_create, is_free, limit_message = can_create_invite(user_limits, total_invites)
-        
+
+        # ПРОВЕРЯЕМ И УВЕЛИЧИВАЕМ АТОМАРНО
+        can_create = False
+        is_free = False
+
+        # Сначала проверяем бесплатные
+        if user_limits["free_used"] < FREE_INVITE_LIMIT:
+            # СРАЗУ увеличиваем счетчик (блокируем ссылку)
+            user_limits["free_used"] += 1
+            can_create = True
+            is_free = True
+            remaining = FREE_INVITE_LIMIT - user_limits["free_used"]
+            logger.info(f"✅ Использован бесплатный лимит. Осталось: {remaining}")
+        else:
+            # Проверяем платные
+            paid_invites_created = max(0, total_invites - FREE_INVITE_LIMIT)
+            paid_available = user_limits["total_purchased"] - paid_invites_created
+            
+            if paid_available > 0:
+                can_create = True
+                is_free = False
+                logger.info(f"✅ Использован платный лимит. Осталось платных: {paid_available - 1}")
+            else:
+                can_create = False
+                logger.warning(f"❌ Лимит ссылок исчерпан для пользователя {user_id}")
+
         logger.info(f"   - Может создать: {can_create}, бесплатно: {is_free}")
-        logger.info(f"   - Сообщение: {limit_message}")
-        
+
         if not can_create:
-            logger.warning(f"❌ Лимит ссылок исчерпан для пользователя {user_id}")
             await query.answer("❌ Лимит ссылок исчерпан!", show_alert=True)
             return await buy_invite_packages_callback(update, context)
-        
+
         profile = context.user_data.get("profile", USER_PROFILE)
         logger.info(f"📊 Профиль пользователя для создания ссылки: {profile['display_name']}")
-        
-        invite_code = f"sex_{uuid.uuid4().hex[:8]}_{uuid.uuid4().hex[:4]}"
+
+        # ДОБАВЛЯЕМ TIMESTAMP ДЛЯ УНИКАЛЬНОСТИ
+        invite_code = f"sex_{uuid.uuid4().hex[:8]}_{uuid.uuid4().hex[:4]}_{int(time.time())}"
         invite_url = f"https://t.me/{BOT_USERNAME}?start={invite_code}"
-        
+
         invite_message = (
             "✨ Есть одна штука.\n"
             "Определяет твой ночной тип личности.\n"
             "У меня — совпало процентов на 90.\n\n"
             "🤫 Интересно, у тебя тоже?"
         )
-        
+
         current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
         invite_type = "🆓" if is_free else "💎"
-        
-        if is_free:
-            user_limits["free_used"] += 1
-            logger.info(f"✅ Использован бесплатный лимит. Осталось: {FREE_INVITE_LIMIT - user_limits['free_used']}")
-        
+
         text = f"""
 🔞 <b>✨ ВАША ССЫЛКА ГОТОВА! ✨</b>
 
@@ -1807,15 +1827,16 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
 🎯 <b>Через 15 минут после теста</b>
    вы увидите его <b>18+ профиль</b>.
 """
-        
-        remaining_free = max(0, FREE_INVITE_LIMIT - user_limits["free_used"])
-        remaining_paid = user_limits["total_purchased"] - (total_invites + 1 - user_limits["free_used"])
-        
-        if remaining_free > 0:
+
+        # Правильный расчет остатков
+        if is_free:
+            remaining_free = FREE_INVITE_LIMIT - user_limits["free_used"]
             text += f"\n🆓 Осталось бесплатных: {remaining_free}"
-        if remaining_paid > 0:
-            text += f"\n💎 Осталось платных: {remaining_paid}"
-        
+        else:
+            paid_invites_created = max(0, total_invites + 1 - FREE_INVITE_LIMIT)
+            paid_available = user_limits["total_purchased"] - paid_invites_created
+            text += f"\n💎 Осталось платных: {paid_available}"
+
         invite_data = {
             "invite_id": invite_code,
             "link": invite_url,
@@ -1835,22 +1856,22 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
             "invite_type": invite_type,
             "user_id": user_id
         }
-        
+
         # Сохраняем в БД
         save_success = save_invite_to_api(invite_data)
         logger.info(f"💾 Сохранение в БД: {'успешно' if save_success else 'ошибка'}")
-        
+
         invites.insert(0, invite_data)
-        
+
         global_invites = get_user_invites(user_id)
         if invite_data not in global_invites:
             global_invites.insert(0, invite_data)
-        
+
         logger.info(f"🔗 Пользователь {user_id} создал ссылку: {invite_code} (тип: {invite_type})")
-        
+
         share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
         
-        # 👇 ИСПРАВЛЕННАЯ КНОПКА
+        # КНОПКИ
         keyboard = [
             [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
             [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")],
