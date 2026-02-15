@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 19.6 - ИНТЕГРАЦИЯ С CONSTANTS.PY
+Версия: 19.7 - ИСПРАВЛЕН ЦИКЛИЧЕСКИЙ ИМПОРТ
 ✅ Все 36 ссылок на профили добавлены
 ✅ Умная функция поиска ссылок по профилю
 ✅ Корректное отображение в "Моих отражениях"
@@ -36,6 +36,22 @@ from telegram.ext import (
     ContextTypes,
     ConversationHandler,
 )
+
+# ===== НАСТРОЙКА ЛОГИРОВАНИЯ =====
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.DEBUG,
+    handlers=[
+        logging.FileHandler("bot_detailed.log", encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # ===== ИМПОРТ КОНСТАНТ ИЗ CONSTANTS.PY =====
 try:
@@ -91,22 +107,6 @@ except ImportError as e:
     SEXUAL_STATES = {}  # Пустой словарь
     logger.warning("⚠️ Используются запасные значения констант")
 
-# ===== НАСТРОЙКА ЛОГИРОВАНИЯ =====
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.DEBUG,
-    handlers=[
-        logging.FileHandler("bot_detailed.log", encoding='utf-8'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
-
 # ===== НАСТРОЙКА =====
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "ВАШ_ТОКЕН_ЗДЕСЬ")
 BOT_USERNAME = "Testing_Lichnosti_bot"
@@ -141,12 +141,9 @@ os.chdir(PROJECT_ROOT)
 
 logger.info(f"📁 Корень проекта: {PROJECT_ROOT}")
 
-# ===== УДАЛЕНЫ СТАРЫЕ ОПРЕДЕЛЕНИЯ СОСТОЯНИЙ =====
-# Вместо них используем импортированные из constants.py
-# RESULTS_SCREEN оставляем как алиас для RESULTS
-RESULTS_SCREEN = RESULTS
-
 # ===== КОНСТАНТЫ =====
+RESULTS_SCREEN = RESULTS  # Алиас для совместимости
+
 SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━━━"
 FREE_FRIEND_LIMIT = 2
 FRIEND_ACCESS_PRICE = 99
@@ -2642,7 +2639,7 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("\n" + "="*70)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.6")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.7")
     print("="*70)
     print("✅ ПОЛНАЯ ИНТЕГРАЦИЯ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК")
     print("✅ Умная функция поиска ссылок по профилю")
@@ -2654,6 +2651,7 @@ def main():
     print("✅ Обновление статуса после прохождения теста")
     print("✅ Динамическая загрузка интимных профилей по коду пользователя")
     print("✅ Поиск профилей без учета суффикса (EXP → любой файл типа_уровня_*)")
+    print("✅ ИСПРАВЛЕН ЦИКЛИЧЕСКИЙ ИМПОРТ")
     print("="*70)
     print("📊 ДОСТУПНЫЕ ПРОФИЛИ:")
     print("   SA: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
@@ -2771,7 +2769,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 19.6")
+        print("\n🚀 Бот запущен! Версия 19.7")
         print("="*70)
         logger.info("✅ Бот успешно запущен")
         
