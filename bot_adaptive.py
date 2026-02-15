@@ -1838,9 +1838,10 @@ def main():
     
     conv_handler = ConversationHandler(
         entry_points=[
-            CommandHandler("start", start),
-            CallbackQueryHandler(start_test, pattern="^start_test$")
-        ],
+    CommandHandler("start", start),
+    CallbackQueryHandler(start_test, pattern="^start_test$"),
+    CallbackQueryHandler(start_stage_1, pattern="^start_stage_1$"),  # ДОБАВИТЬ!
+],
         states={
             STAGE_1: [
                 CallbackQueryHandler(show_stage_1_details, pattern="^stage1_details$"),
