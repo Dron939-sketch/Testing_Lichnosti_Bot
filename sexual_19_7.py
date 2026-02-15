@@ -1840,12 +1840,15 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
    вы увидите его <b>18+ профиль</b>.
 """
 
-        # Правильный расчет остатков
+        # 👇 ИСПРАВЛЯЕМ РАСЧЕТ ОСТАТКОВ ДЛЯ ОТОБРАЖЕНИЯ
         if is_free:
             remaining_free = FREE_INVITE_LIMIT - user_limits["free_used"]
             text += f"\n🆓 Осталось бесплатных: {remaining_free}"
         else:
-            paid_invites_created = max(0, total_invites + 1 - FREE_INVITE_LIMIT)
+            # Пересчитываем актуальные остатки
+            updated_invites = get_user_invites_from_api(user_id)
+            updated_total = len(updated_invites)
+            paid_invites_created = max(0, updated_total - FREE_INVITE_LIMIT)
             paid_available = user_limits["total_purchased"] - paid_invites_created
             text += f"\n💎 Осталось платных: {paid_available}"
 
@@ -1873,11 +1876,24 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         save_success = save_invite_to_api(invite_data)
         logger.info(f"💾 Сохранение в БД: {'успешно' if save_success else 'ошибка'}")
 
-        invites.insert(0, invite_data)
-
-        global_invites = get_user_invites(user_id)
-        if invite_data not in global_invites:
-            global_invites.insert(0, invite_data)
+        # 👇 ОБНОВЛЯЕМ ДАННЫЕ В ПАМЯТИ
+        # Получаем актуальные данные из БД
+        updated_invites = get_user_invites_from_api(user_id)
+        context.user_data["sexual_invites"] = updated_invites
+        
+        # Обновляем счетчики в user_limits на основе реальных данных
+        # Подсчитываем реальное количество бесплатных ссылок
+        actual_free_used = 0
+        for inv in updated_invites:
+            if inv.get("invite_id", "").startswith("test_"):
+                continue  # Пропускаем тестовые
+            if inv.get("is_free") or inv.get("invite_type") == "🆓":
+                actual_free_used += 1
+        
+        # Обновляем лимиты
+        user_limits["free_used"] = min(actual_free_used, FREE_INVITE_LIMIT)
+        
+        logger.info(f"🔄 Обновлены лимиты после создания ссылки: free_used={user_limits['free_used']}")
 
         logger.info(f"🔗 Пользователь {user_id} создал ссылку: {invite_code} (тип: {invite_type})")
 
@@ -1904,7 +1920,6 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         logger.error(f"❌ Ошибка в create_invite_callback: {e}\n{traceback.format_exc()}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
         return INVITES_LIST
-
 # ============================================
 # 🔍 ЭКРАН: МОИ ОТРАЖЕНИЯ
 # ============================================
