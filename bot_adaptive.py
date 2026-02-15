@@ -831,7 +831,7 @@ async def show_results_screen(
 # ФУНКЦИИ НАВИГАЦИИ
 # ============================================
 
-async fn back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к результатам"""
     log_callback("back_to_results", update, context)
     query = update.callback_query
