@@ -982,11 +982,34 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer("🔄 Перезапускаю тест...")
     
+    # ✅ СОХРАНЯЕМ ВАЖНЫЕ ДАННЫЕ ПЕРЕД ОЧИСТКОЙ
+    saved_limits = context.user_data.get("invite_limits", {})
+    saved_invites = context.user_data.get("sexual_invites", [])
+    
+    logger.info(f"💾 Сохраняем лимиты перед перезапуском: {saved_limits}")
+    
     # Очищаем данные пользователя
     context.user_data.clear()
     logger.debug(f"🧹 user_data очищена для {update.effective_user.id}")
     
-    # Инициализируем новые данные
+    # ✅ ВОССТАНАВЛИВАЕМ ЛИМИТЫ
+    if saved_limits:
+        context.user_data["invite_limits"] = saved_limits
+        logger.info(f"✅ Восстановлены лимиты: {saved_limits}")
+    else:
+        # Если лимитов не было, создаем новые
+        context.user_data["invite_limits"] = {
+            "free_used": 0,
+            "total_purchased": 0,
+            "paid_packages": []
+        }
+        logger.info(f"🆕 Созданы новые лимиты")
+    
+    if saved_invites:
+        context.user_data["sexual_invites"] = saved_invites
+        logger.info(f"✅ Восстановлено {len(saved_invites)} приглашений")
+    
+    # Инициализируем новые данные для теста
     context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
     context.user_data["stage1_current"] = 0
     context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
@@ -995,11 +1018,11 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["processing"] = False
     context.user_data["has_shared"] = False
     
-    # Инициализируем хранилище приглашений
+    # Инициализируем хранилище приглашений (обновляем из БД)
     user_id = query.from_user.id
     context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)
     
-    logger.info(f"User {user_id} перезапустил тест")
+    logger.info(f"User {user_id} перезапустил тест (лимиты сохранены)")
     
     # Переходим к первому этапу
     return await show_stage_1_intro(update, context)
