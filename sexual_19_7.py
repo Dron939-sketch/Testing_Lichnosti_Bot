@@ -12,6 +12,9 @@
 ✅ Обновление статуса после прохождения теста
 ✅ Динамическая загрузка интимных профилей по коду пользователя
 ✅ Поиск профилей без учета суффикса (EXP → любой файл типа_уровня_*)
+
+ВНИМАНИЕ: Этот файл предназначен для импорта в основной бот,
+не для самостоятельного запуска!
 """
 
 import logging
@@ -1267,162 +1270,7 @@ def can_create_invite(user_limits: dict, total_invites: int) -> tuple:
     return False, False, "Лимит исчерпан. Купите пакет ссылок."
 
 # ============================================
-# 🧠 ЭКРАН 1: РЕЗУЛЬТАТЫ
-# ============================================
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        user = update.effective_user
-        logger.info(f"🚀 Пользователь {user.id} (@{user.username}) запустил бота")
-        context.user_data.clear()
-        context.user_data["user_id"] = user.id
-        context.user_data["profile"] = USER_PROFILE.copy()
-        context.user_data["conversation_state"] = RESULTS_SCREEN
-        
-        init_test_data(user.id)
-        context.user_data["sexual_invites"] = get_user_invites(user.id)
-        get_user_limits(context)
-        
-        return await show_results_screen(update, context)
-    except Exception as e:
-        logger.error(f"❌ Ошибка в start: {e}\n{traceback.format_exc()}")
-        await update.message.reply_text("❌ Произошла ошибка. Пожалуйста, попробуйте позже.")
-        return RESULTS_SCREEN
-
-# ============================================
-# 🔗 ОБРАБОТЧИК ПРИГЛАШЕНИЙ ДЛЯ 18+ МОДУЛЯ
-# ============================================
-
-async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Обработчик приглашений для 18+ модуля
-    Вызывается при переходе по ссылке с параметром start=
-    """
-    try:
-        user = update.effective_user
-        logger.info(f"🔗 Пользователь {user.id} перешел по приглашению в 18+ модуль")
-        
-        # Получаем код приглашения из аргументов
-        args = context.args
-        invite_code = args[0] if args else None
-        
-        if not invite_code:
-            logger.warning("⚠️ Приглашение без кода")
-            await update.message.reply_text(
-                "❌ Неверная ссылка приглашения.\n"
-                "Пожалуйста, попросите друга отправить вам новую ссылку."
-            )
-            return await show_results_screen(update, context)
-        
-        # Здесь будет логика обработки приглашения
-        # Пока просто заглушка
-        
-        await update.message.reply_text(
-            f"🔞 Приглашение в 18+ модуль получено!\n\n"
-            f"Код приглашения: {invite_code}\n\n"
-            f"Функция в разработке."
-        )
-        
-        return await show_results_screen(update, context)
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка в sexual_invite_start: {e}")
-        await update.message.reply_text("❌ Произошла ошибка при обработке приглашения.")
-        return RESULTS_SCREEN
-
-# ============================================
-# 📋 КОПИРОВАНИЕ ПРИГЛАШЕНИЯ
-# ============================================
-
-async def copy_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Обработчик для копирования текста приглашения
-    """
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        # Извлекаем ID приглашения из callback_data
-        # Формат: copy_invite_{invite_id}
-        invite_id = query.data.replace("copy_invite_", "")
-        
-        # Ищем приглашение в данных пользователя
-        invites = context.user_data.get("sexual_invites", [])
-        invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
-        
-        if not invite:
-            await query.answer("❌ Приглашение не найдено", show_alert=True)
-            return
-        
-        # Текст приглашения для копирования
-        invite_text = f"{invite.get('message', '')}\n\n{invite.get('link', '')}"
-        
-        # Отправляем сообщение с текстом для копирования
-        await query.message.reply_text(
-            f"📋 <b>Текст для отправки другу:</b>\n\n"
-            f"<code>{invite_text}</code>\n\n"
-            f"Просто скопируйте и отправьте другу!",
-            parse_mode="HTML"
-        )
-        
-        logger.info(f"📋 Пользователь {query.from_user.id} скопировал приглашение {invite_id}")
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка в copy_invite_callback: {e}")
-        await query.answer("❌ Произошла ошибка", show_alert=True)
-
-# ============================================
-# ✅ ПРОВЕРКА ПРИГЛАШЕНИЯ
-# ============================================
-
-async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Обработчик для проверки статуса приглашения
-    """
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        # Извлекаем ID приглашения из callback_data
-        # Формат: check_invite_{invite_id}
-        invite_id = query.data.replace("check_invite_", "")
-        
-        # Ищем приглашение в данных пользователя
-        invites = context.user_data.get("sexual_invites", [])
-        invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
-        
-        if not invite:
-            await query.answer("❌ Приглашение не найдено", show_alert=True)
-            return
-        
-        # Формируем сообщение со статусом
-        status_text = "🟢 АКТИВНО" if invite.get("status") == "active" else "🔴 ИСПОЛЬЗОВАНО"
-        created_date = datetime.fromtimestamp(invite.get("created_at", datetime.now().timestamp())).strftime('%d.%m.%Y %H:%M')
-        
-        message = f"""
-📋 <b>СТАТУС ПРИГЛАШЕНИЯ</b>
-
-🔗 <code>{invite.get('link', '')}</code>
-📊 Статус: {status_text}
-📅 Создано: {created_date}
-"""
-        
-        if invite.get("status") == "used" and invite.get("friend_name"):
-            message += f"\n👤 Использовано: {invite.get('friend_name')}"
-        
-        await query.message.reply_text(
-            message,
-            parse_mode="HTML"
-        )
-        
-        logger.info(f"✅ Пользователь {query.from_user.id} проверил статус приглашения {invite_id}")
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка в check_invite_callback: {e}")
-        await query.answer("❌ Произошла ошибка", show_alert=True)
-
-# ============================================
-# 📺 ЭКРАН РЕЗУЛЬТАТОВ
+# 🧠 ЭКРАН РЕЗУЛЬТАТОВ
 # ============================================
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1474,7 +1322,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         return RESULTS_SCREEN
 
 # ============================================
-# 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ
+# 🔞 ЭКРАН: МОЙ ИНТИМНЫЙ ПРОФИЛЬ
 # ============================================
 
 async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1596,7 +1444,7 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
         return RESULTS_SCREEN
 
 # ============================================
-# 🔗 ЭКРАН 3: СОЗДАНИЕ ПРИГЛАШЕНИЯ
+# 🔗 ЭКРАН: СОЗДАНИЕ ПРИГЛАШЕНИЯ
 # ============================================
 
 async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1712,7 +1560,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         
         keyboard = [
             [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
-            [InlineKeyboardButton("⬅️ НАЗАД В ПРОФИЛЬ", callback_data="my_sexual_profile")]  # 👈 НА ЭТУ
+            [InlineKeyboardButton("⬅️ НАЗАД В ПРОФИЛЬ", callback_data="my_sexual_profile")]
         ]
         
         await query.edit_message_text(
@@ -1731,7 +1579,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ
+# 🔍 ЭКРАН: МОИ ОТРАЖЕНИЯ
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1834,7 +1682,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return INVITES_LIST
 
 # ============================================
-# 🧬 ЭКРАН 5: ГЛАВНОЕ МЕНЮ 4F (КРАТКО)
+# 🧬 ЭКРАН: ГЛАВНОЕ МЕНЮ 4F (КРАТКО)
 # ============================================
 
 async def four_f_main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1866,7 +1714,7 @@ async def four_f_main_menu_callback(update: Update, context: ContextTypes.DEFAUL
         return INVITES_LIST
 
 # ============================================
-# 📘 ЭКРАН 6: ПОДРОБНОЕ ОПИСАНИЕ 4F
+# 📘 ЭКРАН: ПОДРОБНОЕ ОПИСАНИЕ 4F
 # ============================================
 
 async def four_f_detailed_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1899,7 +1747,7 @@ async def four_f_detailed_callback(update: Update, context: ContextTypes.DEFAULT
         return FOUR_F_MAIN
 
 # ============================================
-# 🔍 ЭКРАН 7: ПРОВЕРКА СТАТУСА
+# 🔍 ЭКРАН: ПРОВЕРКА СТАТУСА
 # ============================================
 
 async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1956,7 +1804,7 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return INVITES_LIST
 
 # ============================================
-# 💳 ЭКРАН 8: ПОКУПКА ПАКЕТОВ ССЫЛОК
+# 💳 ЭКРАН: ПОКУПКА ПАКЕТОВ ССЫЛОК
 # ============================================
 
 async def buy_invite_packages_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2014,7 +1862,7 @@ async def buy_invite_packages_callback(update: Update, context: ContextTypes.DEF
         return INVITES_LIST
 
 # ============================================
-# 💳 ЭКРАН 9: ОПЛАТА ПАКЕТА
+# 💳 ЭКРАН: ОПЛАТА ПАКЕТА
 # ============================================
 
 async def pay_package_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2059,7 +1907,7 @@ async def pay_package_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return BUY_PACKAGES
 
 # ============================================
-# ✅ ЭКРАН 10: ПОДТВЕРЖДЕНИЕ ОПЛАТЫ ПАКЕТА
+# ✅ ЭКРАН: ПОДТВЕРЖДЕНИЕ ОПЛАТЫ ПАКЕТА
 # ============================================
 
 async def process_package_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2121,7 +1969,7 @@ async def process_package_payment_callback(update: Update, context: ContextTypes
         return INVITES_LIST
 
 # ============================================
-# 👤 ЭКРАН 11: МЕНЮ ПРОФИЛЯ ДРУГА
+# 👤 ЭКРАН: МЕНЮ ПРОФИЛЯ ДРУГА
 # ============================================
 
 def get_friend_by_id(context: ContextTypes.DEFAULT_TYPE, friend_id: int) -> Optional[dict]:
@@ -2198,7 +2046,7 @@ async def friend_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return INVITES_LIST
 
 # ============================================
-# 💰 ЭКРАН 12: ОПЛАТА ДОСТУПА
+# 💰 ЭКРАН: ОПЛАТА ДОСТУПА
 # ============================================
 
 async def show_payment_access_screen(update: Update, context: ContextTypes.DEFAULT_TYPE, friend_data: dict):
@@ -2237,7 +2085,7 @@ async def show_payment_access_screen(update: Update, context: ContextTypes.DEFAU
         return INVITES_LIST
 
 # ============================================
-# 📊 ЭКРАН 13: СТАНДАРТНЫЙ ПРОФИЛЬ
+# 📊 ЭКРАН: СТАНДАРТНЫЙ ПРОФИЛЬ
 # ============================================
 
 async def standard_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2279,7 +2127,7 @@ async def standard_profile_callback(update: Update, context: ContextTypes.DEFAUL
         return FRIEND_MENU
 
 # ============================================
-# 🔞 ЭКРАН 14: ИНТИМНЫЙ ПРОФИЛЬ ДРУГА
+# 🔞 ЭКРАН: ИНТИМНЫЙ ПРОФИЛЬ ДРУГА
 # ============================================
 
 async def intimate_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2321,7 +2169,7 @@ async def intimate_profile_callback(update: Update, context: ContextTypes.DEFAUL
         return FRIEND_MENU
 
 # ============================================
-# 🧬 ЭКРАН 15: МЕНЮ 4F-КЛЮЧЕЙ ДЛЯ ДРУГА
+# 🧬 ЭКРАН: МЕНЮ 4F-КЛЮЧЕЙ ДЛЯ ДРУГА
 # ============================================
 
 async def four_f_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2389,7 +2237,7 @@ async def four_f_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return FRIEND_MENU
 
 # ============================================
-# 📘 ЭКРАН 16: ОБУЧАЙКА 4F
+# 📘 ЭКРАН: ОБУЧАЙКА 4F
 # ============================================
 
 async def four_f_explanation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2421,7 +2269,7 @@ async def four_f_explanation_callback(update: Update, context: ContextTypes.DEFA
         return FOUR_F_MENU
 
 # ============================================
-# 💳 ЭКРАН 17: ПОКУПКА 4F-КЛЮЧА
+# 💳 ЭКРАН: ПОКУПКА 4F-КЛЮЧА
 # ============================================
 
 async def buy_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2472,7 +2320,7 @@ async def buy_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return FOUR_F_MENU
 
 # ============================================
-# 💳 ЭКРАН 18: ПРОЦЕСС ПЛАТЕЖА
+# 💳 ЭКРАН: ПРОЦЕСС ПЛАТЕЖА
 # ============================================
 
 async def process_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2523,7 +2371,7 @@ async def process_payment_callback(update: Update, context: ContextTypes.DEFAULT
         return FOUR_F_PAYMENT_SCREEN
 
 # ============================================
-# 🔑 ЭКРАН 19: ОТКРЫТЫЙ 4F-КЛЮЧ
+# 🔑 ЭКРАН: ОТКРЫТЫЙ 4F-КЛЮЧ
 # ============================================
 
 async def open_4f_key_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2629,155 +2477,6 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"❌ Ошибка в dummy_callback: {e}")
         return RESULTS_SCREEN
 
-# ============================================
-# 🚀 ЗАПУСК
-# ============================================
-
-def main():
-    print("\n" + "="*70)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.7")
-    print("="*70)
-    print("✅ ПОЛНАЯ ИНТЕГРАЦИЯ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК")
-    print("✅ Умная функция поиска ссылок по профилю")
-    print("✅ Корректное отображение в \"Моих отражениях\"")
-    print("✅ Кнопки прикреплены к части 3 интимного профиля")
-    print("✅ Импорт состояний из constants.py")
-    print("✅ Интеграция с БД через API (app.py)")
-    print("✅ Сохранение приглашений в БД")
-    print("✅ Обновление статуса после прохождения теста")
-    print("✅ Динамическая загрузка интимных профилей по коду пользователя")
-    print("✅ Поиск профилей без учета суффикса (EXP → любой файл типа_уровня_*)")
-    print("✅ ИСПРАВЛЕН ЦИКЛИЧЕСКИЙ ИМПОРТ")
-    print("="*70)
-    print("📊 ДОСТУПНЫЕ ПРОФИЛИ:")
-    print("   SA: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
-    print("   SP: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
-    print("   IA: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
-    print("   IP: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
-    print("="*70)
-    
-    # Проверяем доступные интимные профили при запуске
-    print("\n🔍 ПРОВЕРКА ИНТИМНЫХ ПРОФИЛЕЙ")
-    print("="*30)
-    profile_stats = check_available_sexual_profiles()
-    print(f"📊 Найдено профилей: {profile_stats['total_found']}")
-    print(f"❌ Отсутствует: {profile_stats['total_missing']}")
-    print("="*30)
-    
-    if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
-        print("\n❌ ОШИБКА: Укажите TELEGRAM_BOT_TOKEN!")
-        print("   export TELEGRAM_BOT_TOKEN=ваш_токен\n")
-        return
-    
-    try:
-        app = (
-            Application.builder()
-            .token(TOKEN)
-            .connect_timeout(30.0)
-            .read_timeout(30.0)
-            .write_timeout(30.0)
-            .pool_timeout(30.0)
-            .build()
-        )
-        
-        conv_handler = ConversationHandler(
-            entry_points=[CommandHandler('start', start)],
-            states={
-                RESULTS_SCREEN: [
-                    CallbackQueryHandler(show_my_sexual_profile, pattern='^my_sexual_profile$'),
-                    CallbackQueryHandler(dummy_callback, pattern='^share_mirror$'),
-                    CallbackQueryHandler(dummy_callback, pattern='^full_description$'),
-                    CallbackQueryHandler(show_results_screen, pattern='^show_results$'),
-                ],
-                
-                MY_SEXUAL_PROFILE: [
-                    CallbackQueryHandler(create_invite_callback, pattern='^create_invite$'),
-                    CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
-                    CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
-                ],
-                
-                INVITES_LIST: [
-                    CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
-                    CallbackQueryHandler(four_f_main_menu_callback, pattern='^four_f_main_menu$'),
-                    CallbackQueryHandler(check_status_callback, pattern='^check_status_'),
-                    CallbackQueryHandler(friend_menu_callback, pattern='^friend_'),
-                    CallbackQueryHandler(show_my_sexual_profile, pattern='^my_sexual_profile$'),
-                    CallbackQueryHandler(buy_invite_packages_callback, pattern='^buy_invite_packages$'),
-                    CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
-                ],
-                
-                FRIEND_MENU: [
-                    CallbackQueryHandler(standard_profile_callback, pattern='^std_'),
-                    CallbackQueryHandler(intimate_profile_callback, pattern='^int_'),
-                    CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
-                    CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
-                    CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
-                ],
-                
-                FOUR_F_MENU: [
-                    CallbackQueryHandler(buy_4f_key_callback, pattern='^buy_4f_'),
-                    CallbackQueryHandler(open_4f_key_callback, pattern='^open_4f_'),
-                    CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
-                    CallbackQueryHandler(friend_menu_callback, pattern='^friend_'),
-                ],
-                
-                FOUR_F_CONTENT: [
-                    CallbackQueryHandler(buy_4f_key_callback, pattern='^buy_4f_'),
-                    CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
-                ],
-                
-                FOUR_F_PAYMENT_SCREEN: [
-                    CallbackQueryHandler(process_payment_callback, pattern='^process_payment_'),
-                    CallbackQueryHandler(dummy_callback, pattern='^check_payment_'),
-                    CallbackQueryHandler(dummy_callback, pattern='^pay_access_'),
-                    CallbackQueryHandler(pay_package_callback, pattern='^pay_package_'),
-                    CallbackQueryHandler(process_package_payment_callback, pattern='^process_package_payment_'),
-                    CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
-                    CallbackQueryHandler(buy_invite_packages_callback, pattern='^buy_invite_packages$'),
-                    CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
-                ],
-                
-                BUY_PACKAGES: [
-                    CallbackQueryHandler(pay_package_callback, pattern='^pay_package_'),
-                    CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
-                ],
-                
-                FOUR_F_MAIN: [
-                    CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
-                    CallbackQueryHandler(four_f_detailed_callback, pattern='^four_f_detailed$'),
-                    CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
-                    CallbackQueryHandler(show_my_sexual_profile, pattern='^my_sexual_profile$'),
-                ],
-                
-                FOUR_F_DETAILED: [
-                    CallbackQueryHandler(four_f_main_menu_callback, pattern='^four_f_main_menu$'),
-                ],
-            },
-            fallbacks=[
-                CommandHandler('start', start),
-                CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
-                CallbackQueryHandler(show_my_sexual_profile, pattern='^my_sexual_profile$'),
-            ],
-            allow_reentry=True,
-            name="intimate_profiles_conversation",
-            persistent=False,
-        )
-        
-        app.add_handler(conv_handler)
-        
-        print("\n🚀 Бот запущен! Версия 19.7")
-        print("="*70)
-        logger.info("✅ Бот успешно запущен")
-        
-        app.run_polling(
-            drop_pending_updates=True,
-            allowed_updates=['message', 'callback_query'],
-            timeout=30
-        )
-    except Exception as e:
-        logger.error(f"❌ Критическая ошибка при запуске: {e}\n{traceback.format_exc()}")
-        print(f"\n❌ Ошибка запуска: {e}")
-
 # ===== ЭКСПОРТ =====
 __all__ = [
     # Константы
@@ -2824,35 +2523,19 @@ __all__ = [
     'get_user_limits',
     'can_create_invite',
     
-    # Callback-обработчики
+    # Основные callback-обработчики
     'show_my_sexual_profile',
     'sexual_invite_start',
     'copy_invite_callback',
     'check_invite_callback',
-    'show_my_invites',
-    'friend_details_callback',
-    'buy_function_callback',
-    'check_4f_payment_callback',
-    'open_4f_key_callback',
-    'buy_invite_packages',
-    'handle_sexual_deeplink',
-    'check_sexual_invitation',
-    'noop_callback',
-    
-    # 👇 ДОБАВЛЕНЫ НЕДОСТАЮЩИЕ ФУНКЦИИ
+    'create_invite_callback',
+    'my_invites_callback',
     'four_f_main_menu_callback',
     'four_f_detailed_callback',
     'check_status_callback',
     'buy_invite_packages_callback',
     'pay_package_callback',
     'process_package_payment_callback',
-    
-    # Функции для экранов (некоторые уже есть выше)
-    'start',
-    'show_results_screen',
-    # 'show_my_sexual_profile' - уже есть выше
-    'create_invite_callback',
-    'my_invites_callback',
     'friend_menu_callback',
     'show_payment_access_screen',
     'standard_profile_callback',
@@ -2872,7 +2555,11 @@ __all__ = [
     # Функции платежей
     'generate_payment_id',
     'create_yookassa_invoice',
+    
+    # Функции экранов
+    'show_results_screen',
 ]
 
-if __name__ == "__main__":
-    main()
+# ===== ВНИМАНИЕ: Этот файл не предназначен для самостоятельного запуска! =====
+# Удалена функция main() и весь код запуска бота
+# Используйте этот файл только для импорта в основной бот
