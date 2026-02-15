@@ -1285,7 +1285,7 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     await query.answer()
     
-    payment_id = query.data.split("_")[2]
+    payment_id = "_".join(query.data.split("_")[2:])
     logger.info(f"🔍 Проверка статуса платежа: {payment_id}")
     
     await query.edit_message_text(
