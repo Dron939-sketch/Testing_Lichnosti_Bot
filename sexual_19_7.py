@@ -223,22 +223,43 @@ def get_disk_link_by_profile(profile_code: str) -> str:
         logger.warning("⚠️ profile_code пустой, использую default")
         return PROFILE_DISK_LINKS["default"]
     
-    logger.info(f"🔍 get_disk_link_by_profile получил: '{profile_code}'")
+    # Логируем входящий код
+    logger.info(f"🔍 ВХОДЯЩИЙ КОД: '{profile_code}'")
     
-    # Приводим к формату с дефисом (SP_4_EXP -> SP-4_EXP)
+    # Приводим к формату с дефисом (IP_4_EXP -> IP-4_EXP)
     profile_key = profile_code.upper().replace('_', '-')
-    logger.info(f"🔍 Ищем ключ: '{profile_key}'")
+    logger.info(f"🔍 ИЩЕМ КЛЮЧ: '{profile_key}'")
     
-    # Проверяем, есть ли такой ключ в словаре
+    # Проверяем наличие в словаре
     if profile_key in PROFILE_DISK_LINKS:
         link = PROFILE_DISK_LINKS[profile_key]
-        logger.info(f"✅ Найдена ссылка: {link}")
+        logger.info(f"✅ НАЙДЕНО: {link}")
         return link
     
-    # Если не нашли - покажем первые 10 ключей для проверки
-    logger.error(f"❌ Ключ '{profile_key}' не найден в словаре!")
+    # Если не нашли - пробуем другие форматы
+    logger.warning(f"⚠️ Ключ '{profile_key}' не найден, пробуем альтернативы...")
+    
+    # Альтернатива 1: замена - на _
+    alt_key_1 = profile_code.upper().replace('-', '_')
+    if alt_key_1 in PROFILE_DISK_LINKS:
+        logger.info(f"✅ Найдено по альтернативному ключу 1: '{alt_key_1}'")
+        return PROFILE_DISK_LINKS[alt_key_1]
+    
+    # Альтернатива 2: ищем по первым символам
+    for key in PROFILE_DISK_LINKS:
+        if key.startswith(profile_code.upper()[:5]):
+            logger.info(f"✅ Найдено по первым символам: '{key}'")
+            return PROFILE_DISK_LINKS[key]
+    
+    # Если ничего не нашли - показываем первые 10 ключей
+    logger.error(f"❌ НИЧЕГО НЕ НАЙДЕНО для '{profile_code}'!")
     sample_keys = list(PROFILE_DISK_LINKS.keys())[:10]
-    logger.error(f"📋 Примеры ключей: {sample_keys}")
+    logger.error(f"📋 ПЕРВЫЕ 10 КЛЮЧЕЙ: {sample_keys}")
+    
+    # Проверяем конкретно для IP-4_EXP
+    if profile_code.upper() in ["IP_4_EXP", "IP-4_EXP"]:
+        logger.error(f"🔴 ВАЖНО: Ключ 'IP-4_EXP' должен быть в словаре!")
+        logger.error(f"🔴 Проверьте наличие: 'IP-4_EXP' in PROFILE_DISK_LINKS = {'IP-4_EXP' in PROFILE_DISK_LINKS}")
     
     return PROFILE_DISK_LINKS["default"]
 
