@@ -1575,11 +1575,14 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     """
     try:
         user = update.effective_user
-        logger.info(f"🔗 Пользователь {user.id} перешел по приглашению в 18+ модуль")
+        logger.info(f"🔗🔗🔗 ПОЛЬЗОВАТЕЛЬ {user.id} ПЕРЕШЕЛ ПО ПРИГЛАШЕНИЮ 🔗🔗🔗")
         
         # Получаем код приглашения из аргументов
         args = context.args
+        logger.info(f"📦 context.args = {args}")
+        
         invite_code = args[0] if args else None
+        logger.info(f"🔍 Код приглашения: {invite_code}")
         
         if not invite_code:
             logger.warning("⚠️ Приглашение без кода")
@@ -1589,15 +1592,18 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return RESULTS_SCREEN
         
-        logger.info(f"🔍 Код приглашения: {invite_code}")
-        
         # Ищем приглашение в БД
+        logger.info(f"📡 Запрос к API: {API_URL}/api/sexual/get-invite/{invite_code}")
         invite = find_invite_in_api(invite_code)
+        logger.info(f"📦 Ответ от API: {invite}")
         
         if not invite:
             # Если нет в БД, ищем в памяти
+            logger.info("🔍 В БД не найдено, ищем в памяти...")
             invites = get_user_invites(user.id)
+            logger.info(f"📦 В памяти найдено приглашений: {len(invites)}")
             invite = next((inv for inv in invites if inv.get("invite_id") == invite_code), None)
+            logger.info(f"📦 В памяти найдено: {invite}")
         
         if not invite:
             logger.warning(f"❌ Приглашение {invite_code} не найдено")
@@ -1608,11 +1614,16 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
             return RESULTS_SCREEN
         
         # Сохраняем информацию о приглашении в данные пользователя
+        buyer_id = invite.get("user_id") or invite.get("buyer_id")
+        logger.info(f"👤 buyer_id = {buyer_id}")
+        logger.info(f"📊 profile_code = {invite.get('profile_code')}")
+        
         context.user_data["current_invite"] = {
             "invite_id": invite_code,
-            "buyer_id": invite.get("user_id"),
+            "buyer_id": buyer_id,
             "buyer_profile": invite.get("profile_code")
         }
+        logger.info(f"✅ current_invite сохранен: {context.user_data['current_invite']}")
         
         # Приветственное сообщение
         welcome_text = (
@@ -1636,6 +1647,7 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
             parse_mode="HTML"
         )
         
+        logger.info(f"✅ Приветственное сообщение отправлено пользователю {user.id}")
         return RESULTS_SCREEN
         
     except Exception as e:
