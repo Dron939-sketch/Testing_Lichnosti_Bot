@@ -225,32 +225,30 @@ def get_disk_link_by_profile(profile_code: str) -> str:
     
     logger.info(f"🔍 ВХОДНОЙ КОД: '{profile_code}'")
     
-    # Приводим к верхнему регистру и чистим
+    # Приводим к верхнему регистру
     clean_code = profile_code.upper().strip()
     
     # Генерируем все возможные форматы
     possible_formats = []
     
-    # 1. Исходный формат (как пришел)
+    # 1. Исходный формат
     possible_formats.append(clean_code)
     
-    # 2. Замена _ на - (IP_3_CON -> IP-3_CON)
+    # 2. Формат с дефисом между типом и уровнем (IP-4_EXP) - ЭТО НУЖНЫЙ ФОРМАТ!
     if '_' in clean_code:
-        possible_formats.append(clean_code.replace('_', '-'))
+        # Разбиваем на части
+        parts = clean_code.split('_')
+        if len(parts) == 2:
+            # IP_4_EXP -> IP-4_EXP
+            type_level = parts[0].replace('_', '-')  # IP_4 -> IP-4
+            suffix = parts[1]
+            possible_formats.append(f"{type_level}_{suffix}")
     
-    # 3. Замена - на _ (IP-3_CON -> IP_3_CON) 
-    if '-' in clean_code:
-        possible_formats.append(clean_code.replace('-', '_'))
+    # 3. Полная замена _ на - (IP-4-EXP)
+    possible_formats.append(clean_code.replace('_', '-'))
     
-    # 4. Полная замена всех разделителей на дефисы (IP-3-CON)
-    full_hyphen = clean_code.replace('_', '-').replace('-', '-')
-    if full_hyphen != clean_code:
-        possible_formats.append(full_hyphen)
-    
-    # 5. Полная замена всех разделителей на подчеркивания (IP_3_CON)
-    full_underscore = clean_code.replace('-', '_').replace('_', '_')
-    if full_underscore != clean_code:
-        possible_formats.append(full_underscore)
+    # 4. Полная замена - на _ (IP_4_EXP)
+    possible_formats.append(clean_code.replace('-', '_'))
     
     # Убираем дубликаты
     seen = set()
