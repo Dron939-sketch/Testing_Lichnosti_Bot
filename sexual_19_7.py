@@ -2021,7 +2021,26 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # Если активных ссылок нет - перенаправляем на создание новой
         logger.info(f"🔄 Активных ссылок нет, перенаправляю на create_invite_callback")
-        return await create_invite_callback(update, context)
+        result = await create_invite_callback(update, context)
+        
+        # 👇 ДОБАВЛЯЕМ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ ДАННЫХ
+        # Получаем актуальные данные из БД
+        updated_invites = get_user_invites_from_api(user_id)
+        context.user_data["sexual_invites"] = updated_invites
+        
+        # Обновляем лимиты
+        user_limits = get_user_limits(context)
+        actual_free_used = 0
+        for inv in updated_invites:
+            if inv.get("invite_id", "").startswith("test_"):
+                continue
+            if inv.get("is_free") or inv.get("invite_type") == "🆓":
+                actual_free_used += 1
+        user_limits["free_used"] = min(actual_free_used, FREE_INVITE_LIMIT)
+        
+        logger.info(f"🔄 Данные обновлены: всего ссылок {len(updated_invites)}, free_used={user_limits['free_used']}")
+        
+        return result
         
     except Exception as e:
         logger.error(f"❌ Ошибка в send_invite_callback: {e}\n{traceback.format_exc()}")
