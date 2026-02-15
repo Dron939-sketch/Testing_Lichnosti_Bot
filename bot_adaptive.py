@@ -61,6 +61,7 @@ from constants import (
     SEXUAL_FRIEND_PROFILE, FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN,
     FOUR_F_MAIN, FOUR_F_DETAILED, FOUR_F_MENU, FOUR_F_CONTENT,
     BUY_PACKAGES, INVITES_LIST, FRIEND_MENU,
+    SEXUAL_STATES,  # 👈 ДОБАВЬТЕ ЭТУ СТРОКУ
 )
 
 # ===== ИМПОРТ КОНФИГУРАЦИИ =====
