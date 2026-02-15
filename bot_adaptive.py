@@ -2043,6 +2043,7 @@ def main():
                     CallbackQueryHandler(process_payment_callback, pattern="^process_payment_"),
                     CallbackQueryHandler(pay_package_callback, pattern="^pay_package_"),
                     CallbackQueryHandler(process_package_payment_callback, pattern="^process_package_payment_"),
+                    CallbackQueryHandler(check_package_callback, pattern="^check_package_"),
                     CallbackQueryHandler(four_f_menu_callback, pattern="^4f_"),
                     CallbackQueryHandler(buy_invite_packages_callback, pattern="^buy_invite_packages$"),
                     CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
