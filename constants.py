@@ -36,6 +36,10 @@ BUY_PACKAGES = 20        # Покупка пакетов ссылок
 INVITES_LIST = 21        # Список приглашений (алиас для SEXUAL_INVITES_LIST)
 FRIEND_MENU = 22         # Меню друга (алиас для SEXUAL_FRIEND_PROFILE)
 
+# ===== СОСТОЯНИЯ ДЛЯ СОВМЕСТИМОСТИ СО СТАРЫМИ ВЕРСИЯМИ =====
+# Эти состояния нужны для обратной совместимости с рабочим файлом v19.0
+INVITES_LIST_LEGACY = 2   # Старое состояние INVITES_LIST (для совместимости)
+
 # ===== СОСТОЯНИЯ ДЛЯ 4F (30-39) =====
 FOUR_F_MAIN_MENU = 30    # Главное меню 4F (альтернативное название)
 FOUR_F_DETAILED_VIEW = 31 # Подробный просмотр 4F
@@ -57,6 +61,7 @@ SEXUAL_STATES = {
     "BUY_PACKAGES": BUY_PACKAGES,
     "INVITES_LIST": INVITES_LIST,
     "FRIEND_MENU": FRIEND_MENU,
+    "INVITES_LIST_LEGACY": INVITES_LIST_LEGACY,
 }
 
 # ===== ЭКСПОРТ ВСЕХ КОНСТАНТ =====
@@ -84,6 +89,7 @@ __all__ = [
     'BUY_PACKAGES',
     'INVITES_LIST',
     'FRIEND_MENU',
+    'INVITES_LIST_LEGACY',  # 👈 ДОБАВЛЕНО
     'FOUR_F_MAIN_MENU',
     'FOUR_F_DETAILED_VIEW',
     'FOUR_F_KEY_MENU',
