@@ -1832,9 +1832,9 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 💫 Каждое отражение — ключ к человеку."""
 
         keyboard = [
-            [InlineKeyboardButton("◀️ К ПРОФИЛЮ", callback_data="my_sexual_profile")],
-            [InlineKeyboardButton("🔴 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")]
-        ]
+    [InlineKeyboardButton("◀️ К РЕЗУЛЬТАТАМ ТЕСТА", callback_data="back_to_results")],
+    [InlineKeyboardButton("🔴 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")]
+]
 
         await query.edit_message_text(
             message,
