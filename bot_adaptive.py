@@ -2,7 +2,7 @@
 """
 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА: ПУТЬ К САМОПОЗНАНИЮ
 4 этапа адаптивного исследования + персональное описание профиля
-ВЕРСИЯ 5.6: ПОЛНАЯ ИНТЕГРАЦИЯ 4F МОДУЛЯ + ИСПРАВЛЕНИЕ ENTRY_POINTS
+ВЕРСИЯ 5.7: РАБОЧАЯ ВЕРСИЯ С 4F МОДУЛЕМ
 """
 
 import logging
@@ -55,15 +55,11 @@ def log_callback(func_name: str, update: Update, context: ContextTypes.DEFAULT_T
 
 # ===== ИМПОРТ КОНСТАНТ СОСТОЯНИЙ =====
 from constants import (
-    # Состояния теста
     STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
     GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
-    
-    # Состояния 18+ модуля
     MY_SEXUAL_PROFILE, SEXUAL_PROFILE_SCREEN, SEXUAL_INVITES_LIST,
     SEXUAL_FRIEND_PROFILE, FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN,
-    
-    # 👇 ДОБАВЛЕННЫЕ СОСТОЯНИЯ ДЛЯ 4F
+    # 👇 ДОБАВЛЯЕМ ТОЛЬКО НУЖНЫЕ СОСТОЯНИЯ ДЛЯ 4F
     FOUR_F_MAIN, FOUR_F_DETAILED, FOUR_F_MENU, FOUR_F_CONTENT,
     BUY_PACKAGES, INVITES_LIST, FRIEND_MENU
 )
@@ -77,7 +73,7 @@ from config import (
     logger as config_logger
 )
 
-# ===== ИМПОРТ 18+ МОДУЛЯ (ПОЛНАЯ ВЕРСИЯ) =====
+# ===== ИМПОРТ 18+ МОДУЛЯ (С ВСЕМИ ФУНКЦИЯМИ) =====
 from sexual_18_plus import (
     SEXUAL_DIVIDER,
     FREE_INVITE_LIMIT,
@@ -126,7 +122,7 @@ from sexual_18_plus import (
     dummy_callback,
     split_long_message,
     safe_send_message,
-    # 👇 ДОБАВЛЕННЫЕ ФУНКЦИИ ДЛЯ 4F
+    # 👇 ДОБАВЛЯЕМ ФУНКЦИИ ДЛЯ 4F
     four_f_main_menu_callback,
     four_f_detailed_callback,
     check_status_callback,
@@ -1776,7 +1772,7 @@ def main():
     print("="*50 + "\n")
     
     print("\n" + "="*70)
-    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.6)")
+    print("🧠 ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА (ВЕРСИЯ 5.7)")
     print("="*70)
     print("🔞 ПОЛНАЯ ИНТЕГРАЦИЯ 18+ МОДУЛЯ")
     print("="*70)
@@ -1787,11 +1783,10 @@ def main():
     print("4. ✅ Платежная система ЮKassa")
     print("5. ✅ Интеграция с Яндекс.Диск (36 профилей)")
     print("="*70)
-    print("🔧 ИСПРАВЛЕНИЯ В 5.6:")
-    print("   ✅ Исправлен циклический импорт (константы вынесены в constants.py)")
+    print("🔧 ИСПРАВЛЕНИЯ В 5.7:")
     print("   ✅ Добавлены все состояния для 4F модуля")
-    print("   ✅ Полная интеграция с 4F функциями")
-    print("   ✅ Добавлен start_stage_1 в entry_points и fallbacks")
+    print("   ✅ Добавлены все функции для 4F")
+    print("   ✅ Сохранена работоспособность теста")
     print("="*70)
     
     # Проверка наличия GIFT_PDF_LINK
@@ -1840,8 +1835,7 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
-            CallbackQueryHandler(start_test, pattern="^start_test$"),
-            CallbackQueryHandler(start_stage_1, pattern="^start_stage_1$"),  # ДОБАВЛЕНО
+            CallbackQueryHandler(start_test, pattern="^start_test$")
         ],
         states={
             STAGE_1: [
@@ -2021,24 +2015,17 @@ def main():
             ],
             # ===== КОНЕЦ 18+ =====
         },
-        fallbacks=[
-            CommandHandler("start", start),
-            CallbackQueryHandler(start_test, pattern="^start_test$"),
-            CallbackQueryHandler(start_stage_1, pattern="^start_stage_1$"),  # ДОБАВЛЕНО
-            CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
-            CallbackQueryHandler(show_my_sexual_profile, pattern="^my_sexual_profile$"),
-        ],
+        fallbacks=[CommandHandler("cancel", cancel)],
         allow_reentry=True
     )
     
     application.add_handler(conv_handler)
     
     logger.info("🧠 Виртуальный психолог Вариатика запущен!")
-    logger.info("✅ ВЕРСИЯ 5.6: ПОЛНАЯ ИНТЕГРАЦИЯ 4F МОДУЛЯ!")
+    logger.info("✅ ВЕРСИЯ 5.7: РАБОЧАЯ ВЕРСИЯ С 4F!")
     logger.info("✅ Константы вынесены в отдельный файл constants.py")
     logger.info("✅ Все состояния для 4F добавлены")
     logger.info("✅ Все функции для 4F импортированы")
-    logger.info("✅ Добавлен start_stage_1 в entry_points и fallbacks")
     logger.info("✅ Вопросы вынесены в отдельный файл questions.py")
     logger.info("✅ Обработчики этапов вынесены в папку handlers/")
     logger.info("✅ Утилиты вынесены в папку utils/")
