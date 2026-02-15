@@ -2276,76 +2276,6 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return INVITES_LIST
 
 # ============================================
-# 💳 ЭКРАН: ПОКУПКА ПАКЕТОВ ССЫЛОК
-# ============================================
-
-# ============================================
-# 💳 ЭКРАН: ПОКУПКА ПАКЕТОВ ССЫЛОК
-# ============================================
-
-async def buy_invite_packages_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """💳 ПОКАЗАТЬ ДОСТУПНЫЕ ПАКЕТЫ ПРИГЛАШЕНИЙ"""
-    try:
-        query = update.callback_query
-        await query.answer("📦 Загружаю пакеты...")
-        
-        context.user_data["conversation_state"] = BUY_PACKAGES
-        logger.info(f"📦 Пользователь {query.from_user.id} открыл покупку пакетов")
-        
-        message = f"""
-💎 <b>ПАКЕТЫ ПРИГЛАШЕНИЙ</b>
-
-<b>🆓 Бесплатные ссылки закончились!</b>
-У вас было {FREE_INVITE_LIMIT} бесплатных ссылок, и вы их использовали.
-
-<b>Выберите пакет для продолжения:</b>
-
-"""
-        
-        for package_id, data in INVITE_PACKAGES.items():
-            popular = " 🔥 ХИТ" if data.get("popular") else ""
-            price_per_link = data["price"] // data["links"]
-            message += f"""
-{data['emoji']} <b>{data['links']} ссылок</b> — {data['price']}₽{popular}
-   💎 {price_per_link}₽ за ссылку
-"""
-        
-        message += f"""
-
-{SEXUAL_DIVIDER}
-✅ После оплаты ссылки добавляются к вашему лимиту
-🎁 Чем больше пакет — тем выгоднее!
-"""
-        
-        keyboard = []
-        for package_id, data in INVITE_PACKAGES.items():
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"{data['emoji']} {data['links']} ССЫЛОК - {data['price']}₽",
-                    callback_data=f"pay_package_{package_id}"
-                )
-            ])
-        
-        keyboard.append([InlineKeyboardButton("◀️ НАЗАД", callback_data="my_invites")])
-        
-        await query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
-        )
-        
-        return BUY_PACKAGES
-    except Exception as e:
-        logger.error(f"❌ Ошибка в buy_invite_packages_callback: {e}")
-        await query.answer("❌ Произошла ошибка", show_alert=True)
-        return INVITES_LIST
-
-
-# ============================================
-# 💳 ЭКРАН: ОПЛАТА ПАКЕТА
-# ============================================
-
-# ============================================
 # 💳 ЭКРАН: ОПЛАТА ПАКЕТА
 # ============================================
 
@@ -2419,60 +2349,6 @@ async def pay_package_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             logger.error(f"❌ Ошибка при создании платежа: {e}")
             await query.answer("❌ Ошибка соединения", show_alert=True)
             return BUY_PACKAGES
-        
-        # Сохраняем данные платежа
-        if "payment_data" not in context.user_data:
-            context.user_data["payment_data"] = {}
-        
-        context.user_data["payment_data"][payment_id] = {
-            "confirmation_url": confirmation_url,
-            "package_id": package_id,
-            "amount": package['price'],
-            "links": package['links'],
-            "timestamp": time.time(),
-            "status": "pending"
-        }
-        
-        # Сохраняем ID платежа для быстрого доступа
-        context.user_data["last_payment_id"] = payment_id
-        
-        # Формируем сообщение с реальной ссылкой на оплату
-        message = f"""
-💳 <b>ПЛАТЕЖ СОЗДАН</b>
-
-{package['emoji']} <b>Пакет: {package['links']} ссылок</b>
-💰 <b>Сумма: {package['price']}₽</b>
-📋 <b>ID платежа:</b> <code>{payment_id}</code>
-
-✅ <b>Для оплаты нажмите кнопку ниже</b>
-
-После успешной оплаты:
-1. Нажмите "ПРОВЕРИТЬ ОПЛАТУ"
-2. Ссылки будут добавлены к вашему аккаунту
-3. Вы сможете создавать новые приглашения
-"""
-        
-        # ВАЖНО: используем URL, а не callback_data для кнопки оплаты
-        keyboard = [
-            [InlineKeyboardButton(f"💳 ОПЛАТИТЬ {package['price']}₽", url=confirmation_url)],
-            [InlineKeyboardButton("🔄 ПРОВЕРИТЬ ОПЛАТУ", callback_data=f"check_package_{payment_id}_{package_id}")],
-            [InlineKeyboardButton("◀️ НАЗАД", callback_data="buy_invite_packages")]
-        ]
-        
-        await query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML",
-            disable_web_page_preview=True
-        )
-        
-        logger.info(f"✅ Пользователь {user_id} перенаправлен на оплату пакета {package_id}")
-        return FOUR_F_PAYMENT_SCREEN
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка в pay_package_callback: {e}")
-        await query.answer("❌ Произошла ошибка", show_alert=True)
-        return BUY_PACKAGES
         
         # Сохраняем данные платежа
         if "payment_data" not in context.user_data:
