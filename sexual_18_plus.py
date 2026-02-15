@@ -2839,10 +2839,18 @@ __all__ = [
     'check_sexual_invitation',
     'noop_callback',
     
-    # Функции для экранов
+    # 👇 ДОБАВЛЕНЫ НЕДОСТАЮЩИЕ ФУНКЦИИ
+    'four_f_main_menu_callback',
+    'four_f_detailed_callback',
+    'check_status_callback',
+    'buy_invite_packages_callback',
+    'pay_package_callback',
+    'process_package_payment_callback',
+    
+    # Функции для экранов (некоторые уже есть выше)
     'start',
     'show_results_screen',
-    'show_my_sexual_profile',
+    # 'show_my_sexual_profile' - уже есть выше
     'create_invite_callback',
     'my_invites_callback',
     'friend_menu_callback',
