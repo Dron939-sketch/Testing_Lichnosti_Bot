@@ -1695,10 +1695,11 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=welcome_text,
-        reply_markup=reply_markup
-    )
+    chat_id=update.effective_chat.id,
+    text=welcome_text,
+    reply_markup=reply_markup,
+    parse_mode="HTML"  # 
+)
     
     logger.info(f"✅ User {update.effective_user.id}: main_menu_callback → ConversationHandler.END")
     return ConversationHandler.END
