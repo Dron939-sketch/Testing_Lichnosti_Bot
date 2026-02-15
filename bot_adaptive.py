@@ -1904,14 +1904,14 @@ def main():
                 CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
             ],
             
-            SEXUAL_PROFILE_SCREEN: [
+                        SEXUAL_PROFILE_SCREEN: [
                 CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
                 CallbackQueryHandler(create_invite_callback, pattern="^create_invite$"),
                 CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),
                 CallbackQueryHandler(back_to_results_callback, pattern="^back_to_results$"),
             ],
             
-            INVITES_LIST: [
+            INVITES_LIST_LEGACY: [  # 👈 ИСПРАВЛЕНО!
                 CallbackQueryHandler(my_invites_callback, pattern="^my_invites$|^show_my_invites$"),
                 CallbackQueryHandler(four_f_main_menu_callback, pattern="^four_f_main_menu$"),
                 CallbackQueryHandler(check_status_callback, pattern="^check_status_"),
@@ -1925,6 +1925,8 @@ def main():
             ],
             
             SEXUAL_FRIEND_PROFILE: [
+                # ... остальные обработчики
+            ],
                 CallbackQueryHandler(standard_profile_callback, pattern="^std_"),
                 CallbackQueryHandler(intimate_profile_callback, pattern="^int_"),
                 CallbackQueryHandler(four_f_menu_callback, pattern="^4f_"),
