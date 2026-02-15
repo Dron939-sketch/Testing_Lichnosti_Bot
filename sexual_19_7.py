@@ -2345,6 +2345,10 @@ async def buy_invite_packages_callback(update: Update, context: ContextTypes.DEF
 # 💳 ЭКРАН: ОПЛАТА ПАКЕТА
 # ============================================
 
+# ============================================
+# 💳 ЭКРАН: ОПЛАТА ПАКЕТА
+# ============================================
+
 async def pay_package_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """💳 СОЗДАНИЕ ПЛАТЕЖА ДЛЯ ПАКЕТА С РЕАЛЬНОЙ ССЫЛКОЙ НА ОПЛАТУ"""
     try:
@@ -2386,24 +2390,89 @@ async def pay_package_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 timeout=15
             )
             
-            if response.status_code == 200:
+            logger.info(f"📥 Ответ от API: статус {response.status_code}")
+            
+            if response.status_code == 200 or response.status_code == 201:
                 data = response.json()
+                logger.info(f"📦 Данные ответа: {data}")
+                
                 confirmation_url = data.get("confirmation_url")
-                logger.info(f"✅ Платеж {payment_id} создан через API, ссылка получена")
+                yookassa_id = data.get("yookassa_id")
+                
+                if confirmation_url:
+                    logger.info(f"✅ Платеж {payment_id} создан, ссылка получена")
+                else:
+                    logger.error(f"❌ Нет confirmation_url в ответе: {data}")
+                    await query.answer("❌ Ошибка: не получена ссылка на оплату", show_alert=True)
+                    return BUY_PACKAGES
             else:
-                logger.error(f"❌ Ошибка API: {response.status_code} - {response.text}")
-                await query.answer("❌ Ошибка платежной системы", show_alert=True)
+                error_text = response.text[:200] if response.text else "Нет ответа"
+                logger.error(f"❌ Ошибка API: {response.status_code} - {error_text}")
+                await query.answer(f"❌ Ошибка платежной системы: {response.status_code}", show_alert=True)
                 return BUY_PACKAGES
                 
+        except requests.exceptions.Timeout:
+            logger.error(f"❌ Таймаут при создании платежа")
+            await query.answer("❌ Превышено время ожидания. Попробуйте позже.", show_alert=True)
+            return BUY_PACKAGES
         except Exception as e:
             logger.error(f"❌ Ошибка при создании платежа: {e}")
             await query.answer("❌ Ошибка соединения", show_alert=True)
             return BUY_PACKAGES
         
-        if not confirmation_url:
-            logger.error("❌ Не получена ссылка на оплату")
-            await query.answer("❌ Ошибка: нет ссылки на оплату", show_alert=True)
-            return BUY_PACKAGES
+        # Сохраняем данные платежа
+        if "payment_data" not in context.user_data:
+            context.user_data["payment_data"] = {}
+        
+        context.user_data["payment_data"][payment_id] = {
+            "confirmation_url": confirmation_url,
+            "package_id": package_id,
+            "amount": package['price'],
+            "links": package['links'],
+            "timestamp": time.time(),
+            "status": "pending"
+        }
+        
+        # Сохраняем ID платежа для быстрого доступа
+        context.user_data["last_payment_id"] = payment_id
+        
+        # Формируем сообщение с реальной ссылкой на оплату
+        message = f"""
+💳 <b>ПЛАТЕЖ СОЗДАН</b>
+
+{package['emoji']} <b>Пакет: {package['links']} ссылок</b>
+💰 <b>Сумма: {package['price']}₽</b>
+📋 <b>ID платежа:</b> <code>{payment_id}</code>
+
+✅ <b>Для оплаты нажмите кнопку ниже</b>
+
+После успешной оплаты:
+1. Нажмите "ПРОВЕРИТЬ ОПЛАТУ"
+2. Ссылки будут добавлены к вашему аккаунту
+3. Вы сможете создавать новые приглашения
+"""
+        
+        # ВАЖНО: используем URL, а не callback_data для кнопки оплаты
+        keyboard = [
+            [InlineKeyboardButton(f"💳 ОПЛАТИТЬ {package['price']}₽", url=confirmation_url)],
+            [InlineKeyboardButton("🔄 ПРОВЕРИТЬ ОПЛАТУ", callback_data=f"check_package_{payment_id}_{package_id}")],
+            [InlineKeyboardButton("◀️ НАЗАД", callback_data="buy_invite_packages")]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
+        
+        logger.info(f"✅ Пользователь {user_id} перенаправлен на оплату пакета {package_id}")
+        return FOUR_F_PAYMENT_SCREEN
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в pay_package_callback: {e}")
+        await query.answer("❌ Произошла ошибка", show_alert=True)
+        return BUY_PACKAGES
         
         # Сохраняем данные платежа
         if "payment_data" not in context.user_data:
