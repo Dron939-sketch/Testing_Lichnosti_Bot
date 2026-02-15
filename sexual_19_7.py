@@ -218,35 +218,60 @@ EXAMPLE_DISK_LINK = PROFILE_DISK_LINKS["SA-3_CON"]  # Пример для дем
 AUTHOR_TELEGRAM = "https://t.me/meysternlp"
 
 def get_disk_link_by_profile(profile_code: str) -> str:
-    """Упрощенная функция поиска ссылки с подробным логированием"""
+    """Поиск ссылки с поддержкой всех возможных форматов"""
     if not profile_code:
         logger.warning("⚠️ profile_code пустой, использую default")
         return PROFILE_DISK_LINKS["default"]
     
-    # Логируем входящий код
     logger.info(f"🔍 ВХОДНОЙ КОД: '{profile_code}'")
     
-    # Приводим к верхнему регистру
-    profile_upper = profile_code.upper()
+    # Приводим к верхнему регистру и чистим
+    clean_code = profile_code.upper().strip()
     
-    # Пробуем разные форматы
-    formats_to_try = [
-        profile_upper,                          # IP_3_CON
-        profile_upper.replace('_', '-'),        # IP-3_CON (замена _ на -)
-        profile_upper.replace('-', '_'),        # IP_3_CON (замена - на _)
-    ]
+    # Генерируем все возможные форматы
+    possible_formats = []
     
-    for key in formats_to_try:
-        logger.info(f"🔍 ПРОБУЕМ КЛЮЧ: '{key}'")
-        if key in PROFILE_DISK_LINKS:
-            link = PROFILE_DISK_LINKS[key]
-            logger.info(f"✅ НАЙДЕНО! {key} -> {link}")
+    # 1. Исходный формат (как пришел)
+    possible_formats.append(clean_code)
+    
+    # 2. Замена _ на - (IP_3_CON -> IP-3_CON)
+    if '_' in clean_code:
+        possible_formats.append(clean_code.replace('_', '-'))
+    
+    # 3. Замена - на _ (IP-3_CON -> IP_3_CON) 
+    if '-' in clean_code:
+        possible_formats.append(clean_code.replace('-', '_'))
+    
+    # 4. Полная замена всех разделителей на дефисы (IP-3-CON)
+    full_hyphen = clean_code.replace('_', '-').replace('-', '-')
+    if full_hyphen != clean_code:
+        possible_formats.append(full_hyphen)
+    
+    # 5. Полная замена всех разделителей на подчеркивания (IP_3_CON)
+    full_underscore = clean_code.replace('-', '_').replace('_', '_')
+    if full_underscore != clean_code:
+        possible_formats.append(full_underscore)
+    
+    # Убираем дубликаты
+    seen = set()
+    unique_formats = []
+    for fmt in possible_formats:
+        if fmt not in seen:
+            seen.add(fmt)
+            unique_formats.append(fmt)
+    
+    logger.info(f"📋 ПРОВЕРЯЕМ ФОРМАТЫ: {unique_formats}")
+    
+    # Пробуем каждый формат
+    for fmt in unique_formats:
+        if fmt in PROFILE_DISK_LINKS:
+            link = PROFILE_DISK_LINKS[fmt]
+            logger.info(f"✅ НАЙДЕНО! {fmt} -> {link}")
             return link
     
-    # Если не нашли - показываем первые 10 ключей
-    logger.error(f"❌ НИЧЕГО НЕ НАЙДЕНО для '{profile_code}'!")
-    sample_keys = list(PROFILE_DISK_LINKS.keys())[:10]
-    logger.error(f"📋 ПЕРВЫЕ 10 КЛЮЧЕЙ: {sample_keys}")
+    # Если ничего не нашли
+    logger.error(f"❌ НЕ НАЙДЕНО для '{profile_code}'!")
+    logger.error(f"📋 ПЕРВЫЕ 10 КЛЮЧЕЙ: {list(PROFILE_DISK_LINKS.keys())[:10]}")
     
     return PROFILE_DISK_LINKS["default"]
 
