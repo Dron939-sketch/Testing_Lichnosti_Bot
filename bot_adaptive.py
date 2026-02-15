@@ -693,7 +693,7 @@ async def show_results_screen(
     context: ContextTypes.DEFAULT_TYPE,
     force_shared_view: bool = False
 ):
-       """ЭКРАН РЕЗУЛЬТАТОВ с 18+ кнопкой"""
+    """ЭКРАН РЕЗУЛЬТАТОВ с 18+ кнопкой"""
     query = update.callback_query
     user_id = update.effective_user.id
     
@@ -709,7 +709,7 @@ async def show_results_screen(
     
     if not profile_data:
         logger.debug("🔄 profile_data отсутствует, вычисляем...")
-                profile_data = calculate_profile_final(context.user_data)
+        profile_data = calculate_profile_final(context.user_data)
         context.user_data["profile_data"] = profile_data
         logger.debug(f"✅ profile_data вычислен: {profile_data.get('display_name')}")
     
