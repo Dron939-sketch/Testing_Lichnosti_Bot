@@ -1730,7 +1730,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         
         keyboard = [
     [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
-    [InlineKeyboardButton("⬅️ НАЗАД В ПРОФИЛЬ", callback_data="back_to_results")]
+    [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="my_sexual_profile")]
 ]
         
         await query.edit_message_text(
@@ -1832,7 +1832,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 💫 Каждое отражение — ключ к человеку."""
 
         keyboard = [
-    [InlineKeyboardButton("◀️ К РЕЗУЛЬТАТАМ ТЕСТА", callback_data="back_to_results")],
+    [InlineKeyboardButton("◀️ В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="my_sexual_profile")],
     [InlineKeyboardButton("🔴 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")]
 ]
 
