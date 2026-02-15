@@ -218,43 +218,19 @@ EXAMPLE_DISK_LINK = PROFILE_DISK_LINKS["SA-3_CON"]  # Пример для дем
 AUTHOR_TELEGRAM = "https://t.me/meysternlp"
 
 def get_disk_link_by_profile(profile_code: str) -> str:
-    """
-    Умная функция поиска ссылки на Яндекс.Диск по коду профиля
-    Поддерживает разные форматы: SA-5_INT, SA_5_INT, sa-5-int и т.д.
-    """
+    """Упрощенная функция поиска ссылки"""
     if not profile_code:
-        logger.warning("⚠️ profile_code пустой, использую default")
         return PROFILE_DISK_LINKS["default"]
     
-    # Приводим к верхнему регистру и убираем лишние пробелы
-    profile_upper = profile_code.upper().strip()
-    logger.debug(f"🔍 Поиск ссылки для профиля: {profile_upper}")
+    # Приводим к формату с дефисом (SP_4_EXP -> SP-4_EXP)
+    profile_key = profile_code.upper().replace('_', '-')
     
-    # 1. Прямое совпадение
-    if profile_upper in PROFILE_DISK_LINKS:
-        logger.debug(f"✅ Прямое совпадение: {profile_upper}")
-        return PROFILE_DISK_LINKS[profile_upper]
+    # Пробуем найти
+    if profile_key in PROFILE_DISK_LINKS:
+        return PROFILE_DISK_LINKS[profile_key]
     
-    # 2. Пробуем заменить _ на -
-    profile_with_hyphen = profile_upper.replace('_', '-')
-    if profile_with_hyphen in PROFILE_DISK_LINKS:
-        logger.debug(f"✅ После замены _ на -: {profile_with_hyphen}")
-        return PROFILE_DISK_LINKS[profile_with_hyphen]
-    
-    # 3. Пробуем заменить - на _
-    profile_with_underscore = profile_upper.replace('-', '_')
-    if profile_with_underscore in PROFILE_DISK_LINKS:
-        logger.debug(f"✅ После замены - на _: {profile_with_underscore}")
-        return PROFILE_DISK_LINKS[profile_with_underscore]
-    
-    # 4. Ищем по начальным символам (для тестовых форматов)
-    for key in PROFILE_DISK_LINKS:
-        if key.startswith(profile_upper[:5]):
-            logger.debug(f"✅ Найдено по начальным символам: {key}")
-            return PROFILE_DISK_LINKS[key]
-    
-    # 5. Если ничего не найдено - возвращаем default
-    logger.warning(f"⚠️ Профиль {profile_code} не найден, использую default")
+    # Если не нашли - логируем ошибку
+    logger.error(f"❌ Ключ {profile_key} не найден в словаре!")
     return PROFILE_DISK_LINKS["default"]
 
 # ===== АЛИАСЫ ДЛЯ СОВМЕСТИМОСТИ =====
