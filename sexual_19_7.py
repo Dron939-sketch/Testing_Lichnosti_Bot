@@ -1444,6 +1444,87 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
         return RESULTS_SCREEN
 
 # ============================================
+# 🔗 ОБРАБОТЧИК ПРИГЛАШЕНИЙ (DEEP LINK)
+# ============================================
+
+async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик приглашений для 18+ модуля
+    Вызывается при переходе по ссылке с параметром start=sex_
+    """
+    try:
+        user = update.effective_user
+        logger.info(f"🔗 Пользователь {user.id} перешел по приглашению в 18+ модуль")
+        
+        # Получаем код приглашения из аргументов
+        args = context.args
+        invite_code = args[0] if args else None
+        
+        if not invite_code:
+            logger.warning("⚠️ Приглашение без кода")
+            await update.message.reply_text(
+                "❌ Неверная ссылка приглашения.\n"
+                "Пожалуйста, попросите друга отправить вам новую ссылку."
+            )
+            return RESULTS_SCREEN
+        
+        logger.info(f"🔍 Код приглашения: {invite_code}")
+        
+        # Ищем приглашение в БД
+        invite = find_invite_in_api(invite_code)
+        
+        if not invite:
+            # Если нет в БД, ищем в памяти
+            invites = get_user_invites(user.id)
+            invite = next((inv for inv in invites if inv.get("invite_id") == invite_code), None)
+        
+        if not invite:
+            logger.warning(f"❌ Приглашение {invite_code} не найдено")
+            await update.message.reply_text(
+                "❌ Приглашение не найдено или уже использовано.\n"
+                "Попросите друга отправить новую ссылку."
+            )
+            return RESULTS_SCREEN
+        
+        # Сохраняем информацию о приглашении в данные пользователя
+        context.user_data["current_invite"] = {
+            "invite_id": invite_code,
+            "buyer_id": invite.get("user_id"),
+            "buyer_profile": invite.get("profile_code")
+        }
+        
+        # Приветственное сообщение
+        welcome_text = (
+            f"🔞 <b>Добро пожаловать по приглашению!</b>\n\n"
+            f"Вас пригласил друг узнать ваш интимный профиль.\n\n"
+            f"<b>Что произойдет дальше:</b>\n"
+            f"1. Вы проходите психологический тест (15 минут)\n"
+            f"2. После теста ваш друг увидит ваш интимный профиль\n"
+            f"3. Вы тоже сможете приглашать друзей\n\n"
+            f"🚀 Нажмите кнопку ниже, чтобы начать!"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("🚀 Начать тест", callback_data="start_test")]
+        ]
+        
+        await update.message.reply_text(
+            welcome_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
+        return RESULTS_SCREEN
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в sexual_invite_start: {e}\n{traceback.format_exc()}")
+        await update.message.reply_text(
+            "❌ Произошла ошибка при обработке приглашения.\n"
+            "Пожалуйста, попробуйте позже."
+        )
+        return RESULTS_SCREEN
+
+# ============================================
 # 🔗 ЭКРАН: СОЗДАНИЕ ПРИГЛАШЕНИЯ
 # ============================================
 
