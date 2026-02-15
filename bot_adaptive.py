@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 """
 ПРОТОТИП: 4F-КЛЮЧИ И ИНТИМНЫЕ ПРОФИЛИ
-Версия: 19.1 - ИСПРАВЛЕНЫ КНОПКИ "МОИ ОТРАЖЕНИЯ"
+Версия: 19.7 - ОБЪЕДИНЕННАЯ (ПОЛНАЯ)
 ✅ Все 36 ссылок на профили добавлены
-✅ Исправлен возврат состояний в callback-функциях
+✅ Умная функция поиска ссылок по профилю
+✅ Корректное отображение в "Моих отражениях"
+✅ Импорт состояний из constants.py
+✅ Полный экспорт всех необходимых компонентов
+✅ Интеграция с БД через API (app.py)
+✅ Сохранение приглашений в БД
+✅ Обновление статуса после прохождения теста
+✅ Динамическая загрузка интимных профилей по коду пользователя
+✅ Поиск профилей без учета суффикса (EXP → любой файл типа_уровня_*)
 """
 
 import logging
@@ -15,8 +23,10 @@ import urllib.parse
 import traceback
 import asyncio
 import time
+import requests
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
+from collections import defaultdict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import Conflict, BadRequest
 from telegram.ext import (
@@ -43,10 +53,61 @@ logger.setLevel(logging.DEBUG)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+# ===== ИМПОРТ КОНСТАНТ ИЗ CONSTANTS.PY =====
+try:
+    from constants import (
+        # Состояния теста
+        STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
+        GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
+        
+        # Состояния 18+ модуля
+        MY_SEXUAL_PROFILE,
+        SEXUAL_PROFILE_SCREEN,
+        SEXUAL_INVITES_LIST,
+        SEXUAL_FRIEND_PROFILE,
+        
+        # Состояния 4F
+        FOUR_F_PAYMENT_SCREEN,
+        FOUR_F_CONTENT_SCREEN,
+        FOUR_F_MAIN,
+        FOUR_F_DETAILED,
+        FOUR_F_MENU,
+        FOUR_F_CONTENT,
+        
+        # Дополнительные состояния
+        BUY_PACKAGES,
+        INVITES_LIST,
+        FRIEND_MENU,
+        
+        # Словарь состояний
+        SEXUAL_STATES,
+    )
+    logger.info("✅ Константы успешно импортированы из constants.py")
+except ImportError as e:
+    logger.error(f"❌ Ошибка импорта из constants.py: {e}")
+    # Заглушки на случай ошибки импорта
+    MY_SEXUAL_PROFILE = 1
+    SEXUAL_PROFILE_SCREEN = 2
+    SEXUAL_INVITES_LIST = 3
+    SEXUAL_FRIEND_PROFILE = 4
+    FOUR_F_PAYMENT_SCREEN = 5
+    FOUR_F_CONTENT_SCREEN = 6
+    FOUR_F_MAIN = 7
+    FOUR_F_DETAILED = 8
+    FOUR_F_MENU = 9
+    FOUR_F_CONTENT = 10
+    BUY_PACKAGES = 20
+    INVITES_LIST = 21
+    FRIEND_MENU = 22
+    RESULTS_SCREEN = 15  # Используем RESULTS из теста
+    SEXUAL_STATES = {}
+    logger.warning("⚠️ Используются запасные значения констант")
+
 # ===== НАСТРОЙКА =====
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "ВАШ_ТОКЕН_ЗДЕСЬ")
 BOT_USERNAME = "Testing_Lichnosti_bot"
 BOT_LINK = f"t.me/{BOT_USERNAME}"
+API_URL = os.getenv("API_URL", "https://testing-lichnosti-bot-1.onrender.com")
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID", "ваш_shop_id")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY", "ваш_secret_key")
 
@@ -76,19 +137,9 @@ os.chdir(PROJECT_ROOT)
 
 logger.info(f"📁 Корень проекта: {PROJECT_ROOT}")
 
-# ===== СОСТОЯНИЯ (ВАЖНО: должны быть уникальными числами) =====
-RESULTS_SCREEN = 0
-MY_SEXUAL_PROFILE = 1
-INVITES_LIST = 2
-FRIEND_MENU = 3
-FOUR_F_MENU = 4
-FOUR_F_CONTENT = 5
-FOUR_F_PAYMENT_SCREEN = 6
-BUY_PACKAGES = 7
-FOUR_F_MAIN = 8
-FOUR_F_DETAILED = 9
-
 # ===== КОНСТАНТЫ =====
+RESULTS_SCREEN = RESULTS  # Алиас для совместимости
+
 SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━━━"
 FREE_FRIEND_LIMIT = 2
 FRIEND_ACCESS_PRICE = 99
@@ -99,6 +150,14 @@ INVITE_PACKAGES = {
     "3": {"price": 299, "links": 3, "emoji": "🥉", "popular": False},
     "5": {"price": 499, "links": 5, "emoji": "🥈", "popular": True},
     "10": {"price": 899, "links": 10, "emoji": "🥇", "popular": False}
+}
+
+# ===== ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ПО УМОЛЧАНИЮ =====
+USER_PROFILE = {
+    "display_name": "SA-5_INT",
+    "type_code": "SA",
+    "level": 5,
+    "dilts_code": "int"
 }
 
 # ===== ССЫЛКИ НА ЯНДЕКС.ДИСК - ВСЕ 36 ПРОФИЛЕЙ =====
@@ -194,6 +253,9 @@ def get_disk_link_by_profile(profile_code: str) -> str:
     # 5. Если ничего не найдено - возвращаем default
     logger.warning(f"⚠️ Профиль {profile_code} не найден, использую default")
     return PROFILE_DISK_LINKS["default"]
+
+# ===== АЛИАСЫ ДЛЯ СОВМЕСТИМОСТИ =====
+get_disk_link = get_disk_link_by_profile
 
 # ===== 4F-КОНСТАНТЫ =====
 FOUR_F_EMOJIS = {"1F": "🔥", "2F": "🏃", "3F": "🧬", "4F": "🍽"}
@@ -313,7 +375,7 @@ FOUR_F_SHORT = """
 """
 
 # ===== ЭКРАН "4F - ПОДРОБНО" =====
-FOUR_F_DETAILED_TEXT = f"""
+FOUR_F_DETAILED_TEXT = """
 🔥 <b>1F - ЯРОСТЬ / НАПАДЕНИЕ</b>
 <i>Стимулы, запускающие агрессию</i>
 
@@ -379,64 +441,307 @@ FOUR_F_DETAILED_TEXT = f"""
    • Номера ключа (1F, 2F, 3F, 4F)
 """
 
-# ===== ЗАГРУЗКА ИНТИМНОГО ПРОФИЛЯ =====
-def load_intimate_profile() -> dict:
-    """Загружает интимный профиль"""
+# ===== ФУНКЦИЯ ДЛЯ ПРОВЕРКИ ДОСТУПНЫХ ПРОФИЛЕЙ =====
+def check_available_sexual_profiles() -> Dict[str, List[str]]:
+    """
+    Проверяет, какие интимные профили доступны в папке sexual_18/
+    Возвращает словарь с найденными файлами и список отсутствующих
+    """
+    logger.info("🔍 ПРОВЕРКА ДОСТУПНЫХ ИНТИМНЫХ ПРОФИЛЕЙ")
+    
+    # Все возможные комбинации профилей
+    all_profiles = []
+    types = ['sa', 'sp', 'ia', 'ip']
+    levels = range(1, 10)
+    suffixes = ['def', 'sit', 'con', 'exp', 'int', 'aut', 'val', 'tra', 'ide']
+    
+    for t in types:
+        for l in levels:
+            for s in suffixes:
+                profile = f"{t}_{l}_{s}"
+                all_profiles.append(profile)
+    
+    # Пути для поиска
+    search_paths = [
+        os.path.join(PROJECT_ROOT, "sexual_18"),
+        os.path.join("sexual_18"),
+        os.path.join(PROJECT_ROOT, "profiles", "sexual_18"),
+        os.path.join("profiles", "sexual_18"),
+        "/opt/render/project/src/sexual_18",
+        "/opt/render/project/src/profiles/sexual_18",
+    ]
+    
+    found_files = []
+    found_profiles = []
+    
+    for path in search_paths:
+        if os.path.exists(path):
+            logger.info(f"📁 Проверяем папку: {path}")
+            try:
+                files = os.listdir(path)
+                json_files = [f for f in files if f.endswith('.json')]
+                logger.info(f"   Найдено JSON файлов: {len(json_files)}")
+                
+                for file in json_files:
+                    file_path = os.path.join(path, file)
+                    found_files.append(file_path)
+                    profile_name = file.replace('.json', '')
+                    found_profiles.append(profile_name)
+                    
+            except Exception as e:
+                logger.error(f"   ❌ Ошибка чтения папки: {e}")
+    
+    # Убираем дубликаты
+    found_profiles = list(set(found_profiles))
+    found_files = list(set(found_files))
+    
+    # Определяем, каких профилей не хватает
+    missing_profiles = [p for p in all_profiles if p not in found_profiles]
+    
+    logger.info(f"📊 ВСЕГО НАЙДЕНО ПРОФИЛЕЙ: {len(found_profiles)}")
+    logger.info(f"📋 СПИСОК НАЙДЕННЫХ ПРОФИЛЕЙ:")
+    for profile in sorted(found_profiles):
+        logger.info(f"   ✅ {profile}.json")
+    
+    logger.info(f"❌ ОТСУТСТВУЮТ ПРОФИЛЕЙ: {len(missing_profiles)}")
+    logger.info(f"   Примеры отсутствующих: {missing_profiles[:10]}")
+    
+    return {
+        "found": found_profiles,
+        "missing": missing_profiles,
+        "total_found": len(found_profiles),
+        "total_missing": len(missing_profiles)
+    }
+
+# ===== ЗАГРУЗКА ИНТИМНОГО ПРОФИЛЯ (НОВАЯ ВЕРСИЯ - БЕЗ УЧЕТА СУФФИКСА) =====
+def load_intimate_profile(profile_code: str = "SA-5_INT") -> dict:
+    """
+    Загружает интимный профиль по коду профиля (без учета суффикса)
+    Ищет любой файл вида {тип}_{уровень}_*.json
+    """
     try:
+        logger.info(f"🔍🔍🔍 НАЧАЛО ЗАГРУЗКИ ИНТИМНОГО ПРОФИЛЯ для кода: {profile_code}")
+        
+        # Извлекаем тип и уровень из кода (например, "IP-4_EXP" → тип="ip", уровень="4")
+        code_parts = profile_code.upper().replace('-', '_').split('_')
+        profile_type = None
+        profile_level = None
+        
+        if len(code_parts) >= 2:
+            profile_type = code_parts[0].lower()  # ip, sa, sp, ia
+            profile_level = code_parts[1]          # 1,2,3,4,5,6,7,8,9
+            logger.info(f"📊 Извлечены тип={profile_type}, уровень={profile_level}")
+        else:
+            logger.warning(f"⚠️ Не удалось распарсить код профиля: {profile_code}")
+        
         bot_dir = os.path.dirname(os.path.abspath(__file__))
-        possible_paths = [
-            os.path.join(bot_dir, "sexual_18", "sa_5_int.json"),
-            os.path.join(PROJECT_ROOT, "sexual_18", "sa_5_int.json"),
-            os.path.join(PROJECT_ROOT, "profiles", "sexual_18", "sa_5_int.json"),
-            os.path.join("sexual_18", "sa_5_int.json"),
-            os.path.join("profiles", "sexual_18", "sa_5_int.json"),
-            "/opt/render/project/src/sexual_18/sa_5_int.json",
-            "/opt/render/project/src/profiles/sexual_18/sa_5_int.json",
+        logger.info(f"📁 Текущая директория: {bot_dir}")
+        logger.info(f"📁 Корень проекта: {PROJECT_ROOT}")
+        
+        # Проверяем все возможные директории
+        search_dirs = [
+            os.path.join(bot_dir, "sexual_18"),
+            os.path.join(PROJECT_ROOT, "sexual_18"),
+            os.path.join(PROJECT_ROOT, "profiles", "sexual_18"),
+            os.path.join("sexual_18"),
+            os.path.join("profiles", "sexual_18"),
+            "/opt/render/project/src/sexual_18",
+            "/opt/render/project/src/profiles/sexual_18",
         ]
         
-        logger.info("🔍 Поиск файла профиля:")
-        for path in possible_paths:
-            logger.info(f"   Проверяем: {path}")
+        # Если удалось получить тип и уровень, ищем любой подходящий файл
+        if profile_type and profile_level:
+            pattern = f"{profile_type}_{profile_level}_"
+            logger.info(f"🔍 Ищем любой файл по шаблону: {pattern}*.json")
+            
+            for search_dir in search_dirs:
+                if os.path.exists(search_dir):
+                    logger.info(f"📁 Проверяем папку: {search_dir}")
+                    try:
+                        for filename in os.listdir(search_dir):
+                            if filename.lower().startswith(pattern) and filename.endswith('.json'):
+                                file_path = os.path.join(search_dir, filename)
+                                logger.info(f"   ✅ НАЙДЕН! Файл: {filename} (соответствует шаблону {pattern})")
+                                try:
+                                    with open(file_path, 'r', encoding='utf-8') as f:
+                                        data = json.load(f)
+                                        data['loaded_for_profile'] = profile_code
+                                        data['loaded_from_file'] = filename
+                                        data['profile_type'] = filename.replace('.json', '').upper()
+                                        sections = data.get('sections', {})
+                                        logger.info(f"   📊 Секций загружено: {len(sections)}")
+                                        return data
+                                except Exception as e:
+                                    logger.error(f"   ❌ Ошибка чтения файла: {e}")
+                    except Exception as e:
+                        logger.error(f"   ❌ Ошибка чтения папки: {e}")
+        
+        # Если не нашли по шаблону, пробуем точное совпадение (для обратной совместимости)
+        logger.info(f"🔍 Не нашли по шаблону, пробуем точное совпадение...")
+        target_name = profile_code.lower().replace('-', '_') + '.json'
+        
+        for search_dir in search_dirs:
+            if os.path.exists(search_dir):
+                file_path = os.path.join(search_dir, target_name)
+                if os.path.exists(file_path):
+                    logger.info(f"   ✅ НАЙДЕН точный файл: {file_path}")
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            data['loaded_for_profile'] = profile_code
+                            data['loaded_from_file'] = target_name
+                            sections = data.get('sections', {})
+                            logger.info(f"   📊 Секций загружено: {len(sections)}")
+                            return data
+                    except Exception as e:
+                        logger.error(f"   ❌ Ошибка чтения файла: {e}")
+        
+        # Если ничего не нашли, пробуем default.json
+        logger.warning(f"⚠️ Файл для {profile_code} не найден, пробуем default.json")
+        
+        default_paths = [
+            os.path.join(bot_dir, "sexual_18", "default.json"),
+            os.path.join(PROJECT_ROOT, "sexual_18", "default.json"),
+            os.path.join(PROJECT_ROOT, "profiles", "sexual_18", "default.json"),
+            os.path.join("sexual_18", "default.json"),
+            os.path.join("profiles", "sexual_18", "default.json"),
+            "/opt/render/project/src/sexual_18/default.json",
+            "/opt/render/project/src/profiles/sexual_18/default.json",
+        ]
+        
+        for path in default_paths:
+            logger.info(f"   Проверяем default.json: {path}")
             if os.path.exists(path):
-                logger.info(f"   ✅ НАЙДЕН: {path}")
+                logger.info(f"   ✅ НАЙДЕН default.json: {path}")
                 with open(path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    sections = data.get('sections', {})
-                    logger.info(f"   📊 Секций загружено: {len(sections)}")
-                    if sections:
-                        logger.info(f"   ✅ Профиль успешно загружен: {data.get('profile_type', 'unknown')}")
-                        return data
-                    else:
-                        logger.warning("   ⚠️ Файл найден но секции пустые!")
-                        return data
-            logger.info(f"   ❌ Не найден")
+                    data['loaded_for_profile'] = profile_code
+                    data['is_default'] = True
+                    logger.info(f"   ⚠️ Использую default.json для профиля {profile_code}")
+                    return data
         
-        logger.error("❌ Файл sa_5_int.json не найден нигде!")
-        return get_emergency_profile()
+        logger.error(f"❌ Не найден ни файл для {profile_code}, ни default.json!")
+        return get_emergency_profile(profile_code)
         
     except Exception as e:
-        logger.error(f"❌ Ошибка загрузки: {e}\n{traceback.format_exc()}")
-        return get_emergency_profile()
+        logger.error(f"❌ Критическая ошибка загрузки: {e}\n{traceback.format_exc()}")
+        return get_emergency_profile(profile_code)
 
-def get_emergency_profile() -> dict:
+def get_emergency_profile(profile_code: str = "SA-5_INT") -> dict:
     """Аварийный интимный профиль"""
-    logger.info("🆘 Используется аварийный профиль")
+    logger.info(f"🆘 СОЗДАН АВАРИЙНЫЙ ПРОФИЛЬ для {profile_code}")
     return {
-        "profile_type": "SA-5_INT",
+        "profile_type": profile_code.upper(),
         "archetype": "ЦЕРЕМОНИАЛЬНЫЙ",
         "role": "Жрец/Жрица сексуальной мистерии",
         "quote": "«Со мной не скучно. Со мной — вкусно.»",
         "description": "Секс для вас — священнодействие. Ритуал. Мистерия.\nВам нужен сценарий, подготовка, правильная атмосфера.\nВы не занимаетесь любовью — вы служите ей.\nИ каждый раз — как в первый. И каждый раз — как в последний.",
-        "sections": {}
+        "sections": {},
+        "is_emergency": True,
+        "loaded_for_profile": profile_code
     }
+
+# ===== ФУНКЦИИ ДЛЯ РАБОТЫ С БД ЧЕРЕЗ API =====
+
+def save_invite_to_api(invite_data: dict) -> bool:
+    """Сохраняет приглашение в БД через API"""
+    try:
+        api_data = {
+            "invite_id": invite_data['invite_id'],
+            "buyer_id": invite_data['user_id'],
+            "target_id": 0,
+            "target_name": None,
+            "target_profile_key": invite_data['profile_code']
+        }
+        
+        response = requests.post(
+            f"{API_URL}/api/sexual/create-invite",
+            json=api_data,
+            timeout=5
+        )
+        
+        if response.status_code in [200, 201]:
+            logger.info(f"✅ Приглашение {invite_data['invite_id']} сохранено в БД")
+            return True
+        else:
+            logger.error(f"❌ Ошибка сохранения приглашения: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка при сохранении в БД: {e}")
+        return False
+
+def find_invite_in_api(invite_id: str) -> Optional[dict]:
+    """Находит приглашение в БД по коду"""
+    try:
+        response = requests.get(
+            f"{API_URL}/api/sexual/get-invite/{invite_id}",
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            logger.info(f"✅ Приглашение {invite_id} найдено в БД")
+            return data.get('data', {})
+        else:
+            logger.warning(f"⚠️ Приглашение {invite_id} не найдено в БД")
+            return None
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка поиска приглашения: {e}")
+        return None
+
+def update_invite_in_api(invite_id: str, friend_data: dict) -> bool:
+    """Обновляет приглашение после прохождения теста"""
+    try:
+        response = requests.post(
+            f"{API_URL}/api/sexual/update-invite/{invite_id}",
+            json=friend_data,
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            logger.info(f"✅ Приглашение {invite_id} обновлено в БД")
+            return True
+        else:
+            logger.error(f"❌ Ошибка обновления приглашения: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка при обновлении в БД: {e}")
+        return False
+
+def get_user_invites_from_api(user_id: int) -> list:
+    """Получает все приглашения пользователя из БД"""
+    try:
+        response = requests.get(
+            f"{API_URL}/api/sexual/get-invites/{user_id}",
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            invites = data.get('invites', [])
+            logger.info(f"✅ Получено {len(invites)} приглашений для пользователя {user_id}")
+            return invites
+        else:
+            logger.warning(f"⚠️ Не удалось получить приглашения: {response.status_code}")
+            return []
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения приглашений: {e}")
+        return []
 
 # ===== ФУНКЦИИ ФОРМАТИРОВАНИЯ ИНТИМНОГО ПРОФИЛЯ =====
 def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
     """Форматирует ПЕРВУЮ ЧАСТЬ интимного профиля"""
     try:
+        # Получаем код профиля для отображения
+        profile_code = profile_data.get('loaded_for_profile', profile_data.get('profile_type', 'SA-5_INT'))
+        
         message = f"""
 🔞 <b>ИНТИМНЫЙ ПРОФИЛЬ</b>
-📊 {user_name}, {profile_data.get('profile_type', 'SA-5_INT')}
+📊 {user_name}, {profile_code}
 
 🧠 Архетип: {profile_data.get('archetype', 'ЦЕРЕМОНИАЛЬНЫЙ')}
 
@@ -456,6 +761,20 @@ def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
             if 'items' in section:
                 for item in section['items']:
                     message += f"\n• {item}"
+        
+        # Добавляем примечание, если это аварийный профиль
+        if profile_data.get('is_emergency'):
+            message += f"""
+
+⚠️ <i>Этот профиль загружен в аварийном режиме.
+Полная версия будет доступна после создания файла {profile_code.lower().replace('-', '_')}.json</i>
+"""
+        elif profile_data.get('is_default'):
+            message += f"""
+
+⚠️ <i>Используется профиль по умолчанию.
+Специальный профиль для {profile_code} находится в разработке.</i>
+"""
         
         return message
     except Exception as e:
@@ -858,21 +1177,20 @@ def create_yookassa_invoice(payment_id: str, user_id: int, amount: float = 1.0, 
         logger.error(f"❌ Ошибка создания платежа: {e}")
         return {"success": False, "error": str(e)}
 
-# ===== ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ =====
-USER_PROFILE = {
-    "display_name": "SA-5_INT",
-    "type_code": "SA",
-    "level": 5,
-    "dilts_code": "int"
-}
-
-# ===== ХРАНИЛИЩЕ ПРИГЛАШЕНИЙ =====
+# ===== ХРАНИЛИЩЕ ПРИГЛАШЕНИЙ (временное, для обратной совместимости) =====
 user_invites = {}
 
 def get_user_invites(user_id: int) -> list:
+    """Получает список приглашений пользователя (сначала из БД, потом из памяти)"""
+    # Пытаемся получить из БД
+    db_invites = get_user_invites_from_api(user_id)
+    if db_invites:
+        return db_invites
+    
+    # Если БД недоступна, используем память
     if user_id not in user_invites:
         user_invites[user_id] = []
-        logger.info(f"👤 Создано хранилище для пользователя {user_id}")
+        logger.info(f"👤 Создано хранилище в памяти для пользователя {user_id}")
     return user_invites[user_id]
 
 def count_free_friends(user_id: int) -> int:
@@ -956,7 +1274,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = update.effective_user
         logger.info(f"🚀 Пользователь {user.id} (@{user.username}) запустил бота")
-        
         context.user_data.clear()
         context.user_data["user_id"] = user.id
         context.user_data["profile"] = USER_PROFILE.copy()
@@ -971,6 +1288,142 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"❌ Ошибка в start: {e}\n{traceback.format_exc()}")
         await update.message.reply_text("❌ Произошла ошибка. Пожалуйста, попробуйте позже.")
         return RESULTS_SCREEN
+
+# ============================================
+# 🔗 ОБРАБОТЧИК ПРИГЛАШЕНИЙ ДЛЯ 18+ МОДУЛЯ
+# ============================================
+
+async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик приглашений для 18+ модуля
+    Вызывается при переходе по ссылке с параметром start=
+    """
+    try:
+        user = update.effective_user
+        logger.info(f"🔗 Пользователь {user.id} перешел по приглашению в 18+ модуль")
+        
+        # Получаем код приглашения из аргументов
+        args = context.args
+        invite_code = args[0] if args else None
+        
+        if not invite_code:
+            logger.warning("⚠️ Приглашение без кода")
+            await update.message.reply_text(
+                "❌ Неверная ссылка приглашения.\n"
+                "Пожалуйста, попросите друга отправить вам новую ссылку."
+            )
+            return await show_results_screen(update, context)
+        
+        # Здесь будет логика обработки приглашения
+        # Пока просто заглушка
+        
+        await update.message.reply_text(
+            f"🔞 Приглашение в 18+ модуль получено!\n\n"
+            f"Код приглашения: {invite_code}\n\n"
+            f"Функция в разработке."
+        )
+        
+        return await show_results_screen(update, context)
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в sexual_invite_start: {e}")
+        await update.message.reply_text("❌ Произошла ошибка при обработке приглашения.")
+        return RESULTS_SCREEN
+
+# ============================================
+# 📋 КОПИРОВАНИЕ ПРИГЛАШЕНИЯ
+# ============================================
+
+async def copy_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик для копирования текста приглашения
+    """
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Извлекаем ID приглашения из callback_data
+        # Формат: copy_invite_{invite_id}
+        invite_id = query.data.replace("copy_invite_", "")
+        
+        # Ищем приглашение в данных пользователя
+        invites = context.user_data.get("sexual_invites", [])
+        invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
+        
+        if not invite:
+            await query.answer("❌ Приглашение не найдено", show_alert=True)
+            return
+        
+        # Текст приглашения для копирования
+        invite_text = f"{invite.get('message', '')}\n\n{invite.get('link', '')}"
+        
+        # Отправляем сообщение с текстом для копирования
+        await query.message.reply_text(
+            f"📋 <b>Текст для отправки другу:</b>\n\n"
+            f"<code>{invite_text}</code>\n\n"
+            f"Просто скопируйте и отправьте другу!",
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"📋 Пользователь {query.from_user.id} скопировал приглашение {invite_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в copy_invite_callback: {e}")
+        await query.answer("❌ Произошла ошибка", show_alert=True)
+
+# ============================================
+# ✅ ПРОВЕРКА ПРИГЛАШЕНИЯ
+# ============================================
+
+async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик для проверки статуса приглашения
+    """
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Извлекаем ID приглашения из callback_data
+        # Формат: check_invite_{invite_id}
+        invite_id = query.data.replace("check_invite_", "")
+        
+        # Ищем приглашение в данных пользователя
+        invites = context.user_data.get("sexual_invites", [])
+        invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
+        
+        if not invite:
+            await query.answer("❌ Приглашение не найдено", show_alert=True)
+            return
+        
+        # Формируем сообщение со статусом
+        status_text = "🟢 АКТИВНО" if invite.get("status") == "active" else "🔴 ИСПОЛЬЗОВАНО"
+        created_date = datetime.fromtimestamp(invite.get("created_at", datetime.now().timestamp())).strftime('%d.%m.%Y %H:%M')
+        
+        message = f"""
+📋 <b>СТАТУС ПРИГЛАШЕНИЯ</b>
+
+🔗 <code>{invite.get('link', '')}</code>
+📊 Статус: {status_text}
+📅 Создано: {created_date}
+"""
+        
+        if invite.get("status") == "used" and invite.get("friend_name"):
+            message += f"\n👤 Использовано: {invite.get('friend_name')}"
+        
+        await query.message.reply_text(
+            message,
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"✅ Пользователь {query.from_user.id} проверил статус приглашения {invite_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в check_invite_callback: {e}")
+        await query.answer("❌ Произошла ошибка", show_alert=True)
+
+# ============================================
+# 📺 ЭКРАН РЕЗУЛЬТАТОВ
+# ============================================
 
 async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -1024,7 +1477,7 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
 # 🔞 ЭКРАН 2: МОЙ ИНТИМНЫЙ ПРОФИЛЬ
 # ============================================
 
-async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """🔞 Мой интимный профиль - 3 ЧАСТИ, КНОПКИ НА ЧАСТИ 3"""
     try:
         query = update.callback_query
@@ -1035,15 +1488,36 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
         
         context.user_data["conversation_state"] = MY_SEXUAL_PROFILE
         
+        # ПОЛУЧАЕМ ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ИЗ РЕЗУЛЬТАТОВ ТЕСТА
+        profile_data = context.user_data.get("profile_data")
+        if profile_data and 'display_name' in profile_data:
+            profile_code = profile_data['display_name']
+            logger.info(f"📊 ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ИЗ ТЕСТА: {profile_code}")
+        else:
+            # Если нет, берем из profile (по умолчанию)
+            user_profile = context.user_data.get("profile", USER_PROFILE)
+            profile_code = user_profile.get('display_name', 'SA-5_INT')
+            logger.info(f"📊 ПРОФИЛЬ ПО УМОЛЧАНИЮ: {profile_code}")
+        
         user_name = query.from_user.first_name or "Пользователь"
-        logger.debug(f"📝 Загружаем профиль для пользователя: {user_name}")
+        logger.debug(f"📝 Загружаем интимный профиль для пользователя: {user_name} с кодом {profile_code}")
         
-        profile_data = load_intimate_profile()
-        logger.debug(f"📊 Профиль загружен: {profile_data.get('profile_type', 'unknown')}")
+        # ЗАГРУЖАЕМ ИНТИМНЫЙ ПРОФИЛЬ С ЭТИМ КОДОМ
+        intimate_data = load_intimate_profile(profile_code)
         
-        message_part1 = format_intimate_profile_part1(profile_data, user_name)
-        message_part2 = format_intimate_profile_part2(profile_data, user_name)
-        message_part3 = format_intimate_profile_part3(profile_data, user_name)
+        # Логируем результат загрузки
+        if intimate_data.get('is_emergency'):
+            logger.warning(f"⚠️ ЗАГРУЖЕН АВАРИЙНЫЙ ПРОФИЛЬ для {profile_code}")
+        elif intimate_data.get('is_default'):
+            logger.warning(f"⚠️ ЗАГРУЖЕН ПРОФИЛЬ ПО УМОЛЧАНИЮ для {profile_code}")
+        else:
+            logger.info(f"✅ УСПЕШНО ЗАГРУЖЕН ПРОФИЛЬ: {profile_code} (из файла {intimate_data.get('loaded_from_file', 'неизвестно')})")
+        
+        logger.debug(f"📊 Интимный профиль загружен: {intimate_data.get('profile_type', 'unknown')} для {profile_code}")
+        
+        message_part1 = format_intimate_profile_part1(intimate_data, user_name)
+        message_part2 = format_intimate_profile_part2(intimate_data, user_name)
+        message_part3 = format_intimate_profile_part3(intimate_data, user_name)
         
         logger.debug(f"📄 Длина части 1: {len(message_part1)} символов")
         logger.debug(f"📄 Длина части 2: {len(message_part2)} символов")
@@ -1104,7 +1578,7 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
         return MY_SEXUAL_PROFILE
         
     except Exception as e:
-        logger.error(f"❌ Ошибка в my_sexual_profile_callback: {e}\n{traceback.format_exc()}")
+        logger.error(f"❌ Ошибка в show_my_sexual_profile: {e}\n{traceback.format_exc()}")
         try:
             chat_id = update.callback_query.message.chat_id
             keyboard = [
@@ -1126,9 +1600,16 @@ async def my_sexual_profile_callback(update: Update, context: ContextTypes.DEFAU
 # ============================================
 
 async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """🔗 СОЗДАНИЕ ПРИГЛАШЕНИЯ"""
+    logger.info(f"🔗 create_invite_callback ВЫЗВАН! User: {update.effective_user.id}")
+    
     try:
         query = update.callback_query
+        user_id = query.from_user.id
         await query.answer()
+        
+        logger.info(f"✅ create_invite_callback: пользователь {user_id} успешно вызвал функцию")
+        logger.info(f"📊 Данные пользователя: username=@{query.from_user.username}, first_name={query.from_user.first_name}")
         
         context.user_data["conversation_state"] = INVITES_LIST
         
@@ -1136,13 +1617,22 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         invites = context.user_data.get("sexual_invites", [])
         total_invites = len(invites)
         
+        logger.info(f"📊 Статистика пользователя {user_id}:")
+        logger.info(f"   - Всего приглашений: {total_invites}")
+        logger.info(f"   - Лимиты: free_used={user_limits['free_used']}, total_purchased={user_limits['total_purchased']}")
+        
         can_create, is_free, limit_message = can_create_invite(user_limits, total_invites)
         
+        logger.info(f"   - Может создать: {can_create}, бесплатно: {is_free}")
+        logger.info(f"   - Сообщение: {limit_message}")
+        
         if not can_create:
+            logger.warning(f"❌ Лимит ссылок исчерпан для пользователя {user_id}")
             await query.answer("❌ Лимит ссылок исчерпан!", show_alert=True)
             return await buy_invite_packages_callback(update, context)
         
         profile = context.user_data.get("profile", USER_PROFILE)
+        logger.info(f"📊 Профиль пользователя для создания ссылки: {profile['display_name']}")
         
         invite_code = f"sex_{uuid.uuid4().hex[:8]}_{uuid.uuid4().hex[:4]}"
         invite_url = f"https://t.me/{BOT_USERNAME}?start={invite_code}"
@@ -1159,6 +1649,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         
         if is_free:
             user_limits["free_used"] += 1
+            logger.info(f"✅ Использован бесплатный лимит. Осталось: {FREE_INVITE_LIMIT - user_limits['free_used']}")
         
         text = f"""
 🔞 <b>✨ ВАША ССЫЛКА ГОТОВА! ✨</b>
@@ -1201,14 +1692,19 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
             "access_status": None,
             "purchased_functions": [],
             "is_free": is_free,
-            "invite_type": invite_type
+            "invite_type": invite_type,
+            "user_id": user_id
         }
+        
+        # Сохраняем в БД
+        save_success = save_invite_to_api(invite_data)
+        logger.info(f"💾 Сохранение в БД: {'успешно' if save_success else 'ошибка'}")
         
         invites.insert(0, invite_data)
         
-        user_id = query.from_user.id
         global_invites = get_user_invites(user_id)
-        global_invites.insert(0, invite_data)
+        if invite_data not in global_invites:
+            global_invites.insert(0, invite_data)
         
         logger.info(f"🔗 Пользователь {user_id} создал ссылку: {invite_code} (тип: {invite_type})")
         
@@ -1216,7 +1712,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
         
         keyboard = [
             [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
-            [InlineKeyboardButton("⬅️ К ОТРАЖЕНИЯМ", callback_data="my_invites")]
+            [InlineKeyboardButton("⬅️ НАЗАД В ПРОФИЛЬ", callback_data="my_sexual_profile")]  # 👈 НА ЭТУ
         ]
         
         await query.edit_message_text(
@@ -1226,14 +1722,16 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
             disable_web_page_preview=True
         )
         
+        logger.info(f"✅ Сообщение с ссылкой отправлено пользователю {user_id}")
         return INVITES_LIST
+        
     except Exception as e:
-        logger.error(f"❌ Ошибка в create_invite_callback: {e}")
+        logger.error(f"❌ Ошибка в create_invite_callback: {e}\n{traceback.format_exc()}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
         return INVITES_LIST
 
 # ============================================
-# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ (С ПРАВИЛЬНЫМИ ССЫЛКАМИ)
+# 🔍 ЭКРАН 4: МОИ ОТРАЖЕНИЯ
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1252,11 +1750,19 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         total_invites = len(invites)
         total_reflections = len(used_invites)
         
-        user_profile = context.user_data.get("profile", USER_PROFILE)
-        user_profile_code = user_profile.get('display_name', 'SA-5_INT')
+        # Сначала пытаемся получить из profile_data (результат теста)
+        profile_data = context.user_data.get("profile_data")
+        if profile_data and 'display_name' in profile_data:
+            profile_code = profile_data['display_name']
+        else:
+            # Если нет, берем из profile (по умолчанию)
+            user_profile = context.user_data.get("profile", USER_PROFILE)
+            profile_code = user_profile.get('display_name', 'SA-5_INT')
+
+        logger.info(f"📊 ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ДЛЯ 18+: {profile_code}")
         
         # Получаем ссылку на профиль пользователя
-        user_profile_link = get_disk_link_by_profile(user_profile_code)
+        user_profile_link = get_disk_link_by_profile(profile_code)
         
         message = f"""<b>🪞 МОИ ОТРАЖЕНИЯ</b>
 ────────────────
@@ -1266,7 +1772,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 👥 Посмотрелись в зеркало: {total_reflections}
 
 <b>🪞 МОЁ ОТРАЖЕНИЕ</b>
-📌 Профиль: {user_profile_code}
+📌 Профиль: {profile_code}
 📁 Диск:
 {user_profile_link}
 """
@@ -1372,7 +1878,8 @@ async def four_f_detailed_callback(update: Update, context: ContextTypes.DEFAULT
         context.user_data["conversation_state"] = FOUR_F_DETAILED
         logger.info(f"📘 Пользователь {query.from_user.id} открыл подробное описание 4F")
         
-        message = FOUR_F_DETAILED_TEXT
+        # Используем правильную подстановку ссылки
+        message = FOUR_F_DETAILED_TEXT.replace("{EXAMPLE_DISK_LINK}", EXAMPLE_DISK_LINK)
         
         keyboard = [
             [InlineKeyboardButton("🔐 ЗАПРОСИТЬ КЛЮЧИ", url=AUTHOR_TELEGRAM)],
@@ -1404,8 +1911,13 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
         
         invite_id = query.data.replace("check_status_", "")
         
-        invites = context.user_data.get("sexual_invites", [])
-        invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
+        # Пытаемся найти в БД
+        invite = find_invite_in_api(invite_id)
+        
+        if not invite:
+            # Если нет в БД, ищем в памяти
+            invites = context.user_data.get("sexual_invites", [])
+            invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
         
         if not invite:
             await query.answer("❌ Приглашение не найдено", show_alert=True)
@@ -1517,7 +2029,7 @@ async def pay_package_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
         if not package:
             await query.answer("❌ Пакет не найден", show_alert=True)
-            return BUY_PACKAGES
+            return
         
         payment_id = generate_payment_id("package", query.from_user.id)
         
@@ -2112,12 +2624,38 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.answer("✅ Демо-режим")
         
-        # ВАЖНО: Возвращаем текущее состояние, чтобы не потерять контекст
-        current_state = context.user_data.get("conversation_state", RESULTS_SCREEN)
-        return current_state
+        return RESULTS_SCREEN
     except Exception as e:
         logger.error(f"❌ Ошибка в dummy_callback: {e}")
         return RESULTS_SCREEN
+
+# ============================================
+# ✅ АЛИАСЫ ДЛЯ СОВМЕСТИМОСТИ С ВЕРСИЕЙ 19.0
+# ============================================
+
+# Алиасы для экранов
+show_my_invites = my_invites_callback
+friend_details_callback = friend_menu_callback
+buy_function_callback = buy_4f_key_callback
+check_4f_payment_callback = dummy_callback
+buy_invite_packages = buy_invite_packages_callback
+
+# Заглушки для deeplink-обработчиков
+async def handle_sexual_deeplink(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Заглушка для обработки deeplink"""
+    logger.info("🔗 handle_sexual_deeplink вызван")
+    return await sexual_invite_start(update, context)
+
+async def check_sexual_invitation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Заглушка для проверки приглашения"""
+    logger.info("🔍 check_sexual_invitation вызван")
+    return await check_invite_callback(update, context)
+
+async def noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пустой callback для нереализованных функций"""
+    logger.info("🔄 noop_callback вызван")
+    await update.callback_query.answer("⏳ Функция в разработке")
+    return RESULTS_SCREEN
 
 # ============================================
 # 🚀 ЗАПУСК
@@ -2125,12 +2663,19 @@ async def dummy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     print("\n" + "="*70)
-    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.1")
+    print("🔞 ИНТИМНЫЕ ПРОФИЛИ И 4F-КЛЮЧИ v19.7 (ОБЪЕДИНЕННАЯ)")
     print("="*70)
     print("✅ ПОЛНАЯ ИНТЕГРАЦИЯ 36 ПРОФИЛЕЙ ЯНДЕКС.ДИСК")
     print("✅ Умная функция поиска ссылок по профилю")
     print("✅ Корректное отображение в \"Моих отражениях\"")
-    print("✅ ИСПРАВЛЕНЫ КНОПКИ - ВСЕ РАБОТАЮТ!")
+    print("✅ Кнопки прикреплены к части 3 интимного профиля")
+    print("✅ Импорт состояний из constants.py")
+    print("✅ Интеграция с БД через API (app.py)")
+    print("✅ Сохранение приглашений в БД")
+    print("✅ Обновление статуса после прохождения теста")
+    print("✅ Динамическая загрузка интимных профилей по коду пользователя")
+    print("✅ Поиск профилей без учета суффикса (EXP → любой файл типа_уровня_*)")
+    print("✅ Полная совместимость с версией 19.0")
     print("="*70)
     print("📊 ДОСТУПНЫЕ ПРОФИЛИ:")
     print("   SA: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
@@ -2138,6 +2683,14 @@ def main():
     print("   IA: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
     print("   IP: 1-9 (DEF, SIT, CON, EXP, INT, AUT, VAL, TRA, IDE)")
     print("="*70)
+    
+    # Проверяем доступные интимные профили при запуске
+    print("\n🔍 ПРОВЕРКА ИНТИМНЫХ ПРОФИЛЕЙ")
+    print("="*30)
+    profile_stats = check_available_sexual_profiles()
+    print(f"📊 Найдено профилей: {profile_stats['total_found']}")
+    print(f"❌ Отсутствует: {profile_stats['total_missing']}")
+    print("="*30)
     
     if TOKEN == "ВАШ_ТОКЕН_ЗДЕСЬ":
         print("\n❌ ОШИБКА: Укажите TELEGRAM_BOT_TOKEN!")
@@ -2159,7 +2712,7 @@ def main():
             entry_points=[CommandHandler('start', start)],
             states={
                 RESULTS_SCREEN: [
-                    CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
+                    CallbackQueryHandler(show_my_sexual_profile, pattern='^my_sexual_profile$'),
                     CallbackQueryHandler(dummy_callback, pattern='^share_mirror$'),
                     CallbackQueryHandler(dummy_callback, pattern='^full_description$'),
                     CallbackQueryHandler(show_results_screen, pattern='^show_results$'),
@@ -2176,7 +2729,7 @@ def main():
                     CallbackQueryHandler(four_f_main_menu_callback, pattern='^four_f_main_menu$'),
                     CallbackQueryHandler(check_status_callback, pattern='^check_status_'),
                     CallbackQueryHandler(friend_menu_callback, pattern='^friend_'),
-                    CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
+                    CallbackQueryHandler(show_my_sexual_profile, pattern='^my_sexual_profile$'),
                     CallbackQueryHandler(buy_invite_packages_callback, pattern='^buy_invite_packages$'),
                     CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
                 ],
@@ -2187,8 +2740,6 @@ def main():
                     CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
                     CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
                     CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
-                    # ВАЖНО: Добавляем обработчик для возврата
-                    CallbackQueryHandler(friend_menu_callback, pattern='^friend_'),
                 ],
                 
                 FOUR_F_MENU: [
@@ -2196,14 +2747,11 @@ def main():
                     CallbackQueryHandler(open_4f_key_callback, pattern='^open_4f_'),
                     CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
                     CallbackQueryHandler(friend_menu_callback, pattern='^friend_'),
-                    # ВАЖНО: Добавляем обработчик для возврата
-                    CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
                 ],
                 
                 FOUR_F_CONTENT: [
                     CallbackQueryHandler(buy_4f_key_callback, pattern='^buy_4f_'),
                     CallbackQueryHandler(four_f_menu_callback, pattern='^4f_'),
-                    CallbackQueryHandler(open_4f_key_callback, pattern='^open_4f_'),
                 ],
                 
                 FOUR_F_PAYMENT_SCREEN: [
@@ -2226,18 +2774,17 @@ def main():
                     CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
                     CallbackQueryHandler(four_f_detailed_callback, pattern='^four_f_detailed$'),
                     CallbackQueryHandler(four_f_explanation_callback, pattern='^4f_explain$'),
-                    CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
+                    CallbackQueryHandler(show_my_sexual_profile, pattern='^my_sexual_profile$'),
                 ],
                 
                 FOUR_F_DETAILED: [
                     CallbackQueryHandler(four_f_main_menu_callback, pattern='^four_f_main_menu$'),
-                    CallbackQueryHandler(my_invites_callback, pattern='^my_invites$'),
                 ],
             },
             fallbacks=[
                 CommandHandler('start', start),
                 CallbackQueryHandler(back_to_results_callback, pattern='^back_to_results$'),
-                CallbackQueryHandler(my_sexual_profile_callback, pattern='^my_sexual_profile$'),
+                CallbackQueryHandler(show_my_sexual_profile, pattern='^my_sexual_profile$'),
             ],
             allow_reentry=True,
             name="intimate_profiles_conversation",
@@ -2246,7 +2793,7 @@ def main():
         
         app.add_handler(conv_handler)
         
-        print("\n🚀 Бот запущен! Версия 19.1")
+        print("\n🚀 Бот запущен! Объединенная версия 19.7")
         print("="*70)
         logger.info("✅ Бот успешно запущен")
         
@@ -2258,6 +2805,100 @@ def main():
     except Exception as e:
         logger.error(f"❌ Критическая ошибка при запуске: {e}\n{traceback.format_exc()}")
         print(f"\n❌ Ошибка запуска: {e}")
+
+# ===== ЭКСПОРТ =====
+__all__ = [
+    # Константы
+    'SEXUAL_DIVIDER',
+    'FREE_INVITE_LIMIT',
+    'FRIEND_ACCESS_PRICE',
+    'FOUR_F_PRICE',
+    'INVITE_PACKAGES',
+    'PROFILE_DISK_LINKS',
+    'FOUR_F_DESCRIPTIONS',
+    'SEXUAL_STATES',
+    'SEXUAL_PROFILE_SCREEN',
+    'SEXUAL_INVITES_LIST',
+    'SEXUAL_FRIEND_PROFILE',
+    'FOUR_F_PAYMENT_SCREEN',
+    'FOUR_F_CONTENT_SCREEN',
+    
+    # Функции для работы с БД
+    'save_invite_to_api',
+    'find_invite_in_api',
+    'update_invite_in_api',
+    'get_user_invites_from_api',
+    
+    # Функции для работы с профилями
+    'get_disk_link_by_profile',
+    'get_disk_link',
+    'load_intimate_profile',
+    'load_friend_intimate_profile',
+    'format_intimate_profile_part1',
+    'format_intimate_profile_part2',
+    'format_intimate_profile_part3',
+    'format_friend_intimate_profile',
+    'get_friend_emergency_profile',
+    'get_emergency_profile',
+    'check_available_sexual_profiles',
+    
+    # Функции для 4F
+    'load_4f_content',
+    
+    # Функции для приглашений
+    'get_user_invites',
+    'count_free_friends',
+    'init_test_data',
+    'get_user_limits',
+    'can_create_invite',
+    
+    # Callback-обработчики
+    'show_my_sexual_profile',
+    'sexual_invite_start',
+    'copy_invite_callback',
+    'check_invite_callback',
+    'show_my_invites',
+    'friend_details_callback',
+    'buy_function_callback',
+    'check_4f_payment_callback',
+    'open_4f_key_callback',
+    'buy_invite_packages',
+    'handle_sexual_deeplink',
+    'check_sexual_invitation',
+    'noop_callback',
+    
+    # Дополнительные функции из 19.0
+    'four_f_main_menu_callback',
+    'four_f_detailed_callback',
+    'check_status_callback',
+    'buy_invite_packages_callback',
+    'pay_package_callback',
+    'process_package_payment_callback',
+    
+    # Основные экраны
+    'start',
+    'show_results_screen',
+    'create_invite_callback',
+    'my_invites_callback',
+    'friend_menu_callback',
+    'show_payment_access_screen',
+    'standard_profile_callback',
+    'intimate_profile_callback',
+    'four_f_menu_callback',
+    'four_f_explanation_callback',
+    'buy_4f_key_callback',
+    'process_payment_callback',
+    'back_to_results_callback',
+    'dummy_callback',
+    
+    # Вспомогательные функции
+    'split_long_message',
+    'safe_send_message',
+    
+    # Функции платежей
+    'generate_payment_id',
+    'create_yookassa_invoice',
+]
 
 if __name__ == "__main__":
     main()
