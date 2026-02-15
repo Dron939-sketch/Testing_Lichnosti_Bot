@@ -1925,7 +1925,6 @@ def main():
             ],
             
             SEXUAL_FRIEND_PROFILE: [
-                # ... остальные обработчики
             ],
                 CallbackQueryHandler(standard_profile_callback, pattern="^std_"),
                 CallbackQueryHandler(intimate_profile_callback, pattern="^int_"),
