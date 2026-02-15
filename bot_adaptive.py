@@ -140,14 +140,15 @@ from sexual_19_7 import (
     open_4f_key_callback,
     
     # Пакеты приглашений
-    buy_invite_packages_callback,
-    pay_package_callback,
-    process_package_payment_callback,
+    buy_invite_packages_callback,       
+    pay_package_callback,                 
+    process_package_payment_callback,    
+    check_package_callback,              
     
     # Меню друга
-    friend_menu_callback,
-    show_payment_access_screen,
-    standard_profile_callback,
+    friend_menu_callback,               
+    show_payment_access_screen,          
+    standard_profile_callback,            
     intimate_profile_callback,
     
     # Вспомогательные обработчики
