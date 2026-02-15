@@ -218,19 +218,28 @@ EXAMPLE_DISK_LINK = PROFILE_DISK_LINKS["SA-3_CON"]  # Пример для дем
 AUTHOR_TELEGRAM = "https://t.me/meysternlp"
 
 def get_disk_link_by_profile(profile_code: str) -> str:
-    """Упрощенная функция поиска ссылки"""
+    """Упрощенная функция поиска ссылки с подробным логированием"""
     if not profile_code:
+        logger.warning("⚠️ profile_code пустой, использую default")
         return PROFILE_DISK_LINKS["default"]
+    
+    logger.info(f"🔍 get_disk_link_by_profile получил: '{profile_code}'")
     
     # Приводим к формату с дефисом (SP_4_EXP -> SP-4_EXP)
     profile_key = profile_code.upper().replace('_', '-')
+    logger.info(f"🔍 Ищем ключ: '{profile_key}'")
     
-    # Пробуем найти
+    # Проверяем, есть ли такой ключ в словаре
     if profile_key in PROFILE_DISK_LINKS:
-        return PROFILE_DISK_LINKS[profile_key]
+        link = PROFILE_DISK_LINKS[profile_key]
+        logger.info(f"✅ Найдена ссылка: {link}")
+        return link
     
-    # Если не нашли - логируем ошибку
-    logger.error(f"❌ Ключ {profile_key} не найден в словаре!")
+    # Если не нашли - покажем первые 10 ключей для проверки
+    logger.error(f"❌ Ключ '{profile_key}' не найден в словаре!")
+    sample_keys = list(PROFILE_DISK_LINKS.keys())[:10]
+    logger.error(f"📋 Примеры ключей: {sample_keys}")
+    
     return PROFILE_DISK_LINKS["default"]
 
 # ===== АЛИАСЫ ДЛЯ СОВМЕСТИМОСТИ =====
