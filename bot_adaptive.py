@@ -698,6 +698,9 @@ async def show_results_screen(
     user_id = update.effective_user.id
     
     log_callback("show_results_screen", update, context)
+    if "temp_has_shared" in context.user_data:
+        context.user_data["has_shared"] = context.user_data.pop("temp_has_shared")
+        logger.info(f"🔄 Восстановлен has_shared = {context.user_data['has_shared']}")
     
     has_shared = context.user_data.get("has_shared", False) or force_shared_view
     profile_data = context.user_data.get("profile_data")
