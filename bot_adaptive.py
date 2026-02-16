@@ -2079,7 +2079,8 @@ def main():
     CallbackQueryHandler(copy_invite_callback, pattern="^copy_invite_"),
     CallbackQueryHandler(check_invite_callback, pattern="^check_invite_"),
     CallbackQueryHandler(create_invite_callback, pattern="^create_new_invite$"),
-    CallbackQueryHandler(send_invite_callback, pattern="^send_invite$"),  # 👈 НОВАЯ СТРОКА
+    CallbackQueryHandler(send_invite_callback, pattern="^send_invite$"),  
+    CallbackQueryHandler(contact_selected_callback, pattern="^contact_"),
     CallbackQueryHandler(four_f_main_menu_callback, pattern="^four_f_main_menu$"),
     CallbackQueryHandler(check_status_callback, pattern="^check_status_"),
     CallbackQueryHandler(friend_menu_callback, pattern="^friend_"),
