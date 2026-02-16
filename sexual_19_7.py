@@ -2147,6 +2147,15 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         user_id = query.from_user.id
         
+        # ===== ВРЕМЕННАЯ ОТЛАДКА =====
+        # Сделаем прямой запрос к API и посмотрим, что приходит
+        import requests
+        try:
+            response = requests.get(f"{API_URL}/api/user-limits/{user_id}", timeout=5)
+            print(f"🔍 ПРЯМОЙ ОТВЕТ API: {response.json()}")
+        except Exception as e:
+            print(f"❌ Ошибка прямого запроса: {e}")
+
         # ===== ПОЛУЧАЕМ ЛИМИТЫ ИЗ БД =====
         limits = check_user_limits_from_api(user_id)
         free_remaining = limits.get('free_remaining', 3)
