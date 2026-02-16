@@ -752,7 +752,13 @@ def create_all_tables():
         "sexual_access": create_sexual_access_tables(),
         "purchases_4f": create_4f_tables()
     }
-    add_columns_to_sexual_invites()
+    
+    # 👇 ВАЖНО: вызываем функцию добавления колонок
+    columns_added = add_columns_to_sexual_invites()
+    if columns_added:
+        results["sexual_invites_columns"] = True
+        logger.info("✅ Колонки в sexual_invites проверены/добавлены")
+    
     success_count = sum(1 for result in results.values() if result)
     
     if success_count == len(results):
@@ -4188,17 +4194,160 @@ if __name__ == '__main__':
     print("  • Требуются JSON файлы в профили/4F/{function}/")
     print("="*80)
     
+    # ========== ПОЛНАЯ ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ ==========
     try:
         logger.info("🗄️ Безопасная проверка и создание таблиц...")
-        success = create_all_tables()
-        if success:
+        
+        # 1. Сначала создаем основные таблицы
+        tables_created = create_all_tables()
+        
+        if tables_created:
+            logger.info("✅ Основные таблицы созданы/проверены")
+            
+            # 2. ОБЯЗАТЕЛЬНО добавляем колонки в sexual_invites
+            logger.info("🔧 Принудительная проверка колонок в sexual_invites...")
+            
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                
+                # Проверяем существование таблицы
+                cursor.execute("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_name = 'sexual_invites'
+                )
+                """)
+                sexual_invites_exists = cursor.fetchone()[0]
+                
+                if sexual_invites_exists:
+                    # Проверяем колонку is_free
+                    cursor.execute("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name = 'sexual_invites' AND column_name = 'is_free'
+                    """)
+                    if not cursor.fetchone():
+                        logger.info("➕ Добавляем колонку is_free в sexual_invites...")
+                        cursor.execute("ALTER TABLE sexual_invites ADD COLUMN is_free BOOLEAN DEFAULT TRUE")
+                    
+                    # Проверяем колонку invite_type
+                    cursor.execute("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name = 'sexual_invites' AND column_name = 'invite_type'
+                    """)
+                    if not cursor.fetchone():
+                        logger.info("➕ Добавляем колонку invite_type в sexual_invites...")
+                        cursor.execute("ALTER TABLE sexual_invites ADD COLUMN invite_type VARCHAR(10) DEFAULT '🆓'")
+                    
+                    # Обновляем существующие записи
+                    cursor.execute("UPDATE sexual_invites SET is_free = TRUE WHERE is_free IS NULL")
+                    cursor.execute("UPDATE sexual_invites SET invite_type = '🆓' WHERE invite_type IS NULL")
+                    
+                    conn.commit()
+                    logger.info("✅ Колонки в sexual_invites успешно добавлены/обновлены")
+                else:
+                    logger.error("❌ Таблица sexual_invites не существует! Создаем заново...")
+                    # Создаем таблицу заново с правильной структурой
+                    cursor.execute("""
+                    CREATE TABLE sexual_invites (
+                        id SERIAL PRIMARY KEY,
+                        invite_id VARCHAR(100) UNIQUE NOT NULL,
+                        buyer_id BIGINT NOT NULL,
+                        target_id BIGINT DEFAULT 0,
+                        target_name VARCHAR(255),
+                        target_profile_key VARCHAR(50) NOT NULL,
+                        status VARCHAR(50) DEFAULT 'pending',
+                        is_free BOOLEAN DEFAULT TRUE,
+                        invite_type VARCHAR(10) DEFAULT '🆓',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        purchased_at TIMESTAMP
+                    )
+                    """)
+                    conn.commit()
+                    logger.info("✅ Таблица sexual_invites создана заново с правильной структурой")
+                
+                cursor.close()
+                conn.close()
+                
+            except Exception as db_e:
+                logger.error(f"❌ Ошибка при проверке sexual_invites: {db_e}")
+                # Пробуем альтернативный способ через функцию
+                try:
+                    logger.info("🔄 Пробуем через функцию add_columns_to_sexual_invites()...")
+                    add_columns_to_sexual_invites()
+                except:
+                    pass
+            
+            # 3. Обновляем существующие платежи с профилями
             updated = update_existing_payments_with_profile()
             print(f"✅ Таблицы проверены/созданы безопасно")
             print(f"✅ Обновлено {updated} платежей с профилями")
+            
+            # 4. ФИНАЛЬНАЯ ПРОВЕРКА
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                
+                # Проверяем структуру sexual_invites
+                cursor.execute("""
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'sexual_invites'
+                ORDER BY ordinal_position
+                """)
+                
+                columns = cursor.fetchall()
+                logger.info("📊 Текущая структура sexual_invites:")
+                for col in columns:
+                    logger.info(f"  • {col[0]}: {col[1]}")
+                
+                cursor.close()
+                conn.close()
+                
+                # Проверяем наличие нужных колонок
+                column_names = [col[0] for col in columns]
+                if 'is_free' in column_names and 'invite_type' in column_names:
+                    print("✅ Таблица sexual_invites полностью готова (is_free и invite_type присутствуют)")
+                else:
+                    print("⚠️ ВНИМАНИЕ: Не все колонки добавлены!")
+                    
+            except Exception as check_e:
+                logger.error(f"❌ Ошибка финальной проверки: {check_e}")
+            
     except Exception as e:
-        logger.error(f"⚠️ Ошибка создания таблиц при старте: {e}")
+        logger.error(f"⚠️ Критическая ошибка инициализации БД: {e}")
         print(f"⚠️ Ошибка создания таблиц: {e}")
+        
+        # Пробуем восстановиться
+        try:
+            logger.info("🔄 Попытка восстановления через /fix-invites...")
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Создаем таблицу если её нет
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS sexual_invites (
+                id SERIAL PRIMARY KEY,
+                invite_id VARCHAR(100) UNIQUE NOT NULL,
+                buyer_id BIGINT NOT NULL,
+                target_id BIGINT DEFAULT 0,
+                target_name VARCHAR(255),
+                target_profile_key VARCHAR(50) NOT NULL,
+                status VARCHAR(50) DEFAULT 'pending',
+                is_free BOOLEAN DEFAULT TRUE,
+                invite_type VARCHAR(10) DEFAULT '🆓',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                purchased_at TIMESTAMP
+            )
+            """)
+            conn.commit()
+            cursor.close()
+            conn.close()
+            logger.info("✅ Таблица sexual_invites создана в аварийном режиме")
+        except:
+            pass
     
+    # ========== ЗАПУСК ВОССТАНОВИТЕЛЯ ==========
     recovery_thread = ensure_recovery_worker()
     
     if recovery_thread and recovery_thread.is_alive():
@@ -4208,8 +4357,18 @@ if __name__ == '__main__':
         logger.warning("⚠️ Recovery worker не удалось запустить")
         print("⚠️ Recovery worker не удалось запустить")
     
+    # ========== ЗАПУСК СЕРВЕРА ==========
     port = int(os.getenv('PORT', 10000))
     logger.info(f"🚀 Запуск сервера на порту {port}")
     print(f"🚀 Сервер запущен на порту {port}")
     print("="*80)
+    
+    # Финальное сообщение
+    print("\n📌 ДОСТУПНЫЕ ЭНДПОИНТЫ ДЛЯ ПРОВЕРКИ:")
+    print("  • /fix-invites - исправить приглашения")
+    print("  • /fix-sexual-invites - исправить таблицу sexual_invites")
+    print("  • /check-db - проверить структуру БД")
+    print("  • /admin/dashboard - панель администратора")
+    print("="*80)
+    
     app.run(host='0.0.0.0', port=port, debug=False)
