@@ -2259,13 +2259,8 @@ async def check_status_callback(update: Update, context: ContextTypes.DEFAULT_TY
         
         invite_id = query.data.replace("check_status_", "")
         
-        # Пытаемся найти в БД
+                # Пытаемся найти в БД
         invite = find_invite_in_api(invite_id)
-        
-        if not invite:
-            # Если нет в БД, ищем в памяти
-            invites = context.user_data.get("sexual_invites", [])
-            invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
         
         if not invite:
             await query.answer("❌ Приглашение не найдено", show_alert=True)
