@@ -4516,7 +4516,7 @@ def get_user_limits(user_id):
 
 @app.route('/api/update-free-used', methods=['POST'])
 def update_free_used():
-    """Обновляет счетчик использованных бесплатных ссылок"""
+    """Обновляет счетчик ВСЕХ использованных ссылок (и бесплатных, и платных)"""
     try:
         data = request.get_json()
         if not data:
@@ -4530,40 +4530,52 @@ def update_free_used():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Подсчитываем текущее количество бесплатных ссылок
+        # Подсчитываем ВСЕ ссылки пользователя (и бесплатные, и платные)
         cursor.execute("""
         SELECT COUNT(*) FROM sexual_invites 
-        WHERE buyer_id = %s AND is_free = true
+        WHERE buyer_id = %s
         """, (user_id,))
         
-        free_count = cursor.fetchone()[0]
+        total_links = cursor.fetchone()[0] or 0
+        
+        # Получаем текущие лимиты
+        cursor.execute("""
+        SELECT total_purchased FROM user_limits WHERE user_id = %s
+        """, (user_id,))
+        
+        result = cursor.fetchone()
+        total_purchased = result[0] if result else 0
         
         # Обновляем или создаем запись в user_limits
         cursor.execute("""
         INSERT INTO user_limits (user_id, free_used, total_purchased)
-        VALUES (%s, %s, 0)
+        VALUES (%s, %s, %s)
         ON CONFLICT (user_id) DO UPDATE SET
             free_used = EXCLUDED.free_used,
+            total_purchased = EXCLUDED.total_purchased,
             updated_at = CURRENT_TIMESTAMP
-        RETURNING free_used
-        """, (user_id, free_count))
+        RETURNING free_used, total_purchased
+        """, (user_id, total_links, total_purchased))
         
-        new_free_used = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        new_free_used = result[0]
+        current_total_purchased = result[1]
         
         conn.commit()
         cursor.close()
         conn.close()
         
-        logger.info(f"✅ Обновлен free_used для user_id={user_id}: {new_free_used}")
+        logger.info(f"✅ Обновлен счетчик ссылок для user_id={user_id}: всего использовано={new_free_used}, куплено={current_total_purchased}")
         
         return jsonify({
             "success": True,
             "user_id": user_id,
-            "free_used": new_free_used
+            "free_used": new_free_used,
+            "total_purchased": current_total_purchased
         }), 200
         
     except Exception as e:
-        logger.error(f"❌ Ошибка обновления free_used: {e}")
+        logger.error(f"❌ Ошибка обновления счетчика ссылок: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/user-limits/<int:user_id>', methods=['GET'])
