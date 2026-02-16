@@ -1128,15 +1128,31 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     user_name = query.from_user.first_name or "Пользователь"
     
-    # 👇 ПРОВЕРКА, ПРОХОДИЛ ЛИ ПОЛЬЗОВАТЕЛЬ ТЕСТ
-    profile = context.user_data.get("profile")
-    profile_data = context.user_data.get("profile_data")
+    # 👇 ПРОВЕРЯЕМ В БД, ПРОХОДИЛ ЛИ ПОЛЬЗОВАТЕЛЬ ТЕСТ
+    # Получаем приглашения пользователя из БД
+    user_invites = get_user_invites_from_api(user_id)
     
-    # Проверяем, проходил ли пользователь тест (есть ли у него профиль)
+    # Проверяем, есть ли у пользователя профиль в БД
+    # (например, по наличию приглашений или другим признакам)
+    has_profile = False
+    profile_code = "SA-5_INT"  # значение по умолчанию
+    
+    # Если есть приглашения - значит пользователь уже проходил тест
+    if user_invites and len(user_invites) > 0:
+        has_profile = True
+        # Пытаемся получить профиль из первого приглашения
+        if user_invites[0].get('friend_profile'):
+            profile_code = user_invites[0]['friend_profile']
+        elif user_invites[0].get('target_profile_key'):
+            profile_code = user_invites[0]['target_profile_key']
+    
+    # Также проверяем, есть ли профиль в user_data (на всякий случай)
+    profile = context.user_data.get("profile")
     if profile and profile.get('display_name'):
-        # Пользователь уже проходил тест
-        profile_code = profile.get('display_name', 'SA-5_INT')
-        
+        has_profile = True
+        profile_code = profile.get('display_name', profile_code)
+    
+    if has_profile:
         logger.info(f"👤 Пользователь {user_id} уже проходил тест, профиль: {profile_code}")
         
         message = f"""
