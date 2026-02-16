@@ -2633,23 +2633,29 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
             free_used = user_limits["free_used"]
             paid_available = user_limits["total_purchased"] - (total_invites - free_used)
             
-            message = f"""
+                        message = f"""
 ✅ <b>ОПЛАТА ПРОШЛА УСПЕШНО!</b>
 
-{package['emoji']} <b>Пакет: {package['links']} ссылок</b>
+{package['emoji']} <b>Пакет: {package['links']} зеркал</b>
 💰 Сумма: {package['price']}₽
 📋 ID платежа: <code>{payment_id}</code>
 
-💎 <b>НОВЫЙ ЛИМИТ ССЫЛОК:</b>
-   • Бесплатных использовано: {free_used}/{FREE_INVITE_LIMIT}
-   • Платных доступно: {paid_available}
-   • Всего ссылок создано: {total_invites}
+━━━━━━━━━━━━━━━━━━━━
+🪞 <b>ВАШ ЗАПАС ЗЕРКАЛ:</b>
 
-🎉 <b>Теперь вы можете создавать новые приглашения!</b>
+💎 Платных в запасе: {package['links']}
+
+Теперь при создании новых зеркал
+они будут тратиться из этого запаса.
+
+Платные зеркала отмечаются значком 💎
+
+<b>⬇️ ВЫБЕРИТЕ ДЕЙСТВИЕ:</b>
 """
             keyboard = [
-                [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="send_invite")],
-                [InlineKeyboardButton("◀️ К ОТРАЖЕНИЯМ", callback_data="my_invites")]
+                [InlineKeyboardButton("🔞 СОЗДАТЬ ЗЕРКАЛО", callback_data="send_invite")],
+                [InlineKeyboardButton("🪞 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
+                [InlineKeyboardButton("🔙 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")]
             ]
             
             logger.info(f"✅ Пользователь {user_id} получил пакет {package_id} ({package['links']} ссылок)")
