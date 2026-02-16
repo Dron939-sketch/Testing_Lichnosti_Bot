@@ -837,6 +837,64 @@ def get_user_invites_from_api(user_id: int) -> list:
         logger.error(f"❌ Ошибка получения приглашений: {e}")
         return []
 
+def check_user_limits_from_api(user_id: int) -> dict:
+    """
+    Проверяет лимиты пользователя через API
+    Возвращает словарь с лимитами:
+    {
+        'free_used': int,           # сколько бесплатных использовано
+        'free_remaining': int,       # сколько бесплатных осталось
+        'paid_available': int,       # сколько платных доступно
+        'total_purchased': int,      # всего куплено ссылок
+        'used_purchased': int        # сколько платных использовано
+    }
+    """
+    try:
+        logger.info(f"📊 Проверка лимитов для пользователя {user_id}")
+        
+        response = requests.get(
+            f"{API_URL}/api/user-limits/{user_id}",
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            limits = data.get('limits', {})
+            
+            # Формируем удобный словарь
+            result = {
+                'free_used': limits.get('free_used', 0),
+                'free_remaining': max(0, FREE_INVITE_LIMIT - limits.get('free_used', 0)),
+                'paid_available': limits.get('paid_available', 0),
+                'total_purchased': limits.get('total_purchased', 0),
+                'used_purchased': limits.get('used_purchased', 0)
+            }
+            
+            logger.info(f"✅ Лимиты для {user_id}: free_used={result['free_used']}, "
+                       f"paid_available={result['paid_available']}")
+            return result
+        else:
+            logger.warning(f"⚠️ API вернул {response.status_code}, используем значения по умолчанию")
+            # Возвращаем значения по умолчанию
+            return {
+                'free_used': 0,
+                'free_remaining': FREE_INVITE_LIMIT,
+                'paid_available': 0,
+                'total_purchased': 0,
+                'used_purchased': 0
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка при проверке лимитов: {e}")
+        # В случае ошибки возвращаем безопасные значения
+        return {
+            'free_used': 0,
+            'free_remaining': FREE_INVITE_LIMIT,
+            'paid_available': 0,
+            'total_purchased': 0,
+            'used_purchased': 0
+        }
+
 # ===== ФУНКЦИИ ФОРМАТИРОВАНИЯ ИНТИМНОГО ПРОФИЛЯ =====
 def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
     """Форматирует ПЕРВУЮ ЧАСТЬ интимного профиля"""
@@ -3256,6 +3314,8 @@ __all__ = [
     'find_invite_in_api',
     'update_invite_in_api',
     'get_user_invites_from_api',
+    'check_user_limits_from_api',   # 👈 ВОТ ЗДЕСЬ
+    'update_free_used_in_api',
     
     # Функции для работы с профилями
     'get_disk_link_by_profile',
