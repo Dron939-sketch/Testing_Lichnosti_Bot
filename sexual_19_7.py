@@ -1368,17 +1368,8 @@ def create_yookassa_invoice(payment_id: str, user_id: int, amount: float = 1.0, 
 user_invites = {}
 
 def get_user_invites(user_id: int) -> list:
-    """Получает список приглашений пользователя (сначала из БД, потом из памяти)"""
-    # Пытаемся получить из БД
-    db_invites = get_user_invites_from_api(user_id)
-    if db_invites:
-        return db_invites
-    
-    # Если БД недоступна, используем память
-    if user_id not in user_invites:
-        user_invites[user_id] = []
-        logger.info(f"👤 Создано хранилище в памяти для пользователя {user_id}")
-    return user_invites[user_id]
+    """Получает список приглашений пользователя из БД"""
+    return get_user_invites_from_api(user_id)
 
 def count_free_friends(user_id: int) -> int:
     """Считает количество друзей, прошедших тест по бесплатным ссылкам"""
@@ -1654,13 +1645,13 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         invite = find_invite_in_api(invite_code)
         logger.info(f"📦 Ответ от API: {invite}")
         
-        if not invite:
-            # Если нет в БД, ищем в памяти
-            logger.info("🔍 В БД не найдено, ищем в памяти...")
-            invites = get_user_invites(user.id)
-            logger.info(f"📦 В памяти найдено приглашений: {len(invites)}")
-            invite = next((inv for inv in invites if inv.get("invite_id") == invite_code), None)
-            logger.info(f"📦 В памяти найдено: {invite}")
+            if not invite:
+        logger.warning(f"❌ Приглашение {invite_code} не найдено в БД")
+        await update.message.reply_text(
+            "❌ Приглашение не найдено или уже использовано.\n"
+            "Попросите друга отправить новую ссылку."
+            )
+            return RESULTS_SCREEN
         
         if not invite:
             logger.warning(f"❌ Приглашение {invite_code} не найдено")
