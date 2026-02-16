@@ -1653,13 +1653,6 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return RESULTS_SCREEN
         
-        if not invite:
-            logger.warning(f"❌ Приглашение {invite_code} не найдено")
-            await update.message.reply_text(
-                "❌ Приглашение не найдено или уже использовано.\n"
-                "Попросите друга отправить новую ссылку."
-            )
-            return RESULTS_SCREEN
         
         # Сохраняем информацию о приглашении в данные пользователя
         buyer_id = invite.get("user_id") or invite.get("buyer_id")
@@ -2535,7 +2528,6 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
         if status == "succeeded":
             # ПЛАТЕЖ УСПЕШЕН - добавляем ссылки пользователю
             user_id = query.from_user.id
-            user_limits = get_user_limits(context)
             
             # Обновляем лимиты в памяти
             user_limits["total_purchased"] += package["links"]
