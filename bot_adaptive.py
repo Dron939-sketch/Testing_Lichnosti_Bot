@@ -1125,6 +1125,50 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало теста"""
     log_callback("start_test", update, context)
     query = update.callback_query
+    user_id = query.from_user.id
+    user_name = query.from_user.first_name or "Пользователь"
+    
+    # 👇 ПРОВЕРКА, ПРОХОДИЛ ЛИ ПОЛЬЗОВАТЕЛЬ ТЕСТ
+    profile = context.user_data.get("profile")
+    profile_data = context.user_data.get("profile_data")
+    
+    # Проверяем, проходил ли пользователь тест (есть ли у него профиль)
+    if profile and profile.get('display_name'):
+        # Пользователь уже проходил тест
+        profile_code = profile.get('display_name', 'SA-5_INT')
+        
+        logger.info(f"👤 Пользователь {user_id} уже проходил тест, профиль: {profile_code}")
+        
+        message = f"""
+🧠 <b>ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА</b>
+
+👋 <b>С ВОЗВРАЩЕНИЕМ, {user_name}!</b>
+
+Я помню вас! 🎯
+Вы уже проходили исследование, и я определил ваш профиль:
+
+📊 <b>ВАШ ПРОФИЛЬ:</b> <code>{profile_code}</code>
+
+━━━━━━━━━━━━━━━━━━━━
+❓ <b>ЧТО ДЕЛАЕМ ДАЛЬШЕ?</b>
+
+Вы можете:
+🔄 <b>Пройти тест заново</b> — если хотите перепроверить себя или что-то изменилось
+👥 <b>Заглянуть в «Мои отражения»</b> — посмотреть, кто из друзей уже прошёл тест по вашим ссылкам
+
+━━━━━━━━━━━━━━━━━━━━
+⬇️ <b>ВЫБЕРИТЕ ДЕЙСТВИЕ:</b>
+"""
+        keyboard = [
+            [InlineKeyboardButton("🔄 ПРОЙТИ ТЕСТ ЗАНОВО", callback_data="restart_test")],
+            [InlineKeyboardButton("👥 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(message, reply_markup=reply_markup, parse_mode="HTML")
+        return RESULTS
+    
+    # 👇 ЕСЛИ ПОЛЬЗОВАТЕЛЬ НОВЫЙ - ПРОДОЛЖАЕМ КАК ОБЫЧНО
     await query.answer()
     
     # ✅ СОХРАНЯЕМ ВАЖНЫЕ ДАННЫЕ ПЕРЕД ОЧИСТКОЙ
@@ -1161,24 +1205,11 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["has_shared"] = False
     
     # Инициализируем хранилище приглашений (обновляем из БД)
-    user_id = query.from_user.id
     context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)
     
-    logger.info(f"User {update.effective_user.id} начал знакомство с психологом")
+    logger.info(f"User {user_id} начал знакомство с психологом")
     
     return await show_stage_1_intro(update, context)
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отмена теста"""
-    logger.info(f"❌ Тест отменен пользователем {update.effective_user.id}")
-    await update.message.reply_text(
-        f"🧠 *Исследование отменено.*\n\n"
-        f"Если захотите продолжить наше знакомство, просто напишите:\n"
-        f"`/start`\n\n"
-        f"*Всегда готов помочь,\nВаш виртуальный психолог Вариатика* 🧠",
-        parse_mode='Markdown'
-    )
-    return ConversationHandler.END
 
 # ============================================
 # ФУНКЦИИ ПОДАРКОВ И ПАКЕТОВ
