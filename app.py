@@ -741,14 +741,20 @@ def create_4f_tables():
 
 def create_user_limits_table():
     """Создает таблицу для хранения лимитов пользователей"""
+    logger.info("🔧 ВЫЗОВ create_user_limits_table() - НАЧАЛО")
+    
     if not POSTGRES_AVAILABLE:
         logger.error("❌ Невозможно создать таблицу: psycopg3 не доступен")
         return False
     
     try:
+        logger.info("🔧 Подключаюсь к БД...")
         conn = get_db_connection()
         cursor = conn.cursor()
+        logger.info("✅ Подключение успешно")
         
+        # Таблица лимитов пользователей
+        logger.info("🔧 Создаю таблицу user_limits...")
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_limits (
             id SERIAL PRIMARY KEY,
@@ -759,13 +765,17 @@ def create_user_limits_table():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
+        logger.info("✅ Таблица user_limits создана или уже существует")
         
-        # Создаем индексы для быстрого поиска
+        # Индекс для быстрого поиска
+        logger.info("🔧 Создаю индекс для user_limits...")
         cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_user_limits_user_id ON user_limits(user_id)
         """)
+        logger.info("✅ Индекс создан")
         
-        # Добавляем таблицу для хранения истории покупок пакетов
+        # Таблица истории покупок пакетов
+        logger.info("🔧 Создаю таблицу package_purchases...")
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS package_purchases (
             id SERIAL PRIMARY KEY,
@@ -778,23 +788,32 @@ def create_user_limits_table():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
+        logger.info("✅ Таблица package_purchases создана или уже существует")
         
+        # Индексы для таблицы покупок
+        logger.info("🔧 Создаю индексы для package_purchases...")
         cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_package_purchases_user_id ON package_purchases(user_id)
         """)
         cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_package_purchases_payment_id ON package_purchases(payment_id)
         """)
+        logger.info("✅ Индексы созданы")
         
         conn.commit()
+        logger.info("✅ Транзакция закоммичена")
+        
         cursor.close()
         conn.close()
+        logger.info("✅ Соединение закрыто")
         
-        logger.info("✅ Таблицы user_limits и package_purchases созданы")
+        logger.info("✅ Таблицы user_limits и package_purchases успешно созданы")
         return True
         
     except Exception as e:
-        logger.error(f"❌ Ошибка создания таблиц лимитов: {e}")
+        logger.error(f"❌ ОШИБКА в create_user_limits_table: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return False
 
 def create_all_tables():
