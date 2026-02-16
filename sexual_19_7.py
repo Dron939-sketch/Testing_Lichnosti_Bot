@@ -1764,7 +1764,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
 # ============================================
 
 async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✈️ ОТПРАВКА ПРИГЛАШЕНИЯ - создает ссылку и открывает чат для отправки"""
+    """✈️ ОТПРАВКА ПРИГЛАШЕНИЯ - создает ссылку"""
     logger.info(f"✈️ send_invite_callback ВЫЗВАН! User: {update.effective_user.id}")
     
     try:
@@ -1778,10 +1778,9 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         current_invites = get_user_invites_from_api(user_id)
         context.user_data["sexual_invites"] = current_invites
         
-        # ===== 2. СЧИТАЕМ РЕАЛЬНОЕ КОЛИЧЕСТВО СОЗДАННЫХ ССЫЛОК =====
+        # ===== 2. СЧИТАЕМ РЕАЛЬНОЕ КОЛИЧЕСТВО =====
         total_invites = len(current_invites)
         
-        # ===== 3. СЧИТАЕМ БЕСПЛАТНЫЕ ССЫЛКИ =====
         free_invites_count = 0
         for inv in current_invites:
             if inv.get("is_free") or inv.get("invite_type") == "🆓":
@@ -1790,13 +1789,11 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
         logger.info(f"📊 Пользователь {user_id}: всего ссылок {total_invites}, бесплатных {free_invites_count}")
         
-        # ===== 4. ПРОВЕРЯЕМ ЛИМИТЫ =====
+        # ===== 3. ПРОВЕРЯЕМ ЛИМИТЫ =====
         if free_invites_count < FREE_INVITE_LIMIT:
-            # ЕСТЬ БЕСПЛАТНЫЕ - создаем бесплатную ссылку
             is_free = True
             logger.info(f"✅ Создаем БЕСПЛАТНУЮ ссылку ({free_invites_count + 1}/{FREE_INVITE_LIMIT})")
         else:
-            # БЕСПЛАТНЫЕ КОНЧИЛИСЬ - проверяем платные
             user_limits = get_user_limits(context)
             paid_invites_created = max(0, total_invites - FREE_INVITE_LIMIT)
             paid_available = user_limits["total_purchased"] - paid_invites_created
@@ -1805,12 +1802,11 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 is_free = False
                 logger.info(f"✅ Создаем ПЛАТНУЮ ссылку")
             else:
-                # ЛИМИТ ИСЧЕРПАН - отправляем на покупку
-                logger.warning(f"❌ Лимит ссылок исчерпан для пользователя {user_id}")
+                logger.warning(f"❌ Лимит ссылок исчерпан")
                 await query.answer("❌ Лимит ссылок исчерпан! Купите пакет.", show_alert=True)
                 return await buy_invite_packages_callback(update, context)
 
-        # ===== 5. СОЗДАЕМ УНИКАЛЬНУЮ ССЫЛКУ =====
+        # ===== 4. СОЗДАЕМ УНИКАЛЬНУЮ ССЫЛКУ =====
         profile = context.user_data.get("profile", USER_PROFILE)
         invite_code = f"sex_{uuid.uuid4().hex[:8]}_{uuid.uuid4().hex[:4]}_{int(time.time())}"
         invite_url = f"https://t.me/{BOT_USERNAME}?start={invite_code}"
@@ -1822,58 +1818,60 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "🤫 Интересно, у тебя тоже?"
         )
         
-        # ===== 6. КОДИРУЕМ ТЕКСТ ДЛЯ URL =====
-        full_message = f"{invite_url}\n\n{invite_message}"
-        encoded_text = urllib.parse.quote(full_message)
-        
-        # ===== 7. СОЗДАЕМ ССЫЛКУ ДЛЯ ОТПРАВКИ =====
-        # Этот формат гарантирует, что отправится ПОЛНАЯ ссылка с параметрами
-        share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
-        
-        # Альтернативный вариант - открыть чат с выбранным контактом
-        # Но для этого нужно получить username друга
-        
-        current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
-        invite_type = "🆓" if is_free else "💎"
-        
-        # ===== 8. СОХРАНЯЕМ ВРЕМЕННО В ПАМЯТИ =====
-        context.user_data["pending_invite"] = {
-            "invite_code": invite_code,
-            "invite_url": invite_url,
-            "invite_message": invite_message,
+        # ===== 5. СОЗДАЕМ ЗАПИСЬ В БД =====
+        invite_data = {
+            "invite_id": invite_code,
+            "link": invite_url,
+            "message": invite_message,
             "profile_code": profile['display_name'],
+            "status": "active",
+            "created_at": datetime.now().timestamp(),
+            "friend_id": None,
+            "friend_name": None,
             "is_free": is_free,
-            "invite_type": invite_type,
-            "created_at": datetime.now().timestamp()
+            "invite_type": "🆓" if is_free else "💎",
+            "user_id": user_id
         }
         
-        # ===== 9. ПОКАЗЫВАЕМ ГОТОВУЮ ССЫЛКУ =====
+        save_success = save_invite_to_api(invite_data)
+        logger.info(f"💾 Сохранение в БД: {'успешно' if save_success else 'ошибка'}")
+        
+        # ===== 6. ОБНОВЛЯЕМ ДАННЫЕ В ПАМЯТИ =====
+        updated_invites = get_user_invites_from_api(user_id)
+        context.user_data["sexual_invites"] = updated_invites
+        
+        # ===== 7. ПЕРЕСЧИТЫВАЕМ ДЛЯ ОТОБРАЖЕНИЯ =====
+        new_free_count = 0
+        for inv in updated_invites:
+            if inv.get("is_free") or inv.get("invite_type") == "🆓":
+                if not inv.get("invite_id", "").startswith("test_"):
+                    new_free_count += 1
+        
+        remaining_free = FREE_INVITE_LIMIT - new_free_count
+        
+        share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
+        
         text = f"""
-🔞 <b>✨ ССЫЛКА ГОТОВА К ОТПРАВКЕ ✨</b>
+🔞 <b>✨ ССЫЛКА СОЗДАНА! ✨</b>
 
-🔗 <b>Ссылка:</b>
-<code>{invite_url}</code>
+🔗 <code>{invite_url}</code>
 
 💬 <b>Текст сообщения:</b>
 <blockquote>{invite_message}</blockquote>
 
 {SEXUAL_DIVIDER}
-📱 <b>Как отправить:</b>
-1. Нажмите кнопку «✈️ ОТПРАВИТЬ»
-2. Выберите контакт
-3. Нажмите отправить
+📊 <b>Статистика:</b>
+   • Всего создано: {len(updated_invites)}
+   • Бесплатных осталось: {remaining_free}
 {SEXUAL_DIVIDER}
 
-📊 <b>Статистика:</b>
-   • Всего создано ссылок: {total_invites + 1}
-   • Бесплатных использовано: {free_invites_count + (1 if is_free else 0)}/{FREE_INVITE_LIMIT}
+⚠️ <b>Одна ссылка = один друг!</b>
 """
         
-        # Кнопка для отправки через Telegram Share
         keyboard = [
             [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
-            [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")],
-            [InlineKeyboardButton("🪞 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")]
+            [InlineKeyboardButton("🪞 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
+            [InlineKeyboardButton("🔞 В ПРОФИЛЬ", callback_data="back_to_sexual_profile")]
         ]
         
         await query.edit_message_text(
@@ -1887,10 +1885,9 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return INVITES_LIST
         
     except Exception as e:
-        logger.error(f"❌ Ошибка в send_invite_callback: {e}\n{traceback.format_exc()}")
-        await query.answer("❌ Произошла ошибка", show_alert=True)
+        logger.error(f"❌ Ошибка: {e}")
         return INVITES_LIST
-
+        
 # ============================================
 # ✅ ПОДТВЕРЖДЕНИЕ ОТПРАВКИ
 # ============================================
