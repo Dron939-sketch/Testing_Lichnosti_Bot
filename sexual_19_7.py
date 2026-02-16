@@ -1714,8 +1714,7 @@ async def copy_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         invite_id = query.data.replace("copy_invite_", "")
         
         # Ищем приглашение в данных пользователя
-        invites = context.user_data.get("sexual_invites", [])
-        invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
+        invite = find_invite_in_api(invite_id)
         
         if not invite:
             await query.answer("❌ Приглашение не найдено", show_alert=True)
@@ -1755,8 +1754,7 @@ async def check_invite_callback(update: Update, context: ContextTypes.DEFAULT_TY
         invite_id = query.data.replace("check_invite_", "")
         
         # Ищем приглашение в данных пользователя
-        invites = context.user_data.get("sexual_invites", [])
-        invite = next((inv for inv in invites if inv.get("invite_id") == invite_id), None)
+        invite = find_invite_in_api(invite_id)
         
         if not invite:
             await query.answer("❌ Приглашение не найдено", show_alert=True)
@@ -2529,16 +2527,6 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
             # ПЛАТЕЖ УСПЕШЕН - добавляем ссылки пользователю
             user_id = query.from_user.id
             
-            # Обновляем лимиты в памяти
-            user_limits["total_purchased"] += package["links"]
-            user_limits["paid_packages"].append({
-                "package": package_id,
-                "links": package["links"],
-                "price": package["price"],
-                "payment_id": payment_id,
-                "purchased_at": datetime.now().timestamp()
-            })
-            
             # 👇 НОВЫЙ БЛОК: ВЫЗЫВАЕМ API ДЛЯ НАЧИСЛЕНИЯ ЛИМИТОВ
             try:
                 logger.info(f"🔄 Вызов API add-package-limits для user_id={user_id}, payment_id={payment_id}")
@@ -2595,11 +2583,12 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
             if payment_id in payment_data:
                 payment_data[payment_id]["status"] = "succeeded"
             
-            # Получаем статистику
+            # Получаем статистику (только для информации)
             invites = context.user_data.get("sexual_invites", [])
             total_invites = len(invites)
-            free_used = user_limits["free_used"]
-            paid_available = user_limits["total_purchased"] - (total_invites - free_used)
+            
+            # 👇 ПОЛУЧАЕМ АКТУАЛЬНЫЕ ЛИМИТЫ ИЗ БД (опционально)
+            updated_limits = check_user_limits_from_api(user_id)
             
             message = f"""  
 ✅ <b>ОПЛАТА ПРОШЛА УСПЕШНО!</b>
