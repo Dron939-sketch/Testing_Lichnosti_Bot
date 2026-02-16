@@ -3402,6 +3402,86 @@ def api_sexual_get_profile(user_id):
         logger.error(f"❌ Ошибка получения профиля: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/save-package-purchase', methods=['POST'])
+def save_package_purchase():
+    """Сохраняет информацию о покупке пакета приглашений"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"}), 400
+        
+        user_id = data.get('user_id')
+        payment_id = data.get('payment_id')
+        package_id = data.get('package_id')
+        links = data.get('links')
+        amount = data.get('amount')
+        purchased_at = data.get('purchased_at')
+        
+        if not all([user_id, payment_id, package_id, links]):
+            return jsonify({"success": False, "error": "Missing required fields"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Создаем таблицу для хранения покупок пакетов, если её нет
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS package_purchases (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            payment_id VARCHAR(100) UNIQUE NOT NULL,
+            package_id VARCHAR(10) NOT NULL,
+            links INTEGER NOT NULL,
+            amount DECIMAL(10,2) NOT NULL,
+            purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        
+        # Сохраняем покупку
+        cursor.execute("""
+        INSERT INTO package_purchases (user_id, payment_id, package_id, links, amount, purchased_at)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (payment_id) DO UPDATE SET
+            status = 'confirmed'
+        RETURNING id
+        """, (user_id, payment_id, package_id, links, amount, purchased_at))
+        
+        purchase_id = cursor.fetchone()
+        conn.commit()
+        
+        # Также обновляем лимиты пользователя в отдельной таблице
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_purchased_links (
+            user_id BIGINT PRIMARY KEY,
+            total_purchased INTEGER DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        
+        cursor.execute("""
+        INSERT INTO user_purchased_links (user_id, total_purchased)
+        VALUES (%s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET
+            total_purchased = user_purchased_links.total_purchased + EXCLUDED.total_purchased,
+            updated_at = CURRENT_TIMESTAMP
+        """, (user_id, links))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"✅ Покупка пакета {package_id} сохранена для пользователя {user_id}")
+        
+        return jsonify({
+            "success": True,
+            "purchase_id": purchase_id[0] if purchase_id else None,
+            "message": f"Пакет {package_id} на {links} ссылок добавлен"
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка сохранения покупки пакета: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/api/sexual/create-invite', methods=['POST'])
 def api_sexual_create_invite():
     """Создает приглашение для 18+ профиля (используется ботом)"""
