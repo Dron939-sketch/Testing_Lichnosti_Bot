@@ -2511,7 +2511,10 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
         
         if status == "succeeded":
             # ПЛАТЕЖ УСПЕШЕН - добавляем ссылки пользователю
+            user_id = query.from_user.id
             user_limits = get_user_limits(context)
+            
+            # Обновляем лимиты в памяти
             user_limits["total_purchased"] += package["links"]
             user_limits["paid_packages"].append({
                 "package": package_id,
@@ -2520,6 +2523,33 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
                 "payment_id": payment_id,
                 "purchased_at": datetime.now().timestamp()
             })
+            
+            # 👇 ВАЖНО: СОХРАНЯЕМ В БД
+            try:
+                # Сохраняем информацию о покупке
+                purchase_data = {
+                    "user_id": user_id,
+                    "payment_id": payment_id,
+                    "package_id": package_id,
+                    "links": package["links"],
+                    "amount": package["price"],
+                    "purchased_at": datetime.now().isoformat()
+                }
+                
+                # Отправляем в API для сохранения
+                response = requests.post(
+                    f"{API_URL}/api/save-package-purchase",
+                    json=purchase_data,
+                    timeout=5
+                )
+                
+                if response.status_code == 200:
+                    logger.info(f"✅ Покупка пакета {package_id} сохранена в БД для пользователя {user_id}")
+                else:
+                    logger.error(f"❌ Ошибка сохранения покупки: {response.status_code}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Ошибка при сохранении покупки в БД: {e}")
             
             # Обновляем статус в payment_data
             if payment_id in payment_data:
@@ -2546,11 +2576,11 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
 🎉 <b>Теперь вы можете создавать новые приглашения!</b>
 """
             keyboard = [
-                [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
+                [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="send_invite")],  # 👈 ИСПРАВЛЕНО
                 [InlineKeyboardButton("◀️ К ОТРАЖЕНИЯМ", callback_data="my_invites")]
             ]
             
-            logger.info(f"✅ Пользователь {query.from_user.id} получил пакет {package_id} ({package['links']} ссылок)")
+            logger.info(f"✅ Пользователь {user_id} получил пакет {package_id} ({package['links']} ссылок)")
             
             # Очищаем данные платежа после успешной активации
             if payment_id in payment_data:
@@ -2560,7 +2590,6 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
             # ПЛАТЕЖ В ОЖИДАНИИ
             confirmation_url = payment_info.get("confirmation_url")
             if not confirmation_url:
-                # Если ссылка потеряна, пробуем создать новый платеж
                 logger.warning(f"⚠️ Ссылка на оплату не найдена для {payment_id}")
                 await query.answer("🔄 Создаю новый платеж...")
                 return await pay_package_callback(update, context)
