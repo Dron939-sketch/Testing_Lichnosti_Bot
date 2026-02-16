@@ -1072,6 +1072,55 @@ async def why_details_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     
     await query.edit_message_text(details_text, reply_markup=reply_markup)
 
+async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возврат в главное меню"""
+    log_callback("main_menu_callback", update, context)
+    query = update.callback_query
+    await query.answer("🏠 Возврат в главное меню...")
+    
+    try:
+        await query.message.delete()
+        logger.info(f"✅ User {update.effective_user.id}: Удалено сообщение при main_menu")
+    except Exception as e:
+        logger.warning(f"⚠️ User {update.effective_user.id}: Не удалось удалить сообщение: {e}")
+    
+    context.user_data.clear()
+    logger.info(f"🧹 User {update.effective_user.id}: user_data полностью очищена")
+    
+    user = update.effective_user
+    user_name = user.first_name or "Пользователь"
+    
+    welcome_text = (
+        f"{user_name}, привет! 👋\n\n"
+        f"<b>🧠 Я — Виртуальный психолог Вариатика.</b>\n\n"
+        f"🕒 За 15 минут узнаете о себе то, что обычно остаётся невидимым.\n"
+        f"👁️ Увидите скрытые паттерны, которые управляют вашими решениями.\n\n"
+        f"⚡ А главное — узнаете то, о себе знать действительно нужно.\n"
+        f"🎯 То, что даст точку опоры для роста.\n\n"
+        f"<b>📊 Вас ждёт:</b>\n\n"
+        f"1️⃣ Адаптивный тест (4 этапа)\n"
+        f"   ↳ Поймёте свой уникальный профиль\n\n"
+        f"2️⃣ Персональные материалы\n"
+        f"   ↳ Узнаете куда направлять усилия\n\n"
+        f"🚀 Начнём исследование?"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("🚀 Начать исследование →", callback_data="start_test")],
+        [InlineKeyboardButton("🤔 А зачем это вообще?", callback_data="why_details")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=welcome_text,
+        reply_markup=reply_markup,
+        parse_mode="HTML"
+    )
+    
+    logger.info(f"✅ User {update.effective_user.id}: main_menu_callback → ConversationHandler.END")
+    return ConversationHandler.END
+
 # ============================================
 # ФУНКЦИИ ПОДАРКОВ И ПАКЕТОВ
 # ============================================
