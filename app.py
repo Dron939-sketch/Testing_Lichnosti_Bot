@@ -739,6 +739,64 @@ def create_4f_tables():
         logger.error(f"❌ Ошибка создания таблицы purchases_4f: {e}")
         return False
 
+def create_user_limits_table():
+    """Создает таблицу для хранения лимитов пользователей"""
+    if not POSTGRES_AVAILABLE:
+        logger.error("❌ Невозможно создать таблицу: psycopg3 не доступен")
+        return False
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_limits (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL UNIQUE,
+            free_used INTEGER DEFAULT 0,
+            total_purchased INTEGER DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        
+        # Создаем индексы для быстрого поиска
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_limits_user_id ON user_limits(user_id)
+        """)
+        
+        # Добавляем таблицу для хранения истории покупок пакетов
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS package_purchases (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            payment_id VARCHAR(100) UNIQUE NOT NULL,
+            package_id VARCHAR(10) NOT NULL,
+            links INTEGER NOT NULL,
+            amount DECIMAL(10,2) NOT NULL,
+            purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_package_purchases_user_id ON package_purchases(user_id)
+        """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_package_purchases_payment_id ON package_purchases(payment_id)
+        """)
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info("✅ Таблицы user_limits и package_purchases созданы")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка создания таблиц лимитов: {e}")
+        return False
+
 def create_all_tables():
     """Создает все таблицы с нуля - БЕЗОПАСНАЯ ВЕРСИЯ"""
     logger.info("🗄️ Безопасное создание/проверка всех таблиц базы данных...")
@@ -750,7 +808,8 @@ def create_all_tables():
         "notifications_log": create_notifications_log_table(),
         "recovery_log": create_recovery_log_table(),
         "sexual_access": create_sexual_access_tables(),
-        "purchases_4f": create_4f_tables()
+        "purchases_4f": create_4f_tables(),
+        "user_limits": create_user_limits_table()  # 👈 ДОБАВЛЕНО
     }
     
     # 👇 ВАЖНО: вызываем функцию добавления колонок
