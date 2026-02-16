@@ -3562,7 +3562,9 @@ def api_sexual_get_invites(buyer_id):
                 "friend_name": row[4],
                 "friend_profile": row[5],
                 "status": row[6],
-                "created_at": row[7].isoformat() if row[7] else None
+                "created_at": row[7].isoformat() if row[7] else None,
+                "is_free": row[8] if len(row) > 8 else True,      # 👈 ДОБАВЛЕНО
+                "invite_type": row[9] if len(row) > 9 else '🆓'   # 👈 ДОБАВЛЕНО
             })
         
         return jsonify({
