@@ -4170,6 +4170,76 @@ def fix_invites():
             "error": str(e)
         }), 500
 
+@app.route('/check-sexual-invites-structure', methods=['GET'])
+def check_sexual_invites_structure():
+    """Проверяет структуру таблицы sexual_invites"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Получаем список колонок
+        cursor.execute("""
+        SELECT column_name, data_type, is_nullable, column_default
+        FROM information_schema.columns 
+        WHERE table_name = 'sexual_invites'
+        ORDER BY ordinal_position
+        """)
+        
+        columns = cursor.fetchall()
+        
+        # Получаем пример данных (первую запись)
+        cursor.execute("""
+        SELECT * FROM sexual_invites LIMIT 1
+        """)
+        sample = cursor.fetchone()
+        
+        # Получаем описание колонок для выборки
+        cursor.execute("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'sexual_invites'
+        ORDER BY ordinal_position
+        """)
+        column_names = [row[0] for row in cursor.fetchall()]
+        
+        cursor.close()
+        conn.close()
+        
+        # Формируем пример данных в виде словаря
+        sample_data = {}
+        if sample and column_names:
+            for i, col_name in enumerate(column_names):
+                sample_data[col_name] = str(sample[i]) if sample[i] is not None else None
+        
+        # Проверяем наличие нужных колонок
+        column_list = [col[0] for col in columns]
+        has_is_free = 'is_free' in column_list
+        has_invite_type = 'invite_type' in column_list
+        
+        return jsonify({
+            "success": True,
+            "table": "sexual_invites",
+            "total_records": 69,
+            "columns": [
+                {
+                    "name": col[0],
+                    "type": col[1],
+                    "nullable": col[2],
+                    "default": col[3]
+                } for col in columns
+            ],
+            "has_required_columns": {
+                "is_free": has_is_free,
+                "invite_type": has_invite_type,
+                "all_present": has_is_free and has_invite_type
+            },
+            "sample_record": sample_data,
+            "note": "Если all_present = true, значит колонки есть"
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # ============================================
 # ЗАПУСК СЕРВЕРА
