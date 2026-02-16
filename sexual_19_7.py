@@ -2064,7 +2064,7 @@ async def contact_selected_callback(update: Update, context: ContextTypes.DEFAUL
 # ============================================
 
 async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔍 МОИ ОТРАЖЕНИЯ - с правильными ссылками на Яндекс.Диск"""
+    """🔍 МОИ ОТРАЖЕНИЯ - с правильными ссылками на Яндекс.Диск и лимитами"""
     try:
         query = update.callback_query
         await query.answer("🔄 Загружаю отражения...")
@@ -2072,6 +2072,12 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.user_data["conversation_state"] = INVITES_LIST
         
         user_id = query.from_user.id
+        
+        # ===== ПОЛУЧАЕМ ЛИМИТЫ ИЗ БД =====
+        limits = check_user_limits_from_api(user_id)
+        free_remaining = limits.get('free_remaining', 3)
+        paid_available = limits.get('paid_available', 0)
+        
         invites = get_user_invites(user_id)
         context.user_data["sexual_invites"] = invites
         
@@ -2093,12 +2099,17 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Получаем ссылку на профиль пользователя
         user_profile_link = get_disk_link_by_profile(profile_code)
         
+        # ===== ОБНОВЛЕННОЕ СООБЩЕНИЕ С ЛИМИТАМИ =====
         message = f"""<b>🪞 МОИ ОТРАЖЕНИЯ</b>
 ────────────────
 
 <b>📊 СТАТИСТИКА</b>
 🪞 Ссылок зеркал: {total_invites}
 👥 Посмотрелись в зеркало: {total_reflections}
+
+<b>💎 ЛИМИТЫ</b>
+🆓 Бесплатных осталось: {free_remaining}/3
+💎 Платных доступно: {paid_available}
 
 <b>🪞 МОЁ ОТРАЖЕНИЕ</b>
 📌 Профиль: {profile_code}
@@ -2142,7 +2153,6 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 ────────────────
 💫 Каждое отражение — ключ к человеку."""
 
-        # 👇 ИСПРАВЛЕННЫЕ КНОПКИ
         keyboard = [
             [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")],
             [InlineKeyboardButton("🔴 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")]
@@ -2162,7 +2172,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"❌ Ошибка в my_invites_callback: {e}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
         return INVITES_LIST
-
+        
 # ============================================
 # 🧬 ЭКРАН: ГЛАВНОЕ МЕНЮ 4F (КРАТКО)
 # ============================================
