@@ -1764,7 +1764,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
 # ============================================
 
 async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✈️ ОТПРАВКА ПРИГЛАШЕНИЯ - создает ссылку"""
+    """✈️ ОТПРАВКА ПРИГЛАШЕНИЯ - создает ссылку и сохраняет в БД"""
     logger.info(f"✈️ send_invite_callback ВЫЗВАН! User: {update.effective_user.id}")
     
     try:
@@ -1818,7 +1818,9 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "🤫 Интересно, у тебя тоже?"
         )
         
-        # ===== 5. СОЗДАЕМ ЗАПИСЬ В БД =====
+        invite_type = "🆓" if is_free else "💎"
+        
+        # ===== 5. СОХРАНЯЕМ В БД =====
         invite_data = {
             "invite_id": invite_code,
             "link": invite_url,
@@ -1829,7 +1831,7 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "friend_id": None,
             "friend_name": None,
             "is_free": is_free,
-            "invite_type": "🆓" if is_free else "💎",
+            "invite_type": invite_type,
             "user_id": user_id
         }
         
@@ -1847,9 +1849,17 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 if not inv.get("invite_id", "").startswith("test_"):
                     new_free_count += 1
         
+        # Обновляем лимиты
+        user_limits = get_user_limits(context)
+        user_limits["free_used"] = new_free_count
+        
         remaining_free = FREE_INVITE_LIMIT - new_free_count
         
+        # ===== 8. ГОТОВИМ ССЫЛКУ ДЛЯ ОТПРАВКИ =====
         share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
+        
+        # ===== 9. 👇 ВАЖНО: СОХРАНЯЕМ ID СОЗДАННОЙ ССЫЛКИ =====
+        context.user_data["last_created_invite"] = invite_code
         
         text = f"""
 🔞 <b>✨ ССЫЛКА СОЗДАНА! ✨</b>
@@ -1865,9 +1875,11 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
    • Бесплатных осталось: {remaining_free}
 {SEXUAL_DIVIDER}
 
-⚠️ <b>Одна ссылка = один друг!</b>
+⚠️ <b>Эта ссылка уже сохранена!</b>
+   После отправки она появится в "Моих отражениях"
 """
         
+        # КНОПКИ ДОЛЖНЫ РАБОТАТЬ!
         keyboard = [
             [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
             [InlineKeyboardButton("🪞 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
@@ -1881,11 +1893,15 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             disable_web_page_preview=True
         )
         
-        logger.info(f"✅ Ссылка создана для пользователя {user_id}")
+        logger.info(f"✅ Ссылка {invite_code} создана и сохранена для пользователя {user_id}")
+        logger.info(f"🔍 Теперь можно нажать кнопки: my_invites или back_to_sexual_profile")
+        
+        # 👇 НЕ ВОЗВРАЩАЕМСЯ, ЖДЕМ ДЕЙСТВИЙ ПОЛЬЗОВАТЕЛЯ
         return INVITES_LIST
         
     except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
+        logger.error(f"❌ Ошибка в send_invite_callback: {e}\n{traceback.format_exc()}")
+        await query.answer("❌ Произошла ошибка", show_alert=True)
         return INVITES_LIST
         
 # ============================================
