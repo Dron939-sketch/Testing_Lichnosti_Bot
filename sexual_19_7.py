@@ -1878,6 +1878,80 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return INVITES_LIST
 
 # ============================================
+# 📱 ОБРАБОТЧИК ВЫБРАННОГО КОНТАКТА
+# ============================================
+
+async def contact_selected_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """📱 Обрабатывает выбор контакта и показывает Мои отражения"""
+    try:
+        query = update.callback_query
+        user_id = query.from_user.id
+        
+        # Получаем данные выбранного контакта
+        parts = query.data.split('_')
+        if len(parts) >= 3:
+            friend_id = int(parts[1])
+            friend_username = parts[2]
+            friend_name = parts[3] if len(parts) > 3 else friend_username
+        else:
+            await query.answer("❌ Ошибка выбора контакта", show_alert=True)
+            return INVITES_LIST
+        
+        # Получаем временные данные ссылки
+        pending_invite = context.user_data.get("pending_invite")
+        if not pending_invite:
+            await query.answer("❌ Ошибка: ссылка не найдена", show_alert=True)
+            return INVITES_LIST
+        
+        # ===== СОЗДАЕМ ПОЛНУЮ ЗАПИСЬ В БД =====
+        invite_data = {
+            "invite_id": pending_invite["invite_code"],
+            "link": pending_invite["invite_url"],
+            "message": pending_invite["invite_message"],
+            "profile_code": pending_invite["profile_code"],
+            "status": "active",
+            "created_at": pending_invite["created_at"],
+            "friend_id": friend_id,
+            "friend_name": f"@{friend_username}",
+            "friend_username": friend_username,
+            "is_free": pending_invite["is_free"],
+            "invite_type": pending_invite["invite_type"],
+            "user_id": user_id
+        }
+        
+        # Сохраняем в БД
+        save_success = save_invite_to_api(invite_data)
+        logger.info(f"💾 Сохранение в БД: {'успешно' if save_success else 'ошибка'}")
+        
+        # Очищаем временные данные
+        context.user_data.pop("pending_invite", None)
+        
+        # Обновляем данные в памяти
+        updated_invites = get_user_invites_from_api(user_id)
+        context.user_data["sexual_invites"] = updated_invites
+        
+        # Обновляем лимиты
+        user_limits = get_user_limits(context)
+        free_count = 0
+        for inv in updated_invites:
+            if inv.get("is_free") or inv.get("invite_type") == "🆓":
+                if not inv.get("invite_id", "").startswith("test_"):
+                    free_count += 1
+        user_limits["free_used"] = min(free_count, FREE_INVITE_LIMIT)
+        
+        # 👇 ПОКАЗЫВАЕМ УВЕДОМЛЕНИЕ
+        await query.answer(f"✅ Ссылка привязана к @{friend_username}!", show_alert=False)
+        
+        # 👇 АВТОМАТИЧЕСКИ ПЕРЕХОДИМ В "МОИ ОТРАЖЕНИЯ"
+        logger.info(f"🔄 Автоматический переход в Мои отражения для пользователя {user_id}")
+        return await my_invites_callback(update, context)
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в contact_selected_callback: {e}\n{traceback.format_exc()}")
+        await query.answer("❌ Произошла ошибка", show_alert=True)
+        return INVITES_LIST
+
+# ============================================
 # 🔍 ЭКРАН: МОИ ОТРАЖЕНИЯ
 # ============================================
 
