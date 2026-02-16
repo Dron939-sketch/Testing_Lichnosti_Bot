@@ -1944,9 +1944,9 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.info(f"💾 Сохранение в БД: {'успешно' if save_success else 'ошибка'}")
         
         # ===== 🔥 ОБНОВЛЯЕМ СЧЕТЧИК ЛИМИТОВ =====
-        if save_success:
+    if save_success:
         # Просто вызываем update_free_used (она сама посчитает все ссылки)
-        update_free_used_in_api(user_id)
+        update_free_used_in_api(user_id)  # ← 4 пробела спереди
         logger.info(f"🔄 Обновлен счетчик ссылок для user_id={user_id}")
         
         # ===== 6. ОБНОВЛЯЕМ ДАННЫЕ В ПАМЯТИ =====
