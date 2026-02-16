@@ -3276,7 +3276,6 @@ __all__ = [
     'get_user_invites',
     'count_free_friends',
     'init_test_data',
-    'get_user_limits',
     'can_create_invite',
     
     # Основные callback-обработчики
