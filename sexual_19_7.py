@@ -1644,12 +1644,12 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.info(f"📡 Запрос к API: {API_URL}/api/sexual/get-invite/{invite_code}")
         invite = find_invite_in_api(invite_code)
         logger.info(f"📦 Ответ от API: {invite}")
-        
-            if not invite:
-        logger.warning(f"❌ Приглашение {invite_code} не найдено в БД")
-        await update.message.reply_text(
-            "❌ Приглашение не найдено или уже использовано.\n"
-            "Попросите друга отправить новую ссылку."
+
+         if not invite:
+            logger.warning(f"❌ Приглашение {invite_code} не найдено в БД")
+            await update.message.reply_text(
+                "❌ Приглашение не найдено или уже использовано.\n"
+                "Попросите друга отправить новую ссылку."
             )
             return RESULTS_SCREEN
         
