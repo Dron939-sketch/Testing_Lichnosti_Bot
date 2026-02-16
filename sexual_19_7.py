@@ -1925,7 +1925,7 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
         invite_type = "🆓" if is_free else "💎"
         
-        # ===== 5. СОХРАНЯЕМ В БД =====
+                # ===== 5. СОХРАНЯЕМ В БД =====
         invite_data = {
             "invite_id": invite_code,
             "link": invite_url,
@@ -1944,10 +1944,10 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.info(f"💾 Сохранение в БД: {'успешно' if save_success else 'ошибка'}")
         
         # ===== 🔥 ОБНОВЛЯЕМ СЧЕТЧИК ЛИМИТОВ =====
-    if save_success:
-        # Просто вызываем update_free_used (она сама посчитает все ссылки)
-        update_free_used_in_api(user_id)  # ← 4 пробела спереди
-        logger.info(f"🔄 Обновлен счетчик ссылок для user_id={user_id}")
+        if save_success:  # 👈 ЭТА СТРОКА ДОЛЖНА БЫТЬ С ОТСТУПОМ ВНУТРИ try
+            # Просто вызываем update_free_used (она сама посчитает все ссылки)
+            update_free_used_in_api(user_id)
+            logger.info(f"🔄 Обновлен счетчик ссылок для user_id={user_id}")
         
         # ===== 6. ОБНОВЛЯЕМ ДАННЫЕ В ПАМЯТИ =====
         updated_invites = get_user_invites_from_api(user_id)
