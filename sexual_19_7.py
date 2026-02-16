@@ -3187,6 +3187,7 @@ __all__ = [
     'check_invite_callback',
     'create_invite_callback',
     'send_invite_callback',
+    'confirm_sent_callback',
     'my_invites_callback',
     'four_f_main_menu_callback',
     'four_f_detailed_callback',
