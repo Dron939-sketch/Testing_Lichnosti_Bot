@@ -1034,6 +1034,44 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Переходим к первому этапу
     return await show_stage_1_intro(update, context)
 
+async def why_details_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик кнопки 'Детали'"""
+    log_callback("why_details_callback", update, context)
+    query = update.callback_query
+    await query.answer()
+    
+    details_text = """🎭 Немного правды с юмором...
+
+Как говорится: 'Нет здоровых, есть не дообследованные!' 
+Я ваш виртуальный психолог — дообследую 😉
+
+🧠 Что я умею (кроме шуток):
+• Вижу паттерны там, где вы видите хаос
+• Нахожу систему там, где вы видите случайности  
+• Обнаруживаю 'прошивку' вашего восприятия
+
+🎯 Конкретно в тесте:
+
+1️⃣ Конфигурация восприятия
+   ↳ Как ваш разум фильтрует реальность
+
+2️⃣ Конфигурация мышления  
+   ↳ Как обрабатываете информацию
+
+3️⃣ Конфигурация поведения
+   ↳ Что делаете 'на автомате'
+
+4️⃣ Точка роста
+   ↳ Куда двигаться осознанно
+
+⏱ 15 минут вместо лет терапии!
+Потому что в 21 веке даже самопознание должно быть эффективным!"""
+    
+    keyboard = [[InlineKeyboardButton("👌 Понял(а). Начинаем →", callback_data="start_test")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(details_text, reply_markup=reply_markup)
+
 # ============================================
 # ФУНКЦИИ ПОДАРКОВ И ПАКЕТОВ
 # ============================================
