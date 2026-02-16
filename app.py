@@ -4567,7 +4567,7 @@ def update_free_used():
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/user-limits/<int:user_id>', methods=['GET'])
-def get_user_limits_endpoint(user_id):
+def get_user_limits_api(user_id):
     """Возвращает лимиты пользователя"""
     try:
         conn = get_db_connection()
