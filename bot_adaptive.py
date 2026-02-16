@@ -1227,6 +1227,33 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     return await show_stage_1_intro(update, context)
 
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отмена теста"""
+    logger.info(f"❌ Тест отменен пользователем {update.effective_user.id}")
+    
+    # Проверяем, откуда пришел запрос (из сообщения или callback)
+    if update.message:
+        await update.message.reply_text(
+            f"🧠 *Исследование отменено.*\n\n"
+            f"Если захотите продолжить наше знакомство, просто напишите:\n"
+            f"`/start`\n\n"
+            f"*Всегда готов помочь,\nВаш виртуальный психолог Вариатика* 🧠",
+            parse_mode='Markdown'
+        )
+    elif update.callback_query:
+        query = update.callback_query
+        await query.answer()
+        await query.edit_message_text(
+            f"🧠 *Исследование отменено.*\n\n"
+            f"Если захотите продолжить наше знакомство, просто напишите:\n"
+            f"`/start`\n\n"
+            f"*Всегда готов помочь,\nВаш виртуальный психолог Вариатика* 🧠",
+            parse_mode='Markdown'
+        )
+    
+    return ConversationHandler.END
+    
+
 # ============================================
 # ФУНКЦИИ ПОДАРКОВ И ПАКЕТОВ
 # ============================================
