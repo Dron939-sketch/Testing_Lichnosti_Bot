@@ -4448,6 +4448,58 @@ def get_user_limits(user_id):
         logger.error(f"❌ Ошибка получения лимитов: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/update-free-used', methods=['POST'])
+def update_free_used():
+    """Обновляет счетчик использованных бесплатных ссылок"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"}), 400
+        
+        user_id = data.get('user_id')
+        
+        if not user_id:
+            return jsonify({"success": False, "error": "Missing user_id"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Подсчитываем текущее количество бесплатных ссылок
+        cursor.execute("""
+        SELECT COUNT(*) FROM sexual_invites 
+        WHERE buyer_id = %s AND is_free = true
+        """, (user_id,))
+        
+        free_count = cursor.fetchone()[0]
+        
+        # Обновляем или создаем запись в user_limits
+        cursor.execute("""
+        INSERT INTO user_limits (user_id, free_used, total_purchased)
+        VALUES (%s, %s, 0)
+        ON CONFLICT (user_id) DO UPDATE SET
+            free_used = EXCLUDED.free_used,
+            updated_at = CURRENT_TIMESTAMP
+        RETURNING free_used
+        """, (user_id, free_count))
+        
+        new_free_used = cursor.fetchone()[0]
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"✅ Обновлен free_used для user_id={user_id}: {new_free_used}")
+        
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "free_used": new_free_used
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка обновления free_used: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # ============================================
 # ЗАПУСК СЕРВЕРА
