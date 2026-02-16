@@ -1199,6 +1199,9 @@ def send_notification_async(user_id, payment_id, access_token=None, is_recovery=
     try:
         logger.info(f"🔔 Начинаю отправку уведомления user_id={user_id}, payment_id={payment_id}, профиль={profile_code}")
         
+        # 👇 ПРОВЕРЯЕМ, ЭТО ПАКЕТ ИЛИ ПРОФИЛЬ
+        is_package = payment_id and payment_id.startswith("package_")
+        
         if not profile_code:
             try:
                 conn = get_db_connection()
@@ -1213,6 +1216,12 @@ def send_notification_async(user_id, payment_id, access_token=None, is_recovery=
             except Exception as db_e:
                 logger.warning(f"⚠️ Не удалось получить profile_code из БД: {db_e}")
         
+        # 👇 ЕСЛИ ЭТО ПАКЕТ - НЕ ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ О ПРОФИЛЕ
+        if is_package:
+            logger.info(f"📦 Это пакет ссылок (payment_id={payment_id}), пропускаем отправку уведомления о профиле")
+            return True
+        
+        # 👇 ЕСЛИ ЭТО ПРОФИЛЬ - ОТПРАВЛЯЕМ КАК ОБЫЧНО
         success = send_telegram_pure(user_id, payment_id, access_token, is_recovery, profile_code)
         log_notification_async(user_id, payment_id, success, is_recovery, profile_code)
         
@@ -1254,7 +1263,7 @@ def send_telegram_notification(user_id, payment_id, access_token=None, is_recove
     """Оригинальная функция для обратной совместимости"""
     send_notification_async(user_id, payment_id, access_token, is_recovery, profile_code)
     return True
-
+    
 # ============================================
 # РЕШЕНИЕ ПРОБЛЕМЫ 2: Переход на Invoices API
 # ============================================
