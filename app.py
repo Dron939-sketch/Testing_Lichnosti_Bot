@@ -3635,8 +3635,10 @@ def api_sexual_get_invites(buyer_id):
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # 👇 ИСПРАВЛЕННЫЙ SELECT - добавили is_free и invite_type
         cursor.execute("""
-        SELECT id, invite_id, buyer_id, target_id, target_name, target_profile_key, status, created_at
+        SELECT id, invite_id, buyer_id, target_id, target_name, 
+               target_profile_key, status, created_at, is_free, invite_type
         FROM sexual_invites 
         WHERE buyer_id = %s
         ORDER BY created_at DESC
@@ -3648,6 +3650,17 @@ def api_sexual_get_invites(buyer_id):
         
         invites = []
         for row in results:
+            # row[0] = id
+            # row[1] = invite_id
+            # row[2] = buyer_id
+            # row[3] = target_id
+            # row[4] = target_name
+            # row[5] = target_profile_key
+            # row[6] = status
+            # row[7] = created_at
+            # row[8] = is_free      👈 НОВОЕ
+            # row[9] = invite_type   👈 НОВОЕ
+            
             invites.append({
                 "id": row[0],
                 "invite_id": row[1],
@@ -3657,8 +3670,8 @@ def api_sexual_get_invites(buyer_id):
                 "friend_profile": row[5],
                 "status": row[6],
                 "created_at": row[7].isoformat() if row[7] else None,
-                "is_free": row[8] if len(row) > 8 else True,      # 👈 ДОБАВЛЕНО
-                "invite_type": row[9] if len(row) > 9 else '🆓'   # 👈 ДОБАВЛЕНО
+                "is_free": row[8] if row[8] is not None else True,      # 👈 ИСПРАВЛЕНО
+                "invite_type": row[9] if row[9] is not None else '🆓'   # 👈 ИСПРАВЛЕНО
             })
         
         return jsonify({
