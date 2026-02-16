@@ -1764,7 +1764,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
 # ============================================
 
 async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✈️ ОТПРАВКА ПРИГЛАШЕНИЯ - создает новую ссылку"""
+    """✈️ ОТПРАВКА ПРИГЛАШЕНИЯ - создает ссылку и привязывает к контакту"""
     logger.info(f"✈️ send_invite_callback ВЫЗВАН! User: {update.effective_user.id}")
     
     try:
@@ -1774,45 +1774,44 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
         context.user_data["conversation_state"] = INVITES_LIST
         
-        # ПОЛУЧАЕМ АКТУАЛЬНЫЕ ДАННЫЕ ИЗ БД
+        # ===== 1. ПОЛУЧАЕМ РЕАЛЬНЫЕ ДАННЫЕ ИЗ БД =====
         current_invites = get_user_invites_from_api(user_id)
         context.user_data["sexual_invites"] = current_invites
         
-        # 👇 СЧИТАЕМ РЕАЛЬНОЕ КОЛИЧЕСТВО БЕСПЛАТНЫХ ССЫЛОК
+        # ===== 2. СЧИТАЕМ РЕАЛЬНОЕ КОЛИЧЕСТВО СОЗДАННЫХ ССЫЛОК =====
+        total_invites = len(current_invites)
+        
+        # ===== 3. СЧИТАЕМ БЕСПЛАТНЫЕ ССЫЛКИ =====
         free_invites_count = 0
         for inv in current_invites:
-            # Проверяем по полю is_free (булево) или по типу
             if inv.get("is_free") or inv.get("invite_type") == "🆓":
-                # Исключаем тестовые
                 if not inv.get("invite_id", "").startswith("test_"):
                     free_invites_count += 1
         
-        logger.info(f"📊 Пользователь {user_id}: всего ссылок {len(current_invites)}, бесплатных {free_invites_count}")
+        logger.info(f"📊 Пользователь {user_id}: всего ссылок {total_invites}, бесплатных {free_invites_count}")
         
-        # ПРОВЕРЯЕМ ЛИМИТЫ
+        # ===== 4. ПРОВЕРЯЕМ ЛИМИТЫ =====
         if free_invites_count < FREE_INVITE_LIMIT:
-            # СОЗДАЕМ БЕСПЛАТНУЮ ССЫЛКУ
+            # ЕСТЬ БЕСПЛАТНЫЕ - создаем бесплатную ссылку
             is_free = True
-            new_free_count = free_invites_count + 1
-            logger.info(f"✅ Создаем БЕСПЛАТНУЮ ссылку ({new_free_count}/{FREE_INVITE_LIMIT})")
+            logger.info(f"✅ Создаем БЕСПЛАТНУЮ ссылку ({free_invites_count + 1}/{FREE_INVITE_LIMIT})")
         else:
-            # ПРОВЕРЯЕМ ПЛАТНЫЕ
+            # БЕСПЛАТНЫЕ КОНЧИЛИСЬ - проверяем платные
             user_limits = get_user_limits(context)
-            paid_invites_created = max(0, len(current_invites) - FREE_INVITE_LIMIT)
+            paid_invites_created = max(0, total_invites - FREE_INVITE_LIMIT)
             paid_available = user_limits["total_purchased"] - paid_invites_created
             
             if paid_available > 0:
                 is_free = False
                 logger.info(f"✅ Создаем ПЛАТНУЮ ссылку")
             else:
+                # ЛИМИТ ИСЧЕРПАН - отправляем на покупку
                 logger.warning(f"❌ Лимит ссылок исчерпан для пользователя {user_id}")
                 await query.answer("❌ Лимит ссылок исчерпан! Купите пакет.", show_alert=True)
                 return await buy_invite_packages_callback(update, context)
 
-        # ПОЛУЧАЕМ ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ
+        # ===== 5. СОЗДАЕМ УНИКАЛЬНУЮ ССЫЛКУ =====
         profile = context.user_data.get("profile", USER_PROFILE)
-        
-        # СОЗДАЕМ НОВУЮ УНИКАЛЬНУЮ ССЫЛКУ
         invite_code = f"sex_{uuid.uuid4().hex[:8]}_{uuid.uuid4().hex[:4]}_{int(time.time())}"
         invite_url = f"https://t.me/{BOT_USERNAME}?start={invite_code}"
         
@@ -1826,72 +1825,42 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
         invite_type = "🆓" if is_free else "💎"
         
-        # ФОРМИРУЕМ ДАННЫЕ ДЛЯ СОХРАНЕНИЯ
-        invite_data = {
-            "invite_id": invite_code,
-            "link": invite_url,
-            "message": invite_message,
+        # ===== 6. СОХРАНЯЕМ ВРЕМЕННО В ПАМЯТИ (ДО ВЫБОРА КОНТАКТА) =====
+        context.user_data["pending_invite"] = {
+            "invite_code": invite_code,
+            "invite_url": invite_url,
+            "invite_message": invite_message,
             "profile_code": profile['display_name'],
-            "status": "active",
-            "created_at": datetime.now().timestamp(),
             "is_free": is_free,
             "invite_type": invite_type,
-            "user_id": user_id
+            "created_at": datetime.now().timestamp()
         }
         
-        # СОХРАНЯЕМ В БД
-        save_success = save_invite_to_api(invite_data)
-        logger.info(f"💾 Сохранение в БД: {'успешно' if save_success else 'ошибка'}")
-        
-        # 👇 ОБНОВЛЯЕМ ДАННЫЕ В ПАМЯТИ
-        updated_invites = get_user_invites_from_api(user_id)
-        context.user_data["sexual_invites"] = updated_invites
-        
-        # 👇 ПЕРЕСЧИТЫВАЕМ РЕАЛЬНОЕ КОЛИЧЕСТВО БЕСПЛАТНЫХ
-        actual_free_used = 0
-        for inv in updated_invites:
-            if inv.get("is_free") or inv.get("invite_type") == "🆓":
-                if not inv.get("invite_id", "").startswith("test_"):
-                    actual_free_used += 1
-        
-        # 👇 Обновляем лимиты в памяти
-        user_limits = get_user_limits(context)
-        user_limits["free_used"] = actual_free_used
-        
-        # 👇 СЧИТАЕМ АКТУАЛЬНЫЙ ОСТАТОК
-        remaining_free = FREE_INVITE_LIMIT - actual_free_used
-        
-        logger.info(f"🔗 Пользователь {user_id} создал ссылку: {invite_code} (тип: {invite_type})")
-        logger.info(f"📊 После создания: free_used={actual_free_used}, осталось={remaining_free}")
-        
-        # ГОТОВИМ ССЫЛКУ ДЛЯ ОТПРАВКИ
-        share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
-        
-        # ФОРМИРУЕМ СООБЩЕНИЕ С АКТУАЛЬНЫМ СЧЕТЧИКОМ
+        # ===== 7. ПРЕДЛАГАЕМ ВЫБРАТЬ КОНТАКТ =====
         text = f"""
-🔞 <b>✨ НОВАЯ ССЫЛКА СОЗДАНА! ✨</b>
+🔞 <b>✨ ССЫЛКА СОЗДАНА! ВЫБЕРИТЕ КОНТАКТ ✨</b>
 
 🔗 <code>{invite_url}</code>
 
-💬 <b>📨 ТЕКСТ СООБЩЕНИЯ:</b>
+💬 <b>ТЕКСТ СООБЩЕНИЯ:</b>
 <blockquote>{invite_message}</blockquote>
 
 {SEXUAL_DIVIDER}
-🟢 <b>• УНИКАЛЬНАЯ ССЫЛКА •</b>
-📅 <b>Создано:</b> {current_time}
+📱 <b>Выберите получателя:</b>
+   • Нажмите кнопку ниже
+   • Выберите контакт из Telegram
+   • Ссылка привяжется к нему
 {SEXUAL_DIVIDER}
 
-⚠️ <b>Эта ссылка работает только для ОДНОГО человека!</b>
-   После использования она станет неактивной.
-
-🆓 Осталось бесплатных: {remaining_free}
+📊 <b>Статистика:</b>
+   • Всего создано ссылок: {total_invites + 1}
+   • Бесплатных использовано: {free_invites_count + (1 if is_free else 0)}/{FREE_INVITE_LIMIT}
 """
         
-        # КНОПКИ
+        # Кнопка для выбора контакта
         keyboard = [
-            [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
-            [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")],
-            [InlineKeyboardButton("🪞 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")]
+            [InlineKeyboardButton("📱 ВЫБРАТЬ КОНТАКТ", switch_inline_query="")],
+            [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")]
         ]
         
         await query.edit_message_text(
@@ -1901,7 +1870,6 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             disable_web_page_preview=True
         )
         
-        logger.info(f"✅ Сообщение с новой ссылкой отправлено пользователю {user_id}")
         return INVITES_LIST
         
     except Exception as e:
