@@ -2555,7 +2555,7 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
         except Exception as e:
             logger.error(f"❌ Ошибка проверки статуса: {e}")
         
-        if status == "succeeded":
+                if status == "succeeded":
             # ПЛАТЕЖ УСПЕШЕН - добавляем ссылки пользователю
             user_id = query.from_user.id
             user_limits = get_user_limits(context)
@@ -2570,7 +2570,32 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
                 "purchased_at": datetime.now().timestamp()
             })
             
-            # 👇 ВАЖНО: СОХРАНЯЕМ В БД
+            # 👇 НОВЫЙ БЛОК: ВЫЗЫВАЕМ API ДЛЯ НАЧИСЛЕНИЯ ЛИМИТОВ
+            try:
+                logger.info(f"🔄 Вызов API add-package-limits для user_id={user_id}, payment_id={payment_id}")
+                
+                response = requests.post(
+                    f"{API_URL}/api/add-package-limits",
+                    json={
+                        "user_id": user_id,
+                        "payment_id": payment_id,
+                        "package_id": package_id,
+                        "links": package["links"],
+                        "amount": package['price']
+                    },
+                    timeout=5
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    logger.info(f"✅ Лимиты добавлены через API: +{data.get('links_added')} ссылок, всего={data.get('total_purchased')}")
+                else:
+                    logger.error(f"❌ Ошибка API add-package-limits: {response.status_code} - {response.text}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Ошибка вызова API add-package-limits: {e}")
+            
+            # 👇 ВАЖНО: СОХРАНЯЕМ В БД (ваш оригинальный код)
             try:
                 # Сохраняем информацию о покупке
                 purchase_data = {
@@ -2622,7 +2647,7 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
 🎉 <b>Теперь вы можете создавать новые приглашения!</b>
 """
             keyboard = [
-                [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="send_invite")],  # 👈 ИСПРАВЛЕНО
+                [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="send_invite")],
                 [InlineKeyboardButton("◀️ К ОТРАЖЕНИЯМ", callback_data="my_invites")]
             ]
             
