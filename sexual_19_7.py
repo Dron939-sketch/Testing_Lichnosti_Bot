@@ -2555,7 +2555,8 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
         except Exception as e:
             logger.error(f"❌ Ошибка проверки статуса: {e}")
         
-                if status == "succeeded":
+        # 👇 ИСПРАВЛЕНО: убрал лишний отступ перед if
+        if status == "succeeded":
             # ПЛАТЕЖ УСПЕШЕН - добавляем ссылки пользователю
             user_id = query.from_user.id
             user_limits = get_user_limits(context)
