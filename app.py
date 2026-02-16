@@ -3573,6 +3573,67 @@ def save_package_purchase():
     except Exception as e:
         logger.error(f"❌ Ошибка сохранения покупки пакета: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/add-package-limits', methods=['POST'])
+def add_package_limits():
+    """Добавляет лимиты пользователю после успешной оплаты пакета"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"}), 400
+        
+        user_id = data.get('user_id')
+        payment_id = data.get('payment_id')
+        package_id = data.get('package_id')
+        links = data.get('links')
+        amount = data.get('amount')
+        
+        if not all([user_id, payment_id, package_id, links]):
+            return jsonify({"success": False, "error": "Missing required fields"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 1. Сохраняем в package_purchases
+        cursor.execute("""
+        INSERT INTO package_purchases (user_id, payment_id, package_id, links, amount)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (payment_id) DO NOTHING
+        RETURNING id
+        """, (user_id, payment_id, package_id, links, amount))
+        
+        purchase_result = cursor.fetchone()
+        
+        # 2. Обновляем лимиты в user_limits
+        cursor.execute("""
+        INSERT INTO user_limits (user_id, total_purchased)
+        VALUES (%s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET
+            total_purchased = user_limits.total_purchased + EXCLUDED.total_purchased,
+            updated_at = CURRENT_TIMESTAMP
+        RETURNING total_purchased
+        """, (user_id, links))
+        
+        new_total = cursor.fetchone()[0]
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"✅ Лимиты добавлены: user_id={user_id}, +{links} ссылок, всего={new_total}")
+        
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "payment_id": payment_id,
+            "links_added": links,
+            "total_purchased": new_total,
+            "message": f"✅ Добавлено {links} ссылок"
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка добавления лимитов: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
         
 @app.route('/api/sexual/create-invite', methods=['POST'])
 def api_sexual_create_invite():
@@ -4316,6 +4377,75 @@ def check_sexual_invites_structure():
         })
         
     except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/get-user-limits/<int:user_id>', methods=['GET'])
+def get_user_limits(user_id):
+    """Возвращает лимиты пользователя"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT free_used, total_purchased, updated_at
+        FROM user_limits
+        WHERE user_id = %s
+        """, (user_id,))
+        
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if result:
+            # Считаем сколько платных ссылок уже создано
+            cursor2 = conn2 = None
+            try:
+                conn2 = get_db_connection()
+                cursor2 = conn2.cursor()
+                cursor2.execute("""
+                SELECT COUNT(*) FROM sexual_invites 
+                WHERE buyer_id = %s AND is_free = false
+                """, (user_id,))
+                paid_used = cursor2.fetchone()[0]
+                cursor2.close()
+                conn2.close()
+            except:
+                paid_used = 0
+            
+            free_used = result[0]
+            total_purchased = result[1]
+            paid_available = total_purchased - paid_used
+            
+            return jsonify({
+                "success": True,
+                "user_id": user_id,
+                "limits": {
+                    "free_used": free_used,
+                    "free_total": 3,
+                    "free_remaining": max(0, 3 - free_used),
+                    "total_purchased": total_purchased,
+                    "paid_used": paid_used,
+                    "paid_available": paid_available,
+                    "updated_at": result[2].isoformat() if result[2] else None
+                }
+            }), 200
+        else:
+            # Если нет записи, создаем с нулями
+            return jsonify({
+                "success": True,
+                "user_id": user_id,
+                "limits": {
+                    "free_used": 0,
+                    "free_total": 3,
+                    "free_remaining": 3,
+                    "total_purchased": 0,
+                    "paid_used": 0,
+                    "paid_available": 0
+                }
+            }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения лимитов: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
