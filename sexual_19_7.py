@@ -756,6 +756,12 @@ def get_user_invites_from_api(user_id: int) -> list:
         if response.status_code == 200:
             data = response.json()
             invites = data.get('invites', [])
+            
+            # 👇 ВАЖНО: Логируем первые 3 чтобы увидеть поля
+            for i, inv in enumerate(invites[:3]):
+                logger.info(f"🔍 Приглашение {i+1}: id={inv.get('invite_id')}, "
+                           f"is_free={inv.get('is_free')}, type={inv.get('invite_type')}")
+            
             logger.info(f"✅ Получено {len(invites)} приглашений для пользователя {user_id}")
             return invites
         else:
