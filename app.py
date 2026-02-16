@@ -610,6 +610,8 @@ def create_sexual_access_tables():
             target_name VARCHAR(255),
             target_profile_key VARCHAR(50) NOT NULL,
             status VARCHAR(50) DEFAULT 'pending',
+            is_free BOOLEAN DEFAULT TRUE,           -- 👈 НОВОЕ ПОЛЕ
+            invite_type VARCHAR(10) DEFAULT '🆓',    -- 👈 НОВОЕ ПОЛЕ
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             purchased_at TIMESTAMP
         )
