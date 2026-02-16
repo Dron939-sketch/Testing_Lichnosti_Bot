@@ -1825,7 +1825,7 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
         invite_type = "🆓" if is_free else "💎"
         
-        # ===== 5. СОХРАНЯЕМ В БД =====
+        # ===== 5. 👇 ВОТ ЗДЕСЬ ДОЛЖЕН БЫТЬ ЭТОТ БЛОК =====
         invite_data = {
             "invite_id": invite_code,
             "link": invite_url,
@@ -1835,8 +1835,8 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "created_at": datetime.now().timestamp(),
             "friend_id": None,
             "friend_name": None,
-            "is_free": is_free,
-            "invite_type": invite_type,
+            "is_free": is_free,                    # 👈 ЭТО ДОЛЖНО БЫТЬ
+            "invite_type": invite_type,             # 👈 ЭТО ДОЛЖНО БЫТЬ
             "user_id": user_id
         }
         
