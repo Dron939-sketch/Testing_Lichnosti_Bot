@@ -2633,7 +2633,7 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
             free_used = user_limits["free_used"]
             paid_available = user_limits["total_purchased"] - (total_invites - free_used)
             
-                        message = f"""
+message = f"""  
 ✅ <b>ОПЛАТА ПРОШЛА УСПЕШНО!</b>
 
 {package['emoji']} <b>Пакет: {package['links']} зеркал</b>
