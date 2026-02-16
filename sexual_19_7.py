@@ -725,6 +725,27 @@ def check_user_limits_from_api(user_id: int) -> dict:
             "total_purchased": 0
         }
 
+def update_free_used_in_api(user_id: int) -> bool:
+    """Обновляет счетчик использованных бесплатных ссылок"""
+    try:
+        response = requests.post(
+            f"{API_URL}/api/update-free-used",
+            json={"user_id": user_id},
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            logger.info(f"✅ Обновлен free_used для user_id={user_id}: {data.get('free_used')}")
+            return True
+        else:
+            logger.warning(f"⚠️ Ошибка обновления free_used: {response.status_code}")
+            return False
+    except Exception as e:
+        logger.error(f"❌ Ошибка при обновлении free_used: {e}")
+        return False
+    
+
 def find_invite_in_api(invite_id: str) -> Optional[dict]:
     """Находит приглашение в БД по коду"""
     try:
@@ -1870,6 +1891,11 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
         save_success = save_invite_to_api(invite_data)
         logger.info(f"💾 Сохранение в БД: {'успешно' if save_success else 'ошибка'}")
+        
+        # ===== 🔥 НОВОЕ: обновляем счетчик free_used если это бесплатная ссылка =====
+        if save_success and is_free:
+            update_free_used_in_api(user_id)
+            logger.info(f"🔄 Обновлен счетчик бесплатных ссылок для user_id={user_id}")
         
         # ===== 6. ОБНОВЛЯЕМ ДАННЫЕ В ПАМЯТИ =====
         updated_invites = get_user_invites_from_api(user_id)
