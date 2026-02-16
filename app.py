@@ -1216,9 +1216,66 @@ def send_notification_async(user_id, payment_id, access_token=None, is_recovery=
             except Exception as db_e:
                 logger.warning(f"⚠️ Не удалось получить profile_code из БД: {db_e}")
         
-        # 👇 ЕСЛИ ЭТО ПАКЕТ - НЕ ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ О ПРОФИЛЕ
+        # 👇 ЕСЛИ ЭТО ПАКЕТ - НАЧИСЛЯЕМ ЛИМИТЫ!
         if is_package:
-            logger.info(f"📦 Это пакет ссылок (payment_id={payment_id}), пропускаем отправку уведомления о профиле")
+            logger.info(f"📦 Это пакет ссылок (payment_id={payment_id}), начисляем лимиты...")
+            
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                
+                # Получаем сумму платежа
+                cursor.execute("""
+                SELECT amount FROM payments 
+                WHERE payment_id = %s AND status = 'succeeded'
+                """, (payment_id,))
+                
+                result = cursor.fetchone()
+                if result:
+                    amount = result[0]
+                    
+                    # Определяем package_id по сумме
+                    if amount == 299:
+                        package_id = "3"
+                        links = 3
+                    elif amount == 499:
+                        package_id = "5"
+                        links = 5
+                    elif amount == 899:
+                        package_id = "10"
+                        links = 10
+                    else:
+                        logger.error(f"❌ Неизвестная сумма пакета: {amount}")
+                        cursor.close()
+                        conn.close()
+                        return False
+                    
+                    # Добавляем запись в package_purchases
+                    cursor.execute("""
+                    INSERT INTO package_purchases (user_id, payment_id, package_id, links, amount, purchased_at)
+                    VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (payment_id) DO NOTHING
+                    """, (user_id, payment_id, package_id, links, amount))
+                    
+                    # Обновляем лимиты в user_limits
+                    cursor.execute("""
+                    INSERT INTO user_limits (user_id, total_purchased)
+                    VALUES (%s, %s)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        total_purchased = user_limits.total_purchased + EXCLUDED.total_purchased,
+                        updated_at = CURRENT_TIMESTAMP
+                    """, (user_id, links))
+                    
+                    conn.commit()
+                    logger.info(f"✅ Лимиты начислены: user_id={user_id}, +{links} ссылок")
+                
+                cursor.close()
+                conn.close()
+                
+            except Exception as e:
+                logger.error(f"❌ Ошибка начисления лимитов: {e}")
+                return False
+            
             return True
         
         # 👇 ЕСЛИ ЭТО ПРОФИЛЬ - ОТПРАВЛЯЕМ КАК ОБЫЧНО
