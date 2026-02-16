@@ -2162,6 +2162,7 @@ def main():
                     CallbackQueryHandler(confirm_share, pattern="^confirm_share$"),
                     CallbackQueryHandler(restart_test, pattern="^restart_test$"),
                     CallbackQueryHandler(show_my_sexual_profile, pattern="^show_my_sexual_profile$"),
+                    CallbackQueryHandler(my_invites_callback, pattern="^my_invites$"),  # 👈 ДОБАВЛЕННАЯ СТРОКА
                 ],
                 
                 # ===== ПОДАРКИ И ПАКЕТЫ =====
