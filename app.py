@@ -4509,6 +4509,55 @@ def update_free_used():
         logger.error(f"❌ Ошибка обновления free_used: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/debug-all-payments', methods=['GET'])
+def debug_all_payments():
+    """Показывает все платежи из БД"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Все платежи с сортировкой по дате
+        cursor.execute("""
+        SELECT payment_id, user_id, amount, status, created_at, confirmed_at, profile_code, description
+        FROM payments 
+        ORDER BY created_at DESC
+        LIMIT 50
+        """)
+        
+        payments = []
+        for row in cursor.fetchall():
+            payments.append({
+                "payment_id": row[0],
+                "user_id": row[1],
+                "amount": float(row[2]) if row[2] else 0,
+                "status": row[3],
+                "created_at": str(row[4]) if row[4] else None,
+                "confirmed_at": str(row[5]) if row[5] else None,
+                "profile_code": row[6],
+                "description": row[7]
+            })
+        
+        # Статистика по статусам
+        cursor.execute("""
+        SELECT status, COUNT(*) as count
+        FROM payments
+        GROUP BY status
+        """)
+        stats = {row[0]: row[1] for row in cursor.fetchall()}
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "total_payments": len(payments),
+            "status_stats": stats,
+            "recent_payments": payments[:20]
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # ============================================
 # ЗАПУСК СЕРВЕРА
