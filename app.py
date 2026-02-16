@@ -4028,6 +4028,41 @@ def handle_exception(e):
     }), 500
 
 # ============================================
+# 👇 ВРЕМЕННЫЙ ЭНДПОИНТ ДЛЯ ИСПРАВЛЕНИЯ ПРИГЛАШЕНИЙ
+# ============================================
+
+@app.route('/fix-invites', methods=['GET'])
+def fix_invites():
+    """Исправляет старые приглашения - добавляет is_free и invite_type"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Обновляем все записи, где is_free = NULL
+        cursor.execute("""
+        UPDATE sexual_invites 
+        SET is_free = TRUE, invite_type = '🆓' 
+        WHERE is_free IS NULL;
+        """)
+        
+        updated_count = cursor.rowcount
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True, 
+            "message": f"✅ Обновлено {updated_count} приглашений",
+            "updated": updated_count
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False, 
+            "error": str(e)
+        }), 500
+
+
+# ============================================
 # ЗАПУСК СЕРВЕРА
 # ============================================
 
