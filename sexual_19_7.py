@@ -1781,7 +1781,9 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         # 👇 СЧИТАЕМ РЕАЛЬНОЕ КОЛИЧЕСТВО БЕСПЛАТНЫХ ССЫЛОК
         free_invites_count = 0
         for inv in current_invites:
+            # Проверяем по полю is_free (булево) или по типу
             if inv.get("is_free") or inv.get("invite_type") == "🆓":
+                # Исключаем тестовые
                 if not inv.get("invite_id", "").startswith("test_"):
                     free_invites_count += 1
         
@@ -1845,14 +1847,16 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         updated_invites = get_user_invites_from_api(user_id)
         context.user_data["sexual_invites"] = updated_invites
         
-        # 👇 ПЕРЕСЧИТЫВАЕМ free_used В ЛИМИТАХ
-        user_limits = get_user_limits(context)
+        # 👇 ПЕРЕСЧИТЫВАЕМ РЕАЛЬНОЕ КОЛИЧЕСТВО БЕСПЛАТНЫХ
         actual_free_used = 0
         for inv in updated_invites:
             if inv.get("is_free") or inv.get("invite_type") == "🆓":
                 if not inv.get("invite_id", "").startswith("test_"):
                     actual_free_used += 1
-        user_limits["free_used"] = min(actual_free_used, FREE_INVITE_LIMIT)
+        
+        # 👇 Обновляем лимиты в памяти
+        user_limits = get_user_limits(context)
+        user_limits["free_used"] = actual_free_used
         
         # 👇 СЧИТАЕМ АКТУАЛЬНЫЙ ОСТАТОК
         remaining_free = FREE_INVITE_LIMIT - actual_free_used
