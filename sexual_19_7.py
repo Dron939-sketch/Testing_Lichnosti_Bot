@@ -1824,6 +1824,12 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         user_id = query.from_user.id
         await query.answer()
         
+        # ===== 1. СНАЧАЛА ПРОВЕРЯЕМ НЕОПЛАЧЕННЫЕ ПЛАТЕЖИ =====
+        await check_pending_payments(user_id, context)
+        
+        # ===== 2. ПОТОМ ПОЛУЧАЕМ ЛИМИТЫ =====
+        limits = check_user_limits_from_api(user_id)
+        
         context.user_data["conversation_state"] = INVITES_LIST
         
         # ===== 1. ПОЛУЧАЕМ ЛИМИТЫ ИЗ БД ЧЕРЕЗ НОВУЮ ФУНКЦИЮ =====
