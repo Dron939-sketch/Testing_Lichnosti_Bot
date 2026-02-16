@@ -1381,12 +1381,13 @@ def get_user_invites(user_id: int) -> list:
     return user_invites[user_id]
 
 def count_free_friends(user_id: int) -> int:
-    invites = get_user_invites(user_id)
-    return len([inv for inv in invites if inv.get("status") == "used" and inv.get("access_status") == "free"])
+    """Считает количество друзей, прошедших тест по бесплатным ссылкам"""
+    invites = get_user_invites_from_api(user_id)  # 👈 ТОЛЬКО ИЗ БД
+    return len([inv for inv in invites if inv.get("status") == "used" and inv.get("is_free") == True])
 
 def init_test_data(user_id: int):
     try:
-        invites = get_user_invites(user_id)
+        invites = get_user_invites_from_api(user_id)  # 👈 ТОЛЬКО ИЗ БД
         if len(invites) > 0:
             logger.info(f"👤 У пользователя {user_id} уже есть данные, пропускаем инициализацию")
             return
@@ -2054,18 +2055,14 @@ async def contact_selected_callback(update: Update, context: ContextTypes.DEFAUL
         # Очищаем временные данные
         context.user_data.pop("pending_invite", None)
         
-        # Обновляем данные в памяти
+                # Обновляем данные в памяти
         updated_invites = get_user_invites_from_api(user_id)
         context.user_data["sexual_invites"] = updated_invites
         
-        # Обновляем лимиты
-        user_limits = get_user_limits(context)
-        free_count = 0
-        for inv in updated_invites:
-            if inv.get("is_free") or inv.get("invite_type") == "🆓":
-                if not inv.get("invite_id", "").startswith("test_"):
-                    free_count += 1
-        user_limits["free_used"] = min(free_count, FREE_INVITE_LIMIT)
+        # Проверяем актуальные лимиты в БД
+        updated_limits = check_user_limits_from_api(user_id)
+        logger.info(f"📊 Лимиты в БД: free_used={updated_limits.get('free_used')}, "
+                   f"total_purchased={updated_limits.get('total_purchased')}")
         
         # 👇 ПОКАЗЫВАЕМ УВЕДОМЛЕНИЕ
         await query.answer(f"✅ Ссылка привязана к @{friend_username}!", show_alert=False)
