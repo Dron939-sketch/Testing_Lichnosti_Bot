@@ -670,8 +670,13 @@ def save_invite_to_api(invite_data: dict) -> bool:
             "buyer_id": invite_data['user_id'],
             "target_id": 0,
             "target_name": None,
-            "target_profile_key": invite_data['profile_code']
+            "target_profile_key": invite_data['profile_code'],
+            "is_free": invite_data.get('is_free', True),        # 👈 НОВОЕ ПОЛЕ
+            "invite_type": invite_data.get('invite_type', '🆓')  # 👈 НОВОЕ ПОЛЕ
         }
+        
+        # Добавляем логирование для отладки
+        logger.info(f"📤 Отправка в API: is_free={api_data['is_free']}, type={api_data['invite_type']}")
         
         response = requests.post(
             f"{API_URL}/api/sexual/create-invite",
@@ -680,7 +685,7 @@ def save_invite_to_api(invite_data: dict) -> bool:
         )
         
         if response.status_code in [200, 201]:
-            logger.info(f"✅ Приглашение {invite_data['invite_id']} сохранено в БД")
+            logger.info(f"✅ Приглашение {invite_data['invite_id']} сохранено в БД (is_free={api_data['is_free']})")
             return True
         else:
             logger.error(f"❌ Ошибка сохранения приглашения: {response.status_code}")
