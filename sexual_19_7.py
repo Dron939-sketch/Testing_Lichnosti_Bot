@@ -695,6 +695,36 @@ def save_invite_to_api(invite_data: dict) -> bool:
         logger.error(f"❌ Ошибка при сохранении в БД: {e}")
         return False
 
+def check_user_limits_from_api(user_id: int) -> dict:
+    """Проверяет лимиты пользователя через API"""
+    try:
+        response = requests.get(
+            f"{API_URL}/api/get-user-limits/{user_id}",
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            limits = data.get('limits', {})
+            logger.info(f"📊 Лимиты пользователя {user_id}: бесплатно осталось {limits.get('free_remaining', 0)}, платных доступно {limits.get('paid_available', 0)}")
+            return limits
+        else:
+            logger.warning(f"⚠️ Не удалось получить лимиты: {response.status_code}")
+            return {
+                "free_remaining": 3,
+                "paid_available": 0,
+                "free_used": 0,
+                "total_purchased": 0
+            }
+    except Exception as e:
+        logger.error(f"❌ Ошибка проверки лимитов: {e}")
+        return {
+            "free_remaining": 3,
+            "paid_available": 0,
+            "free_used": 0,
+            "total_purchased": 0
+        }
+
 def find_invite_in_api(invite_id: str) -> Optional[dict]:
     """Находит приглашение в БД по коду"""
     try:
