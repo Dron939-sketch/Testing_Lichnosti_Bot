@@ -842,11 +842,10 @@ def check_user_limits_from_api(user_id: int) -> dict:
     Проверяет лимиты пользователя через API
     Возвращает словарь с лимитами:
     {
-        'free_used': int,           # сколько бесплатных использовано
-        'free_remaining': int,       # сколько бесплатных осталось
-        'paid_available': int,       # сколько платных доступно
-        'total_purchased': int,      # всего куплено ссылок
-        'used_purchased': int        # сколько платных использовано
+        'total_used': int,           # сколько всего ссылок создано
+        'free_remaining': int,        # сколько бесплатных осталось (3 - min(3, total_used))
+        'paid_available': int,        # сколько платных доступно (total_purchased - max(0, total_used - 3))
+        'total_purchased': int,       # всего куплено ссылок
     }
     """
     try:
@@ -861,38 +860,43 @@ def check_user_limits_from_api(user_id: int) -> dict:
             data = response.json()
             limits = data.get('limits', {})
             
-            # Формируем удобный словарь
+            total_used = limits.get('free_used', 0)  # теперь это общее количество ссылок
+            total_purchased = limits.get('total_purchased', 0)
+            
+            # Вычисляем лимиты
+            free_remaining = max(0, 3 - min(3, total_used))
+            paid_used = max(0, total_used - 3)
+            paid_available = max(0, total_purchased - paid_used)
+            
             result = {
-                'free_used': limits.get('free_used', 0),
-                'free_remaining': max(0, FREE_INVITE_LIMIT - limits.get('free_used', 0)),
-                'paid_available': limits.get('paid_available', 0),
-                'total_purchased': limits.get('total_purchased', 0),
-                'used_purchased': limits.get('used_purchased', 0)
+                'total_used': total_used,
+                'free_remaining': free_remaining,
+                'paid_available': paid_available,
+                'total_purchased': total_purchased,
+                'free_used': total_used  # для обратной совместимости
             }
             
-            logger.info(f"✅ Лимиты для {user_id}: free_used={result['free_used']}, "
-                       f"paid_available={result['paid_available']}")
+            logger.info(f"✅ Лимиты для {user_id}: всего создано={total_used}, "
+                       f"беспл.осталось={free_remaining}, платн.доступно={paid_available}")
             return result
         else:
             logger.warning(f"⚠️ API вернул {response.status_code}, используем значения по умолчанию")
-            # Возвращаем значения по умолчанию
             return {
-                'free_used': 0,
-                'free_remaining': FREE_INVITE_LIMIT,
+                'total_used': 0,
+                'free_remaining': 3,
                 'paid_available': 0,
                 'total_purchased': 0,
-                'used_purchased': 0
+                'free_used': 0
             }
             
     except Exception as e:
         logger.error(f"❌ Ошибка при проверке лимитов: {e}")
-        # В случае ошибки возвращаем безопасные значения
         return {
-            'free_used': 0,
-            'free_remaining': FREE_INVITE_LIMIT,
+            'total_used': 0,
+            'free_remaining': 3,
             'paid_available': 0,
             'total_purchased': 0,
-            'used_purchased': 0
+            'free_used': 0
         }
 
 # ===== ФУНКЦИИ ФОРМАТИРОВАНИЯ ИНТИМНОГО ПРОФИЛЯ =====
