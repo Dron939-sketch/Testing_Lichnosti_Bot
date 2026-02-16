@@ -1764,7 +1764,7 @@ async def create_invite_callback(update: Update, context: ContextTypes.DEFAULT_T
 # ============================================
 
 async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✈️ ОТПРАВКА ПРИГЛАШЕНИЯ - создает ссылку и привязывает к контакту"""
+    """✈️ ОТПРАВКА ПРИГЛАШЕНИЯ - создает ссылку и открывает чат для отправки"""
     logger.info(f"✈️ send_invite_callback ВЫЗВАН! User: {update.effective_user.id}")
     
     try:
@@ -1822,10 +1822,21 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "🤫 Интересно, у тебя тоже?"
         )
         
+        # ===== 6. КОДИРУЕМ ТЕКСТ ДЛЯ URL =====
+        full_message = f"{invite_url}\n\n{invite_message}"
+        encoded_text = urllib.parse.quote(full_message)
+        
+        # ===== 7. СОЗДАЕМ ССЫЛКУ ДЛЯ ОТПРАВКИ =====
+        # Этот формат гарантирует, что отправится ПОЛНАЯ ссылка с параметрами
+        share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
+        
+        # Альтернативный вариант - открыть чат с выбранным контактом
+        # Но для этого нужно получить username друга
+        
         current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
         invite_type = "🆓" if is_free else "💎"
         
-        # ===== 6. СОХРАНЯЕМ ВРЕМЕННО В ПАМЯТИ (ДО ВЫБОРА КОНТАКТА) =====
+        # ===== 8. СОХРАНЯЕМ ВРЕМЕННО В ПАМЯТИ =====
         context.user_data["pending_invite"] = {
             "invite_code": invite_code,
             "invite_url": invite_url,
@@ -1836,20 +1847,21 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "created_at": datetime.now().timestamp()
         }
         
-        # ===== 7. ПРЕДЛАГАЕМ ВЫБРАТЬ КОНТАКТ =====
+        # ===== 9. ПОКАЗЫВАЕМ ГОТОВУЮ ССЫЛКУ =====
         text = f"""
-🔞 <b>✨ ССЫЛКА СОЗДАНА! ВЫБЕРИТЕ КОНТАКТ ✨</b>
+🔞 <b>✨ ССЫЛКА ГОТОВА К ОТПРАВКЕ ✨</b>
 
-🔗 <code>{invite_url}</code>
+🔗 <b>Ссылка:</b>
+<code>{invite_url}</code>
 
-💬 <b>ТЕКСТ СООБЩЕНИЯ:</b>
+💬 <b>Текст сообщения:</b>
 <blockquote>{invite_message}</blockquote>
 
 {SEXUAL_DIVIDER}
-📱 <b>Выберите получателя:</b>
-   • Нажмите кнопку ниже
-   • Выберите контакт из Telegram
-   • Ссылка привяжется к нему
+📱 <b>Как отправить:</b>
+1. Нажмите кнопку «✈️ ОТПРАВИТЬ»
+2. Выберите контакт
+3. Нажмите отправить
 {SEXUAL_DIVIDER}
 
 📊 <b>Статистика:</b>
@@ -1857,10 +1869,11 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
    • Бесплатных использовано: {free_invites_count + (1 if is_free else 0)}/{FREE_INVITE_LIMIT}
 """
         
-        # Кнопка для выбора контакта
+        # Кнопка для отправки через Telegram Share
         keyboard = [
-            [InlineKeyboardButton("📱 ВЫБРАТЬ КОНТАКТ", switch_inline_query="")],
-            [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")]
+            [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
+            [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")],
+            [InlineKeyboardButton("🪞 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")]
         ]
         
         await query.edit_message_text(
@@ -1870,12 +1883,74 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             disable_web_page_preview=True
         )
         
+        logger.info(f"✅ Ссылка создана для пользователя {user_id}")
         return INVITES_LIST
         
     except Exception as e:
         logger.error(f"❌ Ошибка в send_invite_callback: {e}\n{traceback.format_exc()}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
         return INVITES_LIST
+
+# ============================================
+# ✅ ПОДТВЕРЖДЕНИЕ ОТПРАВКИ
+# ============================================
+
+async def confirm_sent_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """✅ Подтверждает отправку и сохраняет ссылку"""
+    try:
+        query = update.callback_query
+        user_id = query.from_user.id
+        
+        # Здесь нужно получить username из данных
+        # В реальном коде вы должны получить эти данные из callback_data
+        # Например: confirm_sent_{friend_username}
+        
+        parts = query.data.split('_')
+        if len(parts) >= 3:
+            friend_username = parts[2]
+        else:
+            friend_username = "друг"
+        
+        pending_invite = context.user_data.get("pending_invite")
+        if not pending_invite:
+            await query.answer("❌ Ошибка: ссылка не найдена", show_alert=True)
+            return INVITES_LIST
+        
+        # Сохраняем ссылку в БД
+        invite_data = {
+            "invite_id": pending_invite["invite_code"],
+            "link": pending_invite["invite_url"],
+            "message": pending_invite["invite_message"],
+            "profile_code": pending_invite["profile_code"],
+            "status": "active",
+            "created_at": pending_invite["created_at"],
+            "friend_id": None,
+            "friend_name": f"@{friend_username}",
+            "friend_username": friend_username,
+            "is_free": pending_invite["is_free"],
+            "invite_type": pending_invite["invite_type"],
+            "user_id": user_id
+        }
+        
+        save_success = save_invite_to_api(invite_data)
+        logger.info(f"💾 Сохранение в БД: {'успешно' if save_success else 'ошибка'}")
+        
+        # Очищаем временные данные
+        context.user_data.pop("pending_invite", None)
+        
+        # Обновляем данные
+        updated_invites = get_user_invites_from_api(user_id)
+        context.user_data["sexual_invites"] = updated_invites
+        
+        await query.answer(f"✅ Ссылка отправлена @{friend_username}!", show_alert=False)
+        
+        # Переходим в Мои отражения
+        return await my_invites_callback(update, context)
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в confirm_sent_callback: {e}")
+        return INVITES_LIST
+
 
 # ============================================
 # 📱 ОБРАБОТЧИК ВЫБРАННОГО КОНТАКТА
