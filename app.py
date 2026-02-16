@@ -4566,6 +4566,74 @@ def update_free_used():
         logger.error(f"❌ Ошибка обновления free_used: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/user-limits/<int:user_id>', methods=['GET'])
+def get_user_limits_endpoint(user_id):
+    """Возвращает лимиты пользователя"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Получаем данные из user_limits
+        cursor.execute("""
+        SELECT free_used, total_purchased, updated_at
+        FROM user_limits
+        WHERE user_id = %s
+        """, (user_id,))
+        
+        result = cursor.fetchone()
+        
+        limits = {
+            "free_used": 0,
+            "total_purchased": 0,
+            "updated_at": None
+        }
+        
+        if result:
+            limits = {
+                "free_used": result[0] or 0,
+                "total_purchased": result[1] or 0,
+                "updated_at": result[2].isoformat() if result[2] else None
+            }
+        
+        # Считаем сколько платных ссылок уже использовано
+        cursor.execute("""
+        SELECT COUNT(*) FROM sexual_invites 
+        WHERE buyer_id = %s AND is_free = false
+        """, (user_id,))
+        
+        paid_used = cursor.fetchone()[0] or 0
+        
+        cursor.close()
+        conn.close()
+        
+        # Формируем ответ
+        free_total = 3
+        free_used = limits["free_used"]
+        free_remaining = max(0, free_total - free_used)
+        
+        total_purchased = limits["total_purchased"]
+        paid_available = max(0, total_purchased - paid_used)
+        
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "limits": {
+                "free_used": free_used,
+                "free_remaining": free_remaining,
+                "paid_available": paid_available,
+                "total_purchased": total_purchased,
+                "used_purchased": paid_used,
+                "free_total": free_total
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения лимитов пользователя {user_id}: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 @app.route('/recovery/fix-all-packages', methods=['GET'])
 def fix_all_packages():
     """Восстанавливает все пропущенные пакеты"""
