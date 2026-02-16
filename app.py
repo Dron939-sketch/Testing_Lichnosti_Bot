@@ -642,6 +642,48 @@ def create_sexual_access_tables():
         return False
 
 # ============================================
+# 👇 ВОТ СЮДА ВСТАВЛЯЕМ НОВУЮ ФУНКЦИЮ
+# ============================================
+
+def add_columns_to_sexual_invites():
+    """Добавляет недостающие колонки в таблицу sexual_invites"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Проверяем существование колонки is_free
+        cursor.execute("""
+        SELECT column_name FROM information_schema.columns 
+        WHERE table_name = 'sexual_invites' AND column_name = 'is_free'
+        """)
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE sexual_invites ADD COLUMN is_free BOOLEAN DEFAULT TRUE")
+            logger.info("✅ Добавлена колонка is_free в sexual_invites")
+        
+        # Проверяем существование колонки invite_type
+        cursor.execute("""
+        SELECT column_name FROM information_schema.columns 
+        WHERE table_name = 'sexual_invites' AND column_name = 'invite_type'
+        """)
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE sexual_invites ADD COLUMN invite_type VARCHAR(10) DEFAULT '🆓'")
+            logger.info("✅ Добавлена колонка invite_type в sexual_invites")
+        
+        # Обновляем существующие записи
+        cursor.execute("UPDATE sexual_invites SET is_free = TRUE WHERE is_free IS NULL")
+        cursor.execute("UPDATE sexual_invites SET invite_type = '🆓' WHERE invite_type IS NULL")
+        logger.info("✅ Обновлены существующие записи")
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"❌ Ошибка добавления колонок: {e}")
+        return False
+
+
+# ============================================
 # 4F МОДУЛЬ - ТАБЛИЦЫ
 # ============================================
 
