@@ -695,35 +695,48 @@ def save_invite_to_api(invite_data: dict) -> bool:
         logger.error(f"❌ Ошибка при сохранении в БД: {e}")
         return False
 
-def check_user_limits_from_api(user_id: int) -> dict:
-    """Проверяет лимиты пользователя через API"""
+async def check_pending_payments(user_id: int, context: ContextTypes.DEFAULT_TYPE):
+    """Проверяет все ожидающие платежи пользователя"""
     try:
+        # Получаем все платежи пользователя
         response = requests.get(
-            f"{API_URL}/api/get-user-limits/{user_id}",
+            f"{API_URL}/api/debug-user-payments/{user_id}",
             timeout=5
         )
         
         if response.status_code == 200:
             data = response.json()
-            limits = data.get('limits', {})
-            logger.info(f"📊 Лимиты пользователя {user_id}: бесплатно осталось {limits.get('free_remaining', 0)}, платных доступно {limits.get('paid_available', 0)}")
-            return limits
-        else:
-            logger.warning(f"⚠️ Не удалось получить лимиты: {response.status_code}")
-            return {
-                "free_remaining": 3,
-                "paid_available": 0,
-                "free_used": 0,
-                "total_purchased": 0
-            }
+            for payment in data.get('payments', []):
+                if payment['status'] == 'succeeded' and payment['payment_id'].startswith('package_'):
+                    # Проверяем, есть ли уже лимиты
+                    limits = check_user_limits_from_api(user_id)
+                    if limits.get('total_purchased', 0) == 0:
+                        # Определяем package_id из payment_id (если не сохранили)
+                        package_id = "3"  # по умолчанию
+                        if "_3_" in payment['payment_id']:
+                            package_id = "3"
+                        elif "_5_" in payment['payment_id']:
+                            package_id = "5" 
+                        elif "_10_" in payment['payment_id']:
+                            package_id = "10"
+                        
+                        # Начисляем лимиты вручную
+                        response2 = requests.post(
+                            f"{API_URL}/api/add-package-limits",
+                            json={
+                                "user_id": user_id,
+                                "payment_id": payment['payment_id'],
+                                "package_id": package_id,
+                                "links": int(package_id),
+                                "amount": payment['amount']
+                            },
+                            timeout=5
+                        )
+                        
+                        if response2.status_code == 200:
+                            logger.info(f"✅ Лимиты автоматически начислены для {payment['payment_id']}")
     except Exception as e:
-        logger.error(f"❌ Ошибка проверки лимитов: {e}")
-        return {
-            "free_remaining": 3,
-            "paid_available": 0,
-            "free_used": 0,
-            "total_purchased": 0
-        }
+        logger.error(f"❌ Ошибка проверки платежей: {e}")
 
 def update_free_used_in_api(user_id: int) -> bool:
     """Обновляет счетчик использованных бесплатных ссылок"""
