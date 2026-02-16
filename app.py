@@ -4629,6 +4629,369 @@ def get_user_limits_endpoint(user_id):
         
     except Exception as e:
         logger.error(f"❌ Ошибка получения лимитов пользователя {user_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/update-paid-used', methods=['POST'])
+def update_paid_used():
+    """Обновляет счетчик использованных платных ссылок"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        
+        if not user_id:
+            return jsonify({"success": False, "error": "Missing user_id"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Просто обновляем updated_at, фактический подсчет идет через COUNT в sexual_invites
+        cursor.execute("""
+        UPDATE user_limits 
+        SET updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = %s
+        """, (user_id,))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"✅ Обновлен счетчик платных ссылок для user_id={user_id}")
+        return jsonify({"success": True, "user_id": user_id}), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка обновления счетчика платных ссылок: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/notify-invite-accepted', methods=['POST'])
+def notify_invite_accepted():
+    """Отправляет уведомление создателю ссылки, что друг прошел тест"""
+    try:
+        data = request.get_json()
+        buyer_id = data.get('buyer_id')
+        friend_name = data.get('friend_name')
+        friend_profile = data.get('friend_profile')
+        invite_id = data.get('invite_id')
+        
+        if not all([buyer_id, friend_name, friend_profile]):
+            return jsonify({"success": False, "error": "Missing required fields"}), 400
+        
+        telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        if not telegram_token:
+            return jsonify({"success": False, "error": "Telegram token not configured"}), 500
+        
+        message = f"""
+👤 <b>Новое отражение!</b>
+
+@{friend_name} прошел тест по вашему приглашению.
+Его профиль: {friend_profile}
+
+🔍 Посмотреть в "Моих отражениях"
+"""
+        
+        url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+        
+        keyboard = [[
+            {
+                "text": "👥 МОИ ОТРАЖЕНИЯ",
+                "callback_data": "my_invites"
+            }
+        ]]
+        
+        response = requests.post(url, json={
+            "chat_id": buyer_id,
+            "text": message,
+            "parse_mode": "HTML",
+            "reply_markup": {
+                "inline_keyboard": keyboard
+            }
+        }, timeout=10)
+        
+        if response.status_code == 200:
+            logger.info(f"✅ Уведомление отправлено создателю {buyer_id}")
+            return jsonify({"success": True}), 200
+        else:
+            logger.error(f"❌ Ошибка отправки уведомления: {response.status_code}")
+            return jsonify({"success": False, "error": "Failed to send notification"}), 500
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в notify_invite_accepted: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/sexual/get-friend-profile/<int:buyer_id>/<int:friend_id>', methods=['GET'])
+def get_friend_profile(buyer_id, friend_id):
+    """Возвращает профиль друга для отображения в 'Моих отражениях'"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT target_name, target_profile_key, status, created_at
+        FROM sexual_invites 
+        WHERE buyer_id = %s AND target_id = %s AND status = 'used'
+        ORDER BY created_at DESC
+        LIMIT 1
+        """, (buyer_id, friend_id))
+        
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if result:
+            return jsonify({
+                "success": True,
+                "friend": {
+                    "name": result[0],
+                    "profile": result[1],
+                    "status": result[2],
+                    "date": result[3].isoformat() if result[3] else None
+                }
+            }), 200
+        else:
+            return jsonify({"success": False, "error": "Friend not found"}), 404
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения профиля друга: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/user/invites-stats/<int:user_id>', methods=['GET'])
+def user_invites_stats(user_id):
+    """Возвращает детальную статистику по приглашениям"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Общая статистика
+        cursor.execute("""
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+            SUM(CASE WHEN status = 'used' THEN 1 ELSE 0 END) as used,
+            SUM(CASE WHEN is_free = true THEN 1 ELSE 0 END) as free_total,
+            SUM(CASE WHEN is_free = false THEN 1 ELSE 0 END) as paid_total
+        FROM sexual_invites 
+        WHERE buyer_id = %s
+        """, (user_id,))
+        
+        stats = cursor.fetchone()
+        
+        # Друзья с профилями
+        cursor.execute("""
+        SELECT target_name, target_profile_key, created_at
+        FROM sexual_invites 
+        WHERE buyer_id = %s AND status = 'used'
+        ORDER BY created_at DESC
+        LIMIT 10
+        """, (user_id,))
+        
+        friends = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "stats": {
+                "total": stats[0],
+                "pending": stats[1],
+                "used": stats[2],
+                "free_used": stats[3],
+                "paid_used": stats[4]
+            },
+            "recent_friends": [
+                {
+                    "name": f[0],
+                    "profile": f[1],
+                    "date": f[2].isoformat() if f[2] else None
+                } for f in friends
+            ]
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения статистики: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/sexual/invite-status/<invite_id>', methods=['GET'])
+def check_invite_status(invite_id):
+    """Проверяет статус конкретного приглашения"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT status, target_name, target_profile_key, created_at
+        FROM sexual_invites 
+        WHERE invite_id = %s
+        """, (invite_id,))
+        
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if result:
+            return jsonify({
+                "success": True,
+                "status": result[0],
+                "friend_name": result[1],
+                "friend_profile": result[2],
+                "created_at": result[3].isoformat() if result[3] else None
+            }), 200
+        else:
+            return jsonify({"success": False, "error": "Invite not found"}), 404
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка проверки статуса приглашения: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/sexual/test-completed', methods=['POST'])
+def sexual_test_completed():
+    """Обрабатывает завершение теста другом"""
+    try:
+        data = request.get_json()
+        invite_id = data.get('invite_id')
+        friend_id = data.get('friend_id')
+        friend_name = data.get('friend_name')
+        friend_profile = data.get('friend_profile')
+        
+        if not all([invite_id, friend_id, friend_name, friend_profile]):
+            return jsonify({"success": False, "error": "Missing required fields"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Получаем buyer_id
+        cursor.execute("""
+        SELECT buyer_id, is_free FROM sexual_invites 
+        WHERE invite_id = %s
+        """, (invite_id,))
+        
+        result = cursor.fetchone()
+        if not result:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Invite not found"}), 404
+        
+        buyer_id = result[0]
+        is_free = result[1]
+        
+        # Обновляем приглашение
+        cursor.execute("""
+        UPDATE sexual_invites 
+        SET status = 'used',
+            target_id = %s,
+            target_name = %s,
+            target_profile_key = %s
+        WHERE invite_id = %s
+        """, (friend_id, friend_name, friend_profile, invite_id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        # Отправляем уведомление создателю
+        try:
+            telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
+            if telegram_token:
+                message = f"""
+👤 <b>Новое отражение!</b>
+
+@{friend_name} прошел тест по вашему приглашению.
+Его профиль: {friend_profile}
+
+🔍 Посмотреть в "Моих отражениях"
+"""
+                url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+                keyboard = [[{"text": "👥 МОИ ОТРАЖЕНИЯ", "callback_data": "my_invites"}]]
+                
+                requests.post(url, json={
+                    "chat_id": buyer_id,
+                    "text": message,
+                    "parse_mode": "HTML",
+                    "reply_markup": {"inline_keyboard": keyboard}
+                }, timeout=5)
+        except Exception as notify_e:
+            logger.error(f"⚠️ Ошибка отправки уведомления: {notify_e}")
+        
+        logger.info(f"✅ Тест завершен: invite_id={invite_id}, friend={friend_name}, profile={friend_profile}")
+        
+        return jsonify({
+            "success": True,
+            "buyer_id": buyer_id,
+            "is_free": is_free
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в sexual_test_completed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/user-limits/<int:user_id>', methods=['GET'])
+def get_user_limits_endpoint(user_id):
+    """Возвращает лимиты пользователя"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Получаем данные из user_limits
+        cursor.execute("""
+        SELECT free_used, total_purchased, updated_at
+        FROM user_limits
+        WHERE user_id = %s
+        """, (user_id,))
+        
+        result = cursor.fetchone()
+        
+        limits = {
+            "free_used": 0,
+            "total_purchased": 0,
+            "updated_at": None
+        }
+        
+        if result:
+            limits = {
+                "free_used": result[0] or 0,
+                "total_purchased": result[1] or 0,
+                "updated_at": result[2].isoformat() if result[2] else None
+            }
+        
+        # Считаем сколько платных ссылок уже использовано
+        cursor.execute("""
+        SELECT COUNT(*) FROM sexual_invites 
+        WHERE buyer_id = %s AND is_free = false
+        """, (user_id,))
+        
+        paid_used = cursor.fetchone()[0] or 0
+        
+        cursor.close()
+        conn.close()
+        
+        # Формируем ответ
+        free_total = 3
+        free_used = limits["free_used"]
+        free_remaining = max(0, free_total - free_used)
+        
+        total_purchased = limits["total_purchased"]
+        paid_available = max(0, total_purchased - paid_used)
+        
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "limits": {
+                "free_used": free_used,
+                "free_remaining": free_remaining,
+                "paid_available": paid_available,
+                "total_purchased": total_purchased,
+                "used_purchased": paid_used,
+                "free_total": free_total
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения лимитов пользователя {user_id}: {e}")
         return jsonify({
             "success": False,
             "error": str(e)
