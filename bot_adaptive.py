@@ -1702,12 +1702,14 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Основная команда /start с поддержкой deep link для 18+"""
+    """Основная команда /start с поддержкой deep link для 18+ и проверкой существующего пользователя"""
     user = update.effective_user
-    logger.info(f"🚀 /start вызван пользователем {user.id} (@{user.username})")
+    user_id = user.id
+    user_name = user.first_name or "Пользователь"
+    logger.info(f"🚀 /start вызван пользователем {user_id} (@{user.username})")
     
     # Инициализируем тестовые данные для нового пользователя
-    init_test_data(user.id)
+    init_test_data(user_id)
     
     # ===== 18+ DEEP LINK =====
     if context.args and context.args[0].startswith("sex_"):
@@ -1715,6 +1717,53 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await sexual_invite_start(update, context)
     # ===== КОНЕЦ 18+ =====
     
+    # ===== ПРОВЕРКА СУЩЕСТВУЮЩЕГО ПОЛЬЗОВАТЕЛЯ =====
+    # Получаем профиль пользователя из контекста
+    profile = context.user_data.get("profile")
+    profile_data = context.user_data.get("profile_data")
+    
+    # Проверяем, проходил ли пользователь тест (есть ли у него профиль)
+    if profile and profile.get('display_name'):
+        # Пользователь уже проходил тест
+        profile_code = profile.get('display_name', 'SA-5_INT')
+        
+        logger.info(f"👤 Пользователь {user_id} уже проходил тест, профиль: {profile_code}")
+        
+        message = f"""
+🧠 <b>ВИРТУАЛЬНЫЙ ПСИХОЛОГ ВАРИАТИКА</b>
+
+👋 <b>С ВОЗВРАЩЕНИЕМ, {user_name}!</b>
+
+Я помню вас! 🎯
+Вы уже проходили исследование, и я определил ваш профиль:
+
+📊 <b>ВАШ ПРОФИЛЬ:</b> <code>{profile_code}</code>
+
+━━━━━━━━━━━━━━━━━━━━
+❓ <b>ЧТО ДЕЛАЕМ ДАЛЬШЕ?</b>
+
+Вы можете:
+🔄 <b>Пройти тест заново</b> — если хотите перепроверить себя или что-то изменилось
+👥 <b>Заглянуть в «Мои отражения»</b> — посмотреть, кто из друзей уже прошёл тест по вашим ссылкам
+
+━━━━━━━━━━━━━━━━━━━━
+⬇️ <b>ВЫБЕРИТЕ ДЕЙСТВИЕ:</b>
+"""
+        keyboard = [
+            [InlineKeyboardButton("🔄 ПРОЙТИ ТЕСТ ЗАНОВО", callback_data="restart_test")],
+            [InlineKeyboardButton("👥 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Отправляем сообщение в зависимости от того, откуда пришел запрос
+        if update.message:
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+        elif update.callback_query:
+            await update.callback_query.edit_message_text(message, reply_markup=reply_markup, parse_mode="HTML")
+        
+        return RESULTS  # возвращаем состояние RESULTS
+    
+    # ===== ЕСЛИ ПОЛЬЗОВАТЕЛЬ НОВЫЙ =====
     current_state = context.user_data.get("conversation_state")
     if current_state is not None:
         logger.debug(f"🔄 Сброс состояния пользователя {user.id}")
@@ -1722,7 +1771,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
     
     welcome_text = (
-        f"{user.first_name}, привет! 👋\n\n"
+        f"{user_name}, привет! 👋\n\n"
         f"<b>🧠 Я — Виртуальный психолог Вариатика.</b>\n\n"
         f"🕒 За 15 минут узнаете о себе то, что обычно остаётся невидимым.\n"
         f"👁️ Увидите скрытые паттерны, которые управляют вашими решениями.\n\n"
@@ -1745,154 +1794,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         welcome_text,
         reply_markup=reply_markup,
-        parse_mode="HTML"  # 👈 ЭТО РЕШАЕТ ПРОБЛЕМУ
+        parse_mode="HTML"
     )
     return None
-
-async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возврат в главное меню"""
-    log_callback("main_menu_callback", update, context)
-    query = update.callback_query
-    await query.answer("🏠 Возврат в главное меню...")
-    
-    try:
-        await query.message.delete()
-        logger.info(f"✅ User {update.effective_user.id}: Удалено сообщение при main_menu")
-    except Exception as e:
-        logger.warning(f"⚠️ User {update.effective_user.id}: Не удалось удалить сообщение: {e}")
-    
-    context.user_data.clear()
-    logger.info(f"🧹 User {update.effective_user.id}: user_data полностью очищена")
-    
-    user = update.effective_user
-    
-    welcome_text = (
-        f"{user.first_name}, привет! 👋\n\n"
-        f"🧠 Я — Виртуальный психолог Вариатика.\n\n"
-        f"🕒 За 15 минут узнаете о себе то, что обычно остаётся невидимым.\n"
-        f"👁️ Увидите скрытые паттерны, которые управляют вашими решениями.\n\n"
-        f"⚡ А главное — узнаете то, о себе знать действительно нужно.\n"
-        f"🎯 То, что даст точку опоры для роста.\n\n"
-        f"📊 Вас ждёт:\n\n"
-        f"1️⃣ Адаптивный тест (4 этапа)\n"
-        f"   ↳ Поймёте свой уникальный профиль\n\n"
-        f"2️⃣ Персональные материалы\n"
-        f"   ↳ Узнаете куда направлять усилия\n\n"
-        f"🚀 Начнём исследование?"
-    )
-    
-    keyboard = [
-        [InlineKeyboardButton("🚀 Начать исследование →", callback_data="start_test")],
-        [InlineKeyboardButton("🤔 А зачем это вообще?", callback_data="why_details")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await context.bot.send_message(
-    chat_id=update.effective_chat.id,
-    text=welcome_text,
-    reply_markup=reply_markup,
-    parse_mode="HTML"  # 
-)
-    
-    logger.info(f"✅ User {update.effective_user.id}: main_menu_callback → ConversationHandler.END")
-    return ConversationHandler.END
-
-async def why_details_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик кнопки 'Детали'"""
-    log_callback("why_details_callback", update, context)
-    query = update.callback_query
-    await query.answer()
-    
-    details_text = """🎭 Немного правды с юмором...
-
-Как говорится: 'Нет здоровых, есть не дообследованные!' 
-Я ваш виртуальный психолог — дообследую 😉
-
-🧠 Что я умею (кроме шуток):
-• Вижу паттерны там, где вы видите хаос
-• Нахожу систему там, где вы видите случайности  
-• Обнаруживаю 'прошивку' вашего восприятия
-
-🎯 Конкретно в тесте:
-
-1️⃣ Конфигурация восприятия
-   ↳ Как ваш разум фильтрует реальность
-
-2️⃣ Конфигурация мышления  
-   ↳ Как обрабатываете информацию
-
-3️⃣ Конфигурация поведения
-   ↳ Что делаете 'на автомате'
-
-4️⃣ Точка роста
-   ↳ Куда двигаться осознанно
-
-⏱ 15 минут вместо лет терапии!
-Потому что в 21 веке даже самопознание должно быть эффективным!"""
-    
-    keyboard = [[InlineKeyboardButton("👌 Понял(а). Начинаем →", callback_data="start_test")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(details_text, reply_markup=reply_markup)
-
-async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало теста"""
-    log_callback("start_test", update, context)
-    query = update.callback_query
-    await query.answer()
-    
-    # ✅ СОХРАНЯЕМ ВАЖНЫЕ ДАННЫЕ ПЕРЕД ОЧИСТКОЙ
-    current_invite = context.user_data.get("current_invite")
-    saved_limits = context.user_data.get("invite_limits", {})
-    saved_invites = context.user_data.get("sexual_invites", [])
-    
-    logger.info(f"🔍 start_test: current_invite = {current_invite}")
-    logger.info(f"🔍 start_test: saved_limits = {saved_limits}")
-    
-    # Очищаем данные пользователя
-    context.user_data.clear()
-    
-    # ✅ ВОССТАНАВЛИВАЕМ ВАЖНЫЕ ДАННЫЕ
-    if current_invite:
-        context.user_data["current_invite"] = current_invite
-        logger.info(f"✅ current_invite сохранен при старте теста: {current_invite}")
-    
-    if saved_limits:
-        context.user_data["invite_limits"] = saved_limits
-        logger.info(f"✅ invite_limits сохранены: {saved_limits}")
-    
-    if saved_invites:
-        context.user_data["sexual_invites"] = saved_invites
-        logger.info(f"✅ sexual_invites сохранены: {len(saved_invites)} шт.")
-    
-    # Инициализируем новые данные для теста
-    context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
-    context.user_data["stage1_current"] = 0
-    context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
-    context.user_data["stage3_level_scores"] = []
-    context.user_data["stage4_dilts_answers"] = []
-    context.user_data["processing"] = False
-    context.user_data["has_shared"] = False
-    
-    # Инициализируем хранилище приглашений (обновляем из БД)
-    user_id = query.from_user.id
-    context.user_data["sexual_invites"] = get_user_invites_from_api(user_id)
-    
-    logger.info(f"User {update.effective_user.id} начал знакомство с психологом")
-    
-    return await show_stage_1_intro(update, context)
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отмена теста"""
-    logger.info(f"❌ Тест отменен пользователем {update.effective_user.id}")
-    await update.message.reply_text(
-        f"🧠 *Исследование отменено.*\n\n"
-        f"Если захотите продолжить наше знакомство, просто напишите:\n"
-        f"`/start`\n\n"
-        f"*Всегда готов помочь,\nВаш виртуальный психолог Вариатика* 🧠",
-        parse_mode='Markdown'
-    )
-    return ConversationHandler.END
 
 # ============================================
 # ГЛАВНАЯ ФУНКЦИЯ С ИСПРАВЛЕННЫМ CONVERSATIONHANDLER
