@@ -3423,7 +3423,7 @@ def save_package_purchase():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Создаем таблицу для хранения покупок пакетов, если её нет
+        # Создаем таблицу для хранения покупок пакетов
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS package_purchases (
             id SERIAL PRIMARY KEY,
@@ -3437,36 +3437,44 @@ def save_package_purchase():
         )
         """)
         
-        # Сохраняем покупку
+        # Создаем таблицу для хранения лимитов пользователя
         cursor.execute("""
-        INSERT INTO package_purchases (user_id, payment_id, package_id, links, amount, purchased_at)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (payment_id) DO UPDATE SET
-            status = 'confirmed'
-        RETURNING id
-        """, (user_id, payment_id, package_id, links, amount, purchased_at))
-        
-        purchase_id = cursor.fetchone()
-        conn.commit()
-        
-        # Также обновляем лимиты пользователя в отдельной таблице
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS user_purchased_links (
+        CREATE TABLE IF NOT EXISTS user_limits (
             user_id BIGINT PRIMARY KEY,
+            free_used INTEGER DEFAULT 0,
             total_purchased INTEGER DEFAULT 0,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
         
+        # Сохраняем покупку
         cursor.execute("""
-        INSERT INTO user_purchased_links (user_id, total_purchased)
+        INSERT INTO package_purchases (user_id, payment_id, package_id, links, amount, purchased_at)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (payment_id) DO NOTHING
+        RETURNING id
+        """, (user_id, payment_id, package_id, links, amount, purchased_at))
+        
+        purchase_result = cursor.fetchone()
+        
+        # Обновляем лимиты пользователя
+        cursor.execute("""
+        INSERT INTO user_limits (user_id, total_purchased)
         VALUES (%s, %s)
         ON CONFLICT (user_id) DO UPDATE SET
-            total_purchased = user_purchased_links.total_purchased + EXCLUDED.total_purchased,
+            total_purchased = user_limits.total_purchased + EXCLUDED.total_purchased,
             updated_at = CURRENT_TIMESTAMP
         """, (user_id, links))
         
         conn.commit()
+        
+        # Проверяем, что таблицы создались
+        cursor.execute("""
+        SELECT tablename FROM pg_tables WHERE schemaname='public'
+        """)
+        tables = cursor.fetchall()
+        logger.info(f"📊 Таблицы в БД: {[t[0] for t in tables]}")
+        
         cursor.close()
         conn.close()
         
@@ -3474,14 +3482,14 @@ def save_package_purchase():
         
         return jsonify({
             "success": True,
-            "purchase_id": purchase_id[0] if purchase_id else None,
+            "purchase_id": purchase_result[0] if purchase_result else None,
             "message": f"Пакет {package_id} на {links} ссылок добавлен"
         }), 200
         
     except Exception as e:
         logger.error(f"❌ Ошибка сохранения покупки пакета: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
-
+        
 @app.route('/api/sexual/create-invite', methods=['POST'])
 def api_sexual_create_invite():
     """Создает приглашение для 18+ профиля (используется ботом)"""
