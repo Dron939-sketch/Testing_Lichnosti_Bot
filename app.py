@@ -4566,6 +4566,71 @@ def update_free_used():
         logger.error(f"❌ Ошибка обновления free_used: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/recovery/fix-all-packages', methods=['GET'])
+def fix_all_packages():
+    """Восстанавливает все пропущенные пакеты"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Находим все успешные платежи за пакеты, которых нет в package_purchases
+        cursor.execute("""
+        SELECT p.payment_id, p.user_id, p.amount, p.created_at
+        FROM payments p
+        LEFT JOIN package_purchases pp ON p.payment_id = pp.payment_id
+        WHERE p.payment_id LIKE 'package_%'
+        AND p.status = 'succeeded'
+        AND pp.id IS NULL
+        """)
+        
+        missing = cursor.fetchall()
+        fixed_count = 0
+        
+        for payment_id, user_id, amount, created_at in missing:
+            # Определяем package_id
+            if amount == 299:
+                package_id = "3"
+                links = 3
+            elif amount == 499:
+                package_id = "5"
+                links = 5
+            elif amount == 899:
+                package_id = "10"
+                links = 10
+            else:
+                continue
+            
+            # Добавляем в package_purchases
+            cursor.execute("""
+            INSERT INTO package_purchases (user_id, payment_id, package_id, links, amount, purchased_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (payment_id) DO NOTHING
+            """, (user_id, payment_id, package_id, links, amount, created_at))
+            
+            # Обновляем user_limits
+            cursor.execute("""
+            INSERT INTO user_limits (user_id, total_purchased)
+            VALUES (%s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET
+                total_purchased = user_limits.total_purchased + EXCLUDED.total_purchased,
+                updated_at = CURRENT_TIMESTAMP
+            """, (user_id, links))
+            
+            fixed_count += 1
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "fixed_count": fixed_count,
+            "message": f"✅ Восстановлено {fixed_count} пакетов"
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/debug-all-payments', methods=['GET'])
 def debug_all_payments():
     """Показывает все платежи из БД"""
