@@ -1829,20 +1829,13 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # ===== 2. ПОТОМ ПОЛУЧАЕМ ЛИМИТЫ =====
         limits = check_user_limits_from_api(user_id)
-        
-        context.user_data["conversation_state"] = INVITES_LIST
-        
-        # ===== 1. ПОЛУЧАЕМ ЛИМИТЫ ИЗ БД ЧЕРЕЗ НОВУЮ ФУНКЦИЮ =====
-        limits = check_user_limits_from_api(user_id)
         free_remaining = limits.get('free_remaining', 3)
         paid_available = limits.get('paid_available', 0)
         free_used = limits.get('free_used', 0)
         
-        logger.info(f"📊 Пользователь {user_id}: бесплатных осталось {free_remaining}, платных доступно {paid_available}")
+        context.user_data["conversation_state"] = INVITES_LIST
         
-        # ===== 2. ПОЛУЧАЕМ ТЕКУЩИЕ ПРИГЛАШЕНИЯ =====
-        current_invites = get_user_invites_from_api(user_id)
-        context.user_data["sexual_invites"] = current_invites
+        logger.info(f"📊 Пользователь {user_id}: бесплатных осталось {free_remaining}, платных доступно {paid_available}")
         
         # ===== 3. ПРОВЕРЯЕМ ЛИМИТЫ =====
         if free_remaining > 0:
