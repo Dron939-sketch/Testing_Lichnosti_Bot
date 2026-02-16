@@ -1433,13 +1433,6 @@ def init_test_data(user_id: int):
         logger.error(f"❌ Ошибка инициализации тестовых данных: {e}")
 
 # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
-def get_user_limits(context: ContextTypes.DEFAULT_TYPE) -> dict:
-    return context.user_data.setdefault("invite_limits", {
-        "free_used": 0,
-        "total_purchased": 0,
-        "paid_packages": []
-    })
-
 def can_create_invite(user_limits: dict, total_invites: int) -> tuple:
     free_used = user_limits["free_used"]
     
