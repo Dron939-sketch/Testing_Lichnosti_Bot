@@ -752,7 +752,7 @@ def create_all_tables():
         "sexual_access": create_sexual_access_tables(),
         "purchases_4f": create_4f_tables()
     }
-    
+    add_columns_to_sexual_invites()
     success_count = sum(1 for result in results.values() if result)
     
     if success_count == len(results):
