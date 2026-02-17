@@ -783,12 +783,21 @@ def update_invite_in_api(invite_id: str, friend_data: dict) -> bool:
     try:
         logger.info(f"📤 ВЫЗОВ update_invite_in_api для {invite_id}")
         logger.info(f"📦 friend_data = {friend_data}")
+        
+        # Преобразуем ключи в нужный формат для API
+        api_data = {
+            "friend_id": friend_data.get("target_id") or friend_data.get("friend_id"),
+            "friend_name": friend_data.get("target_name") or friend_data.get("friend_name"),
+            "friend_profile": friend_data.get("target_profile") or friend_data.get("friend_profile")
+        }
+        
+        logger.info(f"📦 Данные для API: {api_data}")
         logger.info(f"📡 API_URL = {API_URL}")
         logger.info(f"🔗 Полный URL: {API_URL}/api/sexual/update-invite/{invite_id}")
         
         response = requests.post(
             f"{API_URL}/api/sexual/update-invite/{invite_id}",
-            json=friend_data,
+            json=api_data,  # ← ИСПОЛЬЗУЕМ ПРЕОБРАЗОВАННЫЕ ДАННЫЕ
             timeout=5
         )
         
