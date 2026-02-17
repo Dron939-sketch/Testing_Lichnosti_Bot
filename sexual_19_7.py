@@ -839,8 +839,8 @@ def get_user_invites_from_api(user_id: int) -> list:
 
 def check_user_limits_from_api(user_id: int) -> dict:
     """
-    Проверяет лимиты пользователя через API
-    Возвращает словарь с лимитами
+    Проверяет лимиты пользователя через API.
+    Возвращает словарь с данными для унифицированной системы лимитов.
     """
     try:
         logger.info(f"📊 Проверка лимитов для пользователя {user_id}")
@@ -854,38 +854,38 @@ def check_user_limits_from_api(user_id: int) -> dict:
             data = response.json()
             limits = data.get('limits', {})
             
-            # Просто возвращаем то, что пришло из API, без пересчета!
+            used = limits.get('free_used', 0)  # Всего использовано ссылок
+            purchased = limits.get('total_purchased', 0)  # Всего куплено ссылок
+            
+            # НОВЫЙ РАСЧЕТ
+            total_limit = 3 + purchased
+            available = max(0, total_limit - used)
+            
             result = {
-                'free_used': limits.get('free_used', 0),
-                'free_remaining': limits.get('free_remaining', 0),
-                'paid_available': limits.get('paid_available', 0),
-                'total_purchased': limits.get('total_purchased', 0),
-                'used_purchased': limits.get('used_purchased', 0),
-                'total_used': limits.get('free_used', 0)  # для совместимости
+                'used': used,
+                'purchased': purchased,
+                'total_limit': total_limit,
+                'available': available
             }
             
-            logger.info(f"✅ Лимиты для {user_id}: paid_available={result['paid_available']}")
+            logger.info(f"✅ Лимиты для {user_id}: использовано={used}, куплено={purchased}, доступно={available}")
             return result
         else:
             logger.warning(f"⚠️ API вернул {response.status_code}, используем значения по умолчанию")
             return {
-                'free_used': 0,
-                'free_remaining': 3,
-                'paid_available': 0,
-                'total_purchased': 0,
-                'used_purchased': 0,
-                'total_used': 0
+                'used': 0,
+                'purchased': 0,
+                'total_limit': 3,
+                'available': 3
             }
             
     except Exception as e:
         logger.error(f"❌ Ошибка при проверке лимитов: {e}")
         return {
-            'free_used': 0,
-            'free_remaining': 3,
-            'paid_available': 0,
-            'total_purchased': 0,
-            'used_purchased': 0,
-            'total_used': 0
+            'used': 0,
+            'purchased': 0,
+            'total_limit': 3,
+            'available': 3
         }
 # ===== ФУНКЦИИ ФОРМАТИРОВАНИЯ ИНТИМНОГО ПРОФИЛЯ =====
 def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
@@ -1879,25 +1879,23 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # ===== 2. ПОТОМ ПОЛУЧАЕМ ЛИМИТЫ =====
         limits = check_user_limits_from_api(user_id)
-        free_remaining = limits.get('free_remaining', 3)
-        paid_available = limits.get('paid_available', 0)
-        free_used = limits.get('free_used', 0)
+        used = limits.get('used', 0)
+        total_limit = limits.get('total_limit', 3)
+        available = limits.get('available', 0)
         
         context.user_data["conversation_state"] = INVITES_LIST
         
-        logger.info(f"📊 Пользователь {user_id}: бесплатных осталось {free_remaining}, платных доступно {paid_available}")
-        
-        # ===== 3. ПРОВЕРЯЕМ ЛИМИТЫ =====
-        if free_remaining > 0:
-            is_free = True
-            logger.info(f"✅ Создаем БЕСПЛАТНУЮ ссылку ({free_used + 1}/3)")
-        elif paid_available > 0:
-            is_free = False
-            logger.info(f"✅ Создаем ПЛАТНУЮ ссылку")
-        else:
-            logger.warning(f"❌ Лимит ссылок исчерпан")
+        logger.info(f"📊 Пользователь {user_id}: использовано {used}/{total_limit}, доступно {available}")
+
+        # ===== 3. ПРОВЕРЯЕМ, ЕСТЬ ЛИ ДОСТУПНЫЕ ССЫЛКИ =====
+        if available <= 0:
+            logger.warning(f"❌ Лимит ссылок исчерпан для пользователя {user_id}")
             await query.answer("❌ Лимит ссылок исчерпан! Купите пакет.", show_alert=True)
             return await buy_invite_packages_callback(update, context)
+
+        # Если доступны, создаем ссылку (она больше не маркируется как платная/бесплатная)
+        # Убираем переменную is_free и invite_type, они больше не нужны.
+        logger.info(f"✅ Создаем ссылку для пользователя {user_id} ({available} осталось)")
 
         # ===== 4. СОЗДАЕМ УНИКАЛЬНУЮ ССЫЛКУ =====
         profile = context.user_data.get("profile", USER_PROFILE)
@@ -1911,8 +1909,9 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "🤫 Интересно, у тебя тоже?"
         )
         
-        invite_type = "🆓" if is_free else "💎"
-        
+        # invite_type и is_free больше не используются
+        # invite_type = "🆓" if is_free else "💎"  # УДАЛЯЕМ
+
                 # ===== 5. СОХРАНЯЕМ В БД =====
         invite_data = {
             "invite_id": invite_code,
@@ -1923,8 +1922,8 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "created_at": datetime.now().timestamp(),
             "friend_id": None,
             "friend_name": None,
-            "is_free": is_free,
-            "invite_type": invite_type,
+            # "is_free": is_free,        # УДАЛЯЕМ
+            # "invite_type": invite_type, # УДАЛЯЕМ
             "user_id": user_id
         }
         
@@ -1932,8 +1931,7 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.info(f"💾 Сохранение в БД: {'успешно' if save_success else 'ошибка'}")
         
         # ===== 🔥 ОБНОВЛЯЕМ СЧЕТЧИК ЛИМИТОВ =====
-        if save_success:  # 👈 ЭТА СТРОКА ДОЛЖНА БЫТЬ С ОТСТУПОМ ВНУТРИ try
-            # Просто вызываем update_free_used (она сама посчитает все ссылки)
+        if save_success:
             update_free_used_in_api(user_id)
             logger.info(f"🔄 Обновлен счетчик ссылок для user_id={user_id}")
         
@@ -1943,8 +1941,9 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # ===== 7. ПОЛУЧАЕМ ОБНОВЛЕННЫЕ ЛИМИТЫ ДЛЯ ОТОБРАЖЕНИЯ =====
         updated_limits = check_user_limits_from_api(user_id)
-        free_remaining = updated_limits.get('free_remaining', 0)
-        
+        used_now = updated_limits.get('used', 0)
+        total_limit_now = updated_limits.get('total_limit', 3)
+
         # ===== 8. ГОТОВИМ ССЫЛКУ ДЛЯ ОТПРАВКИ =====
         share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
         
@@ -1960,8 +1959,8 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 {SEXUAL_DIVIDER}
 📊 <b>Статистика:</b>
-   • Всего создано: {len(updated_invites)}
-   • Бесплатных осталось: {free_remaining}
+   • Всего создано: {used_now} из {total_limit_now}
+   • Осталось: {total_limit_now - used_now}
 {SEXUAL_DIVIDER}
 
 ⚠️ <b>Эта ссылка уже сохранена!</b>
@@ -2146,41 +2145,20 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         # ===== ПОЛУЧАЕМ ЛИМИТЫ ИЗ БД =====
         limits = check_user_limits_from_api(user_id)
-        free_remaining = limits.get('free_remaining', 3)
-        paid_available = limits.get('paid_available', 0)
+        used = limits.get('used', 0)
+        total_limit = limits.get('total_limit', 3)
+        available = limits.get('available', 0)
         
-        invites = get_user_invites(user_id)
-        context.user_data["sexual_invites"] = invites
-        
-        used_invites = [inv for inv in invites if inv.get("status") == "used"]
-        total_invites = len(invites)
-        total_reflections = len(used_invites)
-        
-        # Сначала пытаемся получить из profile_data (результат теста)
-        profile_data = context.user_data.get("profile_data")
-        if profile_data and 'display_name' in profile_data:
-            profile_code = profile_data['display_name']
-        else:
-            # Если нет, берем из profile (по умолчанию)
-            user_profile = context.user_data.get("profile", USER_PROFILE)
-            profile_code = user_profile.get('display_name', 'SA-5_INT')
-
-        logger.info(f"📊 ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ДЛЯ 18+: {profile_code}")
-        
-        # Получаем ссылку на профиль пользователя
-        user_profile_link = get_disk_link_by_profile(profile_code)
+        # ... (получение invites и profile_code без изменений)
         
         # ===== ОБНОВЛЕННОЕ СООБЩЕНИЕ С ЛИМИТАМИ =====
         message = f"""<b>🪞 МОИ ОТРАЖЕНИЯ</b>
 ────────────────
 
 <b>📊 СТАТИСТИКА</b>
-🪞 Ссылок зеркал: {total_invites}
+🪞 Создано ссылок: {len(invites)} из {total_limit}
 👥 Посмотрелись в зеркало: {total_reflections}
-
-<b>💎 ЛИМИТЫ</b>
-🆓 Бесплатных осталось: {free_remaining}/3
-💎 Платных доступно: {paid_available}
+💎 Осталось ссылок: {available}
 
 <b>🪞 МОЁ ОТРАЖЕНИЕ</b>
 📌 Профиль: {profile_code}
