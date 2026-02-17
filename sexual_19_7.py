@@ -670,13 +670,12 @@ def save_invite_to_api(invite_data: dict) -> bool:
             "buyer_id": invite_data['user_id'],
             "target_id": 0,
             "target_name": None,
-            "target_profile_key": invite_data['profile_code'],
-            "is_free": invite_data.get('is_free', True),        # 👈 НОВОЕ ПОЛЕ
-            "invite_type": invite_data.get('invite_type', '🆓')  # 👈 НОВОЕ ПОЛЕ
+            "target_profile_key": invite_data['profile_code']
+            # is_free и invite_type удалены - больше не используются
         }
         
         # Добавляем логирование для отладки
-        logger.info(f"📤 Отправка в API: is_free={api_data['is_free']}, type={api_data['invite_type']}")
+        logger.info(f"📤 Отправка в API: profile_code={api_data['target_profile_key']}")
         
         response = requests.post(
             f"{API_URL}/api/sexual/create-invite",
@@ -1434,10 +1433,10 @@ def get_user_invites(user_id: int) -> list:
     """Получает список приглашений пользователя из БД"""
     return get_user_invites_from_api(user_id)
 
-def count_free_friends(user_id: int) -> int:
-    """Считает количество друзей, прошедших тест по бесплатным ссылкам"""
-    invites = get_user_invites_from_api(user_id)  # 👈 ТОЛЬКО ИЗ БД
-    return len([inv for inv in invites if inv.get("status") == "used" and inv.get("is_free") == True])
+def count_friends(user_id: int) -> int:
+    """Считает общее количество друзей, прошедших тест"""
+    invites = get_user_invites_from_api(user_id)
+    return len([inv for inv in invites if inv.get("status") == "used"])
 
 def init_test_data(user_id: int):
     try:
@@ -1488,18 +1487,6 @@ def init_test_data(user_id: int):
         logger.error(f"❌ Ошибка инициализации тестовых данных: {e}")
 
 # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
-def can_create_invite(user_limits: dict, total_invites: int) -> tuple:
-    free_used = user_limits["free_used"]
-    
-    if free_used < FREE_INVITE_LIMIT:
-        remaining = FREE_INVITE_LIMIT - free_used
-        return True, True, f"Осталось бесплатных: {remaining}"
-    
-    paid_available = user_limits["total_purchased"] - (total_invites - FREE_INVITE_LIMIT)
-    if paid_available > 0:
-        return True, False, f"Осталось платных: {paid_available}"
-    
-    return False, False, "Лимит исчерпан. Купите пакет ссылок."
 
 # ============================================
 # 🧠 ЭКРАН РЕЗУЛЬТАТОВ
@@ -2143,13 +2130,29 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception as e:
             print(f"❌ Ошибка прямого запроса: {e}")
 
-        # ===== ПОЛУЧАЕМ ЛИМИТЫ ИЗ БД =====
+                # ===== ПОЛУЧАЕМ ЛИМИТЫ ИЗ БД =====
         limits = check_user_limits_from_api(user_id)
         used = limits.get('used', 0)
         total_limit = limits.get('total_limit', 3)
         available = limits.get('available', 0)
         
-        # ... (получение invites и profile_code без изменений)
+        # Получаем приглашения пользователя
+        invites = get_user_invites_from_api(user_id)
+        context.user_data["sexual_invites"] = invites
+        
+        used_invites = [inv for inv in invites if inv.get("status") == "used"]
+        total_invites = len(invites)
+        total_reflections = len(used_invites)
+        
+        # Получаем профиль пользователя
+        profile_data = context.user_data.get("profile_data")
+        if profile_data and 'display_name' in profile_data:
+            profile_code = profile_data['display_name']
+        else:
+            user_profile = context.user_data.get("profile", USER_PROFILE)
+            profile_code = user_profile.get('display_name', 'SA-5_INT')
+        
+        user_profile_link = get_disk_link_by_profile(profile_code)
         
         # ===== ОБНОВЛЕННОЕ СООБЩЕНИЕ С ЛИМИТАМИ =====
         message = f"""<b>🪞 МОИ ОТРАЖЕНИЯ</b>
@@ -2773,7 +2776,7 @@ async def friend_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         friend_name = friend_data.get("friend_name", "друг").replace('@', '')
         friend_profile = friend_data.get("friend_profile", "SA-3_CON")
         access_status = friend_data.get("access_status", "free")
-        free_count = count_free_friends(query.from_user.id)
+        free_count = count_friends(query.from_user.id)
         inv_type = friend_data.get("invite_type", "🆓")
         
         if access_status == "locked" or (free_count >= FREE_FRIEND_LIMIT and not friend_data.get("access_paid")):
@@ -2833,7 +2836,7 @@ async def show_payment_access_screen(update: Update, context: ContextTypes.DEFAU
         
         friend_name = friend_data.get("friend_name", "друг").replace('@', '')
         friend_profile = friend_data.get("friend_profile", "SA-3_CON")
-        free_count = count_free_friends(query.from_user.id)
+        free_count = count_friends(query.from_user.id)
         
         message = f"""
 🔒 <b>{friend_name} ЗАБЛОКИРОВАН</b>
