@@ -3319,9 +3319,8 @@ __all__ = [
     
     # Функции для приглашений
     'get_user_invites',
-    'count_free_friends',
+    'count_friends',
     'init_test_data',
-    'can_create_invite',
     
     # Основные callback-обработчики
     'show_my_sexual_profile',
