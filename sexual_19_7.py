@@ -1990,16 +1990,15 @@ async def confirm_send_callback(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             message_text = pending.get('message', '✨ Есть одна штука...')
         
-        # Формируем ссылку для отправки
+        # Формируем ссылку для отправки через tg:// для открытия выбора контактов
+        # Кодируем текст для URL
+        encoded_text = urllib.parse.quote(f"{message_text}\n\nhttps://t.me/{BOT_USERNAME}?start={invite_code}")
+        
+        # Специальная ссылка для открытия выбора контакта в Telegram
         share_url = f"https://t.me/share/url?url=https://t.me/{BOT_USERNAME}?start={invite_code}&text={urllib.parse.quote(message_text)}"
         
-        # Отправляем пользователю сообщение с кнопкой отправки
-        await query.message.reply_text(
-            f"🔗 Нажмите кнопку ниже, чтобы отправить ссылку другу:",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("📤 ОТПРАВИТЬ", url=share_url)
-            ]])
-        )
+        # Альтернативный вариант с tg:// (работает в мобильных приложениях)
+        tg_share_url = f"tg://msg_url?url=https://t.me/{BOT_USERNAME}?start={invite_code}&text={urllib.parse.quote(message_text)}"
         
         # Получаем свежие лимиты после отправки
         user_id = query.from_user.id
@@ -2008,7 +2007,7 @@ async def confirm_send_callback(update: Update, context: ContextTypes.DEFAULT_TY
         total_limit_now = updated_limits.get('total_limit', 3)
         available_now = updated_limits.get('available', 0)
         
-        # Обновляем сообщение с новой статистикой
+        # Обновляем сообщение с новой статистикой и ДВУМЯ кнопками отправки
         text = f"""
 🔞 <b>✨ ССЫЛКА ОТПРАВЛЕНА! ✨</b>
 
@@ -2029,6 +2028,8 @@ async def confirm_send_callback(update: Update, context: ContextTypes.DEFAULT_TY
 """
         
         keyboard = [
+            [InlineKeyboardButton("📤 ОТПРАВИТЬ (Telegram Web)", url=share_url)],
+            [InlineKeyboardButton("📱 ОТПРАВИТЬ (моб. приложение)", url=tg_share_url)],
             [InlineKeyboardButton("🪞 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
             [InlineKeyboardButton("🔞 В ПРОФИЛЬ", callback_data="back_to_sexual_profile")]
         ]
@@ -2045,7 +2046,6 @@ async def confirm_send_callback(update: Update, context: ContextTypes.DEFAULT_TY
         logger.error(f"❌ Ошибка в confirm_send_callback: {e}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
         return INVITES_LIST
-
         
 # ============================================
 # ✅ ПОДТВЕРЖДЕНИЕ ОТПРАВКИ
