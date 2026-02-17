@@ -1912,7 +1912,7 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         invite_data = {
             "invite_id": invite_code,
             "link": invite_url,
-            "message": invite_message,
+            "message": display_message,
             "profile_code": profile['display_name'],
             "status": "active",
             "created_at": datetime.now().timestamp(),
@@ -1942,7 +1942,7 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         # ===== 9. СОХРАНЯЕМ ДАННЫЕ ССЫЛКИ =====
         context.user_data["pending_invite"] = {
             "invite_code": invite_code,
-            "message": invite_message,
+            "message": display_message, 
             "url": invite_url
         }
         
