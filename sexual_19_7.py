@@ -1953,7 +1953,7 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 🔗 <code>{invite_url}</code>
 
 💬 <b>Текст сообщения:</b>
-<blockquote>{invite_message}</blockquote>
+<blockquote>{display_message}</blockquote>
 
 {SEXUAL_DIVIDER}
 📊 <b>Статистика:</b>
