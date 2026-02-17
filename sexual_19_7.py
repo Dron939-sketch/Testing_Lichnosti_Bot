@@ -1674,6 +1674,7 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
 # 🔗 ОБРАБОТЧИК ПРИГЛАШЕНИЙ (DEEP LINK)
 # ============================================
 
+
 async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Обработчик приглашений для 18+ модуля
@@ -1711,17 +1712,24 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return RESULTS_SCREEN
         
-        
-        # Сохраняем информацию о приглашении в данные пользователя
+        # 👇 ВАЖНО: Сохраняем информацию о приглашении
         buyer_id = invite.get("user_id") or invite.get("buyer_id")
-        logger.info(f"👤 buyer_id = {buyer_id}")
-        logger.info(f"📊 profile_code = {invite.get('profile_code')}")
+        buyer_profile = invite.get("profile_code")  # профиль создателя
         
+        logger.info(f"👤 buyer_id = {buyer_id}")
+        logger.info(f"📊 buyer_profile = {buyer_profile}")
+        
+        # Сохраняем ДАННЫЕ ПРИГЛАШЕНИЯ (не профиль друга!)
         context.user_data["current_invite"] = {
             "invite_id": invite_code,
             "buyer_id": buyer_id,
-            "buyer_profile": invite.get("profile_code")
+            "buyer_profile": buyer_profile  # профиль создателя
         }
+        
+        # 👇 ВАЖНО: НЕ сохраняем профиль создателя как профиль друга!
+        # Не делаем: context.user_data["profile"] = ...
+        # Не делаем: context.user_data["profile_data"] = ...
+        
         logger.info(f"✅ current_invite сохранен: {context.user_data['current_invite']}")
         
         # Приветственное сообщение
