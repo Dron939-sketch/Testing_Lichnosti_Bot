@@ -4515,7 +4515,7 @@ def get_user_limits(user_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/update-free-used', methods=['POST'])
-def update_free_used():
+def update_free_used_old():
     """Обновляет счетчик ВСЕХ использованных ссылок (и бесплатных, и платных)"""
     try:
         data = request.get_json()
