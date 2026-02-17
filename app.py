@@ -4578,6 +4578,74 @@ def update_free_used():
         logger.error(f"❌ Ошибка обновления счетчика ссылок: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+# ============================================
+# ЭНДПОИНТЫ ДЛЯ РАБОТЫ С ЛИМИТАМИ
+# ============================================
+
+@app.route('/api/update-free-used', methods=['POST'])
+def update_free_used():
+    # ... существующий код ...
+
+# 👇 ВОТ СЮДА ДОБАВЛЯЕМ НОВЫЙ ЭНДПОИНТ
+@app.route('/api/reset-user-limits/<int:user_id>', methods=['POST'])
+def reset_user_limits(user_id):
+    """Сбрасывает лимиты пользователя (только для отладки)"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Получаем актуальное количество созданных ссылок
+        cursor.execute("""
+        SELECT COUNT(*) FROM sexual_invites 
+        WHERE buyer_id = %s
+        """, (user_id,))
+        
+        actual_count = cursor.fetchone()[0]
+        
+        # Получаем информацию о купленных пакетах
+        cursor.execute("""
+        SELECT COALESCE(SUM(links), 0) FROM package_purchases 
+        WHERE user_id = %s
+        """, (user_id,))
+        
+        purchased = cursor.fetchone()[0] or 0
+        
+        # Обновляем лимиты
+        cursor.execute("""
+        INSERT INTO user_limits (user_id, free_used, total_purchased)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET
+            free_used = EXCLUDED.free_used,
+            total_purchased = EXCLUDED.total_purchased,
+            updated_at = CURRENT_TIMESTAMP
+        """, (user_id, actual_count, purchased))
+        
+        conn.commit()
+        
+        # Логируем результат
+        logger.info(f"🔄 Сброс лимитов для user_id={user_id}: ссылок={actual_count}, куплено={purchased}")
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "actual_links": actual_count,
+            "purchased": purchased,
+            "total_limit": 3 + purchased,
+            "available": max(0, 3 + purchased - actual_count),
+            "message": f"Лимиты сброшены. Всего ссылок: {actual_count}, Куплено: {purchased}"
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка сброса лимитов: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# ============================================
+# ОСТАЛЬНЫЕ ЭНДПОИНТЫ...
+# ============================================
+
 @app.route('/api/user-limits/<int:user_id>', methods=['GET'])
 def get_user_limits_api(user_id):
     """Возвращает лимиты пользователя"""
