@@ -4728,6 +4728,56 @@ def reset_user_limits(user_id):
     except Exception as e:
         logger.error(f"❌ Ошибка сброса лимитов: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/set-user-limits/<int:user_id>/<int:new_limit>', methods=['GET', 'POST'])  # 👈 ИЗМЕНЕНО
+def set_user_limits(user_id, new_limit):
+    """Устанавливает лимит пользователя (только для отладки)"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Получаем актуальное количество созданных ссылок
+        cursor.execute("""
+        SELECT COUNT(*) FROM sexual_invites 
+        WHERE buyer_id = %s
+        """, (user_id,))
+        
+        actual_count = cursor.fetchone()[0]
+        
+        # Рассчитываем нужное количество purchased
+        # total_limit = 3 + purchased = new_limit
+        # purchased = new_limit - 3
+        purchased_needed = new_limit - 3
+        
+        # Обновляем лимиты
+        cursor.execute("""
+        INSERT INTO user_limits (user_id, free_used, total_purchased)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET
+            free_used = EXCLUDED.free_used,
+            total_purchased = EXCLUDED.total_purchased,
+            updated_at = CURRENT_TIMESTAMP
+        """, (user_id, actual_count, purchased_needed))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"🎯 Установлен лимит {new_limit} для user_id={user_id}")
+        
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "actual_links": actual_count,
+            "purchased": purchased_needed,
+            "total_limit": new_limit,
+            "available": max(0, new_limit - actual_count),
+            "message": f"Лимит установлен на {new_limit}. Доступно: {max(0, new_limit - actual_count)}"
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка установки лимитов: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 # ============================================
 # ОСТАЛЬНЫЕ ЭНДПОИНТЫ...
 # ============================================
