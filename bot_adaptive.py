@@ -117,7 +117,6 @@ from sexual_19_7 import (
     # Функции для приглашений
     get_user_invites,
     count_friends,
-    can_create_invite,
     init_test_data,
     get_friend_by_id,
     
