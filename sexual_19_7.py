@@ -2037,8 +2037,7 @@ async def confirm_send_callback(update: Update, context: ContextTypes.DEFAULT_TY
 """
         
         keyboard = [
-            [InlineKeyboardButton("📤 ОТПРАВИТЬ (Telegram Web)", url=share_url)],
-            [InlineKeyboardButton("📱 ОТПРАВИТЬ (моб. приложение)", url=tg_share_url)],
+            [InlineKeyboardButton("🔗 ОТПРАВИТЬ ССЫЛКУ", url=tg_share_url)],
             [InlineKeyboardButton("🪞 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
             [InlineKeyboardButton("🔞 В ПРОФИЛЬ", callback_data="back_to_sexual_profile")]
         ]
