@@ -663,7 +663,6 @@ def get_emergency_profile(profile_code: str = "SA-5_INT") -> dict:
 # ===== ФУНКЦИИ ДЛЯ РАБОТЫ С БД ЧЕРЕЗ API =====
 
 def save_invite_to_api(invite_data: dict) -> bool:
-    """Сохраняет приглашение в БД через API"""
     try:
         api_data = {
             "invite_id": invite_data['invite_id'],
@@ -684,7 +683,7 @@ def save_invite_to_api(invite_data: dict) -> bool:
         )
         
         if response.status_code in [200, 201]:
-            logger.info(f"✅ Приглашение {invite_data['invite_id']} сохранено в БД (is_free={api_data['is_free']})")
+            logger.info(f"✅ Приглашение {invite_data['invite_id']} сохранено в БД")
             return True
         else:
             logger.error(f"❌ Ошибка сохранения приглашения: {response.status_code}")
