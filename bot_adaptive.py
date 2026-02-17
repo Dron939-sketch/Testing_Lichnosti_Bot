@@ -2206,6 +2206,7 @@ def main():
     CallbackQueryHandler(check_invite_callback, pattern="^check_invite_"),
     CallbackQueryHandler(create_invite_callback, pattern="^create_new_invite$"),
     CallbackQueryHandler(send_invite_callback, pattern="^send_invite$"),
+    CallbackQueryHandler(confirm_send_callback, pattern="^confirm_send_"),                  
     CallbackQueryHandler(confirm_sent_callback, pattern="^confirm_sent_"),
     CallbackQueryHandler(contact_selected_callback, pattern="^contact_"),
     CallbackQueryHandler(four_f_main_menu_callback, pattern="^four_f_main_menu$"),
