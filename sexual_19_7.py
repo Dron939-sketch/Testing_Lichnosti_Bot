@@ -1879,10 +1879,6 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             await query.answer("❌ Лимит ссылок исчерпан! Купите пакет.", show_alert=True)
             return await buy_invite_packages_callback(update, context)
 
-        # Если доступны, создаем ссылку (она больше не маркируется как платная/бесплатная)
-        # Убираем переменную is_free и invite_type, они больше не нужны.
-        logger.info(f"✅ Создаем ссылку для пользователя {user_id} ({available} осталось)")
-
         # ===== 4. СОЗДАЕМ УНИКАЛЬНУЮ ССЫЛКУ =====
         profile = context.user_data.get("profile", USER_PROFILE)
         invite_code = f"sex_{uuid.uuid4().hex[:8]}_{uuid.uuid4().hex[:4]}_{int(time.time())}"
@@ -1894,11 +1890,8 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "У меня — совпало процентов на 90.\n\n"
             "🤫 Интересно, у тебя тоже?"
         )
-        
-        # invite_type и is_free больше не используются
-        # invite_type = "🆓" if is_free else "💎"  # УДАЛЯЕМ
 
-                # ===== 5. СОХРАНЯЕМ В БД =====
+        # ===== 5. СОХРАНЯЕМ В БД =====
         invite_data = {
             "invite_id": invite_code,
             "link": invite_url,
@@ -1908,33 +1901,35 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "created_at": datetime.now().timestamp(),
             "friend_id": None,
             "friend_name": None,
-            # "is_free": is_free,        # УДАЛЯЕМ
-            # "invite_type": invite_type, # УДАЛЯЕМ
             "user_id": user_id
         }
         
         save_success = save_invite_to_api(invite_data)
         logger.info(f"💾 Сохранение в БД: {'успешно' if save_success else 'ошибка'}")
         
-        # ===== 🔥 ОБНОВЛЯЕМ СЧЕТЧИК ЛИМИТОВ =====
+        # ===== 6. ЕСЛИ СОХРАНИЛИ, СПИСЫВАЕМ ЛИМИТ =====
         if save_success:
             update_free_used_in_api(user_id)
             logger.info(f"🔄 Обновлен счетчик ссылок для user_id={user_id}")
         
-        # ===== 6. ОБНОВЛЯЕМ ДАННЫЕ В ПАМЯТИ =====
+        # ===== 7. ОБНОВЛЯЕМ ДАННЫЕ В ПАМЯТИ =====
         updated_invites = get_user_invites_from_api(user_id)
         context.user_data["sexual_invites"] = updated_invites
         
-        # ===== 7. ПОЛУЧАЕМ ОБНОВЛЕННЫЕ ЛИМИТЫ ДЛЯ ОТОБРАЖЕНИЯ =====
+        # ===== 8. ПОЛУЧАЕМ ОБНОВЛЕННЫЕ ЛИМИТЫ ДЛЯ ОТОБРАЖЕНИЯ =====
         updated_limits = check_user_limits_from_api(user_id)
         used_now = updated_limits.get('used', 0)
         total_limit_now = updated_limits.get('total_limit', 3)
+        available_now = updated_limits.get('available', 0)
 
-        # ===== 8. ГОТОВИМ ССЫЛКУ ДЛЯ ОТПРАВКИ =====
-        share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_message)}"
+        # ===== 9. СОХРАНЯЕМ ДАННЫЕ ССЫЛКИ ДЛЯ ПОСЛЕДУЮЩЕЙ ОТПРАВКИ =====
+        context.user_data["pending_invite"] = {
+            "invite_code": invite_code,
+            "message": invite_message,
+            "url": invite_url
+        }
         
-        context.user_data["last_created_invite"] = invite_code
-        
+        # ===== 10. ПОКАЗЫВАЕМ ЭКРАН С КНОПКОЙ ОТПРАВКИ =====
         text = f"""
 🔞 <b>✨ ССЫЛКА СОЗДАНА! ✨</b>
 
@@ -1946,15 +1941,15 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 {SEXUAL_DIVIDER}
 📊 <b>Статистика:</b>
    • Всего создано: {used_now} из {total_limit_now}
-   • Осталось: {total_limit_now - used_now}
+   • Осталось: {available_now}
 {SEXUAL_DIVIDER}
 
-⚠️ <b>Эта ссылка уже сохранена!</b>
-   После отправки она появится в "Моих отражениях"
+<b>✅ Ссылка готова к отправке!</b>
+Нажмите кнопку ниже, чтобы поделиться с другом.
 """
         
         keyboard = [
-            [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", url=share_url)],
+            [InlineKeyboardButton("✈️ ОТПРАВИТЬ ДРУГУ", callback_data=f"confirm_send_{invite_code}")],
             [InlineKeyboardButton("🪞 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
             [InlineKeyboardButton("🔞 В ПРОФИЛЬ", callback_data="back_to_sexual_profile")]
         ]
@@ -1967,13 +1962,90 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         
         logger.info(f"✅ Ссылка {invite_code} создана и сохранена для пользователя {user_id}")
-        
         return INVITES_LIST
         
     except Exception as e:
         logger.error(f"❌ Ошибка в send_invite_callback: {e}\n{traceback.format_exc()}")
         await query.answer("❌ Произошла ошибка", show_alert=True)
         return INVITES_LIST
+
+async def confirm_send_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """✅ Обработчик отправки ссылки другу"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Получаем код ссылки из callback_data (confirm_send_sex_123456)
+        invite_code = query.data.replace("confirm_send_", "")
+        
+        # Получаем данные ссылки из контекста
+        pending = context.user_data.get("pending_invite", {})
+        if not pending or pending.get("invite_code") != invite_code:
+            # Если нет в контексте, пробуем получить из БД
+            invite_data = find_invite_in_api(invite_code)
+            if not invite_data:
+                await query.answer("❌ Ссылка не найдена", show_alert=True)
+                return INVITES_LIST
+            message_text = invite_data.get('message', '✨ Есть одна штука...')
+        else:
+            message_text = pending.get('message', '✨ Есть одна штука...')
+        
+        # Формируем ссылку для отправки
+        share_url = f"https://t.me/share/url?url=https://t.me/{BOT_USERNAME}?start={invite_code}&text={urllib.parse.quote(message_text)}"
+        
+        # Отправляем пользователю сообщение с кнопкой отправки
+        await query.message.reply_text(
+            f"🔗 Нажмите кнопку ниже, чтобы отправить ссылку другу:",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("📤 ОТПРАВИТЬ", url=share_url)
+            ]])
+        )
+        
+        # Получаем свежие лимиты после отправки
+        user_id = query.from_user.id
+        updated_limits = check_user_limits_from_api(user_id)
+        used_now = updated_limits.get('used', 0)
+        total_limit_now = updated_limits.get('total_limit', 3)
+        available_now = updated_limits.get('available', 0)
+        
+        # Обновляем сообщение с новой статистикой
+        text = f"""
+🔞 <b>✨ ССЫЛКА ОТПРАВЛЕНА! ✨</b>
+
+🔗 <code>https://t.me/{BOT_USERNAME}?start={invite_code}</code>
+
+💬 <b>Текст сообщения:</b>
+<blockquote>{message_text}</blockquote>
+
+{SEXUAL_DIVIDER}
+📊 <b>СТАТИСТИКА ОБНОВЛЕНА:</b>
+   • Всего создано: {used_now} из {total_limit_now}
+   • Осталось: {available_now}
+   
+   <b>⚡️ Списана 1 ссылка</b>
+{SEXUAL_DIVIDER}
+
+<b>✅ Ссылка успешно отправлена другу!</b>
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton("🪞 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
+            [InlineKeyboardButton("🔞 В ПРОФИЛЬ", callback_data="back_to_sexual_profile")]
+        ]
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
+        return INVITES_LIST
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в confirm_send_callback: {e}")
+        await query.answer("❌ Произошла ошибка", show_alert=True)
+        return INVITES_LIST
+
         
 # ============================================
 # ✅ ПОДТВЕРЖДЕНИЕ ОТПРАВКИ
