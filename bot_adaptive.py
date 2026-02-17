@@ -1362,6 +1362,13 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
     profile_data = context.user_data.get("profile_data")
     logger.debug(f"📦 profile_data: {'есть' if profile_data else 'нет'}")
     
+    # 👇 КЛАВИАТУРА ОПРЕДЕЛЯЕТСЯ ДО ВСЕХ УСЛОВИЙ
+    keyboard = [
+        [InlineKeyboardButton("🧠 Получить описание профиля за 690 ₽", callback_data="buy_package")],
+        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     if profile_data:
         profile_code = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
         profile_info = f"\n📊 <b>Ваш профиль:</b> <code>{profile_code}</code>\n"
@@ -1372,32 +1379,21 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         personal_note = f"\n<i>После теста я подготовлю персональное описание именно для вас.</i>"
         logger.debug("⚠️ profile_data отсутствует")
     
-    await update.callback_query.edit_message_text(
-            f"🧠 *Чтобы я как ваш виртуальный психолог мог подготовить персональное описание, "
-            f"давайте сначала познакомимся поближе через тест.*\n\n"
-            f"💎 <b>ПОЛНЫЙ ПАКЕТ — 690 ₽</b>\n\n"
-            f"📘 <b>Полное описание твоего архетипа (15+ страниц)</b>\n"
-            f"   → Детальный анализ личности\n"
-            f"   → Ключевые паттерны поведения\n"
-            f"   → Твои сильные стороны и точки роста\n"
-            f"   → Потенциальные ограничения и как их обходить\n\n"
-            f"📖 <b>Персональная терапевтическая сказка</b>\n"
-            f"   → Поможет подружить твои внутренние противоречия 🤝\n\n"
-            f"📚 <b>Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (PDF)</b>\n"
-            f"   → Покажет, какие формы может принимать твой профиль\n\n"
-            f"✅ <b>Мгновенный доступ после оплаты</b>\n"
-            f"💳 <b>Все способы оплаты:</b> СБП, ЮMoney, банковские карты\n\n"
-            f"*Выберите действие:*",
-            parse_mode='HTML',
-            reply_markup=InlineKeyboardMarkup(keyboard)
-   )
-    
-    keyboard = [
-        [InlineKeyboardButton("🧠 Получить описание профиля за 690 ₽", callback_data="buy_package")],
-        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
-    ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    package_text = (
+        f"💎 <b>ПОЛНЫЙ ПАКЕТ — 690 ₽</b>\n\n"
+        f"📘 <b>Полное описание твоего архетипа (15+ страниц)</b>\n"
+        f"   → Детальный анализ личности\n"
+        f"   → Ключевые паттерны поведения\n"
+        f"   → Твои сильные стороны и точки роста\n"
+        f"   → Потенциальные ограничения и как их обходить\n\n"
+        f"📖 <b>Персональная терапевтическая сказка</b>\n"
+        f"   → Поможет подружить твои внутренние противоречия 🤝\n\n"
+        f"📚 <b>Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (PDF)</b>\n"
+        f"   → Покажет, какие формы может принимать твой профиль\n\n"
+        f"✅ <b>Мгновенный доступ после оплаты</b>\n"
+        f"💳 <b>Все способы оплаты:</b> СБП, ЮMoney, банковские карты\n\n"
+        f"{profile_info}"
+    )
     
     await query.edit_message_text(package_text, reply_markup=reply_markup, parse_mode="HTML")
     logger.info(f"📦 Package screen показан пользователю {update.effective_user.id}")
