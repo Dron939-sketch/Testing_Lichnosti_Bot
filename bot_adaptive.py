@@ -1761,7 +1761,7 @@ async def get_materials_callback_payment(update: Update, context: ContextTypes.D
         [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
     ]
     
-        await query.edit_message_text(
+    await query.edit_message_text(
         f"✅ *ПЕРСОНАЛЬНОЕ ОПИСАНИЕ ГОТОВО!*\n\n"
         f"🧠 *Виртуальный психолог Вариатика*\n\n"
         f"🎉 Ваше персональное описание профиля успешно подготовлено!\n\n"
