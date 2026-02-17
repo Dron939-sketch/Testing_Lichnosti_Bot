@@ -22,7 +22,7 @@ import functools
 import requests
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask_cors import CORSА
 
 # ========== НАСТРОЙКА ЛОГГИРОВАНИЯ ==========
 logging.basicConfig(
@@ -1216,7 +1216,7 @@ def send_notification_async(user_id, payment_id, access_token=None, is_recovery=
             except Exception as db_e:
                 logger.warning(f"⚠️ Не удалось получить profile_code из БД: {db_e}")
         
-        # 👇 ЕСЛИ ЭТО ПАКЕТ - НАЧИСЛЯЕМ ЛИМИТЫ!
+        # 👇 ЕСЛИ ЭТО ПАКЕТ - НАЧИСЛЯЕМ ЛИМИТЫ И ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ
         if is_package:
             logger.info(f"📦 Это пакет ссылок (payment_id={payment_id}), начисляем лимиты...")
             
@@ -1238,12 +1238,15 @@ def send_notification_async(user_id, payment_id, access_token=None, is_recovery=
                     if amount == 299:
                         package_id = "3"
                         links = 3
+                        package_emoji = "🥉"
                     elif amount == 499:
                         package_id = "5"
                         links = 5
+                        package_emoji = "🥈"
                     elif amount == 899:
                         package_id = "10"
                         links = 10
+                        package_emoji = "🥇"
                     else:
                         logger.error(f"❌ Неизвестная сумма пакета: {amount}")
                         cursor.close()
@@ -1268,6 +1271,49 @@ def send_notification_async(user_id, payment_id, access_token=None, is_recovery=
                     
                     conn.commit()
                     logger.info(f"✅ Лимиты начислены: user_id={user_id}, +{links} ссылок")
+                    
+                    # 👇 ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ ОБ УСПЕШНОЙ ПОКУПКЕ ПАКЕТА
+                    telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
+                    if telegram_token:
+                        message = f"""
+✅ *ОПЛАТА ПАКЕТА ПОДТВЕРЖДЕНА!*
+
+🎉 Ваш платеж `#{payment_id[:8]}` успешно обработан!
+
+{package_emoji} *Пакет:* {links} ссылок
+💰 *Сумма:* {amount}₽
+
+📊 *Ваш новый баланс:* +{links} ссылок
+💎 *Всего доступно:* будет показано в "Моих отражениях"
+
+⚡️ Теперь вы можете создавать новые приглашения!
+                        """
+                        
+                        url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+                        
+                        keyboard = [[
+                            {
+                                "text": "🪞 МОИ ОТРАЖЕНИЯ",
+                                "callback_data": "my_invites"
+                            }
+                        ]]
+                        
+                        response = requests.post(url, json={
+                            "chat_id": user_id,
+                            "text": message,
+                            "parse_mode": "Markdown",
+                            "reply_markup": {
+                                "inline_keyboard": keyboard
+                            }
+                        }, timeout=10)
+                        
+                        if response.status_code == 200:
+                            logger.info(f"✅ Уведомление о пакете отправлено пользователю {user_id}")
+                        else:
+                            logger.error(f"❌ Ошибка отправки уведомления о пакете: {response.status_code}")
+                    
+                    # 👇 ЛОГИРУЕМ УВЕДОМЛЕНИЕ
+                    log_notification_async(user_id, payment_id, True, is_recovery, profile_code)
                 
                 cursor.close()
                 conn.close()
@@ -1304,7 +1350,6 @@ def send_notification_async(user_id, payment_id, access_token=None, is_recovery=
     except Exception as e:
         logger.error(f"❌ Ошибка в асинхронной отправке уведомления: {e}")
         return False
-
 @async_task
 def send_sexual_notification_async(user_id, payment_id, profile_key, is_recovery=False):
     """Асинхронная отправка 18+ уведомления"""
