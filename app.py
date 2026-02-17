@@ -4594,37 +4594,27 @@ def get_user_limits_api(user_id):
         
         result = cursor.fetchone()
         
-        limits = {
-            "free_used": 0,
-            "total_purchased": 0,
-            "updated_at": None
-        }
-        
         if result:
-            limits = {
-                "free_used": result[0] or 0,
-                "total_purchased": result[1] or 0,
-                "updated_at": result[2].isoformat() if result[2] else None
-            }
-        
-        # Считаем сколько платных ссылок уже использовано
-        cursor.execute("""
-        SELECT COUNT(*) FROM sexual_invites 
-        WHERE buyer_id = %s AND is_free = false
-        """, (user_id,))
-        
-        paid_used = cursor.fetchone()[0] or 0
+            free_used = result[0] or 0  # 54 - всего ссылок
+            total_purchased = result[1] or 0  # 15 - куплено
+        else:
+            free_used = 0
+            total_purchased = 0
         
         cursor.close()
         conn.close()
         
-        # Формируем ответ
+        # ПРАВИЛЬНЫЙ РАСЧЕТ:
         free_total = 3
-        free_used = limits["free_used"]
-        free_remaining = max(0, free_total - free_used)
+        free_remaining = max(0, free_total - free_used)  # 3 - 54 = -51 → 0
         
-        total_purchased = limits["total_purchased"]
-        paid_available = max(0, total_purchased - paid_used)
+        # Сколько платных ссылок уже использовано (все кроме первых 3)
+        paid_used = max(0, free_used - free_total)  # 54 - 3 = 51
+        
+        # Сколько платных доступно
+        paid_available = max(0, total_purchased - paid_used)  # 15 - 51 = -36 → 0
+        
+        logger.info(f"✅ Расчет для {user_id}: всего={free_used}, куплено={total_purchased}, использовано платных={paid_used}, доступно={paid_available}")
         
         return jsonify({
             "success": True,
@@ -4642,7 +4632,6 @@ def get_user_limits_api(user_id):
     except Exception as e:
         logger.error(f"❌ Ошибка получения лимитов пользователя {user_id}: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
-
 
 @app.route('/api/update-paid-used', methods=['POST'])
 def update_paid_used():
