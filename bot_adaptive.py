@@ -1372,7 +1372,7 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
         personal_note = f"\n<i>После теста я подготовлю персональное описание именно для вас.</i>"
         logger.debug("⚠️ profile_data отсутствует")
     
-                await update.callback_query.edit_message_text(
+    await update.callback_query.edit_message_text(
             f"🧠 *Чтобы я как ваш виртуальный психолог мог подготовить персональное описание, "
             f"давайте сначала познакомимся поближе через тест.*\n\n"
             f"💎 <b>ПОЛНЫЙ ПАКЕТ — 690 ₽</b>\n\n"
@@ -1390,7 +1390,7 @@ async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"*Выберите действие:*",
             parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+   )
     
     keyboard = [
         [InlineKeyboardButton("🧠 Получить описание профиля за 690 ₽", callback_data="buy_package")],
