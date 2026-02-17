@@ -753,10 +753,10 @@ async def show_results_screen(
                         logger.info(f"👤 Данные друга: username={username}, profile={profile_name}")
                         
                         message_text = (
-                            f"👤 <b>Новое отражение!</b>\n\n"
-                            f"@{username} прошел тест по вашему приглашению.\n"
-                            f"Его профиль: {profile_name}\n\n"
-                            f"🔍 Посмотреть в \"Моих отражениях\""
+                            f"👤 <b>🪞 НОВОЕ ОТРАЖЕНИЕ!</b>\n\n"
+                            f"✨ @{username} посмотрелся в зеркало и теперь есть его отражение!\n"
+                            f"📊 <b>Профиль:</b> {profile_name}\n\n"
+                            f"🔍 Нажми кнопку ниже, чтобы увидеть"
                         )
                         
                         await context.bot.send_message(
