@@ -1657,7 +1657,7 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
         try:
             chat_id = update.callback_query.message.chat_id
             keyboard = [
-                [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="create_invite")],
+                [InlineKeyboardButton("🔗 СОЗДАТЬ ССЫЛКУ", callback_data="send_invite")],
                 [InlineKeyboardButton("🔍 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
                 [InlineKeyboardButton("⬅️ НАЗАД", callback_data="back_to_results")]
             ]
@@ -2286,7 +2286,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 💫 Каждое отражение — ключ к человеку."""
 
         keyboard = [
-    [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ", callback_data="send_invite")],
+    [InlineKeyboardButton("🔗 СОЗДАТЬ ССЫЛКУ", callback_data="send_invite")],
     [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")],
     [InlineKeyboardButton("🔴 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")]
 ]
