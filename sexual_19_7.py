@@ -1904,9 +1904,9 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         # ДЛЯ ОТОБРАЖЕНИЯ В БОТЕ - текст + ссылка снизу
         display_message = f"{invite_text}\n\n🔗 {invite_url}"
 
-        # ДЛЯ ОТПРАВКИ ДРУГУ - ТОЛЬКО ТЕКСТ (без ссылки!)
-        # Ссылка будет добавлена автоматически через поле url
-        share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_text)}"
+        # ДЛЯ ОТПРАВКИ ДРУГУ - полный текст со ссылкой (нормальный, без кракозябр)
+        full_text = f"{invite_text}\n\n🔗 {invite_url}"
+        share_url = f"tg://msg_url?url={urllib.parse.quote(' ')}&text={urllib.parse.quote(full_text)}"
         
         # ===== 5. СОХРАНЯЕМ В БД =====
         invite_data = {
