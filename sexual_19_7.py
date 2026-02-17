@@ -209,12 +209,15 @@ PROFILE_DISK_LINKS = {
     "IP_8_TRA": "https://disk.yandex.ru/d/K90BW0SSTOuAhA",
     "IP_9_IDE": "https://disk.yandex.ru/d/VIgdg8gFVp10aw",
     
+    # 👇 НОВАЯ ССЫЛКА ДЛЯ 4F
+    "4F_EXAMPLE": "https://disk.yandex.ru/d/2kQN0cd4dSUzqQ",
+    
     # Default
     "default": "https://disk.yandex.ru/d/EYPIF9_puI_t0A"
 }
 
 USER_DISK_LINK = PROFILE_DISK_LINKS["SA_5_INT"]  
-EXAMPLE_DISK_LINK = PROFILE_DISK_LINKS["SA_3_CON"]
+EXAMPLE_DISK_LINK = PROFILE_DISK_LINKS["4F_EXAMPLE"]
 AUTHOR_TELEGRAM = "https://t.me/meysternlp"
 
 def get_disk_link_by_profile(profile_code: str) -> str:
