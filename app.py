@@ -4628,7 +4628,7 @@ def update_free_used():
         logger.error(f"❌ Ошибка обновления счетчика: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/reset-user-limits/<int:user_id>', methods=['POST'])
+@app.route('/api/reset-user-limits/<int:user_id>', methods=['GET', 'POST'])
 def reset_user_limits(user_id):
     """Сбрасывает лимиты пользователя (только для отладки)"""
     try:
