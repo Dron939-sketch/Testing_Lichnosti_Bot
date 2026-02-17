@@ -1892,12 +1892,13 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         profile = context.user_data.get("profile", USER_PROFILE)
         invite_code = f"sex_{uuid.uuid4().hex[:8]}_{uuid.uuid4().hex[:4]}_{int(time.time())}"
         invite_url = f"https://t.me/{BOT_USERNAME}?start={invite_code}"
-        
+
         invite_message = (
             "✨ Есть одна штука.\n"
             "Определяет твой ночной тип личности.\n"
             "У меня — совпало процентов на 90.\n\n"
-            "🤫 Интересно, у тебя тоже?"
+            "🤫 Интересно, у тебя тоже?\n\n"
+            f"🔗 {invite_url}"
         )
 
         # ===== 5. СОХРАНЯЕМ В БД =====
