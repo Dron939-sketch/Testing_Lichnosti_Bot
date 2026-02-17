@@ -1893,13 +1893,19 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         invite_code = f"sex_{uuid.uuid4().hex[:8]}_{uuid.uuid4().hex[:4]}_{int(time.time())}"
         invite_url = f"https://t.me/{BOT_USERNAME}?start={invite_code}"
 
-        invite_message = (
+        # Текст сообщения (без ссылки)
+        invite_text = (
             "✨ Есть одна штука.\n"
             "Определяет твой ночной тип личности.\n"
             "У меня — совпало процентов на 90.\n\n"
-            "🤫 Интересно, у тебя тоже?\n\n"
-            f"🔗 {invite_url}"
+            "🤫 Интересно, у тебя тоже?"
         )
+
+# Полное сообщение для отображения (со ссылкой ТОЛЬКО ВНИЗУ)
+invite_message = f"{invite_text}\n\n🔗 {invite_url}"
+
+# Для отправки используем Текст + ссылка в правильном порядке
+share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_text)}"
 
         # ===== 5. СОХРАНЯЕМ В БД =====
         invite_data = {
