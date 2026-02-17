@@ -1939,10 +1939,11 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         total_limit_now = updated_limits.get('total_limit', 3)
         available_now = updated_limits.get('available', 0)
 
-        # ===== 9. СОХРАНЯЕМ ДАННЫЕ ССЫЛКИ =====
+                # ===== 9. СОХРАНЯЕМ ДАННЫЕ ССЫЛКИ =====
         context.user_data["pending_invite"] = {
             "invite_code": invite_code,
-            "message": display_message, 
+            "message": display_message,   
+            "clean_text": invite_text,       
             "url": invite_url
         }
         
