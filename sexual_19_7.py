@@ -944,14 +944,15 @@ def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
         return "🔞 ИНТИМНЫЙ ПРОФИЛЬ\n\nПроизошла ошибка загрузки."
 
 def format_intimate_profile_part2(profile_data: dict, user_name: str) -> str:
-    """Форматирует ВТОРУЮ ЧАСТЬ интимного профиля"""
+    """Форматирует ВТОРУЮ ЧАСТЬ интимного профиля (ВСЕ разделы, кроме шапки и финала)"""
     try:
         message = ""
         sections = profile_data.get('sections', {})
         
+        # Разделы, которые были в части 2
         section = sections.get("what_turns_off", {})
         if section:
-            title = section.get('title', '')
+            title = section.get('title', '⚠️ ЧТО ВЫКЛЮЧАЕТ')
             message += f"\n\n{title}"
             if 'items' in section:
                 for item in section['items']:
@@ -959,7 +960,7 @@ def format_intimate_profile_part2(profile_data: dict, user_name: str) -> str:
         
         section = sections.get("erogenous_zone", {})
         if section:
-            title = section.get('title', '')
+            title = section.get('title', '🔴 ЭРОГЕННАЯ ЗОНА')
             message += f"\n\n{title}"
             if 'trigger' in section:
                 message += f"\n{section['trigger']}"
@@ -969,7 +970,7 @@ def format_intimate_profile_part2(profile_data: dict, user_name: str) -> str:
         
         section = sections.get("smells_tastes", {})
         if section:
-            title = section.get('title', '')
+            title = section.get('title', '👃 ЗАПАХИ И ВКУСЫ')
             message += f"\n\n{title}"
             if 'items' in section:
                 for item in section['items']:
@@ -977,23 +978,13 @@ def format_intimate_profile_part2(profile_data: dict, user_name: str) -> str:
         
         section = sections.get("sounds", {})
         if section:
-            title = section.get('title', '')
+            title = section.get('title', '🎵 ЗВУКИ')
             message += f"\n\n{title}"
             if 'items' in section:
                 for item in section['items']:
                     message += f"\n• {item}"
         
-        return message
-    except Exception as e:
-        logger.error(f"❌ Ошибка форматирования части 2: {e}")
-        return ""
-
-def format_intimate_profile_part3(profile_data: dict, user_name: str) -> str:
-    """Форматирует ТРЕТЬЮ ЧАСТЬ интимного профиля (с финальным текстом)"""
-    try:
-        message = ""
-        sections = profile_data.get('sections', {})
-        
+        # 👇 ВСЕ ОСТАЛЬНЫЕ РАЗДЕЛЫ (перенесены из части 3)
         remaining_sections = [
             ("dirty_details", "🔞 ГРЯЗНЫЕ ДЕТАЛИ"),
             ("fetishes", "🔗 ФЕТИШИ"),
@@ -1021,8 +1012,15 @@ def format_intimate_profile_part3(profile_data: dict, user_name: str) -> str:
                 elif 'trigger' in section:
                     message += f"\n{section['trigger']}"
         
-        # Финальный текст (к нему будут прикреплены кнопки)
-        message += f"""
+        return message.lstrip()
+    except Exception as e:
+        logger.error(f"❌ Ошибка форматирования части 2: {e}")
+        return ""
+
+def format_intimate_profile_part3(profile_data: dict, user_name: str) -> str:
+    """Форматирует ТРЕТЬЮ ЧАСТЬ интимного профиля (ТОЛЬКО финальный текст с призывом)"""
+    try:
+        message = f"""
 
 {SEXUAL_DIVIDER}
 
@@ -1042,10 +1040,10 @@ def format_intimate_profile_part3(profile_data: dict, user_name: str) -> str:
    <b>тем больше тайн откроется вам.</b>
 """
         
-        return message
+        return message.lstrip()
     except Exception as e:
         logger.error(f"❌ Ошибка форматирования части 3: {e}")
-        return "\n\nПроизошла ошибка загрузки."
+        return f"\n\n{SEXUAL_DIVIDER}\n\n💎 <b>ТАМ, ЗА ЗЕРКАЛОМ...</b>\n\nПроизошла ошибка загрузки."
 
 # ===== ФУНКЦИЯ ДЛЯ РАЗБИЕНИЯ ДЛИННЫХ СООБЩЕНИЙ =====
 def split_long_message(text: str, max_length: int = 4000) -> List[str]:
