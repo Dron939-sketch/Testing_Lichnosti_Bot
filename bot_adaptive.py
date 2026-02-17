@@ -1952,16 +1952,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await sexual_invite_start(update, context)
     # ===== КОНЕЦ 18+ =====
     
-    # ===== ПРОВЕРКА СУЩЕСТВУЮЩЕГО ПОЛЬЗОВАТЕЛЯ =====
+        # ===== ПРОВЕРКА СУЩЕСТВУЮЩЕГО ПОЛЬЗОВАТЕЛЯ =====
     # Получаем профиль пользователя из контекста
     profile = context.user_data.get("profile")
     profile_data = context.user_data.get("profile_data")
     
-    # Проверяем, проходил ли пользователь тест (есть ли у него профиль)
-    if profile and profile.get('display_name'):
-        # Пользователь уже проходил тест
-        profile_code = profile.get('display_name', 'SA-5_INT')
-        
+    # 👇 ВАЖНО: Проверяем, есть ли у пользователя СВОЙ профиль (не из приглашения)
+    has_own_profile = False
+    profile_code = None
+    
+    # Проверяем наличие profile_data (новый формат)
+    if profile_data and profile_data.get('display_name'):
+        # Если есть current_invite, значит пользователь пришел по ссылке
+        # и еще не прошел тест - это НЕ его профиль
+        if not context.user_data.get("current_invite"):
+            has_own_profile = True
+            profile_code = profile_data.get('display_name')
+    
+    # Проверяем наличие profile (старый формат) для обратной совместимости
+    elif profile and profile.get('display_name'):
+        if not context.user_data.get("current_invite"):
+            has_own_profile = True
+            profile_code = profile.get('display_name', 'SA-5_INT')
+    
+    if has_own_profile:
         logger.info(f"👤 Пользователь {user_id} уже проходил тест, профиль: {profile_code}")
         
         message = f"""
