@@ -2003,35 +2003,48 @@ async def confirm_send_callback(update: Update, context: ContextTypes.DEFAULT_TY
             if not invite_data:
                 await query.answer("❌ Ссылка не найдена", show_alert=True)
                 return INVITES_LIST
-            message_text = invite_data.get('message', '✨ Есть одна штука...')
+            # Получаем чистый текст (без ссылки)
+            full_message = invite_data.get('message', '')
+            # Извлекаем только текст, убирая ссылку в конце
+            if '🔗' in full_message:
+                clean_text = full_message.split('🔗')[0].strip()
+            else:
+                clean_text = full_message
         else:
-            message_text = pending.get('message', '✨ Есть одна штука...')
+            # Из pending_invite у нас есть display_message (со ссылкой)
+            full_message = pending.get('message', '')
+            # Но нам нужен чистый текст для отправки
+            clean_text = pending.get('clean_text', '✨ Есть одна штука...')
+            # Если нет clean_text, берём из invite_text (нужно сохранять)
         
-        # Формируем ссылку для отправки через tg:// для открытия выбора контактов
-        # Кодируем текст для URL
-        encoded_text = urllib.parse.quote(f"{message_text}\n\nhttps://t.me/{BOT_USERNAME}?start={invite_code}")
+        # Сохраняем чистый текст отдельно, если ещё не сохранили
+        if 'clean_text' not in pending and pending:
+            pending['clean_text'] = clean_text
+            context.user_data["pending_invite"] = pending
         
-        # Специальная ссылка для открытия выбора контакта в Telegram
-        share_url = f"https://t.me/share/url?url=https://t.me/{BOT_USERNAME}?start={invite_code}&text={urllib.parse.quote(message_text)}"
+        # Формируем ссылку для отправки - используем ТОЛЬКО чистый текст
+        share_url = f"https://t.me/share/url?url=https://t.me/{BOT_USERNAME}?start={invite_code}&text={urllib.parse.quote(clean_text)}"
         
-        # Альтернативный вариант с tg:// (работает в мобильных приложениях)
-        tg_share_url = f"tg://msg_url?url=https://t.me/{BOT_USERNAME}?start={invite_code}&text={urllib.parse.quote(message_text)}"
+        # Альтернативный вариант с tg://
+        tg_share_url = f"tg://msg_url?url=https://t.me/{BOT_USERNAME}?start={invite_code}&text={urllib.parse.quote(clean_text)}"
         
-        # Получаем свежие лимиты после отправки
+        # Получаем свежие лимиты
         user_id = query.from_user.id
         updated_limits = check_user_limits_from_api(user_id)
         used_now = updated_limits.get('used', 0)
         total_limit_now = updated_limits.get('total_limit', 3)
         available_now = updated_limits.get('available', 0)
         
-        # Обновляем сообщение с новой статистикой и ДВУМЯ кнопками отправки
+        # Для отображения в боте используем полное сообщение со ссылкой
+        display_text = f"{clean_text}\n\n🔗 https://t.me/{BOT_USERNAME}?start={invite_code}"
+        
         text = f"""
 🔞 <b>✨ ССЫЛКА ОТПРАВЛЕНА! ✨</b>
 
 🔗 <code>https://t.me/{BOT_USERNAME}?start={invite_code}</code>
 
 💬 <b>Текст сообщения:</b>
-<blockquote>{message_text}</blockquote>
+<blockquote>{clean_text}</blockquote>
 
 {SEXUAL_DIVIDER}
 📊 <b>СТАТИСТИКА ОБНОВЛЕНА:</b>
