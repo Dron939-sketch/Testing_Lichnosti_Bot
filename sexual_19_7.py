@@ -1882,7 +1882,7 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
         logger.info(f"📊 Пользователь {user_id}: использовано {used}/{total_limit}, доступно {available}")
 
-        # ===== 3. ПРОВЕРЯЕМ, ЕСТЬ ЛИ ДОСТУПНЫЕ ССЫЛКИ =====
+                # ===== 3. ПРОВЕРЯЕМ, ЕСТЬ ЛИ ДОСТУПНЫЕ ССЫЛКИ =====
         if available <= 0:
             logger.warning(f"❌ Лимит ссылок исчерпан для пользователя {user_id}")
             await query.answer("❌ Лимит ссылок исчерпан! Купите пакет.", show_alert=True)
@@ -1901,11 +1901,11 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "🤫 Интересно, у тебя тоже?"
         )
 
-# Полное сообщение для отображения (со ссылкой ТОЛЬКО ВНИЗУ)
-invite_message = f"{invite_text}\n\n🔗 {invite_url}"
+        # Полное сообщение для отображения (со ссылкой ТОЛЬКО ВНИЗУ)
+        invite_message = f"{invite_text}\n\n🔗 {invite_url}"
 
-# Для отправки используем Текст + ссылка в правильном порядке
-share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_text)}"
+        # Для отправки используем Текст + ссылка в правильном порядке
+        share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={urllib.parse.quote(invite_text)}"
 
         # ===== 5. СОХРАНЯЕМ В БД =====
         invite_data = {
@@ -1932,13 +1932,13 @@ share_url = f"https://t.me/share/url?url={urllib.parse.quote(invite_url)}&text={
         updated_invites = get_user_invites_from_api(user_id)
         context.user_data["sexual_invites"] = updated_invites
         
-        # ===== 8. ПОЛУЧАЕМ ОБНОВЛЕННЫЕ ЛИМИТЫ ДЛЯ ОТОБРАЖЕНИЯ =====
+        # ===== 8. ПОЛУЧАЕМ ОБНОВЛЕННЫЕ ЛИМИТЫ =====
         updated_limits = check_user_limits_from_api(user_id)
         used_now = updated_limits.get('used', 0)
         total_limit_now = updated_limits.get('total_limit', 3)
         available_now = updated_limits.get('available', 0)
 
-        # ===== 9. СОХРАНЯЕМ ДАННЫЕ ССЫЛКИ ДЛЯ ПОСЛЕДУЮЩЕЙ ОТПРАВКИ =====
+        # ===== 9. СОХРАНЯЕМ ДАННЫЕ ССЫЛКИ =====
         context.user_data["pending_invite"] = {
             "invite_code": invite_code,
             "message": invite_message,
