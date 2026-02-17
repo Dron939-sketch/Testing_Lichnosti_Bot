@@ -22,7 +22,7 @@ import functools
 import requests
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
-from flask_cors import CORSА
+from flask_cors import CORS
 
 # ========== НАСТРОЙКА ЛОГГИРОВАНИЯ ==========
 logging.basicConfig(
