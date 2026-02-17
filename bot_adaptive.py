@@ -731,7 +731,7 @@ async def show_results_screen(
             "target_profile": profile_data.get('display_name', 'unknown')
         }
         
-        # Вызываем функцию обновления
+                # Вызываем функцию обновления
         try:
             success = update_invite_in_api(current_invite["invite_id"], friend_data)
             
@@ -741,48 +741,58 @@ async def show_results_screen(
                 context.user_data.pop("current_invite", None)
                 
                 # Отправляем уведомление создателю ссылки
-buyer_id = current_invite.get("buyer_id")
-if buyer_id:
-    try:
-        # Формируем имя пользователя
-        username = update.effective_user.username or update.effective_user.first_name
-        profile_name = profile_data.get('display_name', 'неизвестно')
-        
-        # Получаем ссылку на профиль
-        profile_link = get_disk_link_by_profile(profile_name)
-        
-        logger.info(f"👤 Данные друга: username={username}, profile={profile_name}")
-        logger.info(f"🔗 Ссылка на профиль: {profile_link}")
-        
-        message_text = (
-            f"👤 <b>🪞 НОВОЕ ОТРАЖЕНИЕ!</b>\n\n"
-            f"✨ @{username} посмотрелся в зеркало и теперь есть его отражение!\n"
-            f"📊 <b>Профиль:</b> <code>{profile_name}</code>\n"
-            f"📁 <b>Материалы профиля:</b>\n"
-            f"{profile_link}\n\n"
-            f"👇 <b>Выберите действие:</b>"
-        )
-        
-        # Две кнопки в одном ряду
-        keyboard = [
-            [
-                InlineKeyboardButton("🔗 СОЗДАТЬ ССЫЛКУ", callback_data="send_invite"),
-                InlineKeyboardButton("👥 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")
-            ]
-        ]
-        
-        await context.bot.send_message(
-            chat_id=buyer_id,
-            text=message_text,
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            disable_web_page_preview=True
-        )
-        logger.info(f"✅ Уведомление успешно отправлено пользователю {buyer_id}")
-        
-    except Exception as e:
-        logger.error(f"❌ Не удалось отправить уведомление: {e}")
-        logger.error(f"❌ Детали ошибки: {traceback.format_exc()}")
+                buyer_id = current_invite.get("buyer_id")
+                if buyer_id:
+                    try:
+                        # Формируем имя пользователя
+                        username = update.effective_user.username or update.effective_user.first_name
+                        profile_name = profile_data.get('display_name', 'неизвестно')
+                        
+                        # Получаем ссылку на профиль
+                        profile_link = get_disk_link_by_profile(profile_name)
+                        
+                        logger.info(f"👤 Данные друга: username={username}, profile={profile_name}")
+                        logger.info(f"🔗 Ссылка на профиль: {profile_link}")
+                        
+                        # Формируем сообщение с ссылкой на папку и двумя кнопками
+                        message_text = (
+                            f"👤 <b>🪞 НОВОЕ ОТРАЖЕНИЕ!</b>\n\n"
+                            f"✨ @{username} посмотрелся в зеркало и теперь есть его отражение!\n"
+                            f"📊 <b>Профиль:</b> <code>{profile_name}</code>\n"
+                            f"📁 <b>Материалы профиля:</b>\n"
+                            f"{profile_link}\n\n"
+                            f"👇 <b>Выберите действие:</b>"
+                        )
+                        
+                        # Две кнопки в одном ряду
+                        keyboard = [
+                            [
+                                InlineKeyboardButton("🔗 СОЗДАТЬ ССЫЛКУ", callback_data="send_invite"),
+                                InlineKeyboardButton("👥 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")
+                            ]
+                        ]
+                        
+                        await context.bot.send_message(
+                            chat_id=buyer_id,
+                            text=message_text,
+                            parse_mode="HTML",
+                            reply_markup=InlineKeyboardMarkup(keyboard),
+                            disable_web_page_preview=True
+                        )
+                        logger.info(f"✅ Уведомление успешно отправлено пользователю {buyer_id}")
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Не удалось отправить уведомление: {e}")
+                        logger.error(f"❌ Детали ошибки: {traceback.format_exc()}")
+                else:
+                    logger.warning(f"⚠️ buyer_id отсутствует в current_invite. current_invite={current_invite}")
+            
+            else:
+                logger.error(f"❌ Не удалось обновить приглашение {current_invite['invite_id']}")
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка при обновлении приглашения: {e}")
+            logger.error(f"❌ Детали ошибки: {traceback.format_exc()}")
                         
                         await context.bot.send_message(
                             chat_id=buyer_id,
