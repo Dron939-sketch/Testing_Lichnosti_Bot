@@ -125,6 +125,7 @@ from sexual_19_7 import (
     sexual_invite_start,
     create_invite_callback,
     send_invite_callback,
+    confirm_send_callback,
     confirm_sent_callback,
     contact_selected_callback,
     my_invites_callback,
