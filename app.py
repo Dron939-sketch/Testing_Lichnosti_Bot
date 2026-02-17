@@ -4584,9 +4584,50 @@ def update_free_used():
 
 @app.route('/api/update-free-used', methods=['POST'])
 def update_free_used():
-    # ... существующий код ...
+    """Обновляет счетчик использованных ссылок"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        
+        if not user_id:
+            return jsonify({"success": False, "error": "Missing user_id"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Подсчитываем ВСЕ ссылки пользователя
+        cursor.execute("""
+        SELECT COUNT(*) FROM sexual_invites 
+        WHERE buyer_id = %s
+        """, (user_id,))
+        
+        total_links = cursor.fetchone()[0] or 0
+        
+        # Обновляем или создаем запись
+        cursor.execute("""
+        INSERT INTO user_limits (user_id, free_used)
+        VALUES (%s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET
+            free_used = EXCLUDED.free_used,
+            updated_at = CURRENT_TIMESTAMP
+        """, (user_id, total_links))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"✅ Обновлен счетчик ссылок для user_id={user_id}: {total_links}")
+        
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "free_used": total_links
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка обновления счетчика: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
-# 👇 ВОТ СЮДА ДОБАВЛЯЕМ НОВЫЙ ЭНДПОИНТ
 @app.route('/api/reset-user-limits/<int:user_id>', methods=['POST'])
 def reset_user_limits(user_id):
     """Сбрасывает лимиты пользователя (только для отладки)"""
@@ -4628,6 +4669,7 @@ def reset_user_limits(user_id):
         cursor.close()
         conn.close()
         
+        # 👇 ТОЛЬКО ОДИН RETURN
         return jsonify({
             "success": True,
             "user_id": user_id,
@@ -4641,7 +4683,6 @@ def reset_user_limits(user_id):
     except Exception as e:
         logger.error(f"❌ Ошибка сброса лимитов: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
-
 # ============================================
 # ОСТАЛЬНЫЕ ЭНДПОИНТЫ...
 # ============================================
