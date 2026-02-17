@@ -720,7 +720,7 @@ async def show_results_screen(
         context.user_data["profile_data"] = profile_data
         logger.debug(f"✅ profile_data вычислен: {profile_data.get('display_name')}")
     
-    # Проверяем, есть ли активное приглашение (пользователь пришел по ссылке)
+        # Проверяем, есть ли активное приглашение (пользователь пришел по ссылке)
     current_invite = context.user_data.get("current_invite")
     if current_invite:
         logger.info(f"🔍 Найдено активное приглашение: {current_invite}")
@@ -731,7 +731,7 @@ async def show_results_screen(
             "target_profile": profile_data.get('display_name', 'unknown')
         }
         
-                # Вызываем функцию обновления
+        # Вызываем функцию обновления
         try:
             success = update_invite_in_api(current_invite["invite_id"], friend_data)
             
@@ -790,25 +790,6 @@ async def show_results_screen(
             else:
                 logger.error(f"❌ Не удалось обновить приглашение {current_invite['invite_id']}")
                 
-        except Exception as e:
-            logger.error(f"❌ Ошибка при обновлении приглашения: {e}")
-            logger.error(f"❌ Детали ошибки: {traceback.format_exc()}")
-                        
-                        await context.bot.send_message(
-                            chat_id=buyer_id,
-                            text=message_text,
-                            parse_mode="HTML"
-                        )
-                        logger.info(f"✅ Уведомление успешно отправлено пользователю {buyer_id}")
-                        
-                    except Exception as e:
-                        logger.error(f"❌ Не удалось отправить уведомление: {e}")
-                        logger.error(f"❌ Детали ошибки: {traceback.format_exc()}")
-                else:
-                    logger.warning(f"⚠️ buyer_id отсутствует в current_invite. current_invite={current_invite}")
-            
-            else:
-                logger.error(f"❌ Не удалось обновить приглашение {current_invite['invite_id']}")
         except Exception as e:
             logger.error(f"❌ Ошибка при обновлении приглашения: {e}")
             logger.error(f"❌ Детали ошибки: {traceback.format_exc()}")
