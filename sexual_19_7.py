@@ -2022,11 +2022,14 @@ async def confirm_send_callback(update: Update, context: ContextTypes.DEFAULT_TY
             pending['clean_text'] = clean_text
             context.user_data["pending_invite"] = pending
         
-        # Формируем ссылку для отправки - используем ТОЛЬКО чистый текст
-        share_url = f"https://t.me/share/url?url=https://t.me/{BOT_USERNAME}?start={invite_code}&text={urllib.parse.quote(clean_text)}"
+        # Формируем полный текст со ссылкой внутри
+        full_text = f"{clean_text}\n\n🔗 https://t.me/{BOT_USERNAME}?start={invite_code}"
+
+        # Отправляем как единое сообщение (url оставляем пустым)
+        share_url = f"https://t.me/share/url?url={urllib.parse.quote(' ')}&text={urllib.parse.quote(full_text)}"
         
         # Альтернативный вариант с tg://
-        tg_share_url = f"tg://msg_url?url=https://t.me/{BOT_USERNAME}?start={invite_code}&text={urllib.parse.quote(clean_text)}"
+        tg_share_url = f"tg://msg_url?url={urllib.parse.quote(' ')}&text={urllib.parse.quote(full_text)}"
         
         # Получаем свежие лимиты
         user_id = query.from_user.id
@@ -2041,10 +2044,8 @@ async def confirm_send_callback(update: Update, context: ContextTypes.DEFAULT_TY
         text = f"""
 🔞 <b>✨ ССЫЛКА ОТПРАВЛЕНА! ✨</b>
 
-🔗 <code>https://t.me/{BOT_USERNAME}?start={invite_code}</code>
-
 💬 <b>Текст сообщения:</b>
-<blockquote>{clean_text}</blockquote>
+<blockquote>{full_text}</blockquote>
 
 {SEXUAL_DIVIDER}
 📊 <b>СТАТИСТИКА ОБНОВЛЕНА:</b>
