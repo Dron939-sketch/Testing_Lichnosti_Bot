@@ -44,7 +44,6 @@ async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"• А где уже возможен осознанный выбор\n\n"
         f"📊 <b>Вопросов:</b> 8\n"
         f"⏱ <b>Время:</b> ~3 минуты\n\n"
-        f"Готовы заглянуть в устройство своих реакций?"
     )
     
     keyboard = [
