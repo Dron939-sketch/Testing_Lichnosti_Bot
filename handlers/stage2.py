@@ -39,7 +39,6 @@ async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"• Характерные паттерны мыслительных процессов\n\n"
         f"📊 <b>Вопросов:</b> 8\n"
         f"⏱ <b>Время:</b> ~4 минуты\n\n"
-        f"Готовы продолжить наше исследование?"
     )
     
     keyboard = [
