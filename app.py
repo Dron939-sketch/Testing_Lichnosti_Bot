@@ -3791,6 +3791,7 @@ def api_sexual_create_invite():
 def diagnostic_all_lost_data():
     """
     ПОЛНАЯ ДИАГНОСТИКА: проверяет всех пользователей и все потерянные данные
+    ИСПРАВЛЕНО: убраны обращения к несуществующей колонке updated_at
     """
     try:
         conn = get_db_connection()
@@ -3817,14 +3818,25 @@ def diagnostic_all_lost_data():
             row[0]: row[1] for row in cursor.fetchall()
         }
         
+        # Получаем список колонок таблицы sexual_invites
+        cursor.execute("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'sexual_invites'
+        ORDER BY ordinal_position
+        """)
+        
+        sexual_invites_columns = [row[0] for row in cursor.fetchall()]
+        results["sexual_invites_columns"] = sexual_invites_columns
+        
         # ===== 2. ВСЕ ПРИГЛАШЕНИЯ =====
         cursor.execute("""
         SELECT 
             COUNT(*) as total,
             SUM(CASE WHEN status = 'used' THEN 1 ELSE 0 END) as used,
             SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
-            SUM(CASE WHEN status = 'used' AND target_name IS NULL THEN 1 ELSE 0 END) as used_no_name,
-            SUM(CASE WHEN status = 'used' AND target_name IS NOT NULL THEN 1 ELSE 0 END) as used_with_name
+            SUM(CASE WHEN status = 'used' AND (target_name IS NULL OR target_name = '') THEN 1 ELSE 0 END) as used_no_name,
+            SUM(CASE WHEN status = 'used' AND target_name IS NOT NULL AND target_name != '' THEN 1 ELSE 0 END) as used_with_name
         FROM sexual_invites
         """)
         
@@ -3837,18 +3849,17 @@ def diagnostic_all_lost_data():
             "used_with_name": stats[4] or 0
         }
         
-        # ===== 3. НАХОДИМ ПОТЕРЯННЫЕ =====
+        # ===== 3. НАХОДИМ ПОТЕРЯННЫЕ (используем created_at вместо updated_at) =====
         # Использованные, но без имени друга (тест пройден, но данные не сохранились)
         cursor.execute("""
         SELECT 
             invite_id,
             buyer_id,
             target_profile_key,
-            created_at,
-            updated_at
+            created_at
         FROM sexual_invites
         WHERE status = 'used' AND (target_name IS NULL OR target_name = '')
-        ORDER BY updated_at DESC
+        ORDER BY created_at DESC
         LIMIT 50
         """)
         
@@ -3859,7 +3870,6 @@ def diagnostic_all_lost_data():
                 "buyer_id": row[1],
                 "profile": row[2],
                 "created_at": row[3].isoformat() if row[3] else None,
-                "updated_at": row[4].isoformat() if row[4] else None,
                 "problem": "Тест пройден, но имя друга не сохранилось"
             })
         
@@ -3876,32 +3886,44 @@ def diagnostic_all_lost_data():
         has_notifications_log = cursor.fetchone()[0]
         
         if has_notifications_log:
-            # Ищем использованные приглашения без логов уведомлений
+            # Проверяем структуру notifications_log
             cursor.execute("""
-            SELECT si.invite_id, si.buyer_id, si.target_name, si.updated_at
-            FROM sexual_invites si
-            LEFT JOIN notifications_log nl 
-                ON nl.user_id = si.buyer_id 
-                AND nl.metadata::text LIKE '%' || si.invite_id || '%'
-            WHERE si.status = 'used' 
-                AND si.target_name IS NOT NULL
-                AND nl.id IS NULL
-            ORDER BY si.updated_at DESC
-            LIMIT 50
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'notifications_log'
             """)
+            notifications_columns = [row[0] for row in cursor.fetchall()]
+            results["notifications_log_columns"] = notifications_columns
             
-            lost_notifications = []
-            for row in cursor.fetchall():
-                lost_notifications.append({
-                    "invite_id": row[0],
-                    "buyer_id": row[1],
-                    "friend_name": row[2],
-                    "updated_at": row[3].isoformat() if row[3] else None,
-                    "problem": "Друг прошел тест, но уведомление не отправлено"
-                })
-            
-            results["lost_data"].extend(lost_notifications)
-            results["stats"]["notifications_missing"] = len(lost_notifications)
+            # Определяем, как искать по invite_id в зависимости от структуры
+            if 'metadata' in notifications_columns:
+                # Ищем использованные приглашения без логов уведомлений
+                cursor.execute("""
+                SELECT si.invite_id, si.buyer_id, si.target_name, si.created_at
+                FROM sexual_invites si
+                LEFT JOIN notifications_log nl 
+                    ON nl.user_id = si.buyer_id 
+                    AND nl.metadata::text LIKE '%' || si.invite_id || '%'
+                WHERE si.status = 'used' 
+                    AND si.target_name IS NOT NULL
+                    AND si.target_name != ''
+                    AND nl.id IS NULL
+                ORDER BY si.created_at DESC
+                LIMIT 50
+                """)
+                
+                lost_notifications = []
+                for row in cursor.fetchall():
+                    lost_notifications.append({
+                        "invite_id": row[0],
+                        "buyer_id": row[1],
+                        "friend_name": row[2],
+                        "created_at": row[3].isoformat() if row[3] else None,
+                        "problem": "Друг прошел тест, но уведомление не отправлено"
+                    })
+                
+                results["lost_data"].extend(lost_notifications)
+                results["notifications_missing"] = len(lost_notifications)
         
         # ===== 5. СТАТИСТИКА ПО ПОЛЬЗОВАТЕЛЯМ =====
         cursor.execute("""
@@ -3909,7 +3931,7 @@ def diagnostic_all_lost_data():
             buyer_id,
             COUNT(*) as total_invites,
             SUM(CASE WHEN status = 'used' THEN 1 ELSE 0 END) as used,
-            SUM(CASE WHEN status = 'used' AND target_name IS NULL THEN 1 ELSE 0 END) as broken
+            SUM(CASE WHEN status = 'used' AND (target_name IS NULL OR target_name = '') THEN 1 ELSE 0 END) as broken
         FROM sexual_invites
         GROUP BY buyer_id
         ORDER BY broken DESC, used DESC
@@ -3933,9 +3955,9 @@ def diagnostic_all_lost_data():
                 "Данные потеряны при обновлении."
             )
         
-        if has_notifications_log and lost_notifications:
+        if has_notifications_log and results.get("notifications_missing", 0) > 0:
             results["recommendations"].append(
-                f"🔴 {len(lost_notifications)} друзей прошли тест, но создатели не получили уведомления."
+                f"🔴 {results['notifications_missing']} друзей прошли тест, но создатели не получили уведомления."
             )
         
         if results["users_with_issues"]:
@@ -3946,6 +3968,13 @@ def diagnostic_all_lost_data():
         
         if not results["lost_data"]:
             results["recommendations"].append("✅ Потерянных данных не найдено! Система работает корректно.")
+        
+        # Добавляем информацию о структуре
+        results["table_structure_note"] = {
+            "sexual_invites_has_updated_at": "updated_at" in sexual_invites_columns,
+            "using_created_at_instead": True,
+            "note": "Таблица sexual_invites не имеет колонки updated_at, используется created_at"
+        }
         
         cursor.close()
         conn.close()
@@ -3958,7 +3987,6 @@ def diagnostic_all_lost_data():
     except Exception as e:
         logger.error(f"❌ Diagnostic error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
-
 @app.route('/api/sexual/get-invite/<invite_id>', methods=['GET'])
 def api_sexual_get_invite(invite_id):
     """Получает информацию о приглашении (используется при переходе по ссылке)"""
