@@ -714,7 +714,7 @@ async def show_results_screen(
     
     logger.debug(f"📊 has_shared={has_shared}, profile_data={'есть' if profile_data else 'нет'}")
     
-        if not profile_data:
+    if not profile_data:
         logger.debug("🔄 profile_data отсутствует, вычисляем...")
         profile_data = calculate_profile_final(context.user_data)
         context.user_data["profile_data"] = profile_data
