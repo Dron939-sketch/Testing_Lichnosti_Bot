@@ -714,13 +714,21 @@ async def show_results_screen(
     
     logger.debug(f"📊 has_shared={has_shared}, profile_data={'есть' if profile_data else 'нет'}")
     
-    if not profile_data:
+        if not profile_data:
         logger.debug("🔄 profile_data отсутствует, вычисляем...")
         profile_data = calculate_profile_final(context.user_data)
         context.user_data["profile_data"] = profile_data
         logger.debug(f"✅ profile_data вычислен: {profile_data.get('display_name')}")
     
-        # Проверяем, есть ли активное приглашение (пользователь пришел по ссылке)
+    # 👇 ЭТА СТРОКА НА ТОМ ЖЕ УРОВНЕ, ЧТО И if not profile_data
+    # Сохраняем профиль в БД
+    if profile_data and profile_data.get('display_name'):
+        asyncio.create_task(save_user_profile_background(
+            user_id=update.effective_user.id,
+            profile_code=profile_data['display_name']
+        ))
+    
+    # Проверяем, есть ли активное приглашение (пользователь пришел по ссылке)
     current_invite = context.user_data.get("current_invite")
     if current_invite:
         logger.info(f"🔍 Найдено активное приглашение: {current_invite}")
