@@ -4235,17 +4235,86 @@ def api_sexual_get_invite(invite_id):
 def api_sexual_update_invite(invite_id):
     """Обновляет приглашение после прохождения теста (добавляет данные друга)"""
     try:
+        logger.info("="*60)
+        logger.info(f"🔄 API: update-invite {invite_id}")
+        logger.info("="*60)
+        
+        # ===== 1. ЛОГИРУЕМ ВХОДЯЩИЙ ЗАПРОС =====
         data = request.get_json()
+        logger.info(f"📦 Получены данные: {data}")
+        logger.info(f"📦 Типы данных:")
+        for key, value in data.items():
+            logger.info(f"   • {key}: {value} (тип: {type(value).__name__})")
+        
+        # ===== 2. ИЗВЛЕКАЕМ ДАННЫЕ =====
         friend_id = data.get('friend_id')
         friend_name = data.get('friend_name')
         friend_profile = data.get('friend_profile')
         
-        if not all([friend_id, friend_name, friend_profile]):
-            return jsonify({"success": False, "error": "Missing required fields"}), 400
+        logger.info(f"🔍 Извлечено:")
+        logger.info(f"   • friend_id: {friend_id}")
+        logger.info(f"   • friend_name: '{friend_name}'")
+        logger.info(f"   • friend_profile: '{friend_profile}'")
         
+        # ===== 3. ПРОВЕРКА ОБЯЗАТЕЛЬНЫХ ПОЛЕЙ =====
+        missing = []
+        if not friend_id:
+            missing.append("friend_id")
+        if not friend_name:
+            missing.append("friend_name")
+        if not friend_profile:
+            missing.append("friend_profile")
+        
+        if missing:
+            logger.error(f"❌ Missing required fields: {missing}")
+            return jsonify({
+                "success": False, 
+                "error": f"Missing required fields: {missing}"
+            }), 400
+        
+        # ===== 4. ПОДКЛЮЧЕНИЕ К БД =====
+        logger.info(f"🔄 Подключение к БД...")
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # ===== 5. ПРОВЕРЯЕМ, СУЩЕСТВУЕТ ЛИ ПРИГЛАШЕНИЕ =====
+        cursor.execute("""
+        SELECT id, status, buyer_id, target_profile_key 
+        FROM sexual_invites 
+        WHERE invite_id = %s
+        """, (invite_id,))
+        
+        existing = cursor.fetchone()
+        logger.info(f"📊 Результат проверки: {existing}")
+        
+        if not existing:
+            logger.error(f"❌ Invite {invite_id} not found in database")
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "success": False, 
+                "error": "Invite not found"
+            }), 404
+        
+        invite_db_id, current_status, buyer_id, current_profile = existing
+        logger.info(f"📊 Текущее состояние:")
+        logger.info(f"   • id: {invite_db_id}")
+        logger.info(f"   • status: {current_status}")
+        logger.info(f"   • buyer_id: {buyer_id}")
+        logger.info(f"   • profile: {current_profile}")
+        
+        # ===== 6. ПРОВЕРЯЕМ СТАТУС =====
+        if current_status != 'pending':
+            logger.warning(f"⚠️ Invite {invite_id} has status '{current_status}', not 'pending'")
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "success": False, 
+                "error": f"Invite already {current_status}"
+            }), 400
+        
+        # ===== 7. ОБНОВЛЯЕМ ПРИГЛАШЕНИЕ =====
+        logger.info(f"🔄 Обновление invite {invite_id}...")
         cursor.execute("""
         UPDATE sexual_invites 
         SET status = 'used',
@@ -4257,19 +4326,73 @@ def api_sexual_update_invite(invite_id):
         """, (friend_id, friend_name, friend_profile, invite_id))
         
         result = cursor.fetchone()
+        logger.info(f"📊 Результат обновления: {result}")
         
         if not result:
+            logger.error(f"❌ Update failed - no rows returned")
             conn.rollback()
             cursor.close()
             conn.close()
-            return jsonify({"success": False, "error": "Invite not found or already used"}), 404
+            return jsonify({
+                "success": False, 
+                "error": "Update failed"
+            }), 500
         
         purchase_id, buyer_id = result
+        logger.info(f"✅ Обновление успешно: purchase_id={purchase_id}, buyer_id={buyer_id}")
+        
+        # ===== 8. ПРОВЕРЯЕМ, ЧТО ДАННЫЕ ДЕЙСТВИТЕЛЬНО ОБНОВИЛИСЬ =====
+        cursor.execute("""
+        SELECT target_name, target_profile_key, status 
+        FROM sexual_invites 
+        WHERE invite_id = %s
+        """, (invite_id,))
+        
+        updated = cursor.fetchone()
+        logger.info(f"📊 Проверка после обновления:")
+        logger.info(f"   • target_name: {updated[0]}")
+        logger.info(f"   • target_profile: {updated[1]}")
+        logger.info(f"   • status: {updated[2]}")
+        
         conn.commit()
         cursor.close()
         conn.close()
         
         logger.info(f"🔞 Приглашение {invite_id} активировано: buyer={buyer_id}, friend={friend_name}, profile={friend_profile}")
+        
+        # ===== 9. ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ СОЗДАТЕЛЮ =====
+        try:
+            logger.info(f"📤 Отправка уведомления пользователю {buyer_id}...")
+            telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
+            if telegram_token:
+                message = f"""
+👤 <b>Новое отражение!</b>
+
+@{friend_name} прошел тест по вашему приглашению.
+Его профиль: {friend_profile}
+
+🔍 Посмотреть в "Моих отражениях"
+"""
+                
+                url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+                keyboard = [[{
+                    "text": "👥 МОИ ОТРАЖЕНИЯ",
+                    "callback_data": "my_invites"
+                }]]
+                
+                response = requests.post(url, json={
+                    "chat_id": buyer_id,
+                    "text": message,
+                    "parse_mode": "HTML",
+                    "reply_markup": {"inline_keyboard": keyboard}
+                }, timeout=5)
+                
+                if response.status_code == 200:
+                    logger.info(f"✅ Уведомление отправлено пользователю {buyer_id}")
+                else:
+                    logger.error(f"❌ Ошибка отправки уведомления: {response.status_code}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при отправке уведомления: {e}")
         
         return jsonify({
             "success": True,
@@ -4282,9 +4405,13 @@ def api_sexual_update_invite(invite_id):
         }), 200
         
     except Exception as e:
-        logger.error(f"❌ Ошибка обновления приглашения: {e}")
+        logger.error(f"❌ Критическая ошибка обновления приглашения: {e}")
+        logger.error(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
-
+        
+    finally:
+        logger.info("="*60)
+        
 @app.route('/api/sexual/get-invites/<int:buyer_id>', methods=['GET'])
 def api_sexual_get_invites(buyer_id):
     """Возвращает все приглашения пользователя (для раздела Мои отражения)"""
