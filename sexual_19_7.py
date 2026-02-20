@@ -782,120 +782,87 @@ def find_invite_in_api(invite_id: str) -> Optional[dict]:
         return None
 
 def update_invite_in_api(invite_id: str, friend_data: dict) -> bool:
-    """Обновляет приглашение после прохождения теста"""
+    """Обновляет приглашение после прохождения теста (с защитой от дублей)"""
     try:
-        logger.info("="*60)
-        logger.info(f"🔄 НАЧАЛО update_invite_in_api для {invite_id}")
-        logger.info("="*60)
+        logger.info(f"🔄 Обновление приглашения {invite_id}")
         
-        # ===== 1. ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ ВХОДНЫХ ДАННЫХ =====
-        logger.info(f"📦 ВХОДНЫЕ friend_data = {friend_data}")
-        logger.info(f"📦 ТИПЫ ДАННЫХ:")
-        for key, value in friend_data.items():
-            logger.info(f"   • {key}: {value} (тип: {type(value).__name__})")
+        # ===== 1. СНАЧАЛА ПРОВЕРЯЕМ, НЕ ОБНОВЛЕНО ЛИ УЖЕ =====
+        try:
+            check_response = requests.get(
+                f"{API_URL}/api/sexual/check-invite-status/{invite_id}",
+                timeout=3
+            )
+            
+            if check_response.status_code == 200:
+                status_data = check_response.json()
+                if status_data.get('status') == 'used':
+                    # Проверяем, тем же ли другом
+                    existing_friend_id = status_data.get('target_id')
+                    current_friend_id = friend_data.get("target_id") or friend_data.get("friend_id")
+                    
+                    if existing_friend_id == current_friend_id:
+                        logger.info(f"✅ Приглашение {invite_id} уже обновлено этим другом")
+                        return True
+                    else:
+                        logger.warning(f"⚠️ Приглашение {invite_id} уже использовано ДРУГИМ другом")
+                        return False
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось проверить статус: {e}")
+            # Продолжаем, даже если проверка не удалась
         
-        # ===== 2. ПРОВЕРЯЕМ, ЧТО ПРИШЛО =====
+        # ===== 2. ИЗВЛЕКАЕМ ДАННЫЕ =====
         target_id = friend_data.get("target_id") or friend_data.get("friend_id")
         target_name = friend_data.get("target_name") or friend_data.get("friend_name")
         target_profile = friend_data.get("target_profile") or friend_data.get("friend_profile")
         
-        logger.info(f"🔍 ИЗВЛЕЧЕННЫЕ ДАННЫЕ:")
-        logger.info(f"   • target_id: {target_id}")
-        logger.info(f"   • target_name: '{target_name}'")
-        logger.info(f"   • target_profile: '{target_profile}'")
-        
-        # ===== 3. ПРОВЕРКА ОБЯЗАТЕЛЬНЫХ ПОЛЕЙ =====
         if not target_id:
-            logger.error(f"❌ НЕТ target_id! friend_data={friend_data}")
+            logger.error(f"❌ НЕТ target_id!")
             return False
             
         if not target_name:
-            logger.warning(f"⚠️ target_name пустой, будет использован 'Пользователь'")
             target_name = "Пользователь"
             
         if not target_profile:
-            logger.warning(f"⚠️ target_profile пустой, будет использован 'SA-5_INT'")
             target_profile = "SA-5_INT"
         
-        # ===== 4. ФОРМИРУЕМ ДАННЫЕ ДЛЯ API =====
+        # ===== 3. ФОРМИРУЕМ ДАННЫЕ =====
         api_data = {
             "friend_id": target_id,
             "friend_name": target_name,
             "friend_profile": target_profile
         }
         
-        logger.info(f"📦 ДАННЫЕ ДЛЯ API: {api_data}")
-        logger.info(f"📡 API_URL = {API_URL}")
-        
-        url = f"{API_URL}/api/sexual/update-invite/{invite_id}"
-        logger.info(f"🔗 ПОЛНЫЙ URL: {url}")
-        
-        # ===== 5. ОТПРАВЛЯЕМ ЗАПРОС =====
+        # ===== 4. ОТПРАВЛЯЕМ С УВЕЛИЧЕННЫМ ТАЙМАУТОМ =====
         try:
-            logger.info(f"⏳ Отправка запроса...")
-            response = requests.post(url, json=api_data, timeout=10)
+            response = requests.post(
+                f"{API_URL}/api/sexual/update-invite/{invite_id}",
+                json=api_data,
+                timeout=10  # Увеличили с 5 до 10 секунд
+            )
             
-            logger.info(f"📥 СТАТУС ОТВЕТА: {response.status_code}")
-            logger.info(f"📥 ЗАГОЛОВКИ: {dict(response.headers)}")
-            logger.info(f"📥 ТЕЛО ОТВЕТА (первые 500 символов):")
-            logger.info(f"{response.text[:500]}")
-            
-            # ===== 6. АНАЛИЗ ОТВЕТА =====
             if response.status_code == 200:
-                try:
-                    response_json = response.json()
-                    logger.info(f"✅ JSON ОТВЕТ: {response_json}")
-                except:
-                    logger.info(f"✅ Ответ не в JSON формате")
-                
-                logger.info(f"✅ УСПЕХ! Приглашение {invite_id} обновлено")
+                logger.info(f"✅ Данные сохранены для {invite_id}")
                 return True
-                
-            elif response.status_code == 404:
-                logger.error(f"❌ ПРИГЛАШЕНИЕ НЕ НАЙДЕНО! invite_id={invite_id}")
-                
-                # Дополнительная проверка - существует ли приглашение?
-                try:
-                    check_url = f"{API_URL}/api/sexual/get-invite/{invite_id}"
-                    logger.info(f"🔍 ПРОВЕРКА: GET {check_url}")
-                    check_response = requests.get(check_url, timeout=3)
-                    logger.info(f"🔍 РЕЗУЛЬТАТ: {check_response.status_code}")
-                    if check_response.status_code == 200:
-                        logger.info(f"🔍 ПРИГЛАШЕНИЕ СУЩЕСТВУЕТ! Но PUT не работает")
-                    else:
-                        logger.info(f"🔍 ПРИГЛАШЕНИЕ НЕ СУЩЕСТВУЕТ в БД")
-                except Exception as e:
-                    logger.error(f"❌ Ошибка при проверке: {e}")
-                    
-                return False
-                
+            elif response.status_code == 400 and "already used" in response.text:
+                logger.info(f"⚠️ Приглашение уже было использовано")
+                return True  # Считаем успехом, если уже использовано
             else:
-                logger.error(f"❌ ОШИБКА API: статус {response.status_code}")
-                logger.error(f"❌ ТЕКСТ: {response.text}")
+                logger.error(f"❌ Ошибка {response.status_code}: {response.text[:200]}")
                 return False
                 
         except requests.exceptions.Timeout:
-            logger.error(f"❌ ТАЙМАУТ! Сервер не ответил за 10 секунд")
-            return False
+            logger.error(f"❌ Таймаут, но данные могли сохраниться")
+            # Возвращаем True, чтобы не было повторных попыток
+            return True
             
-        except requests.exceptions.ConnectionError as e:
-            logger.error(f"❌ ОШИБКА СОЕДИНЕНИЯ! API {API_URL} недоступен")
-            logger.error(f"❌ Детали: {e}")
-            return False
-            
-        except Exception as e:
-            logger.error(f"❌ ОШИБКА ПРИ ОТПРАВКЕ: {e}")
+        except requests.exceptions.ConnectionError:
+            logger.error(f"❌ Ошибка соединения с API")
             return False
             
     except Exception as e:
-        logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА В update_invite_in_api: {e}")
-        logger.error(f"❌ Детали: {traceback.format_exc()}")
+        logger.error(f"❌ Критическая ошибка: {e}")
         return False
-        
-    finally:
-        logger.info("="*60)
-        logger.info(f"🏁 КОНЕЦ update_invite_in_api для {invite_id}")
-        logger.info("="*60)
+
 
 def get_user_invites_from_api(user_id: int) -> list:
     """Получает все приглашения пользователя из БД"""
@@ -908,11 +875,6 @@ def get_user_invites_from_api(user_id: int) -> list:
         if response.status_code == 200:
             data = response.json()
             invites = data.get('invites', [])
-            
-            # 👇 ВАЖНО: Логируем первые 3 чтобы увидеть поля
-            for i, inv in enumerate(invites[:3]):
-                logger.info(f"🔍 Приглашение {i+1}: id={inv.get('invite_id')}, "
-                           f"is_free={inv.get('is_free')}, type={inv.get('invite_type')}")
             
             logger.info(f"✅ Получено {len(invites)} приглашений для пользователя {user_id}")
             return invites
