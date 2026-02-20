@@ -5747,6 +5747,115 @@ def debug_all_payments():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/save-user-profile', methods=['POST'])
+def save_user_profile():
+    """
+    Сохраняет код профиля пользователя после прохождения теста
+    Принимает: user_id, profile_code
+    """
+    try:
+        data = request.get_json()
+        logger.info(f"💾 Получен запрос на сохранение профиля: {data}")
+        
+        user_id = data.get('user_id')
+        profile_code = data.get('profile_code')
+        
+        if not user_id or not profile_code:
+            logger.warning(f"⚠️ Отсутствуют обязательные поля: user_id={user_id}, profile_code={profile_code}")
+            return jsonify({"success": False, "error": "Missing user_id or profile_code"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Создаем таблицу если её нет
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_profiles (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT UNIQUE NOT NULL,
+            profile_code VARCHAR(20) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        
+        # Добавляем индекс для быстрого поиска
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id 
+        ON user_profiles(user_id)
+        """)
+        
+        # Сохраняем или обновляем профиль
+        cursor.execute("""
+        INSERT INTO user_profiles (user_id, profile_code, updated_at)
+        VALUES (%s, %s, CURRENT_TIMESTAMP)
+        ON CONFLICT (user_id) 
+        DO UPDATE SET 
+            profile_code = EXCLUDED.profile_code,
+            updated_at = CURRENT_TIMESTAMP
+        RETURNING id
+        """, (user_id, profile_code))
+        
+        result = cursor.fetchone()
+        conn.commit()
+        
+        logger.info(f"✅ Профиль {profile_code} сохранен для пользователя {user_id}")
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "message": "Profile saved",
+            "user_id": user_id,
+            "profile_code": profile_code
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка сохранения профиля: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================
+# ПОЛУЧЕНИЕ ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ
+# ============================================
+
+@app.route('/api/get-user-profile/<int:user_id>', methods=['GET'])
+def get_user_profile(user_id):
+    """
+    Возвращает сохраненный профиль пользователя
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT profile_code, created_at, updated_at
+        FROM user_profiles
+        WHERE user_id = %s
+        """, (user_id,))
+        
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if result:
+            return jsonify({
+                "success": True,
+                "has_profile": True,
+                "profile_code": result[0],
+                "created_at": result[1].isoformat() if result[1] else None,
+                "updated_at": result[2].isoformat() if result[2] else None
+            })
+        else:
+            return jsonify({
+                "success": True,
+                "has_profile": False
+            })
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения профиля: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # ============================================
 # ЗАПУСК СЕРВЕРА
