@@ -5520,7 +5520,7 @@ def user_invites_stats(user_id):
 
 
 @app.route('/api/sexual/invite-status/<invite_id>', methods=['GET'])
-def check_invite_status(invite_id):
+def check_invite_status_alt(invite_id):
     """Проверяет статус конкретного приглашения"""
     try:
         conn = get_db_connection()
