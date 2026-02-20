@@ -3791,10 +3791,13 @@ def api_sexual_create_invite():
 def deep_scan_invites():
     """
     ГЛУБОКОЕ СКАНИРОВАНИЕ: ищет ВСЕ приглашения с данными о друзьях
-    независимо от статуса
     """
     try:
+        logger.info("🚀 НАЧАЛО глубокого сканирования")
+        
         conn = get_db_connection()
+        logger.info("✅ Подключение к БД успешно")
+        
         cursor = conn.cursor()
         
         results = {
@@ -3806,186 +3809,160 @@ def deep_scan_invites():
         }
         
         # ===== 1. ПРОВЕРЯЕМ СТРУКТУРУ ТАБЛИЦ =====
-        cursor.execute("""
-        SELECT table_name, COUNT(*) as columns
-        FROM information_schema.columns 
-        WHERE table_schema = 'public'
-        GROUP BY table_name
-        ORDER BY table_name
-        """)
-        
-        results["database_tables"] = {
-            row[0]: row[1] for row in cursor.fetchall()
-        }
-        
-        # Получаем список колонок таблицы sexual_invites
-        cursor.execute("""
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_name = 'sexual_invites'
-        ORDER BY ordinal_position
-        """)
-        
-        sexual_invites_columns = [row[0] for row in cursor.fetchall()]
-        results["sexual_invites_columns"] = sexual_invites_columns
-        
-        # ===== 2. ИЩЕМ ВСЕ ПРИГЛАШЕНИЯ, ГДЕ ЕСТЬ ИМЯ ДРУГА =====
-        cursor.execute("""
-        SELECT 
-            invite_id,
-            buyer_id,
-            target_name,
-            target_profile_key,
-            status,
-            created_at,
-            is_free,
-            invite_type
-        FROM sexual_invites
-        WHERE target_name IS NOT NULL 
-          AND target_name != ''
-          AND target_profile_key IS NOT NULL
-        ORDER BY created_at DESC
-        """)
-        
-        all_with_friends = cursor.fetchall()
-        
-        for row in all_with_friends:
-            friend_data = {
-                "invite_id": row[0],
-                "buyer_id": row[1],
-                "friend_name": row[2],
-                "friend_profile": row[3],
-                "status": row[4],
-                "created_at": row[5].isoformat() if row[5] else None,
-                "is_free": row[6],
-                "invite_type": row[7]
+        logger.info("📊 Проверка структуры таблиц...")
+        try:
+            cursor.execute("""
+            SELECT table_name, COUNT(*) as columns
+            FROM information_schema.columns 
+            WHERE table_schema = 'public'
+            GROUP BY table_name
+            ORDER BY table_name
+            """)
+            
+            tables = cursor.fetchall()
+            results["database_tables"] = {
+                row[0]: row[1] for row in tables
             }
-            results["found_friends"].append(friend_data)
+            logger.info(f"✅ Найдено таблиц: {len(tables)}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при проверке таблиц: {e}")
+            results["database_tables"] = {"error": str(e)}
         
-        # ===== 3. ПРОВЕРЯЕМ, БЫЛИ ЛИ УВЕДОМЛЕНИЯ =====
-        cursor.execute("""
-        SELECT EXISTS (
-            SELECT 1 FROM information_schema.tables 
-            WHERE table_name = 'notifications_log'
-        )
-        """)
-        has_logs = cursor.fetchone()[0]
-        
-        if has_logs:
-            # Получаем структуру notifications_log
+        # ===== 2. КОЛОНКИ sexual_invites =====
+        logger.info("📊 Проверка колонок sexual_invites...")
+        try:
             cursor.execute("""
             SELECT column_name 
             FROM information_schema.columns 
-            WHERE table_name = 'notifications_log'
+            WHERE table_name = 'sexual_invites'
+            ORDER BY ordinal_position
             """)
-            notifications_columns = [row[0] for row in cursor.fetchall()]
-            results["notifications_log_columns"] = notifications_columns
             
-            for friend in results["found_friends"]:
-                # Проверяем, было ли уведомление создателю
-                if 'metadata' in notifications_columns:
-                    cursor.execute("""
-                    SELECT id, sent_at, success
-                    FROM notifications_log
-                    WHERE user_id = %s 
-                      AND metadata::text LIKE %s
-                    ORDER BY sent_at DESC
-                    LIMIT 1
-                    """, (friend["buyer_id"], f'%{friend["invite_id"]}%'))
+            sexual_invites_columns = [row[0] for row in cursor.fetchall()]
+            results["sexual_invites_columns"] = sexual_invites_columns
+            logger.info(f"✅ Найдено колонок: {len(sexual_invites_columns)}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при проверке колонок: {e}")
+            results["sexual_invites_columns"] = {"error": str(e)}
+        
+        # ===== 3. ИЩЕМ ПРИГЛАШЕНИЯ С ДРУЗЬЯМИ =====
+        logger.info("🔍 Поиск приглашений с друзьями...")
+        try:
+            cursor.execute("""
+            SELECT 
+                invite_id,
+                buyer_id,
+                target_name,
+                target_profile_key,
+                status,
+                created_at,
+                is_free,
+                invite_type
+            FROM sexual_invites
+            WHERE target_name IS NOT NULL 
+              AND target_name != ''
+              AND target_profile_key IS NOT NULL
+            ORDER BY created_at DESC
+            """)
+            
+            all_with_friends = cursor.fetchall()
+            logger.info(f"✅ Найдено приглашений с друзьями: {len(all_with_friends)}")
+            
+            for row in all_with_friends:
+                try:
+                    friend_data = {
+                        "invite_id": row[0],
+                        "buyer_id": row[1],
+                        "friend_name": row[2],
+                        "friend_profile": row[3],
+                        "status": row[4],
+                        "created_at": row[5].isoformat() if row[5] else None,
+                        "is_free": row[6],
+                        "invite_type": row[7]
+                    }
+                    results["found_friends"].append(friend_data)
+                except Exception as e:
+                    logger.error(f"❌ Ошибка обработки строки: {e}")
+                    continue
                     
-                    notification = cursor.fetchone()
-                    
-                    if not notification:
-                        # Есть друг, но нет уведомления - проблема!
-                        results["potential_problems"].append({
-                            "type": "missing_notification",
-                            "invite_id": friend["invite_id"],
-                            "buyer_id": friend["buyer_id"],
-                            "friend_name": friend["friend_name"],
-                            "friend_profile": friend["friend_profile"],
-                            "status": friend["status"],
-                            "problem": "Друг есть в БД, но уведомление не отправлялось"
-                        })
+        except Exception as e:
+            logger.error(f"❌ Ошибка при поиске друзей: {e}")
+            results["found_friends"] = {"error": str(e)}
         
-        # ===== 4. ПРОВЕРЯЕМ ПОЛЬЗОВАТЕЛЕЙ, КОТОРЫЕ ДОЛЖНЫ ВИДЕТЬ ДРУЗЕЙ =====
-        cursor.execute("""
-        SELECT 
-            buyer_id,
-            COUNT(*) as total_friends,
-            STRING_AGG(target_name, ', ') as friend_names
-        FROM sexual_invites
-        WHERE target_name IS NOT NULL AND target_name != ''
-        GROUP BY buyer_id
-        ORDER BY total_friends DESC
-        """)
+        # ===== 4. ПРОВЕРЯЕМ ЛОГИ =====
+        logger.info("📝 Проверка таблицы логов...")
+        try:
+            cursor.execute("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables 
+                WHERE table_name = 'notifications_log'
+            )
+            """)
+            has_logs = cursor.fetchone()[0]
+            results["has_notifications_log"] = has_logs
+            logger.info(f"✅ Таблица логов существует: {has_logs}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при проверке логов: {e}")
+            results["has_notifications_log"] = False
         
-        results["users_with_friends"] = []
-        for row in cursor.fetchall():
-            results["users_with_friends"].append({
-                "user_id": row[0],
-                "friend_count": row[1],
-                "friends": row[2]
-            })
+        # ===== 5. СТАТИСТИКА ПО ПОЛЬЗОВАТЕЛЯМ =====
+        logger.info("👥 Сбор статистики по пользователям...")
+        try:
+            cursor.execute("""
+            SELECT 
+                buyer_id,
+                COUNT(*) as total_friends
+            FROM sexual_invites
+            WHERE target_name IS NOT NULL AND target_name != ''
+            GROUP BY buyer_id
+            ORDER BY total_friends DESC
+            """)
+            
+            users_data = cursor.fetchall()
+            results["users_with_friends"] = []
+            
+            total_friends = 0
+            for row in users_data:
+                results["users_with_friends"].append({
+                    "user_id": row[0],
+                    "friend_count": row[1]
+                })
+                total_friends += row[1]
+            
+            logger.info(f"✅ Найдено пользователей с друзьями: {len(users_data)}")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка при сборе статистики: {e}")
+            results["users_with_friends"] = {"error": str(e)}
         
-        # ===== 5. СТАТИСТИКА =====
+        # ===== 6. СТАТИСТИКА =====
         results["statistics"] = {
-            "total_invites_with_friends": len(results["found_friends"]),
-            "total_users_with_friends": len(results["users_with_friends"]),
-            "potential_problems": len(results["potential_problems"]),
-            "total_invites": sum(row[1] for row in results["users_with_friends"]) if results["users_with_friends"] else 0
+            "total_friends_found": len(results["found_friends"]),
+            "total_users_with_friends": len(results.get("users_with_friends", [])),
+            "potential_problems": 0
         }
         
-        # ===== 6. СТАТИСТИКА ПО СТАТУСАМ =====
+        # ===== 7. СТАТИСТИКА ПО СТАТУСАМ =====
         status_stats = {}
         for friend in results["found_friends"]:
-            status = friend["status"]
-            status_stats[status] = status_stats.get(status, 0) + 1
+            if isinstance(friend, dict) and "status" in friend:
+                status = friend["status"]
+                status_stats[status] = status_stats.get(status, 0) + 1
         results["status_stats"] = status_stats
         
-        # ===== 7. ФОРМИРУЕМ РЕКОМЕНДАЦИИ =====
-        if results["potential_problems"]:
-            results["recommendations"].append(
-                f"🔴 Найдено {len(results['potential_problems'])} случаев, "
-                "где друг есть в БД, но уведомление не отправлено"
-            )
-            
-            # Группируем по пользователям
-            for user in results["users_with_friends"]:
-                user_problems = [p for p in results["potential_problems"] 
-                               if p["buyer_id"] == user["user_id"]]
-                if user_problems:
-                    results["recommendations"].append(
-                        f"👤 Пользователь {user['user_id']}: "
-                        f"должен видеть {user['friend_count']} друзей, "
-                        f"но {len(user_problems)} без уведомлений"
-                    )
-            
-            # Добавляем инструкцию по исправлению
-            results["recommendations"].append(
-                "\n🔧 ДЛЯ ИСПРАВЛЕНИЯ отправьте POST запрос на:\n"
-                "/api/diagnostic/fix-missing-friends\n"
-                "с телом: {\"invite_id\": \"...\"}"
-            )
-        
-        if not results["potential_problems"] and results["found_friends"]:
-            results["recommendations"].append(
-                "✅ Все друзья корректно отображаются в 'Моих отражениях'"
-            )
-        
+        # ===== 8. РЕКОМЕНДАЦИИ =====
         if not results["found_friends"]:
             results["recommendations"].append(
                 "📭 В системе пока нет друзей, прошедших тест"
             )
-        
-        # Добавляем информацию о структуре
-        results["table_structure_note"] = {
-            "sexual_invites_has_updated_at": "updated_at" in sexual_invites_columns,
-            "using_created_at_instead": True,
-            "note": "Таблица sexual_invites не имеет колонки updated_at, используется created_at"
-        }
+        else:
+            results["recommendations"].append(
+                f"✅ Найдено {len(results['found_friends'])} друзей"
+            )
         
         cursor.close()
         conn.close()
+        logger.info("✅ Сканирование завершено успешно")
         
         return jsonify({
             "success": True,
@@ -3993,8 +3970,15 @@ def deep_scan_invites():
         })
         
     except Exception as e:
-        logger.error(f"❌ Deep scan error: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            "success": False, 
+            "error": str(e),
+            "trace": traceback.format_exc()
+        }), 500
+        
 @app.route('/api/sexual/get-invite/<invite_id>', methods=['GET'])
 def api_sexual_get_invite(invite_id):
     """Получает информацию о приглашении (используется при переходе по ссылке)"""
