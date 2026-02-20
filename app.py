@@ -3787,6 +3787,178 @@ def api_sexual_create_invite():
         logger.error(f"❌ Ошибка создания приглашения: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/diagnostic/all-lost-data', methods=['GET'])
+def diagnostic_all_lost_data():
+    """
+    ПОЛНАЯ ДИАГНОСТИКА: проверяет всех пользователей и все потерянные данные
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        results = {
+            "timestamp": datetime.now().isoformat(),
+            "summary": {},
+            "lost_data": [],
+            "statistics": {},
+            "recommendations": []
+        }
+        
+        # ===== 1. ПРОВЕРЯЕМ СТРУКТУРУ ТАБЛИЦ =====
+        cursor.execute("""
+        SELECT table_name, COUNT(*) as columns
+        FROM information_schema.columns 
+        WHERE table_schema = 'public'
+        GROUP BY table_name
+        ORDER BY table_name
+        """)
+        
+        results["database_tables"] = {
+            row[0]: row[1] for row in cursor.fetchall()
+        }
+        
+        # ===== 2. ВСЕ ПРИГЛАШЕНИЯ =====
+        cursor.execute("""
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'used' THEN 1 ELSE 0 END) as used,
+            SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+            SUM(CASE WHEN status = 'used' AND target_name IS NULL THEN 1 ELSE 0 END) as used_no_name,
+            SUM(CASE WHEN status = 'used' AND target_name IS NOT NULL THEN 1 ELSE 0 END) as used_with_name
+        FROM sexual_invites
+        """)
+        
+        stats = cursor.fetchone()
+        results["invites_stats"] = {
+            "total": stats[0] or 0,
+            "used": stats[1] or 0,
+            "pending": stats[2] or 0,
+            "used_without_name": stats[3] or 0,
+            "used_with_name": stats[4] or 0
+        }
+        
+        # ===== 3. НАХОДИМ ПОТЕРЯННЫЕ =====
+        # Использованные, но без имени друга (тест пройден, но данные не сохранились)
+        cursor.execute("""
+        SELECT 
+            invite_id,
+            buyer_id,
+            target_profile_key,
+            created_at,
+            updated_at
+        FROM sexual_invites
+        WHERE status = 'used' AND (target_name IS NULL OR target_name = '')
+        ORDER BY updated_at DESC
+        LIMIT 50
+        """)
+        
+        lost_without_name = []
+        for row in cursor.fetchall():
+            lost_without_name.append({
+                "invite_id": row[0],
+                "buyer_id": row[1],
+                "profile": row[2],
+                "created_at": row[3].isoformat() if row[3] else None,
+                "updated_at": row[4].isoformat() if row[4] else None,
+                "problem": "Тест пройден, но имя друга не сохранилось"
+            })
+        
+        results["lost_data"].extend(lost_without_name)
+        
+        # ===== 4. ПРОВЕРЯЕМ УВЕДОМЛЕНИЯ =====
+        # Проверяем, есть ли таблица логов
+        cursor.execute("""
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.tables 
+            WHERE table_name = 'notifications_log'
+        )
+        """)
+        has_notifications_log = cursor.fetchone()[0]
+        
+        if has_notifications_log:
+            # Ищем использованные приглашения без логов уведомлений
+            cursor.execute("""
+            SELECT si.invite_id, si.buyer_id, si.target_name, si.updated_at
+            FROM sexual_invites si
+            LEFT JOIN notifications_log nl 
+                ON nl.user_id = si.buyer_id 
+                AND nl.metadata::text LIKE '%' || si.invite_id || '%'
+            WHERE si.status = 'used' 
+                AND si.target_name IS NOT NULL
+                AND nl.id IS NULL
+            ORDER BY si.updated_at DESC
+            LIMIT 50
+            """)
+            
+            lost_notifications = []
+            for row in cursor.fetchall():
+                lost_notifications.append({
+                    "invite_id": row[0],
+                    "buyer_id": row[1],
+                    "friend_name": row[2],
+                    "updated_at": row[3].isoformat() if row[3] else None,
+                    "problem": "Друг прошел тест, но уведомление не отправлено"
+                })
+            
+            results["lost_data"].extend(lost_notifications)
+            results["stats"]["notifications_missing"] = len(lost_notifications)
+        
+        # ===== 5. СТАТИСТИКА ПО ПОЛЬЗОВАТЕЛЯМ =====
+        cursor.execute("""
+        SELECT 
+            buyer_id,
+            COUNT(*) as total_invites,
+            SUM(CASE WHEN status = 'used' THEN 1 ELSE 0 END) as used,
+            SUM(CASE WHEN status = 'used' AND target_name IS NULL THEN 1 ELSE 0 END) as broken
+        FROM sexual_invites
+        GROUP BY buyer_id
+        ORDER BY broken DESC, used DESC
+        LIMIT 20
+        """)
+        
+        results["users_with_issues"] = []
+        for row in cursor.fetchall():
+            if row[3] > 0:  # есть проблемы
+                results["users_with_issues"].append({
+                    "user_id": row[0],
+                    "total": row[1],
+                    "used": row[2],
+                    "broken": row[3]
+                })
+        
+        # ===== 6. ФОРМИРУЕМ РЕКОМЕНДАЦИИ =====
+        if results["invites_stats"]["used_without_name"] > 0:
+            results["recommendations"].append(
+                f"🔴 Найдено {results['invites_stats']['used_without_name']} приглашений со статусом 'used' без имени друга. "
+                "Данные потеряны при обновлении."
+            )
+        
+        if has_notifications_log and lost_notifications:
+            results["recommendations"].append(
+                f"🔴 {len(lost_notifications)} друзей прошли тест, но создатели не получили уведомления."
+            )
+        
+        if results["users_with_issues"]:
+            results["recommendations"].append(
+                f"⚠️ Проблемы у {len(results['users_with_issues'])} пользователей. "
+                "Рекомендуется запустить восстановление."
+            )
+        
+        if not results["lost_data"]:
+            results["recommendations"].append("✅ Потерянных данных не найдено! Система работает корректно.")
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "data": results
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Diagnostic error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/api/sexual/get-invite/<invite_id>', methods=['GET'])
 def api_sexual_get_invite(invite_id):
     """Получает информацию о приглашении (используется при переходе по ссылке)"""
