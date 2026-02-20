@@ -3978,6 +3978,147 @@ def deep_scan_invites():
             "error": str(e),
             "trace": traceback.format_exc()
         }), 500
+
+@app.route('/api/diagnostic/friend-audit', methods=['GET'])
+def friend_audit():
+    """
+    АУДИТ: проверяет всех друзей и почему они могут не отображаться
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        results = {
+            "timestamp": datetime.now().isoformat(),
+            "summary": {},
+            "friends_by_status": {},
+            "friends_by_type": {},
+            "incomplete_data": [],
+            "recommendations": []
+        }
+        
+        # ===== 1. СТАТИСТИКА ПО СТАТУСАМ =====
+        cursor.execute("""
+        SELECT status, COUNT(*) 
+        FROM sexual_invites 
+        WHERE target_name IS NOT NULL AND target_name != ''
+        GROUP BY status
+        """)
+        
+        results["friends_by_status"] = {
+            row[0]: row[1] for row in cursor.fetchall()
+        }
+        
+        # ===== 2. СТАТИСТИКА ПО ТИПАМ (is_free/invite_type) =====
+        cursor.execute("""
+        SELECT is_free, invite_type, COUNT(*) 
+        FROM sexual_invites 
+        WHERE target_name IS NOT NULL AND target_name != ''
+        GROUP BY is_free, invite_type
+        """)
+        
+        type_stats = []
+        for row in cursor.fetchall():
+            type_stats.append({
+                "is_free": row[0],
+                "invite_type": row[1],
+                "count": row[2]
+            })
+        results["friends_by_type"] = type_stats
+        
+        # ===== 3. ПРОВЕРЯЕМ НЕПОЛНЫЕ ДАННЫЕ =====
+        cursor.execute("""
+        SELECT 
+            invite_id,
+            buyer_id,
+            target_name,
+            target_profile_key,
+            status,
+            is_free,
+            invite_type,
+            CASE 
+                WHEN target_profile_key IS NULL THEN 'missing_profile'
+                WHEN target_name IS NULL THEN 'missing_name'
+                ELSE 'complete'
+            END as issue
+        FROM sexual_invites
+        WHERE target_name IS NOT NULL 
+          AND target_name != ''
+          AND (target_profile_key IS NULL OR target_profile_key = '')
+        """)
+        
+        incomplete = cursor.fetchall()
+        for row in incomplete:
+            results["incomplete_data"].append({
+                "invite_id": row[0],
+                "buyer_id": row[1],
+                "friend_name": row[2],
+                "friend_profile": row[3],
+                "status": row[4],
+                "is_free": row[5],
+                "invite_type": row[6],
+                "issue": row[7]
+            })
+        
+        # ===== 4. ПОЛЬЗОВАТЕЛИ И ИХ ДРУЗЬЯ =====
+        cursor.execute("""
+        SELECT 
+            buyer_id,
+            COUNT(*) as total_friends,
+            SUM(CASE WHEN status = 'used' THEN 1 ELSE 0 END) as used,
+            SUM(CASE WHEN status != 'used' THEN 1 ELSE 0 END) as other_status
+        FROM sexual_invites
+        WHERE target_name IS NOT NULL AND target_name != ''
+        GROUP BY buyer_id
+        ORDER BY total_friends DESC
+        """)
+        
+        results["users"] = []
+        for row in cursor.fetchall():
+            results["users"].append({
+                "user_id": row[0],
+                "total_friends": row[1],
+                "used": row[2],
+                "other_status": row[3]
+            })
+        
+        # ===== 5. ПРОВЕРЯЕМ КОНКРЕТНО Mary (для примера) =====
+        cursor.execute("""
+        SELECT * FROM sexual_invites 
+        WHERE target_name = 'Mary' OR target_name LIKE '%Mary%'
+        """)
+        
+        mary_data = cursor.fetchone()
+        if mary_data:
+            results["mary_example"] = {
+                "status": mary_data[6],  # status
+                "is_free": mary_data[9],  # is_free
+                "invite_type": mary_data[10]  # invite_type
+            }
+        
+        # ===== 6. РЕКОМЕНДАЦИИ =====
+        if results["incomplete_data"]:
+            results["recommendations"].append(
+                f"🔴 Найдено {len(results['incomplete_data'])} друзей без профиля"
+            )
+        
+        for status, count in results["friends_by_status"].items():
+            if status != 'used' and count > 0:
+                results["recommendations"].append(
+                    f"⚠️ {count} друзей имеют статус '{status}' (не 'used')"
+                )
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "data": results
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Audit error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
         
 @app.route('/api/sexual/get-invite/<invite_id>', methods=['GET'])
 def api_sexual_get_invite(invite_id):
