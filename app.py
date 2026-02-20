@@ -4119,6 +4119,80 @@ def friend_audit():
     except Exception as e:
         logger.error(f"❌ Audit error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/diagnostic/all-invites', methods=['GET'])
+def all_invites():
+    """
+    Показывает ВСЕ приглашения без фильтрации
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Все приглашения
+        cursor.execute("""
+        SELECT 
+            invite_id,
+            buyer_id,
+            target_name,
+            target_profile_key,
+            status,
+            created_at,
+            is_free,
+            invite_type
+        FROM sexual_invites
+        ORDER BY created_at DESC
+        LIMIT 100
+        """)
+        
+        all_invites = []
+        for row in cursor.fetchall():
+            all_invites.append({
+                "invite_id": row[0],
+                "buyer_id": row[1],
+                "target_name": row[2],
+                "target_profile": row[3],
+                "status": row[4],
+                "created_at": row[5].isoformat() if row[5] else None,
+                "is_free": row[6],
+                "invite_type": row[7],
+                "has_friend": row[2] is not None and row[2] != ''
+            })
+        
+        # Статистика по статусам
+        cursor.execute("""
+        SELECT status, COUNT(*) 
+        FROM sexual_invites
+        GROUP BY status
+        """)
+        
+        status_stats = {row[0]: row[1] for row in cursor.fetchall()}
+        
+        # Приглашения без имени друга
+        cursor.execute("""
+        SELECT COUNT(*) 
+        FROM sexual_invites
+        WHERE target_name IS NULL OR target_name = ''
+        """)
+        no_name_count = cursor.fetchone()[0]
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "total_invites": len(all_invites),
+                "with_friends": len([i for i in all_invites if i["has_friend"]]),
+                "without_friends": len([i for i in all_invites if not i["has_friend"]]),
+                "no_name_count": no_name_count,
+                "status_stats": status_stats,
+                "all_invites": all_invites
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
         
 @app.route('/api/sexual/get-invite/<invite_id>', methods=['GET'])
 def api_sexual_get_invite(invite_id):
