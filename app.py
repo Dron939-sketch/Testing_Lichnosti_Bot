@@ -5831,6 +5831,59 @@ def save_user_profile():
     Сохраняет код профиля пользователя после прохождения теста
     Принимает: user_id, profile_code
     """
+    # Если это GET-запрос - создаем тестовую запись
+    if request.method == 'GET':
+        test_user_id = 532205848
+        test_profile = "TEST_PROFILE"
+        
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Создаем таблицу если её нет
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT UNIQUE NOT NULL,
+                profile_code VARCHAR(20) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            # Добавляем индекс для быстрого поиска
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id 
+            ON user_profiles(user_id)
+            """)
+            
+            # Вставляем тестовую запись
+            cursor.execute("""
+            INSERT INTO user_profiles (user_id, profile_code)
+            VALUES (%s, %s)
+            ON CONFLICT (user_id) DO NOTHING
+            """, (test_user_id, test_profile))
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            logger.info(f"✅ Тестовый профиль {test_profile} создан для пользователя {test_user_id}")
+            
+            return jsonify({
+                "success": True,
+                "message": "Test profile created",
+                "user_id": test_user_id,
+                "profile_code": test_profile
+            }), 200
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка создания тестового профиля: {e}")
+            return jsonify({
+                "success": False,
+                "error": str(e)
+            }), 500
+    
+    # ===== ДАЛЬШЕ ВАШ СУЩЕСТВУЮЩИЙ POST-КОД =====
     try:
         data = request.get_json()
         logger.info(f"💾 Получен запрос на сохранение профиля: {data}")
