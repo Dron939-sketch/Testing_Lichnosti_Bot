@@ -5831,10 +5831,17 @@ def save_user_profile():
     Сохраняет код профиля пользователя после прохождения теста
     Принимает: user_id, profile_code
     """
-    # Если это GET-запрос - создаем тестовую запись
+    # Если это GET-запрос - создаем тестовую запись (НЕ ТРЕБУЕТ JSON)
     if request.method == 'GET':
-        test_user_id = 532205848
-        test_profile = "TEST_PROFILE"
+        # Получаем параметры из URL (если есть)
+        test_user_id = request.args.get('user_id', 532205848)
+        test_profile = request.args.get('profile_code', 'TEST_PROFILE')
+        
+        # Преобразуем user_id в число, если это строка
+        try:
+            test_user_id = int(test_user_id)
+        except:
+            test_user_id = 532205848
         
         try:
             conn = get_db_connection()
@@ -5864,6 +5871,11 @@ def save_user_profile():
             """, (test_user_id, test_profile))
             
             conn.commit()
+            
+            # Проверяем, что создалось
+            cursor.execute("SELECT COUNT(*) FROM user_profiles")
+            count = cursor.fetchone()[0]
+            
             cursor.close()
             conn.close()
             
@@ -5873,7 +5885,8 @@ def save_user_profile():
                 "success": True,
                 "message": "Test profile created",
                 "user_id": test_user_id,
-                "profile_code": test_profile
+                "profile_code": test_profile,
+                "total_profiles": count
             }), 200
             
         except Exception as e:
@@ -5885,6 +5898,13 @@ def save_user_profile():
     
     # ===== ДАЛЬШЕ ВАШ СУЩЕСТВУЮЩИЙ POST-КОД =====
     try:
+        # Проверяем Content-Type для POST-запросов
+        if not request.is_json:
+            return jsonify({
+                "success": False, 
+                "error": "Content-Type must be application/json"
+            }), 400
+            
         data = request.get_json()
         logger.info(f"💾 Получен запрос на сохранение профиля: {data}")
         
