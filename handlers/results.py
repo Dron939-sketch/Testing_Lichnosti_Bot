@@ -26,9 +26,12 @@ class ProfileNotFoundError(Exception):
     pass
 
 # ===== ФУНКЦИЯ ДЛЯ ИСПРАВЛЕНИЯ MARKDOWN СПИСКОВ =====
+# ===== УЛУЧШЕННАЯ ФУНКЦИЯ ДЛЯ ИСПРАВЛЕНИЯ MARKDOWN СПИСКОВ =====
 def fix_markdown_lists(text: str) -> str:
     """
-    Добавляет пустую строку перед маркерами списков, если её нет.
+    Исправляет форматирование списков для Telegram:
+    1. Добавляет пустую строку перед первым элементом списка (если нужно)
+    2. Убирает лишние пустые строки между элементами списка
     Поддерживает маркеры: •, -, *, а также цифровые списки вида '1.', '2.' и т.д.
     """
     if not text or not isinstance(text, str):
@@ -36,34 +39,58 @@ def fix_markdown_lists(text: str) -> str:
     
     lines = text.split('\n')
     result = []
+    in_list = False
+    list_buffer = []  # Буфер для накопления элементов списка
     
-    for i, line in enumerate(lines):
-        current_line = line.rstrip()
+    i = 0
+    while i < len(lines):
+        line = lines[i].rstrip()
         
-        # Проверяем, является ли текущая строка началом списка
-        is_list_start = False
-        if current_line:
-            stripped = current_line.lstrip()
+        # Проверяем, является ли строка элементом списка
+        is_list_item = False
+        if line:
+            stripped = line.lstrip()
             # Маркированные списки: •, -, *
             if stripped and stripped[0] in ('•', '-', '*') and len(stripped) > 1:
-                is_list_start = True
-            # Нумерованные списки: 1., 2., и т.д. (цифра + точка + пробел)
+                is_list_item = True
+            # Нумерованные списки: 1., 2., и т.д.
             elif len(stripped) > 2 and stripped[0].isdigit() and stripped[1] == '.':
-                is_list_start = True
-            # Также проверяем вариант с жирным текстом: • **Текст**
+                is_list_item = True
+            # Вариант с жирным текстом: • **Текст**
             elif stripped.startswith('• **') or stripped.startswith('- **') or stripped.startswith('* **'):
-                is_list_start = True
+                is_list_item = True
         
-        # Если это начало списка и предыдущая строка не пустая
-        if is_list_start and i > 0:
-            prev_line = lines[i-1].rstrip()
-            # Проверяем, что предыдущая строка не пустая и не является заголовком
-            if prev_line and not prev_line.startswith(('<b>', '🔍', '💔', '🛠', '🚀')):
-                # Проверяем, не добавили ли мы уже пустую строку
-                if not (result and result[-1] == ''):
-                    result.append('')  # вставляем пустую строку
+        # Если это элемент списка
+        if is_list_item:
+            # Если мы не в списке - начинаем новый список
+            if not in_list:
+                in_list = True
+                list_buffer = [line]
+            else:
+                list_buffer.append(line)
+        else:
+            # Если мы были в списке - выгружаем буфер
+            if in_list:
+                # Добавляем пустую строку перед списком, если нужно
+                if result and result[-1] != '' and not result[-1].startswith(('<b>', '🔍', '💔', '🛠', '🚀')):
+                    result.append('')
+                # Добавляем все элементы списка без пустых строк между ними
+                result.extend(list_buffer)
+                # Добавляем пустую строку после списка
+                result.append('')
+                in_list = False
+                list_buffer = []
+            
+            # Добавляем обычную строку
+            result.append(line)
         
-        result.append(current_line)
+        i += 1
+    
+    # Если список был в конце
+    if in_list and list_buffer:
+        if result and result[-1] != '' and not result[-1].startswith(('<b>', '🔍', '💔', '🛠', '🚀')):
+            result.append('')
+        result.extend(list_buffer)
     
     return '\n'.join(result)
 
