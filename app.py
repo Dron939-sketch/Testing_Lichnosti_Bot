@@ -5058,8 +5058,8 @@ def get_user_limits(user_id):
         logger.error(f"❌ Ошибка получения лимитов: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/update-free-used', methods=['POST'])
-def update_free_used_old():
+@app.route('/api/update-all-used', methods=['POST'])  
+def update_all_used():
     """Обновляет счетчик ВСЕХ использованных ссылок (и бесплатных, и платных)"""
     try:
         data = request.get_json()
