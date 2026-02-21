@@ -10,6 +10,12 @@ from dotenv import load_dotenv
 # Загрузка переменных окружения
 load_dotenv()
 
+# ===== АДМИНИСТРАТОРЫ =====
+admin_ids_str = os.getenv('ADMIN_IDS', '')
+ADMIN_IDS = [int(id.strip()) for id in admin_ids_str.split(',') if id.strip()]
+STATS_CHANNEL_ID = os.getenv('STATS_CHANNEL_ID')
+logger.info(f"👑 Загружены администраторы: {ADMIN_IDS}")
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
