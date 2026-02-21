@@ -25,137 +25,6 @@ class ProfileNotFoundError(Exception):
     """Исключение для случая, когда профиль не найден"""
     pass
 
-# ===== ФУНКЦИЯ ДЛЯ ИСПРАВЛЕНИЯ MARKDOWN СПИСКОВ =====
-def fix_markdown_lists(text: str) -> str:
-    """
-    Исправляет форматирование списков для Telegram:
-    1. Добавляет пустую строку перед первым элементом списка (если нужно)
-    2. Убирает лишние пустые строки между элементами списка
-    Поддерживает маркеры: •, -, *, а также цифровые списки вида '1.', '2.' и т.д.
-    """
-    if not text or not isinstance(text, str):
-        return text
-    
-    lines = text.split('\n')
-    result = []
-    in_list = False
-    list_buffer = []  # Буфер для накопления элементов списка
-    
-    i = 0
-    while i < len(lines):
-        line = lines[i].rstrip()
-        
-        # Проверяем, является ли строка элементом списка
-        is_list_item = False
-        if line:
-            stripped = line.lstrip()
-            # Маркированные списки: •, -, *
-            if stripped and stripped[0] in ('•', '-', '*') and len(stripped) > 1:
-                is_list_item = True
-            # Нумерованные списки: 1., 2., и т.д.
-            elif len(stripped) > 2 and stripped[0].isdigit() and stripped[1] == '.':
-                is_list_item = True
-            # Вариант с жирным текстом: • **Текст**
-            elif stripped.startswith('• **') or stripped.startswith('- **') or stripped.startswith('* **'):
-                is_list_item = True
-        
-        # Если это элемент списка
-        if is_list_item:
-            # Если мы не в списке - начинаем новый список
-            if not in_list:
-                in_list = True
-                list_buffer = [line]
-            else:
-                list_buffer.append(line)
-        else:
-            # Если мы были в списке - выгружаем буфер
-            if in_list:
-                # Добавляем пустую строку перед списком, если нужно
-                if result and result[-1] != '' and not result[-1].startswith(('<b>', '🔍', '💔', '🛠', '🚀')):
-                    result.append('')
-                # Добавляем все элементы списка без пустых строк между ними
-                result.extend(list_buffer)
-                # Добавляем пустую строку после списка
-                result.append('')
-                in_list = False
-                list_buffer = []
-            
-            # Добавляем обычную строку
-            result.append(line)
-        
-        i += 1
-    
-    # Если список был в конце
-    if in_list and list_buffer:
-        if result and result[-1] != '' and not result[-1].startswith(('<b>', '🔍', '💔', '🛠', '🚀')):
-            result.append('')
-        result.extend(list_buffer)
-    
-    return '\n'.join(result)
-
-async def send_long_message(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, parse_mode: str = "HTML", reply_markup=None):
-    """
-    Отправляет длинное сообщение, разбивая его на части, если нужно.
-    Telegram лимит: 4096 символов.
-    """
-    if not text:
-        return
-    
-    MAX_LENGTH = 4000  # Оставляем запас
-    
-    if len(text) <= MAX_LENGTH:
-        # Если сообщение короткое - отправляем как есть
-        if reply_markup:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text,
-                parse_mode=parse_mode,
-                reply_markup=reply_markup
-            )
-        else:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text,
-                parse_mode=parse_mode
-            )
-        return
-    
-    # Разбиваем длинное сообщение на части
-    parts = []
-    current_part = ""
-    
-    for line in text.split('\n'):
-        # Если добавление строки превысит лимит - начинаем новую часть
-        if len(current_part) + len(line) + 1 > MAX_LENGTH:
-            if current_part:
-                parts.append(current_part)
-            current_part = line + '\n'
-        else:
-            current_part += line + '\n'
-    
-    if current_part:
-        parts.append(current_part)
-    
-    # Отправляем все части
-    for i, part in enumerate(parts):
-        # Только к последней части добавляем клавиатуру
-        if i == len(parts) - 1 and reply_markup:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=part.strip(),
-                parse_mode=parse_mode,
-                reply_markup=reply_markup
-            )
-        else:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=part.strip(),
-                parse_mode=parse_mode
-            )
-        
-        # Небольшая пауза между сообщениями
-        await asyncio.sleep(0.5)
-
 async def show_results_screen(
     update: Update, 
     context: ContextTypes.DEFAULT_TYPE,
@@ -189,17 +58,6 @@ async def show_results_screen(
     
     profile_card = get_card_description_from_profile(profile, profile_data)
     context.user_data["profile_card"] = profile_card
-    
-    # 👇 ИСПРАВЛЕНО: теперь этот блок внутри функции с правильными отступами
-    # Применяем фикс Markdown списков ко всем текстовым полям
-    if profile_card.get('trigger'):
-        profile_card['trigger'] = fix_markdown_lists(profile_card['trigger'])
-    if profile_card.get('pain'):
-        profile_card['pain'] = fix_markdown_lists(profile_card['pain'])
-    if profile_card.get('immediate_tool'):
-        profile_card['immediate_tool'] = fix_markdown_lists(profile_card['immediate_tool'])
-    if profile_card.get('cta'):
-        profile_card['cta'] = fix_markdown_lists(profile_card['cta'])
     
     actual_profile_key = None
     try:
@@ -332,7 +190,7 @@ async def show_results_screen(
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await send_long_message(update, context, message_2.strip(), "HTML", reply_markup)
+    await query.message.reply_text(message_2.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
     # ВАЖНО: Добавляем логирование возвращаемого значения
     logger.info(f"✅ User {user_id}: show_results_screen → возвращаю RESULTS = {RESULTS}")
