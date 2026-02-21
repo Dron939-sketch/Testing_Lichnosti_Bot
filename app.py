@@ -4859,68 +4859,7 @@ def daily_stats_simple():
         yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
         week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
         
-        # ===== ПРОФИЛИ ИЗ USER_PROFILES (если есть) =====
-        profiles_today = 0
-        profiles_yesterday = 0
-        profiles_week = []
-        
-        try:
-            cursor.execute("""
-            SELECT COUNT(*) FROM user_profiles 
-            WHERE DATE(created_at) = %s
-            """, (today,))
-            profiles_today = cursor.fetchone()[0] or 0
-        except:
-            pass
-            
-        try:
-            cursor.execute("""
-            SELECT COUNT(*) FROM user_profiles 
-            WHERE DATE(created_at) = %s
-            """, (yesterday,))
-            profiles_yesterday = cursor.fetchone()[0] or 0
-        except:
-            pass
-            
-        try:
-            cursor.execute("""
-            SELECT 
-                DATE(created_at) as date,
-                COUNT(*) as count
-            FROM user_profiles 
-            WHERE created_at >= %s
-            GROUP BY DATE(created_at)
-            ORDER BY date DESC
-            """, (week_ago,))
-            profiles_week = cursor.fetchall()
-        except:
-            pass
-        
-        # ===== ПРИГЛАШЕНИЯ (sexual_invites) =====
-        cursor.execute("""
-        SELECT COUNT(*) FROM sexual_invites 
-        WHERE DATE(created_at) = %s
-        """, (today,))
-        invites_today = cursor.fetchone()[0] or 0
-        
-        cursor.execute("""
-        SELECT COUNT(*) FROM sexual_invites 
-        WHERE DATE(created_at) = %s
-        """, (yesterday,))
-        invites_yesterday = cursor.fetchone()[0] or 0
-        
-        cursor.execute("""
-        SELECT 
-            DATE(created_at) as date,
-            COUNT(*) as count
-        FROM sexual_invites 
-        WHERE created_at >= %s
-        GROUP BY DATE(created_at)
-        ORDER BY date DESC
-        """, (week_ago,))
-        invites_week = cursor.fetchall()
-        
-        # ===== ПЛАТЕЖИ (payments) =====
+        # ===== ПЛАТЕЖИ (работает точно) =====
         cursor.execute("""
         SELECT COUNT(*), COALESCE(SUM(amount), 0)
         FROM payments 
@@ -4959,8 +4898,6 @@ def daily_stats_simple():
             'success': True,
             'today': {
                 'date': today,
-                'profiles': profiles_today,
-                'invites': invites_today,
                 'payments': {
                     'count': payments_today_count,
                     'total': payments_today_sum
@@ -4968,34 +4905,18 @@ def daily_stats_simple():
             },
             'yesterday': {
                 'date': yesterday,
-                'profiles': profiles_yesterday,
-                'invites': invites_yesterday,
                 'payments': {
                     'count': payments_yesterday_count,
                     'total': payments_yesterday_sum
                 }
             },
-            'last_7_days': {
-                'profiles': [
-                    {
-                        'date': row[0].strftime('%Y-%m-%d'),
-                        'count': row[1]
-                    } for row in profiles_week
-                ] if profiles_week else [],
-                'invites': [
-                    {
-                        'date': row[0].strftime('%Y-%m-%d'),
-                        'count': row[1]
-                    } for row in invites_week
-                ],
-                'payments': [
-                    {
-                        'date': row[0].strftime('%Y-%m-%d'),
-                        'count': row[1],
-                        'total': float(row[2])
-                    } for row in payments_week
-                ]
-            }
+            'last_7_days': [
+                {
+                    'date': row[0].strftime('%Y-%m-%d'),
+                    'count': row[1],
+                    'total': float(row[2])
+                } for row in payments_week
+            ]
         })
         
     except Exception as e:
