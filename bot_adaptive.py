@@ -2370,7 +2370,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup,
         parse_mode="HTML"
     )
-    return None
+    return RESULTS
 
 # ============================================
 # ГЛАВНАЯ ФУНКЦИЯ С ИСПРАВЛЕННЫМ CONVERSATIONHANDLER
