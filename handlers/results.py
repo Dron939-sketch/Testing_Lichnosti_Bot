@@ -100,15 +100,17 @@ async def show_results_screen(
     
     profile_card = get_card_description_from_profile(profile, profile_data)
     context.user_data["profile_card"] = profile_card
+    
+    # 👇 ИСПРАВЛЕНО: теперь этот блок внутри функции с правильными отступами
     # Применяем фикс Markdown списков ко всем текстовым полям
-if profile_card.get('trigger'):
-    profile_card['trigger'] = fix_markdown_lists(profile_card['trigger'])
-if profile_card.get('pain'):
-    profile_card['pain'] = fix_markdown_lists(profile_card['pain'])
-if profile_card.get('immediate_tool'):
-    profile_card['immediate_tool'] = fix_markdown_lists(profile_card['immediate_tool'])
-if profile_card.get('cta'):
-    profile_card['cta'] = fix_markdown_lists(profile_card['cta'])
+    if profile_card.get('trigger'):
+        profile_card['trigger'] = fix_markdown_lists(profile_card['trigger'])
+    if profile_card.get('pain'):
+        profile_card['pain'] = fix_markdown_lists(profile_card['pain'])
+    if profile_card.get('immediate_tool'):
+        profile_card['immediate_tool'] = fix_markdown_lists(profile_card['immediate_tool'])
+    if profile_card.get('cta'):
+        profile_card['cta'] = fix_markdown_lists(profile_card['cta'])
     
     actual_profile_key = None
     try:
