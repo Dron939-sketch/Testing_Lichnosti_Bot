@@ -483,7 +483,11 @@ __all__ = [
     'WEBHOOK_URL', 'RETURN_URL',
     
     # Логгер
-    'logger'
+    'logger',
+    
+    # Администраторы 👈 ЭТО НУЖНО ДОБАВИТЬ
+    'ADMIN_IDS',
+    'STATS_CHANNEL_ID',
 ]
 
 if __name__ == "__main__":
