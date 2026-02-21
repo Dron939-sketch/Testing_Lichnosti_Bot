@@ -25,6 +25,48 @@ class ProfileNotFoundError(Exception):
     """Исключение для случая, когда профиль не найден"""
     pass
 
+# ===== ФУНКЦИЯ ДЛЯ ИСПРАВЛЕНИЯ MARKDOWN СПИСКОВ =====
+def fix_markdown_lists(text: str) -> str:
+    """
+    Добавляет пустую строку перед маркерами списков, если её нет.
+    Поддерживает маркеры: •, -, *, а также цифровые списки вида '1.', '2.' и т.д.
+    """
+    if not text or not isinstance(text, str):
+        return text
+    
+    lines = text.split('\n')
+    result = []
+    
+    for i, line in enumerate(lines):
+        current_line = line.rstrip()
+        
+        # Проверяем, является ли текущая строка началом списка
+        is_list_start = False
+        if current_line:
+            stripped = current_line.lstrip()
+            # Маркированные списки: •, -, *
+            if stripped and stripped[0] in ('•', '-', '*') and len(stripped) > 1:
+                is_list_start = True
+            # Нумерованные списки: 1., 2., и т.д. (цифра + точка + пробел)
+            elif len(stripped) > 2 and stripped[0].isdigit() and stripped[1] == '.':
+                is_list_start = True
+            # Также проверяем вариант с жирным текстом: • **Текст**
+            elif stripped.startswith('• **') or stripped.startswith('- **') or stripped.startswith('* **'):
+                is_list_start = True
+        
+        # Если это начало списка и предыдущая строка не пустая
+        if is_list_start and i > 0:
+            prev_line = lines[i-1].rstrip()
+            # Проверяем, что предыдущая строка не пустая и не является заголовком
+            if prev_line and not prev_line.startswith(('<b>', '🔍', '💔', '🛠', '🚀')):
+                # Проверяем, не добавили ли мы уже пустую строку
+                if not (result and result[-1] == ''):
+                    result.append('')  # вставляем пустую строку
+        
+        result.append(current_line)
+    
+    return '\n'.join(result)
+
 async def show_results_screen(
     update: Update, 
     context: ContextTypes.DEFAULT_TYPE,
@@ -58,6 +100,15 @@ async def show_results_screen(
     
     profile_card = get_card_description_from_profile(profile, profile_data)
     context.user_data["profile_card"] = profile_card
+    # Применяем фикс Markdown списков ко всем текстовым полям
+if profile_card.get('trigger'):
+    profile_card['trigger'] = fix_markdown_lists(profile_card['trigger'])
+if profile_card.get('pain'):
+    profile_card['pain'] = fix_markdown_lists(profile_card['pain'])
+if profile_card.get('immediate_tool'):
+    profile_card['immediate_tool'] = fix_markdown_lists(profile_card['immediate_tool'])
+if profile_card.get('cta'):
+    profile_card['cta'] = fix_markdown_lists(profile_card['cta'])
     
     actual_profile_key = None
     try:
