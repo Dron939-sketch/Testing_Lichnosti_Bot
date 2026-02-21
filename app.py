@@ -5190,7 +5190,7 @@ def check_sexual_invites_structure():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/get-user-limits/<int:user_id>', methods=['GET'])
+@app.route('/api/user-limits/<int:user_id>', methods=['GET'])
 def get_user_limits(user_id):
     """Возвращает лимиты пользователя"""
     try:
