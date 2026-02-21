@@ -2258,6 +2258,7 @@ def main():
         application.add_handler(CommandHandler("buy", buy_command))
         application.add_handler(CommandHandler("materials", materials_command))
         application.add_handler(CommandHandler("status", status_command))
+        application.add_handler(CommandHandler("stats", daily_stats_command))
         print("✅ Команды добавлены")
         
         # Общие callback-обработчики
