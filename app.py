@@ -5856,6 +5856,140 @@ def get_user_profile(user_id):
         logger.error(f"❌ Ошибка получения профиля: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+# ============================================
+# 📊 ЭНДПОИНТ ДЛЯ СТАТИСТИКИ ЗА СУТКИ
+# ============================================
+
+@app.route('/api/daily-stats', methods=['GET'])
+def daily_stats():
+    """Возвращает статистику за последние 24 часа"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Время 24 часа назад
+        yesterday = datetime.now() - timedelta(days=1)
+        
+        # ===== 1. ОБЩАЯ СТАТИСТИКА =====
+        cursor.execute("""
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END) as succeeded,
+            SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending
+        FROM payments 
+        WHERE created_at > %s
+        """, (yesterday,))
+        
+        payments = cursor.fetchone()
+        
+        # ===== 2. ПРОФИЛИ (ТОП-5) =====
+        cursor.execute("""
+        SELECT profile_code, COUNT(*) as count
+        FROM payments 
+        WHERE created_at > %s AND status = 'succeeded'
+        GROUP BY profile_code
+        ORDER BY count DESC
+        LIMIT 5
+        """, (yesterday,))
+        
+        profiles = cursor.fetchall()
+        
+        # ===== 3. МЕТОДЫ ОПЛАТЫ =====
+        cursor.execute("""
+        SELECT payment_method, COUNT(*) as count
+        FROM payments 
+        WHERE created_at > %s AND status = 'succeeded'
+        GROUP BY payment_method
+        ORDER BY count DESC
+        """, (yesterday,))
+        
+        payment_methods = cursor.fetchall()
+        
+        # ===== 4. 18+ МОДУЛЬ =====
+        cursor.execute("""
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END) as succeeded
+        FROM sexual_access_purchases 
+        WHERE created_at > %s
+        """, (yesterday,))
+        
+        sexual = cursor.fetchone()
+        
+        # ===== 5. ПРИГЛАШЕНИЯ =====
+        cursor.execute("""
+        SELECT 
+            COUNT(*) as created,
+            SUM(CASE WHEN status = 'used' THEN 1 ELSE 0 END) as used
+        FROM sexual_invites 
+        WHERE created_at > %s
+        """, (yesterday,))
+        
+        invites = cursor.fetchone()
+        
+        # ===== 6. 4F МОДУЛЬ =====
+        cursor.execute("""
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END) as succeeded,
+            SUM(CASE WHEN delivered = TRUE THEN 1 ELSE 0 END) as delivered
+        FROM purchases_4f 
+        WHERE created_at > %s
+        """, (yesterday,))
+        
+        four_f = cursor.fetchone()
+        
+        # ===== 7. НОВЫЕ ПОЛЬЗОВАТЕЛИ =====
+        cursor.execute("""
+        SELECT COUNT(DISTINCT user_id) as new_users
+        FROM payments 
+        WHERE created_at > %s
+        """, (yesterday,))
+        
+        new_users = cursor.fetchone()[0] or 0
+        
+        cursor.close()
+        conn.close()
+        
+        # Формируем ответ
+        return jsonify({
+            "success": True,
+            "date": datetime.now().strftime('%Y-%m-%d'),
+            "period": {
+                "from": yesterday.strftime('%Y-%m-%d %H:%M:%S'),
+                "to": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            "payments": {
+                "total": payments[0] or 0,
+                "succeeded": payments[1] or 0,
+                "pending": payments[2] or 0
+            },
+            "profiles": [
+                {"code": p[0] or "unknown", "count": p[1]} for p in profiles
+            ],
+            "payment_methods": [
+                {"method": m[0] or "unknown", "count": m[1]} for m in payment_methods
+            ],
+            "sexual": {
+                "total": sexual[0] or 0,
+                "succeeded": sexual[1] or 0
+            },
+            "invites": {
+                "created": invites[0] or 0,
+                "used": invites[1] or 0
+            },
+            "four_f": {
+                "total": four_f[0] or 0,
+                "succeeded": four_f[1] or 0,
+                "delivered": four_f[2] or 0
+            },
+            "new_users": new_users
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в daily_stats: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # ============================================
 # ЗАПУСК СЕРВЕРА
