@@ -166,7 +166,6 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     question_text = (
         f"🧠 <b>ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ</b>\n\n"
         f"<b>{question['text']}</b>\n\n"
-        f"{tip}\n\n"
         f"{progress}"
     )
     
