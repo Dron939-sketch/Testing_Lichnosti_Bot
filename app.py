@@ -4862,7 +4862,7 @@ def daily_stats_simple():
         # ===== СТАТИСТИКА ЗА СЕГОДНЯ =====
         cursor.execute("""
         SELECT 
-            (SELECT COUNT(*) FROM user_profiles WHERE DATE(created_at) = %s) as tests,
+            (SELECT COUNT(*) FROM sexual_invites WHERE DATE(created_at) = %s) as invites,
             (SELECT COUNT(*) FROM payments WHERE DATE(created_at) = %s AND status = 'succeeded') as payments_count,
             (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) = %s AND status = 'succeeded') as payments_sum,
             (SELECT COUNT(*) FROM sexual_access_purchases WHERE DATE(created_at) = %s AND status = 'succeeded') as sexual_count,
@@ -4874,7 +4874,7 @@ def daily_stats_simple():
         # ===== СТАТИСТИКА ЗА ВЧЕРА =====
         cursor.execute("""
         SELECT 
-            (SELECT COUNT(*) FROM user_profiles WHERE DATE(created_at) = %s) as tests,
+            (SELECT COUNT(*) FROM sexual_invites WHERE DATE(created_at) = %s) as invites,
             (SELECT COUNT(*) FROM payments WHERE DATE(created_at) = %s AND status = 'succeeded') as payments_count,
             (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) = %s AND status = 'succeeded') as payments_sum,
             (SELECT COUNT(*) FROM sexual_access_purchases WHERE DATE(created_at) = %s AND status = 'succeeded') as sexual_count,
@@ -4887,14 +4887,14 @@ def daily_stats_simple():
         cursor.execute("""
         SELECT 
             DATE(created_at) as date,
-            COUNT(*) as tests
-        FROM user_profiles 
+            COUNT(*) as invites
+        FROM sexual_invites 
         WHERE created_at >= %s
         GROUP BY DATE(created_at)
         ORDER BY date DESC
         """, (week_ago,))
         
-        tests_by_day = cursor.fetchall()
+        invites_by_day = cursor.fetchall()
         
         cursor.execute("""
         SELECT 
@@ -4909,29 +4909,57 @@ def daily_stats_simple():
         
         payments_by_day = cursor.fetchall()
         
+        cursor.execute("""
+        SELECT 
+            DATE(created_at) as date,
+            COUNT(*) as count,
+            COALESCE(SUM(amount), 0) as total
+        FROM sexual_access_purchases 
+        WHERE created_at >= %s AND status = 'succeeded'
+        GROUP BY DATE(created_at)
+        ORDER BY date DESC
+        """, (week_ago,))
+        
+        sexual_by_day = cursor.fetchall()
+        
         cursor.close()
         conn.close()
         
         # Формируем словари для удобства
-        payments_dict = {}
-        for row in payments_by_day:
-            date_str = row[0].strftime('%Y-%m-%d')
-            payments_dict[date_str] = {
-                'count': row[1],
-                'total': float(row[2])
-            }
+        payments_dict = {row[0].strftime('%Y-%m-%d'): {'count': row[1], 'total': float(row[2])} for row in payments_by_day}
+        sexual_dict = {row[0].strftime('%Y-%m-%d'): {'count': row[1], 'total': float(row[2])} for row in sexual_by_day}
         
         # Формируем статистику по дням
         daily_stats = []
-        for row in tests_by_day:
+        all_dates = set()
+        
+        for row in invites_by_day:
             date_str = row[0].strftime('%Y-%m-%d')
+            all_dates.add(date_str)
             payments = payments_dict.get(date_str, {'count': 0, 'total': 0})
+            sexual = sexual_dict.get(date_str, {'count': 0, 'total': 0})
             daily_stats.append({
                 'date': date_str,
-                'tests': row[1],
+                'invites': row[1],
                 'payments': payments['count'],
-                'revenue': payments['total']
+                'payments_total': payments['total'],
+                'sexual': sexual['count'],
+                'sexual_total': sexual['total'],
+                'total_revenue': payments['total'] + sexual['total']
             })
+        
+        # Добавляем даты, где были только платежи без приглашений
+        for date_str in payments_dict:
+            if date_str not in all_dates:
+                daily_stats.append({
+                    'date': date_str,
+                    'invites': 0,
+                    'payments': payments_dict[date_str]['count'],
+                    'payments_total': payments_dict[date_str]['total'],
+                    'sexual': 0,
+                    'sexual_total': 0,
+                    'total_revenue': payments_dict[date_str]['total']
+                })
         
         # Сортируем по дате
         daily_stats.sort(key=lambda x: x['date'], reverse=True)
@@ -4940,7 +4968,7 @@ def daily_stats_simple():
             'success': True,
             'today': {
                 'date': today,
-                'tests': today_row[0] or 0,
+                'invites': today_row[0] or 0,
                 'payments': {
                     'count': today_row[1] or 0,
                     'total': float(today_row[2] or 0)
@@ -4953,7 +4981,7 @@ def daily_stats_simple():
             },
             'yesterday': {
                 'date': yesterday,
-                'tests': yesterday_row[0] or 0,
+                'invites': yesterday_row[0] or 0,
                 'payments': {
                     'count': yesterday_row[1] or 0,
                     'total': float(yesterday_row[2] or 0)
@@ -4966,9 +4994,10 @@ def daily_stats_simple():
             },
             'last_7_days': daily_stats,
             'summary': {
-                'total_tests_7d': sum(d['tests'] for d in daily_stats),
+                'total_invites_7d': sum(d['invites'] for d in daily_stats),
                 'total_payments_7d': sum(d['payments'] for d in daily_stats),
-                'total_revenue_7d': sum(d['revenue'] for d in daily_stats)
+                'total_sexual_7d': sum(d['sexual'] for d in daily_stats),
+                'total_revenue_7d': sum(d['total_revenue'] for d in daily_stats)
             }
         })
         
