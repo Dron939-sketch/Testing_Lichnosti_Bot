@@ -2450,7 +2450,8 @@ def main():
                 ],
             },
             fallbacks=[CommandHandler("cancel", cancel)],
-            allow_reentry=True
+            allow_reentry=True,
+            per_message=True  # 👈 ДОБАВЬТЕ ЭТУ СТРОКУ ЗДЕСЬ
         )
         application.add_handler(conv_handler)
         print("✅ ConversationHandler добавлен")
