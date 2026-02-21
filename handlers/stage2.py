@@ -161,12 +161,10 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     question = questions[current]
     progress = calculate_progress(current + 1, len(questions))
-    tip = PSYCHOLOGIST_TIPS["stage2"][min(current, len(PSYCHOLOGIST_TIPS["stage2"])-1)]
     
     question_text = (
         f"🧠 <b>ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ</b>\n\n"
         f"<b>{question['text']}</b>\n\n"
-        f"{tip}\n\n"
         f"{progress}"
     )
     
