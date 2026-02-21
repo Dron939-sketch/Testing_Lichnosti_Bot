@@ -5,173 +5,6 @@
 ВЕРСИЯ 6.0: ПОЛНАЯ ИНТЕГРАЦИЯ С 18+ МОДУЛЕМ 19.7
 """
 
-#!/usr/bin/env python3
-import sys
-import os
-import time
-
-print(f"🚀🚀🚀 БОТ ЗАПУСКАЕТСЯ {time.time()}", flush=True)
-print(f"📂 Текущая директория: {os.getcwd()}", flush=True)
-print(f"📂 Файл: {__file__}", flush=True)
-print(f"🐍 Python версия: {sys.version}", flush=True)
-print(f"📦 Python путь: {sys.path}", flush=True)
-
-# Принудительно включаем буферизацию вывода
-sys.stdout.reconfigure(line_buffering=True)
-sys.stderr.reconfigure(line_buffering=True)
-
-try:
-    # ===== НАСТРОЙКА ЛОГГИРОВАНИЯ =====
-    print("🔧 Настраиваю логирование...", flush=True)
-    import logging
-    logging.basicConfig(
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        level=logging.DEBUG,  # Временно ставим DEBUG
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-            logging.FileHandler('bot_debug.log', encoding='utf-8', mode='w')
-        ]
-    )
-    print("✅ Логирование настроено", flush=True)
-    
-    logger = logging.getLogger(__name__)
-    logger.info("🚀 НАЧАЛО ЗАГРУЗКИ БОТА")
-    
-    # ===== ИМПОРТ АДМИНИСТРАТОРОВ =====
-    logger.info("📥 Импортирую администраторов...")
-    try:
-        from config import ADMIN_IDS, STATS_CHANNEL_ID
-        logger.info(f"✅ Загружены администраторы из config: {ADMIN_IDS}")
-    except ImportError as e:
-        logger.error(f"❌ Ошибка импорта из config: {e}")
-        admin_ids_str = os.getenv('ADMIN_IDS', '')
-        ADMIN_IDS = [int(id.strip()) for id in admin_ids_str.split(',') if id.strip()]
-        STATS_CHANNEL_ID = os.getenv('STATS_CHANNEL_ID')
-        logger.info(f"✅ Загружены администраторы из окружения: {ADMIN_IDS}")
-
-    # ===== ИМПОРТ КОНСТАНТ СОСТОЯНИЙ =====
-    logger.info("📥 Импортирую константы...")
-    from constants import (
-        STAGE_1, STAGE_2, STAGE_3, STAGE_4, CLARIFICATION, RESULTS,
-        GIFT_SCREEN, PACKAGE_SCREEN, OPEN_GIFT_SCREEN, PAYMENT_SCREEN,
-        MY_SEXUAL_PROFILE, SEXUAL_PROFILE_SCREEN,
-        FOUR_F_PAYMENT_SCREEN, FOUR_F_CONTENT_SCREEN,
-        FOUR_F_MAIN, FOUR_F_DETAILED, FOUR_F_MENU, FOUR_F_CONTENT,
-        BUY_PACKAGES, INVITES_LIST, FRIEND_MENU,
-        SEXUAL_STATES,
-    )
-    logger.info("✅ Константы импортированы")
-
-    # ===== ИМПОРТ КОНФИГУРАЦИИ =====
-    logger.info("📥 Импортирую конфигурацию...")
-    from config import (
-        TOKEN, API_URL, YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY,
-        TELEGRAM_BOT_URL, BOT_LINK, AUTHOR_LINK, GIFT_PDF_LINK, SHARE_TEXT,
-        GIFT_SCREEN_TEXT, STANDARD_SUFFIXES, CONFLICT_PHRASES, SUFFIX_TO_DILTS,
-        EMERGENCY_PROFILES, LEVEL_DIFFS, PROFILE_LINKS, DEFAULT_PROFILE,
-        logger as config_logger
-    )
-    logger.info("✅ Конфигурация импортирована")
-
-    # ===== ИМПОРТ 18+ МОДУЛЯ =====
-    logger.info("📥 Импортирую 18+ модуль...")
-    from sexual_19_7 import (
-        SEXUAL_DIVIDER, FREE_INVITE_LIMIT, FRIEND_ACCESS_PRICE,
-        FOUR_F_PRICE, INVITE_PACKAGES, PROFILE_DISK_LINKS, FOUR_F_DESCRIPTIONS,
-        back_to_sexual_profile_callback, get_user_invites_from_api,
-        save_invite_to_api, update_invite_in_api, find_invite_in_api,
-        get_disk_link_by_profile, get_disk_link, load_intimate_profile,
-        load_friend_intimate_profile, format_intimate_profile_part1,
-        format_intimate_profile_part2, format_intimate_profile_part3,
-        format_friend_intimate_profile, load_4f_content, get_user_invites,
-        count_friends, init_test_data, get_friend_by_id,
-        show_my_sexual_profile, sexual_invite_start, create_invite_callback,
-        send_invite_callback, confirm_send_callback, confirm_sent_callback,
-        contact_selected_callback, my_invites_callback, copy_invite_callback,
-        check_invite_callback, four_f_main_menu_callback, four_f_detailed_callback,
-        four_f_menu_callback, four_f_explanation_callback, buy_4f_key_callback,
-        process_payment_callback, open_4f_key_callback,
-        buy_invite_packages_callback, pay_package_callback,
-        process_package_payment_callback, check_package_callback,
-        friend_menu_callback, show_payment_access_screen, standard_profile_callback,
-        intimate_profile_callback, check_status_callback, back_to_results_callback,
-        dummy_callback, split_long_message, safe_send_message,
-        generate_payment_id, create_yookassa_invoice,
-    )
-    logger.info("✅ 18+ модуль импортирован")
-
-    # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
-    logger.info("📥 Определяю вспомогательные функции...")
-    async def noop_callback(update, context):
-        query = update.callback_query
-        await query.answer("🚧 Функция в разработке", show_alert=True)
-        return
-    logger.info("✅ Вспомогательные функции определены")
-
-    # ===== ИМПОРТ ВОПРОСОВ =====
-    logger.info("📥 Импортирую вопросы...")
-    from questions import (
-        PERCEPTION_TYPES, CLARIFICATION_QUESTIONS,
-        STAGE1_FEEDBACK, STAGE2_FEEDBACK, STAGE3_FEEDBACK, STAGE4_ANALYSIS_SCREEN
-    )
-    logger.info("✅ Вопросы импортированы")
-
-    # ===== ИМПОРТ НАШИХ НОВЫХ МОДУЛЕЙ =====
-    logger.info("📥 Импортирую handlers...")
-    from handlers import (
-        show_stage_1_intro, show_stage_1_details, back_to_stage1_intro,
-        start_stage_1, ask_stage_1_question, handle_stage_1_answer, finish_stage_1,
-        show_stage_2_intro, show_stage_2_details, back_to_stage2_intro,
-        start_stage_2, ask_stage_2_question, handle_stage_2_answer, finish_stage_2,
-        show_stage_3_intro, show_stage_3_details, back_to_stage3_intro,
-        start_stage_3, ask_stage_3_question, handle_stage_3_answer, finish_stage_3,
-        show_stage_4_intro, show_stage_4_details, back_to_stage4_intro,
-        start_stage_4, ask_stage_4_question, handle_stage_4_answer, finish_stage_4,
-    )
-    logger.info("✅ Handlers импортированы")
-
-    from handlers.common import ask_clarification_question, handle_clarification_answer
-    logger.info("✅ Common handlers импортированы")
-
-    # ===== ПРОВЕРКА ИМПОРТОВ =====
-    logger.info("🔍 ПРОВЕРКА ИМПОРТОВ ИЗ handlers:")
-    logger.info(f"  start_stage_1: {start_stage_1}")
-    logger.info(f"  handle_stage_1_answer: {handle_stage_1_answer}")
-    logger.info(f"  ask_stage_1_question: {ask_stage_1_question}")
-    logger.info(f"  finish_stage_1: {finish_stage_1}")
-
-    # ===== ИМПОРТ ОСТАЛЬНЫХ ФУНКЦИЙ =====
-    logger.info("📥 Импортирую остальные функции...")
-    from utils.calculations import (
-        determine_perception_type, get_type_code, get_level_name, get_dilts_code,
-        determine_dilts_level, get_level_group, calculate_thinking_level_by_scores,
-        calculate_final_level, check_profile_coherence, calculate_profile_final
-    )
-
-    from utils.validators import (
-        need_clarification_stage1, need_clarification_stage2,
-        need_clarification_stage3, need_clarification_stage4
-    )
-
-    from utils.helpers import calculate_progress
-
-    from loader import loader
-    from base import VariaticaProfile
-    logger.info("✅ Все импорты завершены")
-
-    # ===== ДАЛЬШЕ ВЕСЬ ОСТАЛЬНОЙ КОД =====
-    # ... (весь ваш существующий код main и функций)
-
-except Exception as e:
-    print(f"💥💥💥 КРИТИЧЕСКАЯ ОШИБКА ПРИ ЗАГРУЗКЕ: {e}", flush=True)
-    import traceback
-    traceback.print_exc()
-    print("💥 Стек вызовов напечатан выше", flush=True)
-    
-    # Ждём ввода, чтобы консоль не закрылась
-    input("Нажмите Enter для выхода...")
-    sys.exit(1)
-    
 import logging
 import os
 import sys
@@ -338,31 +171,6 @@ from sexual_19_7 import (
     generate_payment_id,
     create_yookassa_invoice,
 )
-
-print("\n" + "="*60)
-print("🔍 ОТЛАДКА: ПРОВЕРКА ИМПОРТОВ ИЗ sexual_19_7")
-print("="*60)
-
-# Проверяем каждую важную функцию
-important_functions = [
-    ('buy_invite_packages_callback', buy_invite_packages_callback),
-    ('send_invite_callback', send_invite_callback),
-    ('my_invites_callback', my_invites_callback),
-    ('show_my_sexual_profile', show_my_sexual_profile),
-]
-
-for name, func in important_functions:
-    print(f"📌 {name}:")
-    print(f"   Тип: {type(func)}")
-    print(f"   Callable: {callable(func)}")
-    print(f"   Адрес: {func}")
-    print()
-
-# Проверяем константы
-print("\n📊 Константы:")
-print(f"FREE_INVITE_LIMIT = {FREE_INVITE_LIMIT}")
-print(f"INVITE_PACKAGES = {INVITE_PACKAGES}")
-print("="*60 + "\n")
 
 # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 async def noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2370,7 +2178,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup,
         parse_mode="HTML"
     )
-    return RESULTS
+    return None
 
 # ============================================
 # ГЛАВНАЯ ФУНКЦИЯ С ИСПРАВЛЕННЫМ CONVERSATIONHANDLER
@@ -2617,8 +2425,7 @@ def main():
                 ],
             },
             fallbacks=[CommandHandler("cancel", cancel)],
-            allow_reentry=True,
-            per_message=True  # 👈 ДОБАВЬТЕ ЭТУ СТРОКУ ЗДЕСЬ
+            allow_reentry=True
         )
         application.add_handler(conv_handler)
         print("✅ ConversationHandler добавлен")
