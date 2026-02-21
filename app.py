@@ -5825,7 +5825,7 @@ def debug_all_payments():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/save-user-profile', methods=['POST'])
+@app.route('/api/save-user-profile', methods=['POST', 'GET'])
 def save_user_profile():
     """
     Сохраняет код профиля пользователя после прохождения теста
