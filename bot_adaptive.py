@@ -80,7 +80,6 @@ from config import (
     TELEGRAM_BOT_URL, BOT_LINK, AUTHOR_LINK, GIFT_PDF_LINK, SHARE_TEXT,
     GIFT_SCREEN_TEXT, STANDARD_SUFFIXES, CONFLICT_PHRASES, SUFFIX_TO_DILTS,
     EMERGENCY_PROFILES, LEVEL_DIFFS, PROFILE_LINKS, DEFAULT_PROFILE,
-    logger as config_logger
 )
 
 # ===== ИМПОРТ 18+ МОДУЛЯ (НОВАЯ ВЕРСИЯ 19.7) =====
