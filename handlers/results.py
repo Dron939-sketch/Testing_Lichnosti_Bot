@@ -26,7 +26,6 @@ class ProfileNotFoundError(Exception):
     pass
 
 # ===== ФУНКЦИЯ ДЛЯ ИСПРАВЛЕНИЯ MARKDOWN СПИСКОВ =====
-# ===== УЛУЧШЕННАЯ ФУНКЦИЯ ДЛЯ ИСПРАВЛЕНИЯ MARKDOWN СПИСКОВ =====
 def fix_markdown_lists(text: str) -> str:
     """
     Исправляет форматирование списков для Telegram:
@@ -93,6 +92,69 @@ def fix_markdown_lists(text: str) -> str:
         result.extend(list_buffer)
     
     return '\n'.join(result)
+
+async def send_long_message(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, parse_mode: str = "HTML", reply_markup=None):
+    """
+    Отправляет длинное сообщение, разбивая его на части, если нужно.
+    Telegram лимит: 4096 символов.
+    """
+    if not text:
+        return
+    
+    MAX_LENGTH = 4000  # Оставляем запас
+    
+    if len(text) <= MAX_LENGTH:
+        # Если сообщение короткое - отправляем как есть
+        if reply_markup:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text,
+                parse_mode=parse_mode
+            )
+        return
+    
+    # Разбиваем длинное сообщение на части
+    parts = []
+    current_part = ""
+    
+    for line in text.split('\n'):
+        # Если добавление строки превысит лимит - начинаем новую часть
+        if len(current_part) + len(line) + 1 > MAX_LENGTH:
+            if current_part:
+                parts.append(current_part)
+            current_part = line + '\n'
+        else:
+            current_part += line + '\n'
+    
+    if current_part:
+        parts.append(current_part)
+    
+    # Отправляем все части
+    for i, part in enumerate(parts):
+        # Только к последней части добавляем клавиатуру
+        if i == len(parts) - 1 and reply_markup:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=part.strip(),
+                parse_mode=parse_mode,
+                reply_markup=reply_markup
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=part.strip(),
+                parse_mode=parse_mode
+            )
+        
+        # Небольшая пауза между сообщениями
+        await asyncio.sleep(0.5)
 
 async def show_results_screen(
     update: Update, 
@@ -270,7 +332,7 @@ async def show_results_screen(
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.message.reply_text(message_2.strip(), reply_markup=reply_markup, parse_mode="HTML")
+    await send_long_message(update, context, message_2.strip(), "HTML", reply_markup)
     
     # ВАЖНО: Добавляем логирование возвращаемого значения
     logger.info(f"✅ User {user_id}: show_results_screen → возвращаю RESULTS = {RESULTS}")
