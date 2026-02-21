@@ -233,6 +233,32 @@ from loader import loader
 from base import VariaticaProfile
 
 # ============================================
+# ФУНКЦИИ ДЛЯ СОХРАНЕНИЯ ПРОФИЛЕЙ В БД
+# ============================================
+
+async def save_user_profile_background(user_id: int, profile_code: str):
+    """Сохраняет профиль пользователя в БД (фоновая задача)"""
+    try:
+        logger.info(f"💾 Сохраняю профиль пользователя {user_id}: {profile_code}")
+        
+        response = requests.post(
+            f"{API_URL}/api/save-user-profile",
+            json={
+                "user_id": user_id,
+                "profile_code": profile_code
+            },
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            logger.info(f"✅ Профиль {profile_code} сохранен для пользователя {user_id}")
+        else:
+            logger.error(f"❌ Ошибка сохранения профиля: {response.status_code}")
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка при сохранении профиля: {e}")
+
+# ============================================
 # ФУНКЦИИ ПЛАТЕЖНОЙ СИСТЕМЫ
 # ============================================
 
