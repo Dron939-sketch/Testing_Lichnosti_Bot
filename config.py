@@ -10,12 +10,7 @@ from dotenv import load_dotenv
 # Загрузка переменных окружения
 load_dotenv()
 
-# ===== АДМИНИСТРАТОРЫ (СНАЧАЛА ОПРЕДЕЛЯЕМ, НО НЕ ЛОГИРУЕМ) =====
-admin_ids_str = os.getenv('ADMIN_IDS', '')
-ADMIN_IDS = [int(id.strip()) for id in admin_ids_str.split(',') if id.strip()]
-STATS_CHANNEL_ID = os.getenv('STATS_CHANNEL_ID')
-
-# ===== НАСТРОЙКА ЛОГГИРОВАНИЯ =====
+# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -25,9 +20,6 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
-
-# ===== ТЕПЕРЬ МОЖНО ЛОГИРОВАТЬ =====
-logger.info(f"👑 Загружены администраторы: {ADMIN_IDS}")
 
 # ===== ТОКЕНЫ И КЛЮЧИ =====
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -491,11 +483,7 @@ __all__ = [
     'WEBHOOK_URL', 'RETURN_URL',
     
     # Логгер
-    'logger',
-    
-    # Администраторы 👈 ЭТО НУЖНО ДОБАВИТЬ
-    'ADMIN_IDS',
-    'STATS_CHANNEL_ID',
+    'logger'
 ]
 
 if __name__ == "__main__":
