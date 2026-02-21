@@ -27,29 +27,23 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ===== ИМПОРТ АДМИНИСТРАТОРОВ =====
+# ===== НАСТРОЙКА ЛОГГИРОВАНИЯ ===== 👈 ЭТО ПЕРВЫМ!
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# ===== ИМПОРТ АДМИНИСТРАТОРОВ ===== 👈 ЭТО ПОСЛЕ LOGGER!
 try:
     from config import ADMIN_IDS, STATS_CHANNEL_ID
     logger.info(f"✅ Загружены администраторы: {ADMIN_IDS}")
 except ImportError:
-    # Если нет config.py, берем из переменных окружения
     admin_ids_str = os.getenv('ADMIN_IDS', '')
     ADMIN_IDS = [int(id.strip()) for id in admin_ids_str.split(',') if id.strip()]
     STATS_CHANNEL_ID = os.getenv('STATS_CHANNEL_ID')
     logger.info(f"✅ Загружены администраторы из окружения: {ADMIN_IDS}")
 
-# ===== НАСТРОЙКА СУПЕР-ЛОГГИРОВАНИЯ =====
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('bot_debug.log', encoding='utf-8')
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# Функция для логирования входящих callback
 def log_callback(func_name: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Логирует входящий callback"""
     user = update.effective_user
