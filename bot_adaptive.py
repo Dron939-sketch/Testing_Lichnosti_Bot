@@ -1275,6 +1275,99 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     
     return ConversationHandler.END
+
+async def daily_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /stats - показать статистику за сутки"""
+    user_id = update.effective_user.id
+    
+    # Проверяем, админ ли это
+    try:
+        from config import ADMIN_IDS
+    except ImportError:
+        admin_ids_str = os.getenv('ADMIN_IDS', '')
+        ADMIN_IDS = [int(id.strip()) for id in admin_ids_str.split(',') if id.strip()]
+    
+    if user_id not in ADMIN_IDS:
+        logger.warning(f"❌ Попытка доступа к статистике от не-админа {user_id}")
+        await update.message.reply_text("❌ У вас нет прав для этой команды")
+        return
+    
+    await update.message.reply_text("📊 Запрашиваю статистику за последние 24 часа...")
+    
+    try:
+        response = requests.get(
+            f"{API_URL}/api/daily-stats",
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            if not data.get('success'):
+                await update.message.reply_text(f"❌ Ошибка: {data.get('error', 'Неизвестная ошибка')}")
+                return
+            
+            # Форматируем сообщение
+            message = format_stats_message(data)
+            
+            # Отправляем
+            await update.message.reply_text(message, parse_mode="HTML")
+                
+        else:
+            await update.message.reply_text(f"❌ Ошибка API: {response.status_code}")
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения статистики: {e}")
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+def format_stats_message(data):
+    """Форматирует статистику в красивое сообщение"""
+    from datetime import datetime
+    now = datetime.now().strftime('%d.%m.%Y %H:%M')
+    
+    # Рассчитываем доход
+    sexual_income = data['sexual']['succeeded'] * 99
+    four_f_income = data['four_f']['succeeded'] * 1
+    total_income = sexual_income + four_f_income
+    
+    message = f"""
+📊 <b>СТАТИСТИКА ЗА СУТКИ</b>
+📅 {now}
+
+━━━━━━━━━━━━━━━━━━━━
+<b>👥 ПОЛЬЗОВАТЕЛИ</b>
+└ Новых: {data['new_users']}
+
+<b>💳 ПЛАТЕЖИ (ОСНОВНОЙ ПРОДУКТ)</b>
+└ Всего: {data['payments']['total']}
+└ ✅ Успешных: {data['payments']['succeeded']}
+└ ⏳ Ожидают: {data['payments']['pending']}
+
+<b>📊 ПОПУЛЯРНЫЕ ПРОФИЛИ</b>
+"""
+    
+    for p in data['profiles']:
+        message += f"└ {p['code']}: {p['count']}\n"
+    
+    message += f"""
+━━━━━━━━━━━━━━━━━━━━
+<b>🔞 18+ МОДУЛЬ</b>
+└ Покупок: {data['sexual']['succeeded']}
+└ Доход: {sexual_income}₽
+└ Приглашений создано: {data['invites']['created']}
+└ Приглашений использовано: {data['invites']['used']}
+
+<b>🔑 4F МОДУЛЬ</b>
+└ Покупок ключей: {data['four_f']['succeeded']}
+└ Доход: {four_f_income}₽
+└ Доставлено: {data['four_f']['delivered']}
+
+━━━━━━━━━━━━━━━━━━━━
+💰 <b>ИТОГОВЫЙ ДОХОД: {total_income}₽</b>
+━━━━━━━━━━━━━━━━━━━━
+"""
+    
+    return message
     
 
 # ============================================
