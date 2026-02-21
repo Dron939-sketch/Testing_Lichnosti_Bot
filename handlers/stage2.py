@@ -10,7 +10,8 @@ from telegram.ext import ContextTypes
 # ИСПРАВЛЕНО: Импортируем константы из constants.py вместо config.py
 from constants import STAGE_2, STAGE_3
 from config import PSYCHOLOGIST_TIPS, STAGE2_FEEDBACK
-from questions import STAGE_2_QUESTIONS, STAGE_2_SCORING
+# 👇 ИСПРАВЛЕНО: Импортируем из questions_data_v2 вместо questions
+from questions_data_v2 import STAGE_2_BASE_QUESTIONS, STAGE_2_CLARIFYING_QUESTIONS
 from utils.calculations import calculate_thinking_level_by_scores, get_level_group
 from utils.validators import need_clarification_stage2
 from utils.helpers import calculate_progress, generate_unique_callback
@@ -98,6 +99,7 @@ async def show_stage_2_details(update: Update, context: ContextTypes.DEFAULT_TYP
     
     logger.info(f"🔄 User {user_id}: show_stage_2_details → возвращаю STAGE_2 = {STAGE_2}")
     return STAGE_2
+
 async def back_to_stage2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к экрану ЭТАПА 2"""
     user_id = update.effective_user.id
@@ -150,7 +152,8 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     # ✅ ВАЖНО: сохраняем состояние
     context.user_data["conversation_state"] = STAGE_2
     
-    questions = STAGE_2_QUESTIONS.get(perception_type, STAGE_2_QUESTIONS["СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ"])
+    # 👇 ИСПРАВЛЕНО: используем STAGE_2_BASE_QUESTIONS
+    questions = STAGE_2_BASE_QUESTIONS.get(perception_type, STAGE_2_BASE_QUESTIONS["СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ"])
     
     if current >= len(questions):
         logger.info(f"🏁 Все вопросы заданы для пользователя {user_id}, завершаем этап 2")
@@ -169,10 +172,11 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     keyboard = []
     
-    for level_num, answer_text in question["options"].items():
-        unique_callback = generate_unique_callback("stage2", user_id, current, level_num)
+    # 👇 ИСПРАВЛЕНО: перебираем option_key и option_data
+    for option_key, option_data in question["options"].items():
+        unique_callback = generate_unique_callback("stage2", user_id, current, option_key)
         keyboard.append([
-            InlineKeyboardButton(answer_text, callback_data=unique_callback)
+            InlineKeyboardButton(option_data["text"], callback_data=unique_callback)
         ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -235,9 +239,9 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
             return STAGE_2
         
         current = int(parts[1])
-        selected_level = parts[2]
+        option_key = parts[2]  # 👈 ИСПРАВЛЕНО: теперь это ключ ответа (A, B, C...)
         
-        logger.info(f"📥 User {user_id}: получен ответ на вопрос {current} этапа 2, level={selected_level}")
+        logger.info(f"📥 User {user_id}: получен ответ на вопрос {current} этапа 2, option={option_key}")
         
         last_answered = context.user_data.get("stage2_last_answered", -1)
         if current <= last_answered:
@@ -246,20 +250,39 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
         
         perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
         
-        scoring_table = STAGE_2_SCORING.get(perception_type, {})
-        if current in scoring_table and selected_level in scoring_table[current]:
-            if "stage2_level_scores_dict" not in context.user_data:
-                context.user_data["stage2_level_scores_dict"] = {
-                    "1": 0, "2": 0, "3": 0, "4": 0, "5": 0,
-                    "6": 0, "7": 0, "8": 0, "9": 0
-                }
-            
-            points = scoring_table[current][selected_level]
-            context.user_data["stage2_level_scores_dict"][selected_level] += points
-            
-            logger.info(f"   +{points} к уровню {selected_level}")
+        # 👇 ИСПРАВЛЕНО: получаем вопрос и выбранный ответ из STAGE_2_BASE_QUESTIONS
+        questions = STAGE_2_BASE_QUESTIONS.get(perception_type, STAGE_2_BASE_QUESTIONS["СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ"])
         
-        logger.info(f"✅ User {user_id}: Stage 2 Q{current} -> level={selected_level}")
+        # Проверка на случай, если current вдруг больше длины списка
+        if current >= len(questions):
+            logger.error(f"❌ current={current} превышает длину списка вопросов ({len(questions)})")
+            context.user_data["stage2_current"] = len(questions)
+            return await finish_stage_2(update, context)
+        
+        question = questions[current]
+        
+        # Проверка, существует ли такой ключ ответа
+        if option_key not in question["options"]:
+            logger.error(f"❌ Ключ ответа {option_key} не найден в вопросе {current}")
+            return await ask_stage_2_question(update, context)
+        
+        selected_option = question["options"][option_key]
+        
+        # 👇 ИСПРАВЛЕНО: получаем уровень из ответа
+        level = str(selected_option["level"])
+        
+        # Инициализируем словарь если нужно
+        if "stage2_level_scores_dict" not in context.user_data:
+            context.user_data["stage2_level_scores_dict"] = {
+                "1": 0, "2": 0, "3": 0, "4": 0, "5": 0,
+                "6": 0, "7": 0, "8": 0, "9": 0
+            }
+        
+        # 👇 ИСПРАВЛЕНО: добавляем 1 балл к выбранному уровню
+        context.user_data["stage2_level_scores_dict"][level] += 1
+        logger.info(f"   +1 к уровню {level}")
+        
+        logger.info(f"✅ User {user_id}: Stage 2 Q{current} -> level={level}")
         
         context.user_data["stage2_last_answered"] = current
         context.user_data["stage2_current"] = current + 1
@@ -282,6 +305,8 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     level_scores_dict = context.user_data.get("stage2_level_scores_dict", {"1": 0})
     
     logger.info(f"🎯 finish_stage_2 вызван для пользователя {user_id}")
+    # 👇 Добавляем логирование итоговых баллов
+    logger.info(f"📊 Итоговые баллы по уровням: {level_scores_dict}")
     
     needs_clarification = need_clarification_stage2(level_scores_dict)
     
@@ -310,6 +335,6 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(result_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
-    # ВАЖНО: Возвращаем STAGE_3 (который теперь равен 12)
+    # ВАЖНО: Возвращаем STAGE_3
     logger.info(f"🔄 User {user_id}: finish_stage_2 → возвращаю STAGE_3 = {STAGE_3}")
     return STAGE_3
