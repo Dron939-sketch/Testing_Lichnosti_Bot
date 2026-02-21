@@ -4859,42 +4859,85 @@ def daily_stats_simple():
         yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
         week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
         
-        # ===== СТАТИСТИКА ЗА СЕГОДНЯ =====
+        # ===== ПРОФИЛИ ИЗ USER_PROFILES (если есть) =====
+        profiles_today = 0
+        profiles_yesterday = 0
+        profiles_week = []
+        
+        try:
+            cursor.execute("""
+            SELECT COUNT(*) FROM user_profiles 
+            WHERE DATE(created_at) = %s
+            """, (today,))
+            profiles_today = cursor.fetchone()[0] or 0
+        except:
+            pass
+            
+        try:
+            cursor.execute("""
+            SELECT COUNT(*) FROM user_profiles 
+            WHERE DATE(created_at) = %s
+            """, (yesterday,))
+            profiles_yesterday = cursor.fetchone()[0] or 0
+        except:
+            pass
+            
+        try:
+            cursor.execute("""
+            SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as count
+            FROM user_profiles 
+            WHERE created_at >= %s
+            GROUP BY DATE(created_at)
+            ORDER BY date DESC
+            """, (week_ago,))
+            profiles_week = cursor.fetchall()
+        except:
+            pass
+        
+        # ===== ПРИГЛАШЕНИЯ (sexual_invites) =====
         cursor.execute("""
-        SELECT 
-            (SELECT COUNT(*) FROM sexual_invites WHERE DATE(created_at) = %s) as invites,
-            (SELECT COUNT(*) FROM payments WHERE DATE(created_at) = %s AND status = 'succeeded') as payments_count,
-            (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) = %s AND status = 'succeeded') as payments_sum,
-            (SELECT COUNT(*) FROM sexual_access_purchases WHERE DATE(created_at) = %s AND status = 'succeeded') as sexual_count,
-            (SELECT COALESCE(SUM(amount), 0) FROM sexual_access_purchases WHERE DATE(created_at) = %s AND status = 'succeeded') as sexual_sum
-        """, (today, today, today, today, today))
+        SELECT COUNT(*) FROM sexual_invites 
+        WHERE DATE(created_at) = %s
+        """, (today,))
+        invites_today = cursor.fetchone()[0] or 0
         
-        today_row = cursor.fetchone()
-        
-        # ===== СТАТИСТИКА ЗА ВЧЕРА =====
         cursor.execute("""
-        SELECT 
-            (SELECT COUNT(*) FROM sexual_invites WHERE DATE(created_at) = %s) as invites,
-            (SELECT COUNT(*) FROM payments WHERE DATE(created_at) = %s AND status = 'succeeded') as payments_count,
-            (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) = %s AND status = 'succeeded') as payments_sum,
-            (SELECT COUNT(*) FROM sexual_access_purchases WHERE DATE(created_at) = %s AND status = 'succeeded') as sexual_count,
-            (SELECT COALESCE(SUM(amount), 0) FROM sexual_access_purchases WHERE DATE(created_at) = %s AND status = 'succeeded') as sexual_sum
-        """, (yesterday, yesterday, yesterday, yesterday, yesterday))
+        SELECT COUNT(*) FROM sexual_invites 
+        WHERE DATE(created_at) = %s
+        """, (yesterday,))
+        invites_yesterday = cursor.fetchone()[0] or 0
         
-        yesterday_row = cursor.fetchone()
-        
-        # ===== СТАТИСТИКА ЗА ПОСЛЕДНИЕ 7 ДНЕЙ =====
         cursor.execute("""
         SELECT 
             DATE(created_at) as date,
-            COUNT(*) as invites
+            COUNT(*) as count
         FROM sexual_invites 
         WHERE created_at >= %s
         GROUP BY DATE(created_at)
         ORDER BY date DESC
         """, (week_ago,))
+        invites_week = cursor.fetchall()
         
-        invites_by_day = cursor.fetchall()
+        # ===== ПЛАТЕЖИ (payments) =====
+        cursor.execute("""
+        SELECT COUNT(*), COALESCE(SUM(amount), 0)
+        FROM payments 
+        WHERE DATE(created_at) = %s AND status = 'succeeded'
+        """, (today,))
+        row = cursor.fetchone()
+        payments_today_count = row[0] or 0
+        payments_today_sum = float(row[1] or 0)
+        
+        cursor.execute("""
+        SELECT COUNT(*), COALESCE(SUM(amount), 0)
+        FROM payments 
+        WHERE DATE(created_at) = %s AND status = 'succeeded'
+        """, (yesterday,))
+        row = cursor.fetchone()
+        payments_yesterday_count = row[0] or 0
+        payments_yesterday_sum = float(row[1] or 0)
         
         cursor.execute("""
         SELECT 
@@ -4906,105 +4949,58 @@ def daily_stats_simple():
         GROUP BY DATE(created_at)
         ORDER BY date DESC
         """, (week_ago,))
-        
-        payments_by_day = cursor.fetchall()
-        
-        cursor.execute("""
-        SELECT 
-            DATE(created_at) as date,
-            COUNT(*) as count,
-            COALESCE(SUM(amount), 0) as total
-        FROM sexual_access_purchases 
-        WHERE created_at >= %s AND status = 'succeeded'
-        GROUP BY DATE(created_at)
-        ORDER BY date DESC
-        """, (week_ago,))
-        
-        sexual_by_day = cursor.fetchall()
+        payments_week = cursor.fetchall()
         
         cursor.close()
         conn.close()
         
-        # Формируем словари для удобства
-        payments_dict = {row[0].strftime('%Y-%m-%d'): {'count': row[1], 'total': float(row[2])} for row in payments_by_day}
-        sexual_dict = {row[0].strftime('%Y-%m-%d'): {'count': row[1], 'total': float(row[2])} for row in sexual_by_day}
-        
-        # Формируем статистику по дням
-        daily_stats = []
-        all_dates = set()
-        
-        for row in invites_by_day:
-            date_str = row[0].strftime('%Y-%m-%d')
-            all_dates.add(date_str)
-            payments = payments_dict.get(date_str, {'count': 0, 'total': 0})
-            sexual = sexual_dict.get(date_str, {'count': 0, 'total': 0})
-            daily_stats.append({
-                'date': date_str,
-                'invites': row[1],
-                'payments': payments['count'],
-                'payments_total': payments['total'],
-                'sexual': sexual['count'],
-                'sexual_total': sexual['total'],
-                'total_revenue': payments['total'] + sexual['total']
-            })
-        
-        # Добавляем даты, где были только платежи без приглашений
-        for date_str in payments_dict:
-            if date_str not in all_dates:
-                daily_stats.append({
-                    'date': date_str,
-                    'invites': 0,
-                    'payments': payments_dict[date_str]['count'],
-                    'payments_total': payments_dict[date_str]['total'],
-                    'sexual': 0,
-                    'sexual_total': 0,
-                    'total_revenue': payments_dict[date_str]['total']
-                })
-        
-        # Сортируем по дате
-        daily_stats.sort(key=lambda x: x['date'], reverse=True)
-        
+        # Формируем ответ
         return jsonify({
             'success': True,
             'today': {
                 'date': today,
-                'invites': today_row[0] or 0,
+                'profiles': profiles_today,
+                'invites': invites_today,
                 'payments': {
-                    'count': today_row[1] or 0,
-                    'total': float(today_row[2] or 0)
-                },
-                'sexual': {
-                    'count': today_row[3] or 0,
-                    'total': float(today_row[4] or 0)
-                },
-                'total_revenue': float(today_row[2] or 0) + float(today_row[4] or 0)
+                    'count': payments_today_count,
+                    'total': payments_today_sum
+                }
             },
             'yesterday': {
                 'date': yesterday,
-                'invites': yesterday_row[0] or 0,
+                'profiles': profiles_yesterday,
+                'invites': invites_yesterday,
                 'payments': {
-                    'count': yesterday_row[1] or 0,
-                    'total': float(yesterday_row[2] or 0)
-                },
-                'sexual': {
-                    'count': yesterday_row[3] or 0,
-                    'total': float(yesterday_row[4] or 0)
-                },
-                'total_revenue': float(yesterday_row[2] or 0) + float(yesterday_row[4] or 0)
+                    'count': payments_yesterday_count,
+                    'total': payments_yesterday_sum
+                }
             },
-            'last_7_days': daily_stats,
-            'summary': {
-                'total_invites_7d': sum(d['invites'] for d in daily_stats),
-                'total_payments_7d': sum(d['payments'] for d in daily_stats),
-                'total_sexual_7d': sum(d['sexual'] for d in daily_stats),
-                'total_revenue_7d': sum(d['total_revenue'] for d in daily_stats)
+            'last_7_days': {
+                'profiles': [
+                    {
+                        'date': row[0].strftime('%Y-%m-%d'),
+                        'count': row[1]
+                    } for row in profiles_week
+                ] if profiles_week else [],
+                'invites': [
+                    {
+                        'date': row[0].strftime('%Y-%m-%d'),
+                        'count': row[1]
+                    } for row in invites_week
+                ],
+                'payments': [
+                    {
+                        'date': row[0].strftime('%Y-%m-%d'),
+                        'count': row[1],
+                        'total': float(row[2])
+                    } for row in payments_week
+                ]
             }
         })
         
     except Exception as e:
         logger.error(f"❌ Ошибка в daily_stats_simple: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
 # ============================================
 # ОБРАБОТЧИКИ ОШИБОК
 # ============================================
