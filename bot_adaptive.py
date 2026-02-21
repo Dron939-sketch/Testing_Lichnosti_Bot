@@ -172,6 +172,31 @@ from sexual_19_7 import (
     create_yookassa_invoice,
 )
 
+print("\n" + "="*60)
+print("🔍 ОТЛАДКА: ПРОВЕРКА ИМПОРТОВ ИЗ sexual_19_7")
+print("="*60)
+
+# Проверяем каждую важную функцию
+important_functions = [
+    ('buy_invite_packages_callback', buy_invite_packages_callback),
+    ('send_invite_callback', send_invite_callback),
+    ('my_invites_callback', my_invites_callback),
+    ('show_my_sexual_profile', show_my_sexual_profile),
+]
+
+for name, func in important_functions:
+    print(f"📌 {name}:")
+    print(f"   Тип: {type(func)}")
+    print(f"   Callable: {callable(func)}")
+    print(f"   Адрес: {func}")
+    print()
+
+# Проверяем константы
+print("\n📊 Константы:")
+print(f"FREE_INVITE_LIMIT = {FREE_INVITE_LIMIT}")
+print(f"INVITE_PACKAGES = {INVITE_PACKAGES}")
+print("="*60 + "\n")
+
 # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 async def noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Заглушка для нереализованных функций"""
