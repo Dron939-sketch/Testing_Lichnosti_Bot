@@ -5198,130 +5198,64 @@ def get_user_limits(user_id):
         cursor = conn.cursor()
         
         cursor.execute("""
-        SELECT free_used, total_purchased, updated_at
-        FROM user_limits
-        WHERE user_id = %s
-        """, (user_id,))
+        SELECT 
+            COALESCE(ul.free_used, 0) as free_used,
+            COALESCE(ul.total_purchased, 0) as total_purchased,
+            COALESCE(ul.updated_at, CURRENT_TIMESTAMP) as updated_at,
+            COUNT(si.id) as total_invites,
+            SUM(CASE WHEN si.is_free = false THEN 1 ELSE 0 END) as paid_invites
+        FROM (SELECT 1) as dummy
+        LEFT JOIN user_limits ul ON ul.user_id = %s
+        LEFT JOIN sexual_invites si ON si.buyer_id = %s
+        GROUP BY ul.free_used, ul.total_purchased, ul.updated_at
+        """, (user_id, user_id))
         
-        result = cursor.fetchone()
+        row = cursor.fetchone()
         cursor.close()
         conn.close()
         
-        if result:
-            # Считаем сколько платных ссылок уже создано
-            cursor2 = conn2 = None
-            try:
-                conn2 = get_db_connection()
-                cursor2 = conn2.cursor()
-                cursor2.execute("""
-                SELECT COUNT(*) FROM sexual_invites 
-                WHERE buyer_id = %s AND is_free = false
-                """, (user_id,))
-                paid_used = cursor2.fetchone()[0]
-                cursor2.close()
-                conn2.close()
-            except:
-                paid_used = 0
-            
-            free_used = result[0]
-            total_purchased = result[1]
-            paid_available = total_purchased - paid_used
+        if row:
+            free_used, total_purchased, updated_at, total_invites, paid_invites = row
+            FREE_TOTAL = 3
             
             return jsonify({
                 "success": True,
                 "user_id": user_id,
                 "limits": {
                     "free_used": free_used,
-                    "free_total": 3,
-                    "free_remaining": max(0, 3 - free_used),
+                    "free_total": FREE_TOTAL,
+                    "free_remaining": max(0, FREE_TOTAL - free_used),
                     "total_purchased": total_purchased,
-                    "paid_used": paid_used,
-                    "paid_available": paid_available,
-                    "updated_at": result[2].isoformat() if result[2] else None
+                    "paid_used": paid_invites or 0,
+                    "paid_available": max(0, total_purchased - (paid_invites or 0)),
+                    "total_invites": total_invites,
+                    "updated_at": updated_at.isoformat() if updated_at else None
                 }
             }), 200
         else:
-            # Если нет записи, создаем с нулями
+            # Новый пользователь - возвращаем значения по умолчанию
+            FREE_TOTAL = 3
             return jsonify({
                 "success": True,
                 "user_id": user_id,
                 "limits": {
                     "free_used": 0,
-                    "free_total": 3,
-                    "free_remaining": 3,
+                    "free_total": FREE_TOTAL,
+                    "free_remaining": FREE_TOTAL,
                     "total_purchased": 0,
                     "paid_used": 0,
-                    "paid_available": 0
+                    "paid_available": 0,
+                    "total_invites": 0
                 }
             }), 200
-        
+            
     except Exception as e:
-        logger.error(f"❌ Ошибка получения лимитов: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/api/update-free-used', methods=['POST'])
-def update_free_used_old():
-    """Обновляет счетчик ВСЕХ использованных ссылок (и бесплатных, и платных)"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"success": False, "error": "No data provided"}), 400
-        
-        user_id = data.get('user_id')
-        
-        if not user_id:
-            return jsonify({"success": False, "error": "Missing user_id"}), 400
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Подсчитываем ВСЕ ссылки пользователя (и бесплатные, и платные)
-        cursor.execute("""
-        SELECT COUNT(*) FROM sexual_invites 
-        WHERE buyer_id = %s
-        """, (user_id,))
-        
-        total_links = cursor.fetchone()[0] or 0
-        
-        # Получаем текущие лимиты
-        cursor.execute("""
-        SELECT total_purchased FROM user_limits WHERE user_id = %s
-        """, (user_id,))
-        
-        result = cursor.fetchone()
-        total_purchased = result[0] if result else 0
-        
-        # Обновляем или создаем запись в user_limits
-        cursor.execute("""
-        INSERT INTO user_limits (user_id, free_used, total_purchased)
-        VALUES (%s, %s, %s)
-        ON CONFLICT (user_id) DO UPDATE SET
-            free_used = EXCLUDED.free_used,
-            total_purchased = EXCLUDED.total_purchased,
-            updated_at = CURRENT_TIMESTAMP
-        RETURNING free_used, total_purchased
-        """, (user_id, total_links, total_purchased))
-        
-        result = cursor.fetchone()
-        new_free_used = result[0]
-        current_total_purchased = result[1]
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
-        logger.info(f"✅ Обновлен счетчик ссылок для user_id={user_id}: всего использовано={new_free_used}, куплено={current_total_purchased}")
-        
+        logger.error(f"❌ Ошибка получения лимитов для user_id={user_id}: {e}")
         return jsonify({
-            "success": True,
-            "user_id": user_id,
-            "free_used": new_free_used,
-            "total_purchased": current_total_purchased
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка обновления счетчика ссылок: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+            "success": False, 
+            "error": "Internal server error",
+            "user_id": user_id
+        }), 500
 
 # ============================================
 # ЭНДПОИНТЫ ДЛЯ РАБОТЫ С ЛИМИТАМИ
