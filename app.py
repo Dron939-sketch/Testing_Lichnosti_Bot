@@ -4978,6 +4978,12 @@ def daily_stats_simple():
         cursor.close()
         conn.close()
         
+        # Формируем словари для быстрого доступа
+        used_dict = {}
+        for row in used_invites_week:
+            date_str = row[0].strftime('%Y-%m-%d')
+            used_dict[date_str] = row[1]
+        
         # Формируем ответ
         return jsonify({
             'success': True,
@@ -5016,7 +5022,7 @@ def daily_stats_simple():
                     {
                         'date': row[0].strftime('%Y-%m-%d'),
                         'total': row[1],
-                        'used': next((r[1] for r in used_invites_week if r[0] == row[0]), 0)
+                        'used': used_dict.get(row[0].strftime('%Y-%m-%d'), 0)
                     } for row in invites_week
                 ],
                 'payments': [
@@ -5028,7 +5034,7 @@ def daily_stats_simple():
                 ]
             },
             'summary': {
-                'total_profiles_7d': sum(d['count'] for d in profiles_week) if profiles_week else 0,
+                'total_profiles_7d': sum(row[1] for row in profiles_week) if profiles_week else 0,
                 'total_invites_7d': sum(row[1] for row in invites_week),
                 'total_used_invites_7d': sum(row[1] for row in used_invites_week),
                 'total_payments_7d': sum(row[1] for row in payments_week),
