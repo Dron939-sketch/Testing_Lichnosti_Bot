@@ -14,8 +14,20 @@ def calculate_progress(current: int, total: int) -> str:
     return f"Вопрос {current}/{total}\n{bar} {progress}%"
 
 def generate_unique_callback(base: str, user_id: int, *args) -> str:
-    """Генерирует уникальный callback_data"""
-    timestamp = int(time.time())
-    random_suffix = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=4))
-    parts = [base] + [str(arg) for arg in args] + [str(user_id)[-4:], str(timestamp)[-4:], random_suffix]
-    return "_".join(parts)
+    """Генерирует уникальный callback_data с контролем длины"""
+    # Короткий user_id (последние 4 цифры)
+    short_user = str(user_id)[-4:]
+    
+    # Формируем базовый callback
+    callback = f"{base}_{args[0]}_{args[1]}_{short_user}"
+    
+    # Если есть дополнительные аргументы (не критично)
+    if len(args) > 2:
+        callback += f"_{args[2]}"
+    
+    # Проверка длины
+    if len(callback) > 64:
+        # Укорачиваем, убирая лишнее
+        callback = f"{base}_{args[0]}_{args[1][:5]}_{short_user}"
+    
+    return callback
