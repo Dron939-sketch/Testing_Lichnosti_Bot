@@ -27,11 +27,14 @@ def log_debug(msg, user_id=None):
     logger.debug(msg)
 
 # 🔥 Функция для записи в файл на Render
+
 def log_to_file(filename: str, data: any, user_id: int = None):
     """Безопасная запись в файл с преобразованием любого типа в строку"""
     try:
-        # Преобразуем data в строку, если это не строка
-        if not isinstance(data, str):
+        # 🔥 ПРЕОБРАЗУЕМ slice В СТРОКУ
+        if isinstance(data, slice):
+            data = f"slice({data.start}, {data.stop}, {data.step})"
+        else:
             data = str(data)
         
         log_path = f'/tmp/{filename}'
