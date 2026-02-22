@@ -52,15 +52,21 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
         clarification_type = clarifications[current]
         log_debug(f"   clarification_type: {clarification_type}", user_id)
         
+        # 👇 ИНДЕКС ДЛЯ КОНКРЕТНОГО ТИПА
+        type_index_key = f"stage1_{clarification_type}_index"
+        type_current = context.user_data.get(type_index_key, 0)
+        log_debug(f"   type_current for {clarification_type}: {type_current}", user_id)
+        
         questions = CLARIFICATION_QUESTIONS.get(f"stage1_{clarification_type}", [])
         log_debug(f"   questions found: {len(questions)}", user_id)
         
-        if not questions:
-            log_debug(f"   ⚠️ Вопросы не найдены, пропускаем", user_id)
+        if type_current >= len(questions):
+            log_debug(f"   ✅ Все вопросы типа {clarification_type} отвечены, переходим к следующему", user_id)
             context.user_data["clarification_current"] = current + 1
+            context.user_data[type_index_key] = 0  # сбрасываем
             return await ask_clarification_question(update, context)
         
-        question = questions[0]
+        question = questions[type_current]  # 👈 БЕРЕМ ПО ИНДЕКСУ ТИПА
         log_debug(f"   question id: {question.get('id')}", user_id)
         
     elif clarification_stage == "stage2":
@@ -200,7 +206,7 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
             log_debug(f"❌ Опция {option_id} не найдена", user_id)
             return await ask_clarification_question(update, context)
         
-        # Обработка scores (как у вас уже есть)
+        # Обработка scores
         if isinstance(option, dict) and "scores" in option:
             log_debug(f"   option has scores: {option['scores']}", user_id)
             if "level" in option["scores"]:
@@ -213,6 +219,17 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
                 for axis, score in option["scores"].items():
                     context.user_data["scores"][axis] += score
                     log_debug(f"✅ +{score} к {axis}", user_id)
+        
+        # 👇 ОБНОВЛЯЕМ ИНДЕКС ДЛЯ КОНКРЕТНОГО ТИПА (stage1)
+        if stage == "stage1":
+            current_index = context.user_data.get("clarification_current", 0)
+            clarifications = context.user_data.get("stage1_clarifications", [])
+            if current_index < len(clarifications):
+                clarification_type = clarifications[current_index]
+                type_index_key = f"stage1_{clarification_type}_index"
+                type_current = context.user_data.get(type_index_key, 0)
+                context.user_data[type_index_key] = type_current + 1
+                log_debug(f"   type_index for {clarification_type}: {type_current} -> {type_current + 1}", user_id)
         
         # 👇 ИСПРАВЛЕННАЯ ЧАСТЬ: переход к следующему вопросу
         current_index = context.user_data.get("clarification_current", 0)
