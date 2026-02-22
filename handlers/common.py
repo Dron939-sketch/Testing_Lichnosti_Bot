@@ -5,6 +5,7 @@
 import logging
 import sys
 import time
+import os
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -178,7 +179,22 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
     query = update.callback_query
     user_id = update.effective_user.id
     
-    # 🔥🔥🔥 МАКСИМАЛЬНОЕ ЛОГИРОВАНИЕ В САМОМ НАЧАЛЕ
+    # 🔥🔥🔥 АВАРИЙНАЯ ЗАПИСЬ В ФАЙЛ (для Render.com)
+    log_path = '/tmp/bot_debug.log'
+    try:
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(f"\n{'🔥'*50}\n")
+            f.write(f"🔥 TIME: {datetime.now()}\n")
+            f.write(f"🔥 USER: {user_id}\n")
+            f.write(f"🔥 CALLBACK: {query.data}\n")
+            f.write(f"🔥 STAGE: {context.user_data.get('clarification_stage')}\n")
+            f.write(f"🔥 CURRENT: {context.user_data.get('clarification_current')}\n")
+            f.write(f"{'🔥'*50}\n")
+            f.flush()
+    except:
+        pass  # Игнорируем ошибки записи в файл
+    
+    # 🔥🔥🔥 МАКСИМАЛЬНОЕ ЛОГИРОВАНИЕ В stderr
     print("\n" + "🔥"*50, file=sys.stderr, flush=True)
     print(f"🔥 ВХОД В handle_clarification_answer", file=sys.stderr, flush=True)
     print(f"🔥 CALLBACK: {query.data}", file=sys.stderr, flush=True)
