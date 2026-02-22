@@ -340,13 +340,13 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_to_file("stage2_finish.log", f"needs_clarification: {needs_clarification}", user_id)
     
     if needs_clarification and not context.user_data.get("stage2_clarified", False):
-        context.user_data["clarification_current"] = 0
-        context.user_data["clarification_stage"] = "stage2"
-        
-        log_debug(f"🚀 Запуск уточнений stage2", user_id)
-        log_to_file("stage2_finish.log", f"Запуск уточнений stage2", user_id)
-        from handlers.common import ask_clarification_question
-        return await ask_clarification_question(update, context)
+    context.user_data["stage2_clarified"] = True  # 👈 СТАВИМ ФЛАГ ДО ВЫЗОВА
+    context.user_data["clarification_current"] = 0
+    context.user_data["clarification_stage"] = "stage2"
+    
+    log_debug(f"🚀 Запуск уточнений stage2", user_id)
+    from handlers.common import ask_clarification_question
+    return await ask_clarification_question(update, context)
     
     thinking_level = calculate_thinking_level_by_scores(level_scores_dict)
     context.user_data["thinking_level"] = thinking_level
