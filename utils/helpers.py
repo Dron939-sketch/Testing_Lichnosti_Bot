@@ -1,10 +1,10 @@
-# utils/helpers.py
 """
 Вспомогательные функции
 """
 
 import time
 import random
+import sys  # 👈 ДОБАВЛЯЕМ
 
 def calculate_progress(current: int, total: int) -> str:
     """Вычисляет прогресс с прогресс-баром"""
@@ -25,9 +25,15 @@ def generate_unique_callback(base: str, user_id: int, *args) -> str:
     if len(args) > 2:
         callback += f"_{args[2]}"
     
+    # 🔥 ЛОГИРОВАНИЕ создаваемого callback
+    print(f"🔧 GENERATING CALLBACK:", file=sys.stderr)
+    print(f"   base={base}, args={args}, short_user={short_user}", file=sys.stderr)
+    print(f"   callback={callback} (length={len(callback)})", file=sys.stderr)
+    
     # Проверка длины
     if len(callback) > 64:
-        # Укорачиваем, убирая лишнее
+        old_callback = callback
         callback = f"{base}_{args[0]}_{args[1][:5]}_{short_user}"
+        print(f"   ⚠️ TOO LONG! Trimmed: {old_callback} -> {callback}", file=sys.stderr)
     
     return callback
