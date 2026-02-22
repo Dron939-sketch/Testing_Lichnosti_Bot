@@ -159,7 +159,7 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
         parts = query.data.split("_")
         if len(parts) < 4:
             logger.error(f"❌ Неверный формат callback: {query.data}")
-            return await show_clarification_question(update, context)
+            return await ask_clarification_question(update, context)
         
         stage = parts[1]  # stage1, stage2, stage3, stage4
         question_id = parts[2]
@@ -177,13 +177,13 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
         
         if not question:
             logger.error(f"❌ Вопрос {question_id} не найден")
-            return await show_clarification_question(update, context)
+            return await ask_clarification_question(update, context)
         
         # Получаем выбранный вариант
         option = question["options"].get(option_id)
         if not option:
             logger.error(f"❌ Опция {option_id} не найдена")
-            return await show_clarification_question(update, context)
+            return await ask_clarification_question(update, context)
         
         # 👇 ВАЖНО: новая логика обработки scores
         if "scores" in option:
@@ -232,7 +232,7 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
             
     except Exception as e:
         logger.error(f"❌ Ошибка в handle_clarification_answer: {e}", exc_info=True)
-        return await show_clarification_question(update, context)
+        return await ask_clarification_question(update, context)
         
     finally:
         context.user_data["processing"] = False
