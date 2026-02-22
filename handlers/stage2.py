@@ -340,7 +340,7 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_to_file("stage2_finish.log", f"needs_clarification: {needs_clarification}", user_id)
     
     if needs_clarification and not context.user_data.get("stage2_clarified", False):
-        context.user_data["stage2_clarified"] = True  # 👈 ТЕПЕРЬ С ОТСТУПОМ!
+        context.user_data["stage2_clarified"] = True
         context.user_data["clarification_current"] = 0
         context.user_data["clarification_stage"] = "stage2"
         
