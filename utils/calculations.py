@@ -152,6 +152,16 @@ def calculate_profile_final(context_data: dict) -> dict:
     final_level = calculate_final_level(stage2_level, stage3_scores)
     final_level = max(1, min(9, final_level))
     
+    # 👇 НОВОЕ: учитываем clarification_scores
+    clarification_scores = context_data.get("clarification_scores", {})
+    if clarification_scores:
+        avg_clarification = sum(clarification_scores.values()) / len(clarification_scores)
+        logger.info(f"📊 clarification_scores: {clarification_scores}, avg={avg_clarification:.2f}")
+        # Корректируем уровень с учетом уточнений (с небольшим весом)
+        final_level = int(round(final_level * 0.8 + avg_clarification * 0.2))
+        final_level = max(1, min(9, final_level))
+        logger.info(f"📊 После clarification: final_level={final_level}")
+    
     dilts_answers = context_data.get("stage4_dilts_answers", [])
     dilts_level = determine_dilts_level(dilts_answers)
     dilts_code = get_dilts_code(dilts_level)
@@ -175,4 +185,5 @@ def calculate_profile_final(context_data: dict) -> dict:
         "coherence": coherence,
         "stage2_level": stage2_level,
         "stage3_avg": (sum(stage3_scores) / len(stage3_scores)) if stage3_scores else None,
+        "clarification_avg": (sum(clarification_scores.values()) / len(clarification_scores)) if clarification_scores else None,
     }
