@@ -2,7 +2,10 @@
 Функции для проверки необходимости уточнений
 """
 
+import logging
 from collections import Counter
+
+logger = logging.getLogger(__name__)
 
 def need_clarification_stage1(scores):
     """
@@ -24,8 +27,6 @@ def need_clarification_stage1(scores):
     if abs(symbolic - material) <= 2:
         clarifications.append("symbolic_material")
     
-    # 👇 ВАЖНО: возвращаем False если список пуст
-    # Пустой список в Python оценивается как True в условии if, поэтому возвращаем False
     return clarifications if clarifications else False
 
 def need_clarification_stage2(level_scores_dict):
@@ -62,14 +63,29 @@ def need_clarification_stage3(stage2_level, stage3_scores):
     Определяет, нужны ли уточнения после этапа 3
     Возвращает True, если нужны, иначе False
     """
-    if not stage3_scores or len(stage3_scores) < 4:
-        return False
+    # Если нет ответов - это ошибка, нужны уточнения
+    if not stage3_scores:
+        logger.debug("❌ stage3_scores пуст, уточнения нужны")
+        return True
     
-    # Вычисляем средний уровень поведения
+    # Если не все 8 вопросов отвечены
+    if len(stage3_scores) < 8:
+        logger.debug(f"❌ Неполный набор ответов: {len(stage3_scores)}/8")
+        return True
+    
+    # Проверяем на противоречия (слишком большой разброс)
+    if max(stage3_scores) - min(stage3_scores) > 4:
+        logger.debug(f"❌ Слишком большой разброс: {min(stage3_scores)}-{max(stage3_scores)}")
+        return True
+    
+    # Проверяем на несоответствие с stage2_level
     stage3_avg = sum(stage3_scores) / len(stage3_scores)
+    if abs(stage2_level - stage3_avg) > 2:
+        logger.debug(f"❌ Несоответствие: stage2={stage2_level}, stage3_avg={stage3_avg:.2f}")
+        return True
     
-    # Если разница между мышлением и поведением больше 3 уровней
-    return abs(stage2_level - stage3_avg) > 3
+    logger.debug("✅ Уточнения не нужны")
+    return False
 
 def need_clarification_stage4(dilts_answers):
     """
