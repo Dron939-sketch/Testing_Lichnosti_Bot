@@ -244,7 +244,7 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
             return await ask_clarification_question(update, context)
         
         # 👇 ОБРАБОТКА ДЛЯ stage2
-                elif stage == "stage2":
+        elif stage == "stage2":
             questions = CLARIFICATION_QUESTIONS.get("stage2_borderline", [])
             if current < len(questions):
                 question = questions[current]
