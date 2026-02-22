@@ -168,15 +168,11 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
     
     log_debug(f"🔥 handle_clarification_answer STARTED", user_id)
     log_debug(f"   callback_data: {query.data}", user_id)
-    log_debug(f"   user_data: {context.user_data}", user_id)
     
     await query.answer()
     
     try:
-        # Парсим callback: clarify_{stage}_{question_id}_{option_id}
         parts = query.data.split("_")
-        log_debug(f"   parsed parts: {parts}", user_id)
-        
         if len(parts) < 4:
             log_debug(f"❌ Неверный формат callback", user_id)
             return await ask_clarification_question(update, context)
@@ -189,13 +185,10 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
         
         # Получаем вопрос из словаря
         clarification_dict = CLARIFICATION_QUESTIONS.get(stage, [])
-        log_debug(f"   clarification_dict length: {len(clarification_dict)}", user_id)
-        
         question = None
         for q in clarification_dict:
             if q.get("id") == question_id:
                 question = q
-                log_debug(f"   found question: {q.get('id')}", user_id)
                 break
         
         if not question:
@@ -205,12 +198,9 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
         option = question["options"].get(option_id)
         if not option:
             log_debug(f"❌ Опция {option_id} не найдена", user_id)
-            log_debug(f"   available options: {list(question['options'].keys())}", user_id)
             return await ask_clarification_question(update, context)
         
-        log_debug(f"   option found: {option}", user_id)
-        
-        # 👇 Обработка scores
+        # Обработка scores (как у вас уже есть)
         if isinstance(option, dict) and "scores" in option:
             log_debug(f"   option has scores: {option['scores']}", user_id)
             if "level" in option["scores"]:
@@ -218,39 +208,56 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
                 if "clarification_scores" not in context.user_data:
                     context.user_data["clarification_scores"] = {}
                 context.user_data["clarification_scores"][question_id] = level_score
-                log_debug(f"✅ Сохранен level {level_score} для {question_id}", user_id)
+                log_debug(f"✅ Сохранен level {level_score}", user_id)
             else:
                 for axis, score in option["scores"].items():
                     context.user_data["scores"][axis] += score
                     log_debug(f"✅ +{score} к {axis}", user_id)
-        else:
-            log_debug(f"⚠️ Старый формат ответа: {option}", user_id)
-            # Для stage3_discrepancy и других старых форматов
-            try:
-                level_score = int(option_id)
-                if "clarification_scores" not in context.user_data:
-                    context.user_data["clarification_scores"] = {}
-                context.user_data["clarification_scores"][question_id] = level_score
-                log_debug(f"✅ Сохранен level {level_score} из option_id", user_id)
-            except ValueError:
-                log_debug(f"❌ Не удалось интерпретировать ответ", user_id)
         
-        # Переходим к следующему вопросу
+        # 👇 ИСПРАВЛЕННАЯ ЧАСТЬ: переход к следующему вопросу
         current_index = context.user_data.get("clarification_current", 0)
+        clarification_stage = context.user_data.get("clarification_stage")
+        
         log_debug(f"   current_index before: {current_index}", user_id)
+        log_debug(f"   clarification_stage: {clarification_stage}", user_id)
         
-        context.user_data["clarification_current"] = current_index + 1
-        log_debug(f"   current_index after: {current_index + 1}", user_id)
+        # Импортируем нужные функции
+        if clarification_stage == "stage1":
+            from handlers.stage1 import finish_stage_1
+            finish_func = finish_stage_1
+        elif clarification_stage == "stage2":
+            from handlers.stage2 import finish_stage_2
+            finish_func = finish_stage_2
+        elif clarification_stage == "stage3":
+            from handlers.stage3 import finish_stage_3
+            finish_func = finish_stage_3
+        elif clarification_stage == "stage4":
+            from handlers.stage4 import finish_stage_4
+            finish_func = finish_stage_4
+        else:
+            log_debug(f"❌ Неизвестный stage: {clarification_stage}", user_id)
+            return STAGE_1
         
-        log_debug(f"   calling ask_clarification_question...", user_id)
-        return await ask_clarification_question(update, context)
-            
+        # Увеличиваем индекс
+        new_index = current_index + 1
+        context.user_data["clarification_current"] = new_index
+        log_debug(f"   new_index: {new_index}", user_id)
+        
+        # Получаем список вопросов для этого этапа
+        questions = CLARIFICATION_QUESTIONS.get(clarification_stage, [])
+        log_debug(f"   total questions: {len(questions)}", user_id)
+        
+        # Проверяем, есть ли еще вопросы
+        if new_index < len(questions):
+            log_debug(f"➡️ Переход к вопросу {new_index + 1}/{len(questions)}", user_id)
+            return await ask_clarification_question(update, context)
+        else:
+            log_debug(f"✅ Все уточняющие вопросы завершены", user_id)
+            context.user_data[f"{clarification_stage}_clarified"] = True
+            return await finish_func(update, context)
+        
     except Exception as e:
-        log_debug(f"❌ Исключение: {e}", user_id)
+        log_debug(f"❌ Ошибка: {e}", user_id)
         import traceback
         traceback.print_exc(file=sys.stderr)
         return await ask_clarification_question(update, context)
-        
-    finally:
-        context.user_data["processing"] = False
-        log_debug(f"✅ handle_clarification_answer FINISHED", user_id)
