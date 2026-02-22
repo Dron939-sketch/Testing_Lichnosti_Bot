@@ -40,6 +40,12 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
     log_debug(f"💾 Сохраняю состояние CLARIFICATION = {CLARIFICATION}", user_id)
     
     if clarification_stage == "stage1":
+        # 🔥🔥🔥 СУПЕР-ЛОГИРОВАНИЕ
+        print("\n" + "="*50, file=sys.stderr)
+        print(f"🔥🔥🔥 STAGE1 CLARIFICATION DEBUG", file=sys.stderr)
+        print(f"current: {current}", file=sys.stderr)
+        print(f"stage1_clarifications: {context.user_data.get('stage1_clarifications', [])}", file=sys.stderr)
+        
         clarifications = context.user_data.get("stage1_clarifications", [])
         log_debug(f"   stage1_clarifications: {clarifications}", user_id)
         
@@ -224,11 +230,15 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
         if stage == "stage1":
             current_index = context.user_data.get("clarification_current", 0)
             clarifications = context.user_data.get("stage1_clarifications", [])
+            print(f"🔥 current_index: {current_index}", file=sys.stderr)
+            print(f"🔥 clarifications: {clarifications}", file=sys.stderr)
+            
             if current_index < len(clarifications):
                 clarification_type = clarifications[current_index]
                 type_index_key = f"stage1_{clarification_type}_index"
                 type_current = context.user_data.get(type_index_key, 0)
                 context.user_data[type_index_key] = type_current + 1
+                print(f"🔥 {clarification_type}: {type_current} -> {type_current + 1}", file=sys.stderr)
                 log_debug(f"   type_index for {clarification_type}: {type_current} -> {type_current + 1}", user_id)
         
         # 👇 ИСПРАВЛЕННАЯ ЧАСТЬ: переход к следующему вопросу
