@@ -1,23 +1,56 @@
 """
 Пакет обработчиков для всех этапов теста
-Версия 2.0 с расширенной диагностикой
+Версия 3.0 с расширенной диагностикой и универсальным логированием
 """
 
 # ===== АВАРИЙНАЯ ДИАГНОСТИКА =====
 import sys
-print("🚨🚨🚨 handlers/__init__.py ЗАГРУЖАЕТСЯ", file=sys.stderr)
+import os
+from datetime import datetime
+
+print("\n" + "🚨"*50, file=sys.stderr)
+print(f"🚨 handlers/__init__.py ЗАГРУЖАЕТСЯ в {datetime.now()}", file=sys.stderr)
 print(f"🚨 Текущий файл: {__file__}", file=sys.stderr)
-print(f"🚨 sys.path: {sys.path}", file=sys.stderr)
+print(f"🚨 Рабочая директория: {os.getcwd()}", file=sys.stderr)
+print("🚨"*50 + "\n", file=sys.stderr)
 sys.stderr.flush()
 # =================================
 
 import logging
 import sys
 import traceback
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 # Настройка логирования для пакета
 logger = logging.getLogger(__name__)
+
+# ===== УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ЛОГИРОВАНИЯ =====
+def log_debug(msg: str, user_id: Optional[int] = None, level: str = "INFO"):
+    """Записывает логи в несколько мест для надежности"""
+    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    user_part = f"[USER:{user_id}]" if user_id else ""
+    log_msg = f"📋 {timestamp} {user_part} {msg}"
+    
+    # В stderr
+    print(log_msg, file=sys.stderr, flush=True)
+    
+    # В файл
+    log_path = '/tmp/bot_handlers.log'
+    try:
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(f"{timestamp} {user_part} {msg}\n")
+    except:
+        pass
+    
+    # В logger
+    if level == "INFO":
+        logger.info(msg)
+    elif level == "DEBUG":
+        logger.debug(msg)
+    elif level == "WARNING":
+        logger.warning(msg)
+    elif level == "ERROR":
+        logger.error(msg)
 
 def safe_import(module_name: str, functions: List[str]) -> Dict[str, Any]:
     """
@@ -31,7 +64,7 @@ def safe_import(module_name: str, functions: List[str]) -> Dict[str, Any]:
         словарь {имя_функции: функция} или пустой словарь при ошибке
     """
     result = {}
-    logger.info(f"📦 Попытка импорта из {module_name}...")
+    log_debug(f"📦 Попытка импорта из {module_name}...")
     
     try:
         # Динамический импорт модуля
@@ -44,22 +77,22 @@ def safe_import(module_name: str, functions: List[str]) -> Dict[str, Any]:
                 if hasattr(module, func_name):
                     func = getattr(module, func_name)
                     result[func_name] = func
-                    logger.debug(f"  ✅ {func_name} загружена")
+                    log_debug(f"  ✅ {func_name} загружена")
                 else:
-                    logger.warning(f"  ⚠️ {func_name} не найдена в {module_name}")
+                    log_debug(f"  ⚠️ {func_name} не найдена в {module_name}", level="WARNING")
             except Exception as e:
-                logger.error(f"  ❌ Ошибка при импорте {func_name}: {e}")
+                log_debug(f"  ❌ Ошибка при импорте {func_name}: {e}", level="ERROR")
         
-        logger.info(f"✅ Загружено {len(result)}/{len(functions)} функций из {module_name}")
+        log_debug(f"✅ Загружено {len(result)}/{len(functions)} функций из {module_name}")
         return result
         
     except ImportError as e:
-        logger.error(f"❌ Модуль {module_name} не найден: {e}")
-        logger.debug(traceback.format_exc())
+        log_debug(f"❌ Модуль {module_name} не найден: {e}", level="ERROR")
+        log_debug(traceback.format_exc(), level="DEBUG")
         return {}
     except Exception as e:
-        logger.error(f"❌ Непредвиденная ошибка при импорте {module_name}: {e}")
-        logger.debug(traceback.format_exc())
+        log_debug(f"❌ Непредвиденная ошибка при импорте {module_name}: {e}", level="ERROR")
+        log_debug(traceback.format_exc(), level="DEBUG")
         return {}
 
 # ============================================================================
@@ -109,9 +142,9 @@ GIFTS_FUNCTIONS = [
 # ИМПОРТ ВСЕХ МОДУЛЕЙ
 # ============================================================================
 
-print("\n" + "="*70)
-print("🔍 ЗАГРУЗКА ПАКЕТА HANDLERS")
-print("="*70)
+print("\n" + "="*70, file=sys.stderr)
+print("🔍 ЗАГРУЗКА ПАКЕТА HANDLERS", file=sys.stderr)
+print("="*70, file=sys.stderr)
 
 # Словарь для хранения всех импортированных функций
 _imported_functions = {}
@@ -139,11 +172,11 @@ for module_name, functions in modules_to_import:
     
     # Выводим статус
     status = "✅" if len(imported) == len(functions) else "⚠️"
-    print(f"{status} {module_name}: {len(imported)}/{len(functions)} функций")
+    print(f"{status} {module_name}: {len(imported)}/{len(functions)} функций", file=sys.stderr)
 
-print("-" * 70)
-print(f"📊 ИТОГО: {successful_imports}/{total_functions} функций загружено")
-print("=" * 70 + "\n")
+print("-" * 70, file=sys.stderr)
+print(f"📊 ИТОГО: {successful_imports}/{total_functions} функций загружено", file=sys.stderr)
+print("=" * 70 + "\n", file=sys.stderr)
 
 # ============================================================================
 # ЯВНОЕ ОБЪЯВЛЕНИЕ ВСЕХ ФУНКЦИЙ В ГЛОБАЛЬНОЙ ОБЛАСТИ
@@ -219,16 +252,15 @@ def check_imports():
     """Проверяет, что все необходимые функции импортированы"""
     missing = []
     
-    # Проверяем все функции из __all__
     for func_name in __all__:
         if func_name not in _imported_functions or _imported_functions[func_name] is None:
             missing.append(func_name)
     
     if missing:
-        logger.warning(f"⚠️ Отсутствуют функции: {', '.join(missing)}")
+        log_debug(f"⚠️ Отсутствуют функции: {', '.join(missing)}", level="WARNING")
         return False
     else:
-        logger.info("✅ Все функции успешно импортированы")
+        log_debug("✅ Все функции успешно импортированы")
         return True
 
 # ============================================================================
@@ -266,6 +298,9 @@ __all__ = [
     
     # gifts
     'get_gift_screen', 'open_gift_screen', 'show_package_screen',
+    
+    # diagnostic
+    'log_debug',
 ]
 
 # ============================================================================
@@ -276,17 +311,20 @@ __all__ = [
 all_imported = check_imports()
 
 # Логируем итоги
-logger.info(f"📊 Пакет handlers загружен. Всего функций: {len(__all__)}")
-logger.info(f"📋 Первые 10 функций: {', '.join(__all__[:10])}")
+log_debug(f"📊 Пакет handlers загружен. Всего функций: {len(__all__)}")
+log_debug(f"📋 Первые 10 функций: {', '.join(__all__[:10])}")
 
 if not all_imported:
-    logger.warning("⚠️ Некоторые функции отсутствуют. Проверьте логи выше.")
+    log_debug("⚠️ Некоторые функции отсутствуют. Проверьте логи выше.", level="WARNING")
 
 # Для отладки в консоли
-print("\n" + "="*70)
-print("📋 СПИСОК ЭКСПОРТИРУЕМЫХ ФУНКЦИЙ:")
-print("-" * 70)
+print("\n" + "="*70, file=sys.stderr)
+print("📋 СПИСОК ЭКСПОРТИРУЕМЫХ ФУНКЦИЙ:", file=sys.stderr)
+print("-" * 70, file=sys.stderr)
 for i, func_name in enumerate(__all__, 1):
     status = "✅" if _imported_functions.get(func_name) else "❌"
-    print(f"{status} {i:2d}. {func_name}")
-print("="*70 + "\n")
+    print(f"{status} {i:2d}. {func_name}", file=sys.stderr)
+print("="*70 + "\n", file=sys.stderr)
+
+# Финальное сообщение
+print(f"\n🚀 ПАКЕТ HANDLERS УСПЕШНО ЗАГРУЖЕН в {datetime.now()}\n", file=sys.stderr)
