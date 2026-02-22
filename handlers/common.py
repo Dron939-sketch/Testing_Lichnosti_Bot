@@ -244,7 +244,7 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
             return await ask_clarification_question(update, context)
         
         # 👇 ОБРАБОТКА ДЛЯ stage2
-        elif stage == "stage2":
+                elif stage == "stage2":
             questions = CLARIFICATION_QUESTIONS.get("stage2_borderline", [])
             if current < len(questions):
                 question = questions[current]
@@ -258,8 +258,17 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
                     context.user_data["stage2_level_scores_dict"][str(level_score)] += 3
                     log_debug(f"✅ +3 к уровню {level_score}", user_id)
             
-            context.user_data["clarification_current"] = current + 1
-            return await ask_clarification_question(update, context)
+            new_index = current + 1
+            context.user_data["clarification_current"] = new_index
+            log_debug(f"   new_index: {new_index}, всего вопросов: {len(questions)}", user_id)
+            
+            if new_index >= len(questions):
+                log_debug(f"✅ Все уточнения stage2 завершены", user_id)
+                context.user_data["stage2_clarified"] = True
+                from handlers.stage2 import finish_stage_2
+                return await finish_stage_2(update, context)
+            else:
+                return await ask_clarification_question(update, context)
         
         # 👇 ОБРАБОТКА ДЛЯ stage3
         elif stage == "stage3":
