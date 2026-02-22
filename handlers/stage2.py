@@ -4,6 +4,7 @@
 
 import logging
 import sys
+import os
 import time
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -25,12 +26,25 @@ def log_debug(msg, user_id=None):
     print(f"🔍 {timestamp} {user_part} {msg}", file=sys.stderr, flush=True)
     logger.debug(msg)
 
+# 🔥 Функция для записи в файл на Render
+def log_to_file(filename: str, data: str, user_id: int = None):
+    """Записывает данные в файл в /tmp/"""
+    try:
+        log_path = f'/tmp/{filename}'
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        user_part = f"[USER:{user_id}]" if user_id else ""
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(f"{timestamp} {user_part} {data}\n")
+    except Exception as e:
+        print(f"❌ Ошибка записи в файл {filename}: {e}", file=sys.stderr)
+
 async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 2"""
     query = update.callback_query
     user_id = update.effective_user.id
     
     log_debug(f"🔵 show_stage_2_intro ВЫЗВАН", user_id)
+    log_to_file("stage2_intro.log", f"show_stage_2_intro вызван", user_id)
     
     context.user_data["conversation_state"] = STAGE_2
     log_debug(f"💾 Сохраняю состояние STAGE_2 = {STAGE_2}", user_id)
@@ -118,7 +132,7 @@ async def start_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     log_debug(f"🔥🔥🔥 start_stage_2 ВЫЗВАН! User: {user_id}", user_id)
-    log_debug(f"📊 username=@{query.from_user.username}", user_id)
+    log_to_file("stage2_start.log", f"start_stage_2", user_id)
     
     await query.answer()
     
@@ -148,6 +162,7 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     current = context.user_data.get("stage2_current", 0)
     
     log_debug(f"📝 ask_stage_2_question: current={current}, type={perception_type}", user_id)
+    log_to_file("stage2_questions.log", f"Вопрос {current+1}/8 type={perception_type}", user_id)
     
     context.user_data["conversation_state"] = STAGE_2
     
@@ -170,6 +185,8 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     for level_num, answer_text in question["options"].items():
         unique_callback = generate_unique_callback("stage2", user_id, current, level_num)
+        log_debug(f"   кнопка: {answer_text[:20]}... -> {unique_callback}", user_id)
+        log_to_file("stage2_callbacks.log", f"Создан callback: {unique_callback}", user_id)
         keyboard.append([
             InlineKeyboardButton(answer_text, callback_data=unique_callback)
         ])
@@ -204,7 +221,12 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     user_id = update.effective_user.id
     
-    # 🔥🔥🔥 АВАРИЙНОЕ ЛОГИРОВАНИЕ
+    # 🔥🔥🔥 АВАРИЙНОЕ ЛОГИРОВАНИЕ В ФАЙЛ
+    log_to_file("stage2_answers.log", f"ПОЛУЧЕН CALLBACK: {query.data}", user_id)
+    log_to_file("stage2_answers.log", f"stage2_current до: {context.user_data.get('stage2_current')}", user_id)
+    log_to_file("stage2_answers.log", f"stage2_last_answered: {context.user_data.get('stage2_last_answered')}", user_id)
+    
+    # 🔥🔥🔥 АВАРИЙНОЕ ЛОГИРОВАНИЕ В КОНСОЛЬ
     print("\n" + "🔥"*50, file=sys.stderr, flush=True)
     print(f"🔥 handle_stage_2_answer CALLED", file=sys.stderr, flush=True)
     print(f"🔥 callback: {query.data}", file=sys.stderr, flush=True)
@@ -227,26 +249,34 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         parts = query.data.split("_")
         log_debug(f"   parts: {parts}", user_id)
+        log_to_file("stage2_answers.log", f"parts: {parts}", user_id)
         
         if len(parts) < 3 or parts[0] != "stage2":
             log_debug(f"❌ Неверный формат callback: {query.data}", user_id)
+            log_to_file("stage2_errors.log", f"Неверный формат: {query.data}", user_id)
             return STAGE_2
         
         current = int(parts[1])
         selected_level = parts[2]
         
         log_debug(f"📥 Ответ на вопрос {current}, level={selected_level}", user_id)
+        log_to_file("stage2_answers.log", f"Ответ на вопрос {current}, level={selected_level}", user_id)
         
         last_answered = context.user_data.get("stage2_last_answered", -1)
         if current <= last_answered:
             log_debug(f"⏭️ Вопрос {current} уже отвечен (last={last_answered})", user_id)
+            log_to_file("stage2_answers.log", f"Вопрос {current} уже отвечен", user_id)
             return STAGE_2
         
         perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
+        log_debug(f"   perception_type: {perception_type}", user_id)
         
         scoring_table = STAGE_2_SCORING.get(perception_type, {})
+        log_debug(f"   scoring_table keys: {list(scoring_table.keys())}", user_id)
         
         if current in scoring_table and selected_level in scoring_table[current]:
+            log_debug(f"   ✅ Найдены баллы для current={current}, level={selected_level}", user_id)
+            
             if "stage2_level_scores_dict" not in context.user_data:
                 context.user_data["stage2_level_scores_dict"] = {
                     "1": 0, "2": 0, "3": 0, "4": 0, "5": 0,
@@ -258,13 +288,16 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
             
             log_debug(f"   +{points} к уровню {selected_level}", user_id)
             log_debug(f"   теперь уровень {selected_level}: {context.user_data['stage2_level_scores_dict'][selected_level]}", user_id)
+            log_to_file("stage2_scores.log", f"Q{current}: +{points} к уровню {selected_level}", user_id)
         else:
             log_debug(f"⚠️ Нет баллов для type={perception_type}, current={current}, level={selected_level}", user_id)
             log_debug(f"   доступные ключи для current={current}: {list(scoring_table.get(current, {}).keys())}", user_id)
+            log_to_file("stage2_errors.log", f"Нет баллов: type={perception_type}, current={current}, level={selected_level}", user_id)
         
         context.user_data["stage2_last_answered"] = current
         context.user_data["stage2_current"] = current + 1
         log_debug(f"   stage2_current увеличен до {current + 1}", user_id)
+        log_to_file("stage2_answers.log", f"stage2_current теперь = {current + 1}", user_id)
         
         context.user_data["conversation_state"] = STAGE_2
         
@@ -272,6 +305,7 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
         
     except Exception as e:
         log_debug(f"❌ Ошибка: {e}", user_id)
+        log_to_file("stage2_errors.log", f"Исключение: {e}", user_id)
         import traceback
         traceback.print_exc(file=sys.stderr)
         return await ask_stage_2_question(update, context)
@@ -286,20 +320,24 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     level_scores_dict = context.user_data.get("stage2_level_scores_dict", {"1": 0})
     
     log_debug(f"🎯 finish_stage_2 вызван", user_id)
+    log_to_file("stage2_finish.log", f"finish_stage_2 вызван", user_id)
     log_debug(f"📊 ИТОГОВЫЕ БАЛЛЫ ПО УРОВНЯМ:", user_id)
     for level in range(1, 10):
         score = level_scores_dict.get(str(level), 0)
         if score > 0:
             log_debug(f"   Уровень {level}: {score} баллов", user_id)
+            log_to_file("stage2_finish.log", f"Уровень {level}: {score}", user_id)
     
     needs_clarification = need_clarification_stage2(level_scores_dict)
     log_debug(f"📊 needs_clarification: {needs_clarification}", user_id)
+    log_to_file("stage2_finish.log", f"needs_clarification: {needs_clarification}", user_id)
     
     if needs_clarification and not context.user_data.get("stage2_clarified", False):
         context.user_data["clarification_current"] = 0
         context.user_data["clarification_stage"] = "stage2"
         
         log_debug(f"🚀 Запуск уточнений stage2", user_id)
+        log_to_file("stage2_finish.log", f"Запуск уточнений stage2", user_id)
         from handlers.common import ask_clarification_question
         return await ask_clarification_question(update, context)
     
@@ -310,6 +348,7 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     level_group = get_level_group(thinking_level)
     
     log_debug(f"✅ Stage 2 complete, level={thinking_level}, group={level_group}", user_id)
+    log_to_file("stage2_finish.log", f"Stage 2 complete: level={thinking_level}, group={level_group}", user_id)
     
     result_text = STAGE2_FEEDBACK.get((perception_type, level_group))
     if not result_text:
@@ -321,4 +360,5 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(result_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
     log_debug(f"🔄 finish_stage_2 → возвращаю STAGE_3 = {STAGE_3}", user_id)
+    log_to_file("stage2_finish.log", f"Возвращаю STAGE_3 = {STAGE_3}", user_id)
     return STAGE_3
