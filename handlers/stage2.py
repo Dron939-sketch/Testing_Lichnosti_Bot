@@ -27,9 +27,13 @@ def log_debug(msg, user_id=None):
     logger.debug(msg)
 
 # 🔥 Функция для записи в файл на Render
-def log_to_file(filename: str, data: str, user_id: int = None):
-    """Записывает данные в файл в /tmp/"""
+def log_to_file(filename: str, data: any, user_id: int = None):
+    """Безопасная запись в файл с преобразованием любого типа в строку"""
     try:
+        # Преобразуем data в строку, если это не строка
+        if not isinstance(data, str):
+            data = str(data)
+        
         log_path = f'/tmp/{filename}'
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         user_part = f"[USER:{user_id}]" if user_id else ""
@@ -37,7 +41,7 @@ def log_to_file(filename: str, data: str, user_id: int = None):
             f.write(f"{timestamp} {user_part} {data}\n")
     except Exception as e:
         print(f"❌ Ошибка записи в файл {filename}: {e}", file=sys.stderr)
-
+        
 async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 2"""
     query = update.callback_query
