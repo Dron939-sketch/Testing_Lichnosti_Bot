@@ -1,3 +1,24 @@
+async def handle_clarification_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ответа на уточняющий вопрос"""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    log_debug(f"🔥 handle_clarification_answer STARTED", user_id)
+    log_debug(f"   callback_data: {query.data}", user_id)
+    
+    # 🔥🔥🔥 МАКСИМАЛЬНОЕ ЛОГИРОВАНИЕ
+    print("\n" + "🔥"*50, file=sys.stderr)
+    print(f"🔥 CALLBACK: {query.data}", file=sys.stderr)
+    print(f"🔥 USER_DATA:", file=sys.stderr)
+    for key, value in context.user_data.items():
+        print(f"🔥   {key}: {value}", file=sys.stderr)
+    print("🔥"*50, file=sys.stderr)
+    
+    await query.answer()
+    
+    try:
+        parts = query.data.split("_")
+        print(f"🔥 PARTS: {parts}", file=sys.stderr)
 """
 Общие обработчики для уточняющих вопросов и навигации
 """
