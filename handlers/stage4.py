@@ -3,12 +3,14 @@
 """
 
 import logging
+import sys
+import os
 import time
 import asyncio
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-# ИСПРАВЛЕНО: Импортируем константы из constants.py вместо config.py
 from constants import STAGE_4, RESULTS
 from config import PSYCHOLOGIST_TIPS, STAGE4_ANALYSIS_SCREEN
 from questions import STAGE_4_QUESTIONS
@@ -22,16 +24,41 @@ from utils.helpers import calculate_progress, generate_unique_callback
 
 logger = logging.getLogger(__name__)
 
+# 🔥 Функция для логирования в stderr
+def log_debug(msg, user_id=None):
+    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    user_part = f"[USER:{user_id}]" if user_id else ""
+    print(f"🔍 {timestamp} {user_part} {msg}", file=sys.stderr, flush=True)
+    logger.debug(msg)
+
+# 🔥 Функция для записи в файл на Render
+def log_to_file(filename: str, data: any, user_id: int = None):
+    """Безопасная запись в файл с преобразованием любого типа в строку"""
+    try:
+        if isinstance(data, slice):
+            data = f"slice({data.start}, {data.stop}, {data.step})"
+        else:
+            data = str(data)
+        
+        log_path = f'/tmp/{filename}'
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        user_part = f"[USER:{user_id}]" if user_id else ""
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(f"{timestamp} {user_part} {data}\n")
+    except Exception as e:
+        print(f"❌ Ошибка записи в файл {filename}: {e}", file=sys.stderr)
+
 async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 4"""
     query = update.callback_query
     user_id = update.effective_user.id
     
-    logger.info(f"🔵 show_stage_4_intro ВЫЗВАН для пользователя {user_id}")
+    log_debug(f"🔵 show_stage_4_intro ВЫЗВАН", user_id)
+    log_to_file("stage4_intro.log", f"show_stage_4_intro вызван", user_id)
     
     # ✅ ВАЖНО: сохраняем состояние
     context.user_data["conversation_state"] = STAGE_4
-    logger.info(f"💾 Сохраняю состояние STAGE_4 = {STAGE_4} для пользователя {user_id}")
+    log_debug(f"💾 Сохраняю состояние STAGE_4 = {STAGE_4}", user_id)
     
     await query.answer()
     
@@ -61,7 +88,7 @@ async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     await query.edit_message_text(intro_text, reply_markup=reply_markup, parse_mode="HTML")
     
-    logger.info(f"🔄 User {user_id}: show_stage_4_intro → возвращаю STAGE_4 = {STAGE_4}")
+    log_debug(f"🔄 show_stage_4_intro → возвращаю STAGE_4 = {STAGE_4}", user_id)
     return STAGE_4
 
 async def show_stage_4_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -69,11 +96,11 @@ async def show_stage_4_details(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     user_id = update.effective_user.id
     
-    logger.info(f"📋 show_stage_4_details ВЫЗВАН для пользователя {user_id}")
+    log_debug(f"📋 show_stage_4_details ВЫЗВАН", user_id)
     
     # ✅ ВАЖНО: сохраняем состояние
     context.user_data["conversation_state"] = STAGE_4
-    logger.info(f"💾 Сохраняю состояние STAGE_4 = {STAGE_4} для пользователя {user_id}")
+    log_debug(f"💾 Сохраняю состояние STAGE_4 = {STAGE_4}", user_id)
     
     await query.answer()
     
@@ -114,13 +141,13 @@ async def show_stage_4_details(update: Update, context: ContextTypes.DEFAULT_TYP
     
     await query.edit_message_text(details_text, reply_markup=reply_markup, parse_mode="HTML")
     
-    logger.info(f"🔄 User {user_id}: show_stage_4_details → возвращаю STAGE_4 = {STAGE_4}")
+    log_debug(f"🔄 show_stage_4_details → возвращаю STAGE_4 = {STAGE_4}", user_id)
     return STAGE_4
 
 async def back_to_stage4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к экрану ЭТАПА 4"""
     user_id = update.effective_user.id
-    logger.info(f"⬅️ back_to_stage4_intro ВЫЗВАН для пользователя {user_id}")
+    log_debug(f"⬅️ back_to_stage4_intro ВЫЗВАН", user_id)
     
     # ✅ ВАЖНО: сохраняем состояние
     context.user_data["conversation_state"] = STAGE_4
@@ -132,8 +159,9 @@ async def start_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
     
-    logger.info(f"🔥🔥🔥 start_stage_4 ВЫЗВАН! User: {user_id}")
-    logger.info(f"📊 Данные пользователя: username=@{query.from_user.username}")
+    log_debug(f"🔥🔥🔥 start_stage_4 ВЫЗВАН! User: {user_id}", user_id)
+    log_debug(f"📊 username=@{query.from_user.username}", user_id)
+    log_to_file("stage4_start.log", f"start_stage_4", user_id)
     
     await query.answer()
     
@@ -142,14 +170,14 @@ async def start_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # ✅ ВАЖНО: сохраняем состояние
     context.user_data["conversation_state"] = STAGE_4
-    logger.info(f"💾 Сохраняю состояние STAGE_4 = {STAGE_4} для пользователя {user_id}")
+    log_debug(f"💾 Сохраняю состояние STAGE_4 = {STAGE_4}", user_id)
     
     # Инициализируем список ответов
     if "stage4_dilts_answers" not in context.user_data:
         context.user_data["stage4_dilts_answers"] = []
-        logger.info(f"📊 Инициализирован stage4_dilts_answers для пользователя {user_id}")
+        log_debug(f"📊 Инициализирован stage4_dilts_answers", user_id)
     
-    logger.info(f"✅ stage4_current инициализирован: 0 для пользователя {user_id}")
+    log_debug(f"✅ stage4_current инициализирован: 0", user_id)
     
     return await ask_stage_4_question(update, context)
 
@@ -159,13 +187,14 @@ async def ask_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.effective_user.id
     current = context.user_data.get("stage4_current", 0)
     
-    logger.info(f"📝 ask_stage_4_question для пользователя {user_id}: current={current}")
+    log_debug(f"📝 ask_stage_4_question: current={current}", user_id)
+    log_to_file("stage4_questions.log", f"Вопрос {current+1}/8", user_id)
     
     # ✅ ВАЖНО: сохраняем состояние
     context.user_data["conversation_state"] = STAGE_4
     
     if current >= len(STAGE_4_QUESTIONS):
-        logger.info(f"🏁 Все вопросы заданы для пользователя {user_id}, завершаем этап 4")
+        log_debug(f"🏁 Все вопросы заданы, завершаем этап 4", user_id)
         return await finish_stage_4(update, context)
     
     question = STAGE_4_QUESTIONS[current]
@@ -181,6 +210,8 @@ async def ask_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     for option_id, option in question["options"].items():
         unique_callback = generate_unique_callback("stage4", user_id, current, option_id)
+        log_debug(f"   кнопка: {option['text'][:20]}... -> {unique_callback}", user_id)
+        log_to_file("stage4_callbacks.log", f"Создан callback: {unique_callback}", user_id)
         keyboard.append([
             InlineKeyboardButton(option["text"], callback_data=unique_callback)
         ])
@@ -194,31 +225,19 @@ async def ask_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYP
                 reply_markup=reply_markup, 
                 parse_mode="HTML"
             )
-            logger.info(f"✅ Вопрос {current+1}/{len(STAGE_4_QUESTIONS)} этапа 4 отправлен пользователю {user_id}")
+            log_debug(f"✅ Вопрос {current+1}/{len(STAGE_4_QUESTIONS)} отправлен", user_id)
     except Exception as e:
-        error_str = str(e).lower()
-        if "message is not modified" in error_str:
-            pass
-        elif "message can't be edited" in error_str:
-            try:
-                await query.message.delete()
-            except:
-                pass
-            
+        log_debug(f"❌ Ошибка при редактировании: {e}", user_id)
+        try:
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
                 text=question_text,
                 reply_markup=reply_markup,
                 parse_mode="HTML"
             )
-        else:
-            logger.error(f"Ошибка при редактировании: {e}")
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text=question_text,
-                reply_markup=reply_markup,
-                parse_mode="HTML"
-            )
+            log_debug(f"✅ Отправлено новое сообщение", user_id)
+        except Exception as e2:
+            log_debug(f"❌ Критическая ошибка: {e2}", user_id)
     
     return STAGE_4
 
@@ -227,47 +246,69 @@ async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     user_id = update.effective_user.id
     
+    # 🔥🔥🔥 АВАРИЙНОЕ ЛОГИРОВАНИЕ
+    log_to_file("stage4_answers.log", f"ПОЛУЧЕН CALLBACK: {query.data}", user_id)
+    log_to_file("stage4_answers.log", f"stage4_current до: {context.user_data.get('stage4_current')}", user_id)
+    log_to_file("stage4_answers.log", f"stage4_last_answered: {context.user_data.get('stage4_last_answered')}", user_id)
+    
+    print("\n" + "🔥"*50, file=sys.stderr, flush=True)
+    print(f"🔥 handle_stage_4_answer CALLED", file=sys.stderr, flush=True)
+    print(f"🔥 callback: {query.data}", file=sys.stderr, flush=True)
+    print(f"🔥 user_id: {user_id}", file=sys.stderr, flush=True)
+    print("🔥"*50, file=sys.stderr, flush=True)
+    
     try:
         await query.answer()
     except Exception as e:
-        logger.error(f"Ошибка при answer(): {e}")
+        log_debug(f"❌ Ошибка при answer(): {e}", user_id)
     
     if context.user_data.get("processing", False):
-        logger.debug(f"Пользователь {user_id}: пропускаем повторное нажатие")
+        log_debug(f"⏭️ Пропускаем повторное нажатие", user_id)
         return STAGE_4
     
     context.user_data["processing"] = True
     
     try:
         parts = query.data.split("_")
+        log_debug(f"   parts: {parts}", user_id)
+        log_to_file("stage4_answers.log", f"parts: {parts}", user_id)
+        
         if len(parts) < 3 or parts[0] != "stage4":
-            logger.error(f"Неверный формат callback: {query.data}")
+            log_debug(f"❌ Неверный формат callback: {query.data}", user_id)
+            log_to_file("stage4_errors.log", f"Неверный формат: {query.data}", user_id)
             return STAGE_4
         
         current = int(parts[1])
         option_id = parts[2]
         
-        logger.info(f"📥 User {user_id}: получен ответ на вопрос {current} этапа 4, option={option_id}")
+        log_debug(f"📥 Ответ на вопрос {current}, option={option_id}", user_id)
+        log_to_file("stage4_answers.log", f"Ответ на вопрос {current}, option={option_id}", user_id)
         
         last_answered = context.user_data.get("stage4_last_answered", -1)
         if current <= last_answered:
-            logger.debug(f"Вопрос {current} уже отвечен, пропускаем")
+            log_debug(f"⏭️ Вопрос {current} уже отвечен (last={last_answered})", user_id)
+            log_to_file("stage4_answers.log", f"Вопрос {current} уже отвечен", user_id)
             return STAGE_4
         
         question = STAGE_4_QUESTIONS[current]
         selected_option = question["options"].get(option_id)
         
         if not selected_option:
-            logger.error(f"Опция {option_id} не найдена в вопросе {current}")
+            log_debug(f"❌ Опция {option_id} не найдена", user_id)
+            log_to_file("stage4_errors.log", f"Опция {option_id} не найдена", user_id)
             return STAGE_4
         
         dilts = selected_option.get("dilts", "ENVIRONMENT")
         context.user_data["stage4_dilts_answers"].append(dilts)
         
-        logger.info(f"✅ User {user_id}: Stage 4 Q{current} -> {option_id} (dilts={dilts})")
+        log_debug(f"✅ + dilts={dilts}", user_id)
+        log_to_file("stage4_scores.log", f"Q{current}: + dilts={dilts}", user_id)
+        log_debug(f"   теперь stage4_answers: {context.user_data['stage4_dilts_answers']}", user_id)
         
         context.user_data["stage4_last_answered"] = current
         context.user_data["stage4_current"] = current + 1
+        log_debug(f"   stage4_current увеличен до {current + 1}", user_id)
+        log_to_file("stage4_answers.log", f"stage4_current теперь = {current + 1}", user_id)
         
         # ✅ ВАЖНО: сохраняем состояние
         context.user_data["conversation_state"] = STAGE_4
@@ -275,10 +316,14 @@ async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TY
         return await ask_stage_4_question(update, context)
         
     except Exception as e:
-        logger.error(f"❌ Критическая ошибка в handle_stage_4_answer: {e}", exc_info=True)
+        log_debug(f"❌ Ошибка: {e}", user_id)
+        log_to_file("stage4_errors.log", f"Исключение: {e}", user_id)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         return await ask_stage_4_question(update, context)
     finally:
         context.user_data["processing"] = False
+        log_debug(f"✅ handle_stage_4_answer FINISHED", user_id)
 
 async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Завершение ЭТАПА 4 - ЭКРАН АНАЛИТИКИ ПЕРЕД РЕЗУЛЬТАТАМИ"""
@@ -286,23 +331,29 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     dilts_answers = context.user_data.get("stage4_dilts_answers", [])
     
-    logger.info(f"🎯 finish_stage_4 вызван для пользователя {user_id}")
-    logger.info(f"📊 dilts_answers={dilts_answers}")
+    log_debug(f"🎯 finish_stage_4 вызван", user_id)
+    log_to_file("stage4_finish.log", f"finish_stage_4 вызван", user_id)
+    log_debug(f"📊 dilts_answers={dilts_answers}", user_id)
+    log_to_file("stage4_finish.log", f"dilts_answers={dilts_answers}", user_id)
     
     needs_clarification = need_clarification_stage4(dilts_answers)
+    log_debug(f"📊 needs_clarification: {needs_clarification}", user_id)
+    log_to_file("stage4_finish.log", f"needs_clarification: {needs_clarification}", user_id)
     
     if needs_clarification and not context.user_data.get("stage4_clarified", False):
         context.user_data["clarification_current"] = 0
         context.user_data["clarification_stage"] = "stage4"
         
-        logger.info(f"User {user_id}: Stage 4 needs clarification (tie)")
+        log_debug(f"🚀 Запуск уточнений stage4", user_id)
+        log_to_file("stage4_finish.log", f"Запуск уточнений stage4", user_id)
         from handlers.common import ask_clarification_question
         return await ask_clarification_question(update, context)
     
     profile_data = calculate_profile_final(context.user_data)
     context.user_data["profile_data"] = profile_data
     
-    logger.info(f"✅ User {user_id}: Stage 4 complete, profile={profile_data.get('display_name', 'unknown')}")
+    log_debug(f"✅ Stage 4 complete, profile={profile_data.get('display_name', 'unknown')}", user_id)
+    log_to_file("stage4_finish.log", f"Stage 4 complete: {profile_data.get('display_name', 'unknown')}", user_id)
     
     analysis_text = STAGE4_ANALYSIS_SCREEN
     await query.edit_message_text(analysis_text.strip(), parse_mode="HTML")
@@ -311,7 +362,7 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     from handlers.results import show_results_screen
     
-    # ВАЖНО: Возвращаем результат от show_results_screen (который возвращает RESULTS = 15)
     result = await show_results_screen(update, context)
-    logger.info(f"🔄 User {user_id}: finish_stage_4 → возвращаю RESULTS = {RESULTS}")
+    log_debug(f"🔄 finish_stage_4 → возвращаю RESULTS = {RESULTS}", user_id)
+    log_to_file("stage4_finish.log", f"Возвращаю RESULTS = {RESULTS}", user_id)
     return result
