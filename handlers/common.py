@@ -297,18 +297,31 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
         context.user_data["clarification_current"] = new_index
         log_debug(f"   new_index: {new_index}", user_id)
         
-        # Получаем список вопросов для этого этапа
-        questions = CLARIFICATION_QUESTIONS.get(clarification_stage, [])
-        log_debug(f"   total questions: {len(questions)}", user_id)
-        
-        # Проверяем, есть ли еще вопросы
-        if new_index < len(questions):
-            log_debug(f"➡️ Переход к вопросу {new_index + 1}/{len(questions)}", user_id)
-            return await ask_clarification_question(update, context)
+        # 👇 ПРАВИЛЬНАЯ ПРОВЕРКА ДЛЯ stage1
+        if clarification_stage == "stage1":
+            # Для stage1 проверяем по clarifications
+            clarifications = context.user_data.get("stage1_clarifications", [])
+            log_debug(f"   total clarifications: {len(clarifications)}", user_id)
+            
+            if new_index < len(clarifications):
+                log_debug(f"➡️ Переход к следующему типу уточнений ({new_index + 1}/{len(clarifications)})", user_id)
+                return await ask_clarification_question(update, context)
+            else:
+                log_debug(f"✅ Все уточнения stage1 завершены", user_id)
+                context.user_data["stage1_clarified"] = True
+                return await finish_stage_1(update, context)
         else:
-            log_debug(f"✅ Все уточняющие вопросы завершены", user_id)
-            context.user_data[f"{clarification_stage}_clarified"] = True
-            return await finish_func(update, context)
+            # Для stage2,3,4 проверяем по questions
+            questions = CLARIFICATION_QUESTIONS.get(clarification_stage, [])
+            log_debug(f"   total questions: {len(questions)}", user_id)
+            
+            if new_index < len(questions):
+                log_debug(f"➡️ Переход к вопросу {new_index + 1}/{len(questions)}", user_id)
+                return await ask_clarification_question(update, context)
+            else:
+                log_debug(f"✅ Все уточняющие вопросы завершены", user_id)
+                context.user_data[f"{clarification_stage}_clarified"] = True
+                return await finish_func(update, context)
         
     except Exception as e:
         log_debug(f"❌ Ошибка: {e}", user_id)
