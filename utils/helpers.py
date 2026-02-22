@@ -17,27 +17,40 @@ def generate_unique_callback(base: str, user_id: int, *args) -> str:
     """Генерирует уникальный callback_data с контролем длины"""
     short_user = str(user_id)[-4:]
     
-    # 🔥 СПЕЦИАЛЬНАЯ ОБРАБОТКА ДЛЯ УТОЧНЯЮЩИХ ВОПРОСОВ
-    if base == "clarify" and len(args) >= 3:
-        stage = args[0]      # stage1, stage2, etc
-        current = args[1]     # номер текущего вопроса
-        option = args[2]      # option_id или level
-        callback = f"{base}_{stage}_{current}_{option}_{short_user}"
-        print(f"🔧 CLARIFY CALLBACK: {callback}", file=sys.stderr)
-    else:
-        # Для обычных вопросов этапов
-        callback = f"{base}_{args[0]}_{args[1]}_{short_user}"
-        if len(args) > 2:
-            callback += f"_{args[2]}"
-        print(f"🔧 STAGE CALLBACK: {callback}", file=sys.stderr)
+    # 🔥 ПОДРОБНОЕ ЛОГИРОВАНИЕ
+    print(f"\n🔧 generate_unique_callback CALLED", file=sys.stderr)
+    print(f"🔧 base: {base}", file=sys.stderr)
+    print(f"🔧 args: {args}", file=sys.stderr)
+    print(f"🔧 short_user: {short_user}", file=sys.stderr)
     
-    # Проверка длины (Telegram ограничение 64 байта)
-    if len(callback) > 64:
-        old_callback = callback
-        if base == "clarify":
-            callback = f"{base}_{stage}_{current}_{option[:3]}_{short_user}"
+    # Для разных типов callback'ов
+    if base == "stage1":
+        # stage1_current_option_user
+        callback = f"{base}_{args[0]}_{args[1]}_{short_user}"
+    elif base == "stage2":
+        # stage2_current_level_user
+        callback = f"{base}_{args[0]}_{args[1]}_{short_user}"
+    elif base == "stage3":
+        # stage3_current_option_user
+        callback = f"{base}_{args[0]}_{args[1]}_{short_user}"
+    elif base == "stage4":
+        # stage4_current_option_user
+        callback = f"{base}_{args[0]}_{args[1]}_{short_user}"
+    elif base == "clarify":
+        # clarify_stage_current_option_user
+        if len(args) >= 3:
+            callback = f"{base}_{args[0]}_{args[1]}_{args[2]}_{short_user}"
         else:
-            callback = f"{base}_{args[0]}_{args[1][:5]}_{short_user}"
-        print(f"⚠️ TOO LONG! Trimmed: {old_callback} -> {callback}", file=sys.stderr)
+            callback = f"{base}_{args[0]}_{args[1]}_{short_user}"
+    else:
+        callback = f"{base}_{args[0]}_{args[1]}_{short_user}"
+    
+    print(f"🔧 FINAL CALLBACK: {callback} (length: {len(callback)})", file=sys.stderr)
+    
+    # Проверка длины (Telegram лимит 64 байта)
+    if len(callback) > 64:
+        print(f"⚠️ CALLBACK TOO LONG! {len(callback)} bytes", file=sys.stderr)
+        callback = callback[:60]
+        print(f"🔧 TRIMMED: {callback}", file=sys.stderr)
     
     return callback
