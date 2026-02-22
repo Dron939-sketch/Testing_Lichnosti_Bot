@@ -1,24 +1,3 @@
-async def handle_clarification_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка ответа на уточняющий вопрос"""
-    query = update.callback_query
-    user_id = update.effective_user.id
-    
-    log_debug(f"🔥 handle_clarification_answer STARTED", user_id)
-    log_debug(f"   callback_data: {query.data}", user_id)
-    
-    # 🔥🔥🔥 МАКСИМАЛЬНОЕ ЛОГИРОВАНИЕ
-    print("\n" + "🔥"*50, file=sys.stderr)
-    print(f"🔥 CALLBACK: {query.data}", file=sys.stderr)
-    print(f"🔥 USER_DATA:", file=sys.stderr)
-    for key, value in context.user_data.items():
-        print(f"🔥   {key}: {value}", file=sys.stderr)
-    print("🔥"*50, file=sys.stderr)
-    
-    await query.answer()
-    
-    try:
-        parts = query.data.split("_")
-        print(f"🔥 PARTS: {parts}", file=sys.stderr)
 """
 Общие обработчики для уточняющих вопросов и навигации
 """
@@ -199,6 +178,15 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
     query = update.callback_query
     user_id = update.effective_user.id
     
+    # 🔥🔥🔥 МАКСИМАЛЬНОЕ ЛОГИРОВАНИЕ В САМОМ НАЧАЛЕ
+    print("\n" + "🔥"*50, file=sys.stderr, flush=True)
+    print(f"🔥 ВХОД В handle_clarification_answer", file=sys.stderr, flush=True)
+    print(f"🔥 CALLBACK: {query.data}", file=sys.stderr, flush=True)
+    print(f"🔥 USER_DATA:", file=sys.stderr, flush=True)
+    for key, value in context.user_data.items():
+        print(f"🔥   {key}: {value}", file=sys.stderr, flush=True)
+    print("🔥"*50, file=sys.stderr, flush=True)
+    
     log_debug(f"🔥 handle_clarification_answer STARTED", user_id)
     log_debug(f"   callback_data: {query.data}", user_id)
     
@@ -206,6 +194,8 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
     
     try:
         parts = query.data.split("_")
+        print(f"🔥 PARTS: {parts}", file=sys.stderr, flush=True)
+        
         if len(parts) < 4:
             log_debug(f"❌ Неверный формат callback", user_id)
             return await ask_clarification_question(update, context)
@@ -251,15 +241,15 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
         if stage == "stage1":
             current_index = context.user_data.get("clarification_current", 0)
             clarifications = context.user_data.get("stage1_clarifications", [])
-            print(f"🔥 current_index: {current_index}", file=sys.stderr)
-            print(f"🔥 clarifications: {clarifications}", file=sys.stderr)
+            print(f"🔥 current_index: {current_index}", file=sys.stderr, flush=True)
+            print(f"🔥 clarifications: {clarifications}", file=sys.stderr, flush=True)
             
             if current_index < len(clarifications):
                 clarification_type = clarifications[current_index]
                 type_index_key = f"stage1_{clarification_type}_index"
                 type_current = context.user_data.get(type_index_key, 0)
                 context.user_data[type_index_key] = type_current + 1
-                print(f"🔥 {clarification_type}: {type_current} -> {type_current + 1}", file=sys.stderr)
+                print(f"🔥 {clarification_type}: {type_current} -> {type_current + 1}", file=sys.stderr, flush=True)
                 log_debug(f"   type_index for {clarification_type}: {type_current} -> {type_current + 1}", user_id)
         
         # 👇 ИСПРАВЛЕННАЯ ЧАСТЬ: переход к следующему вопросу
