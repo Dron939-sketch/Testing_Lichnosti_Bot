@@ -2328,6 +2328,7 @@ def main():
                     CallbackQueryHandler(handle_stage_4_answer, pattern="^stage4_")
                 ],
                 CLARIFICATION: [
+                    CallbackQueryHandler(ask_clarification_question, pattern="^ask_clarification$"),
                     CallbackQueryHandler(handle_clarification_answer, pattern="^clarify_")
                 ],
                 
