@@ -4,12 +4,12 @@
 
 import logging
 import sys
+import os
 import time
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-# ИСПРАВЛЕНО: Импортируем константы из constants.py вместо config.py
 from constants import STAGE_1, STAGE_2
 from config import PSYCHOLOGIST_TIPS, STAGE1_FEEDBACK
 from questions import STAGE_1_QUESTIONS
@@ -17,11 +17,28 @@ from utils.calculations import determine_perception_type
 from utils.validators import need_clarification_stage1
 from utils.helpers import calculate_progress, generate_unique_callback
 
-# 🔥 Функция для экстренного логирования в stderr
+# 🔥 Функция для логирования в stderr
 def log_debug(msg, user_id=None):
     timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
     user_part = f"[USER:{user_id}]" if user_id else ""
     print(f"🔍 {timestamp} {user_part} {msg}", file=sys.stderr, flush=True)
+
+# 🔥 Функция для записи в файл на Render
+def log_to_file(filename: str, data: any, user_id: int = None):
+    """Безопасная запись в файл с преобразованием любого типа в строку"""
+    try:
+        if isinstance(data, slice):
+            data = f"slice({data.start}, {data.stop}, {data.step})"
+        else:
+            data = str(data)
+        
+        log_path = f'/tmp/{filename}'
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        user_part = f"[USER:{user_id}]" if user_id else ""
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(f"{timestamp} {user_part} {data}\n")
+    except Exception as e:
+        print(f"❌ Ошибка записи в файл {filename}: {e}", file=sys.stderr)
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +48,7 @@ async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_id = update.effective_user.id
     
     log_debug(f"🔵 show_stage_1_intro ВЫЗВАН", user_id)
+    log_to_file("stage1_intro.log", f"show_stage_1_intro вызван", user_id)
     
     # ✅ ВАЖНО: сохраняем состояние в user_data
     context.user_data["conversation_state"] = STAGE_1
@@ -116,6 +134,7 @@ async def start_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_debug(f"📊 Данные пользователя: username=@{query.from_user.username}", user_id)
     log_debug(f"📊 callback_data: {query.data}", user_id)
     log_debug(f"📊 Текущее состояние user_data: {context.user_data}", user_id)
+    log_to_file("stage1_start.log", f"start_stage_1", user_id)
     
     await query.answer()
     
@@ -140,6 +159,7 @@ async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     current = context.user_data.get("stage1_current", 0)
     log_debug(f"📝 ask_stage_1_question для пользователя {user_id}: current={current}", user_id)
+    log_to_file("stage1_questions.log", f"Вопрос {current+1}/9", user_id)
     
     # ✅ ВАЖНО: сохраняем состояние
     context.user_data["conversation_state"] = STAGE_1
@@ -161,6 +181,8 @@ async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     for option_id, option in question["options"].items():
         unique_callback = generate_unique_callback("stage1", user_id, current, option_id)
+        log_debug(f"   кнопка: {option['text'][:20]}... -> {unique_callback}", user_id)
+        log_to_file("stage1_callbacks.log", f"Создан callback: {unique_callback}", user_id)
         keyboard.append([
             InlineKeyboardButton(option["text"], callback_data=unique_callback)
         ])
@@ -213,6 +235,9 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
     log_debug(f"🔍🔍🔍 handle_stage_1_answer ВЫЗВАН! User: {user_id}", user_id)
     log_debug(f"🔍 Данные callback: {query.data}", user_id)
     log_debug(f"🔍 Текущее состояние user_data: {context.user_data}", user_id)
+    log_to_file("stage1_answers.log", f"ПОЛУЧЕН CALLBACK: {query.data}", user_id)
+    log_to_file("stage1_answers.log", f"stage1_current до: {context.user_data.get('stage1_current')}", user_id)
+    log_to_file("stage1_answers.log", f"stage1_last_answered: {context.user_data.get('stage1_last_answered')}", user_id)
     
     try:
         await query.answer()
@@ -227,6 +252,8 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
     
     try:
         parts = query.data.split("_")
+        log_debug(f"   parts: {parts}", user_id)
+        log_to_file("stage1_answers.log", f"parts: {parts}", user_id)
         
         if len(parts) < 3 or parts[0] != "stage1":
             log_debug(f"❌ Неверный формат callback: {query.data}", user_id)
@@ -236,10 +263,12 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         option_id = parts[2]
         
         log_debug(f"📥 User {user_id}: получен ответ на вопрос {current}, option={option_id}", user_id)
+        log_to_file("stage1_answers.log", f"Ответ на вопрос {current}, option={option_id}", user_id)
         
         last_answered = context.user_data.get("stage1_last_answered", -1)
         if current <= last_answered:
             log_debug(f"⏭️ Вопрос {current} уже отвечен (last_answered={last_answered})", user_id)
+            log_to_file("stage1_answers.log", f"Вопрос {current} уже отвечен", user_id)
             return STAGE_1
         
         question = STAGE_1_QUESTIONS[current]
@@ -247,6 +276,7 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         
         if not selected_option:
             log_debug(f"❌ Опция {option_id} не найдена в вопросе {current}", user_id)
+            log_to_file("stage1_errors.log", f"Опция {option_id} не найдена", user_id)
             return STAGE_1
         
         # Инициализируем scores если нет
@@ -256,12 +286,14 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         for axis, score in selected_option.get("scores", {}).items():
             context.user_data["scores"][axis] += score
             log_debug(f"   +{score} к {axis} (теперь: {context.user_data['scores'][axis]})", user_id)
+            log_to_file("stage1_scores.log", f"+{score} к {axis}", user_id)
         
         log_debug(f"✅ User {user_id}: Stage 1 Q{current} -> {option_id}", user_id)
         
         context.user_data["stage1_last_answered"] = current
         context.user_data["stage1_current"] = current + 1
         log_debug(f"   stage1_current увеличен до {current+1}", user_id)
+        log_to_file("stage1_answers.log", f"stage1_current теперь = {current+1}", user_id)
         
         # ✅ ВАЖНО: сохраняем состояние
         context.user_data["conversation_state"] = STAGE_1
@@ -274,6 +306,7 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         
     except Exception as e:
         log_debug(f"❌ Критическая ошибка в handle_stage_1_answer: {e}", user_id)
+        log_to_file("stage1_errors.log", f"Исключение: {e}", user_id)
         import traceback
         traceback.print_exc(file=sys.stderr)
         return await ask_stage_1_question(update, context)
@@ -288,10 +321,13 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     scores = context.user_data.get("scores", {})
     
     log_debug(f"🎯 finish_stage_1 вызван для пользователя {user_id}", user_id)
+    log_to_file("stage1_finish.log", f"finish_stage_1 вызван", user_id)
     log_debug(f"📊 Итоговые scores: {scores}", user_id)
+    log_to_file("stage1_finish.log", f"scores: {scores}", user_id)
     
     clarifications_needed = need_clarification_stage1(scores)
     log_debug(f"📊 clarifications_needed: {clarifications_needed}", user_id)
+    log_to_file("stage1_finish.log", f"clarifications_needed: {clarifications_needed}", user_id)
     
     if clarifications_needed and not context.user_data.get("stage1_clarified", False):
         context.user_data["stage1_clarifications"] = clarifications_needed
@@ -302,6 +338,7 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_debug(f"   clarifications: {clarifications_needed}", user_id)
         log_debug(f"   clarification_current: 0", user_id)
         log_debug(f"   clarification_stage: stage1", user_id)
+        log_to_file("stage1_finish.log", f"ЗАПУСК УТОЧНЕНИЙ: {clarifications_needed}", user_id)
         
         logger.info(f"User {user_id}: Stage 1 needs clarification: {clarifications_needed}")
         from handlers.common import ask_clarification_question
@@ -315,6 +352,7 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     log_debug(f"✅ User {user_id}: Stage 1 complete, type={perception_type}", user_id)
     logger.info(f"✅ User {user_id}: Stage 1 complete, type={perception_type}")
+    log_to_file("stage1_finish.log", f"Stage 1 complete, type={perception_type}", user_id)
     
     result_text = STAGE1_FEEDBACK.get(perception_type, STAGE1_FEEDBACK["СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ"])
     
@@ -325,4 +363,5 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     log_debug(f"🔄 finish_stage_1 → возвращаю STAGE_2 = {STAGE_2}", user_id)
     logger.info(f"🔄 User {user_id}: finish_stage_1 → возвращаю STAGE_2 = {STAGE_2}")
+    log_to_file("stage1_finish.log", f"Возвращаю STAGE_2 = {STAGE_2}", user_id)
     return STAGE_2
