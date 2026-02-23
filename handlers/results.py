@@ -30,11 +30,36 @@ async def show_results_screen(
     context: ContextTypes.DEFAULT_TYPE,
     force_shared_view: bool = False
 ):
-    """ЭКРАН РЕЗУЛЬТАТОВ с 18+ кнопкой"""
+    """ЭКРАН РЕЗУЛЬТАТОВ с 18+ кнопкой и сохранением приглашений"""
     query = update.callback_query
     user_id = update.effective_user.id
     
     logger.info(f"📊 show_results_screen ВЫЗВАН для пользователя {user_id}")
+    
+    # ===== 👇 НОВЫЙ БЛОК: ПРОВЕРКА current_invite и БД =====
+    logger.info(f"🔍 ПРОВЕРКА current_invite В НАЧАЛЕ: {context.user_data.get('current_invite')}")
+    
+    # Сначала проверяем в памяти
+    current_invite = context.user_data.get("current_invite")
+    
+    # Если нет в памяти - проверяем в БД
+    if not current_invite:
+        try:
+            import requests
+            from config import API_URL
+            session_response = requests.get(
+                f"{API_URL}/api/user-session/get/{user_id}",
+                timeout=5
+            )
+            if session_response.status_code == 200:
+                session_data = session_response.json()
+                if session_data.get('invite_data'):
+                    current_invite = session_data['invite_data']
+                    context.user_data["current_invite"] = current_invite
+                    logger.info(f"🔄 Нашли сессию в БД для user_id={user_id}: {current_invite}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка проверки сессии в БД: {e}")
+    # ===== 👆 КОНЕЦ НОВОГО БЛОКА =====
     
     has_shared = context.user_data.get("has_shared", False) or force_shared_view
     profile_data = context.user_data.get("profile_data")
@@ -42,6 +67,73 @@ async def show_results_screen(
     if not profile_data:
         profile_data = calculate_profile_final(context.user_data)
         context.user_data["profile_data"] = profile_data
+    
+    # ===== 👇 НОВЫЙ БЛОК: ОБРАБОТКА ПРИГЛАШЕНИЯ =====
+    if current_invite:
+        logger.info(f"🔍 Найдено активное приглашение: {current_invite}")
+        
+        friend_data = {
+            "target_id": user_id,
+            "target_name": update.effective_user.username or update.effective_user.first_name,
+            "target_profile": profile_data.get('display_name', 'unknown')
+        }
+        
+        try:
+            # Импортируем здесь, чтобы избежать циклических импортов
+            from sexual_19_7 import update_invite_in_api, get_disk_link_by_profile
+            
+            success = update_invite_in_api(current_invite["invite_id"], friend_data)
+            
+            if success:
+                logger.info(f"✅ Приглашение {current_invite['invite_id']} обновлено")
+                
+                # Очищаем сессию в БД
+                try:
+                    import requests
+                    from config import API_URL
+                    requests.post(
+                        f"{API_URL}/api/user-session/clear/{user_id}",
+                        timeout=5
+                    )
+                    logger.info(f"🧹 Сессия в БД очищена для user_id={user_id}")
+                except Exception as e:
+                    logger.error(f"❌ Ошибка очистки сессии: {e}")
+                
+                # Очищаем из памяти
+                context.user_data.pop("current_invite", None)
+                
+                # Отправляем уведомление создателю
+                buyer_id = current_invite.get("buyer_id")
+                if buyer_id:
+                    try:
+                        username = update.effective_user.username or update.effective_user.first_name
+                        profile_name = profile_data.get('display_name', 'неизвестно')
+                        profile_link = get_disk_link_by_profile(profile_name)
+                        
+                        message_text = (
+                            f"👤 <b>🪞 НОВОЕ ОТРАЖЕНИЕ!</b>\n\n"
+                            f"✨ @{username} посмотрелся в зеркало!\n"
+                            f"📊 <b>Профиль:</b> <code>{profile_name}</code>\n"
+                            f"📁 <b>Материалы профиля:</b>\n"
+                            f"{profile_link}"
+                        )
+                        
+                        keyboard = [[
+                            InlineKeyboardButton("👥 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")
+                        ]]
+                        
+                        await context.bot.send_message(
+                            chat_id=buyer_id,
+                            text=message_text,
+                            parse_mode="HTML",
+                            reply_markup=InlineKeyboardMarkup(keyboard)
+                        )
+                        logger.info(f"✅ Уведомление отправлено {buyer_id}")
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка отправки уведомления: {e}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при обновлении приглашения: {e}")
+    # ===== 👆 КОНЕЦ НОВОГО БЛОКА =====
     
     try:
         profile = get_profile_fallback(profile_data)
@@ -205,7 +297,6 @@ async def show_results_screen(
     
     await query.message.reply_text(message_2.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
-    # ВАЖНО: Добавляем логирование возвращаемого значения
     logger.info(f"✅ User {user_id}: show_results_screen → возвращаю RESULTS = {RESULTS}")
     return RESULTS
 
