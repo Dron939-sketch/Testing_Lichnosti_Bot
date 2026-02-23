@@ -1606,10 +1606,11 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """🔞 Мой интимный профиль - 3 ЧАСТИ, КНОПКИ НА ЧАСТИ 3"""
     try:
-        # ✅ СОХРАНЯЕМ has_shared ПЕРЕД ВХОДОМ В 18+
+        # ===== СОХРАНЯЕМ has_shared ПЕРЕД ВХОДОМ В 18+ =====
         if "has_shared" in context.user_data:
             context.user_data["temp_has_shared"] = context.user_data["has_shared"]
             logger.info(f"💾 Сохранён has_shared={context.user_data['has_shared']} для восстановления")
+        # ===== КОНЕЦ БЛОКА =====
         
         query = update.callback_query
         logger.debug(f"🔍 ПОЛУЧЕН CALLBACK: {query.data} от пользователя {query.from_user.id}")
@@ -1656,7 +1657,7 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
         
         # 3 КНОПКИ (будут прикреплены к части 3)
         keyboard = [
-            [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ-ПРИГЛАШЕНИЕ", callback_data="send_invite")],  # 👈 НАЗВАНИЕ СТАРОЕ, НО CALLBACK НОВЫЙ
+            [InlineKeyboardButton("🔞 СОЗДАТЬ ССЫЛКУ-ПРИГЛАШЕНИЕ", callback_data="send_invite")],
             [InlineKeyboardButton("🔍 ПОСМОТРЕТЬ МОИ ОТРАЖЕНИЯ", callback_data="my_invites")],
             [InlineKeyboardButton("⬅️ НАЗАД В ПРОФИЛЬ", callback_data="back_to_results")]
         ]
@@ -1725,7 +1726,6 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
         except:
             pass
         return RESULTS_SCREEN
-
 # ============================================
 # 🔗 ОБРАБОТЧИК ПРИГЛАШЕНИЙ (DEEP LINK)
 # ============================================
