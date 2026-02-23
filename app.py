@@ -3597,92 +3597,86 @@ def api_sexual_get_profile(user_id):
         logger.error(f"❌ Ошибка получения профиля: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/save-package-purchase', methods=['POST'])
-def save_package_purchase():
-    """Сохраняет информацию о покупке пакета приглашений"""
+@app.route('/api/save-user-profile', methods=['POST', 'GET'])
+def save_user_profile():
+    """
+    Сохраняет код профиля пользователя после прохождения теста
+    Принимает: user_id, profile_code
+    """
+    # Если это GET-запрос - создаем тестовую запись
+    if request.method == 'GET':
+        test_user_id = request.args.get('user_id', 532205848)
+        test_profile = request.args.get('profile_code', 'TEST_PROFILE')
+        
+        try:
+            test_user_id = int(test_user_id)
+        except:
+            test_user_id = 532205848
+        
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT UNIQUE NOT NULL,
+                profile_code VARCHAR(20) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            cursor.execute("""
+            INSERT INTO user_profiles (user_id, profile_code)
+            VALUES (%s, %s)
+            ON CONFLICT (user_id) DO NOTHING
+            """, (test_user_id, test_profile))
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            return jsonify({"success": True}), 200
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+    
+    # ===== POST-запрос =====
     try:
+        if not request.is_json:
+            return jsonify({"success": False, "error": "Content-Type must be application/json"}), 400
+            
         data = request.get_json()
-        if not data:
-            return jsonify({"success": False, "error": "No data provided"}), 400
-        
         user_id = data.get('user_id')
-        payment_id = data.get('payment_id')
-        package_id = data.get('package_id')
-        links = data.get('links')
-        amount = data.get('amount')
-        purchased_at = data.get('purchased_at')
+        profile_code = data.get('profile_code')
         
-        if not all([user_id, payment_id, package_id, links]):
-            return jsonify({"success": False, "error": "Missing required fields"}), 400
+        if not user_id or not profile_code:
+            return jsonify({"success": False, "error": "Missing user_id or profile_code"}), 400
         
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Создаем таблицу для хранения покупок пакетов
+        # 👇 ИСПРАВЛЕНО: убрали updated_at
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS package_purchases (
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT NOT NULL,
-            payment_id VARCHAR(100) UNIQUE NOT NULL,
-            package_id VARCHAR(10) NOT NULL,
-            links INTEGER NOT NULL,
-            amount DECIMAL(10,2) NOT NULL,
-            purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-        
-        # Создаем таблицу для хранения лимитов пользователя
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS user_limits (
-            user_id BIGINT PRIMARY KEY,
-            free_used INTEGER DEFAULT 0,
-            total_purchased INTEGER DEFAULT 0,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-        
-        # Сохраняем покупку
-        cursor.execute("""
-        INSERT INTO package_purchases (user_id, payment_id, package_id, links, amount, purchased_at)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (payment_id) DO NOTHING
-        RETURNING id
-        """, (user_id, payment_id, package_id, links, amount, purchased_at))
-        
-        purchase_result = cursor.fetchone()
-        
-        # Обновляем лимиты пользователя
-        cursor.execute("""
-        INSERT INTO user_limits (user_id, total_purchased)
+        INSERT INTO user_profiles (user_id, profile_code)
         VALUES (%s, %s)
-        ON CONFLICT (user_id) DO UPDATE SET
-            total_purchased = user_limits.total_purchased + EXCLUDED.total_purchased,
-            updated_at = CURRENT_TIMESTAMP
-        """, (user_id, links))
+        ON CONFLICT (user_id) 
+        DO UPDATE SET 
+            profile_code = EXCLUDED.profile_code
+        RETURNING id
+        """, (user_id, profile_code))
         
+        result = cursor.fetchone()
         conn.commit()
-        
-        # Проверяем, что таблицы создались
-        cursor.execute("""
-        SELECT tablename FROM pg_tables WHERE schemaname='public'
-        """)
-        tables = cursor.fetchall()
-        logger.info(f"📊 Таблицы в БД: {[t[0] for t in tables]}")
-        
         cursor.close()
         conn.close()
         
-        logger.info(f"✅ Покупка пакета {package_id} сохранена для пользователя {user_id}")
-        
-        return jsonify({
-            "success": True,
-            "purchase_id": purchase_result[0] if purchase_result else None,
-            "message": f"Пакет {package_id} на {links} ссылок добавлен"
-        }), 200
+        logger.info(f"✅ Профиль {profile_code} сохранен для пользователя {user_id}")
+        return jsonify({"success": True, "message": "Profile saved"}), 200
         
     except Exception as e:
-        logger.error(f"❌ Ошибка сохранения покупки пакета: {e}")
+        logger.error(f"❌ Ошибка сохранения профиля: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/add-package-limits', methods=['POST'])
