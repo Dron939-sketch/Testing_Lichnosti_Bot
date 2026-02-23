@@ -2491,6 +2491,7 @@ def main():
                     CallbackQueryHandler(four_f_detailed_callback, pattern="^four_f_detailed$"),
                     CallbackQueryHandler(four_f_explanation_callback, pattern="^4f_explain$"),
                     CallbackQueryHandler(show_my_sexual_profile, pattern="^my_sexual_profile$"),
+                    CallbackQueryHandler(back_to_results, pattern="^back_to_results$"), 
                 ],
                 FOUR_F_DETAILED: [
                     CallbackQueryHandler(four_f_main_menu_callback, pattern="^four_f_main_menu$"),
