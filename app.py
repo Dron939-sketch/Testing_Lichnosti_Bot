@@ -816,6 +816,40 @@ def create_user_limits_table():
         logger.error(traceback.format_exc())
         return False
 
+def create_user_sessions_table():
+    """Создает таблицу для хранения сессий пользователей"""
+    if not POSTGRES_AVAILABLE:
+        logger.error("❌ Невозможно создать таблицу: psycopg3 не доступен")
+        return False
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_sessions (
+            user_id BIGINT PRIMARY KEY,
+            current_invite_data JSONB,
+            last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        
+        # Индекс для быстрого поиска
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id 
+        ON user_sessions(user_id)
+        """)
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        logger.info("✅ Таблица user_sessions создана")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Ошибка создания таблицы user_sessions: {e}")
+        return False
+
 def create_all_tables():
     """Создает все таблицы с нуля - БЕЗОПАСНАЯ ВЕРСИЯ"""
     logger.info("🗄️ Безопасное создание/проверка всех таблиц базы данных...")
