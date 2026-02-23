@@ -748,8 +748,28 @@ async def show_results_screen(
     
     log_callback("show_results_screen", update, context)
     
-    # 👇 ДОБАВЛЯЕМ ПРОВЕРКУ current_invite
+    # 👇 ПРОВЕРЯЕМ current_invite
     logger.info(f"🔍 ПРОВЕРКА current_invite В НАЧАЛЕ show_results_screen: {context.user_data.get('current_invite')}")
+    
+    # ===== 👇 НОВЫЙ БЛОК: ПРОВЕРКА В БД =====
+    current_invite = context.user_data.get("current_invite")
+    
+    # Если нет в памяти - проверяем в БД
+    if not current_invite:
+        try:
+            session_response = requests.get(
+                f"{API_URL}/api/user-session/get/{user_id}",
+                timeout=5
+            )
+            if session_response.status_code == 200:
+                session_data = session_response.json()
+                if session_data.get('invite_data'):
+                    current_invite = session_data['invite_data']
+                    context.user_data["current_invite"] = current_invite
+                    logger.info(f"🔄 Нашли сессию в БД для user_id={user_id}: {current_invite}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка проверки сессии в БД: {e}")
+    # ===== 👆 КОНЕЦ НОВОГО БЛОКА =====
     
     if "temp_has_shared" in context.user_data:
         context.user_data["has_shared"] = context.user_data.pop("temp_has_shared")
@@ -773,8 +793,7 @@ async def show_results_screen(
             profile_code=profile_data['display_name']
         ))
     
-    # Проверяем, есть ли активное приглашение (пользователь пришел по ссылке)
-    current_invite = context.user_data.get("current_invite")
+    # Проверяем, есть ли активное приглашение
     if current_invite:
         logger.info(f"🔍 Найдено активное приглашение: {current_invite}")
         
@@ -790,6 +809,18 @@ async def show_results_screen(
             
             if success:
                 logger.info(f"✅ Приглашение {current_invite['invite_id']} обновлено")
+                
+                # ===== 👇 НОВОЕ: ОЧИЩАЕМ СЕССИЮ В БД =====
+                try:
+                    requests.post(
+                        f"{API_URL}/api/user-session/clear/{user_id}",
+                        timeout=5
+                    )
+                    logger.info(f"🧹 Сессия в БД очищена для user_id={user_id}")
+                except Exception as e:
+                    logger.error(f"❌ Ошибка очистки сессии: {e}")
+                # ===== 👆 КОНЕЦ НОВОГО БЛОКА =====
+                
                 # Очищаем данные приглашения после использования
                 context.user_data.pop("current_invite", None)
                 
@@ -807,7 +838,7 @@ async def show_results_screen(
                         logger.info(f"👤 Данные друга: username={username}, profile={profile_name}")
                         logger.info(f"🔗 Ссылка на профиль: {profile_link}")
                         
-                        # Формируем сообщение с ссылкой на папку и двумя кнопками
+                        # Формируем сообщение
                         message_text = (
                             f"👤 <b>🪞 НОВОЕ ОТРАЖЕНИЕ!</b>\n\n"
                             f"✨ @{username} посмотрелся в зеркало и теперь есть его отражение!\n"
@@ -817,7 +848,6 @@ async def show_results_screen(
                             f"👇 <b>Выберите действие:</b>"
                         )
                         
-                        # Две кнопки в одном ряду
                         keyboard = [
                             [
                                 InlineKeyboardButton("🔗 СОЗДАТЬ ССЫЛКУ", callback_data="send_invite"),
@@ -1004,7 +1034,6 @@ async def show_results_screen(
     
     logger.info(f"✅ Результаты показаны пользователю {user_id}")
     return RESULTS
-
 # ============================================
 # ФУНКЦИИ НАВИГАЦИИ
 # ============================================
