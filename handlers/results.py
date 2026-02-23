@@ -133,8 +133,21 @@ async def show_results_screen(
         if pain.strip():
             message_1 += f"<b>💔 СУТЬ ПРОБЛЕМЫ</b>\n\n"
             message_1 += f"{pain.strip()}"
-    
+
     if message_1.strip():
+    # Проверяем длину сообщения (лимит Telegram 4096 символов)
+    if len(message_1.strip()) > 4000:
+        # Разбиваем на части
+        parts = [message_1[i:i+4000] for i in range(0, len(message_1), 4000)]
+        
+        # Редактируем первое сообщение
+        await query.edit_message_text(parts[0], parse_mode="HTML")
+        
+        # Отправляем остальные как новые сообщения
+        for part in parts[1:]:
+            await query.message.reply_text(part, parse_mode="HTML")
+            await asyncio.sleep(0.5)
+    else:
         await query.edit_message_text(message_1.strip(), parse_mode="HTML")
         await asyncio.sleep(0.5)
     
