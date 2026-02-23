@@ -307,13 +307,18 @@ async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"⬅️ back_to_results ВЫЗВАН для пользователя {user_id}")
     
+    # 👇 ВОССТАНАВЛИВАЕМ has_shared (НОВЫЙ КОД)
+    if "temp_has_shared" in context.user_data:
+        context.user_data["has_shared"] = context.user_data.pop("temp_has_shared")
+        logger.info(f"🔄 Восстановлен has_shared = {context.user_data['has_shared']}")
+    
     await query.answer("🔄 Возвращаюсь к результатам...")
     
     await show_results_screen(update, context, force_shared_view=True)
     
     logger.info(f"🔄 User {user_id}: back_to_results → RESULTS = {RESULTS}")
     return RESULTS
-
+    
 async def back_to_results_after_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к результатам после подарка"""
     query = update.callback_query
