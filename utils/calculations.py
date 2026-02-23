@@ -10,17 +10,51 @@ from config import logger
 
 def determine_perception_type(scores):
     """Определяет тип восприятия"""
+    # Старые баллы по осям
     external = scores.get("EXTERNAL", 0)
     internal = scores.get("INTERNAL", 0)
     symbolic = scores.get("SYMBOLIC", 0)
     material = scores.get("MATERIAL", 0)
     
-    focus = "EXTERNAL" if external >= internal else "INTERNAL"
-    anxiety = "SYMBOLIC" if symbolic >= material else "MATERIAL"
+    # Прямые баллы за типы (из новых вопросов)
+    sp = scores.get("SP", 0)
+    ip = scores.get("IP", 0)
+    ia = scores.get("IA", 0)
+    sa = scores.get("SA", 0)
+    
+    # Логируем для наглядности
+    logger.info(f"📊 Прямые баллы: SP={sp}, IP={ip}, IA={ia}, SA={sa}")
+    
+    # Если есть прямые баллы, они имеют приоритет
+    if sp + ip + ia + sa > 0:
+        # Взвешенная сумма: прямые баллы имеют вес 2, осевые - вес 1
+        sp_total = sp * 2 + external + material
+        ip_total = ip * 2 + internal + material
+        ia_total = ia * 2 + internal + symbolic
+        sa_total = sa * 2 + external + symbolic
+        
+        totals = {"SP": sp_total, "IP": ip_total, "IA": ia_total, "SA": sa_total}
+        dominant = max(totals, key=totals.get)
+        
+        logger.info(f"🎯 Взвешенные баллы: {totals}, доминанта: {dominant}")
+        
+        # Маппинг доминантного типа на комбинацию осей
+        type_to_axes = {
+            "SP": ("EXTERNAL", "MATERIAL"),
+            "IP": ("INTERNAL", "MATERIAL"),
+            "IA": ("INTERNAL", "SYMBOLIC"),
+            "SA": ("EXTERNAL", "SYMBOLIC")
+        }
+        
+        focus, anxiety = type_to_axes[dominant]
+        
+    else:
+        # Старая логика, если прямых баллов нет
+        focus = "EXTERNAL" if external >= internal else "INTERNAL"
+        anxiety = "SYMBOLIC" if symbolic >= material else "MATERIAL"
     
     type_data = PERCEPTION_TYPES.get((focus, anxiety), PERCEPTION_TYPES[("EXTERNAL", "SYMBOLIC")])
     return type_data["name"]
-
 def get_type_code(perception_type: str) -> str:
     """Код типа (SA/IA/SP/IP)"""
     type_map = {
