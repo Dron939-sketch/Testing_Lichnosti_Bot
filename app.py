@@ -6030,8 +6030,9 @@ def get_user_profile(user_id):
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # 👇 УБРАЛИ updated_at ИЗ ЗАПРОСА
         cursor.execute("""
-        SELECT profile_code, created_at, updated_at
+        SELECT profile_code, created_at
         FROM user_profiles
         WHERE user_id = %s
         """, (user_id,))
@@ -6045,8 +6046,8 @@ def get_user_profile(user_id):
                 "success": True,
                 "has_profile": True,
                 "profile_code": result[0],
-                "created_at": result[1].isoformat() if result[1] else None,
-                "updated_at": result[2].isoformat() if result[2] else None
+                "created_at": result[1].isoformat() if result[1] else None
+                # 👆 updated_at УБРАЛИ ИЗ ОТВЕТА
             })
         else:
             return jsonify({
