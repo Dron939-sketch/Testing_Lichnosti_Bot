@@ -5877,7 +5877,7 @@ def debug_all_payments():
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/save-user-profile', methods=['POST', 'GET'])
-def save_user_profile():
+def save_user_profile_v2(): 
     """
     Сохраняет код профиля пользователя после прохождения теста
     Принимает: user_id, profile_code
