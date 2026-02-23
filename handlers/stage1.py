@@ -283,10 +283,22 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         if "scores" not in context.user_data:
             context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
         
+        # 👇 ИЗМЕНЕНО: обрабатываем и старые оси, и новые прямые баллы
         for axis, score in selected_option.get("scores", {}).items():
-            context.user_data["scores"][axis] += score
-            log_debug(f"   +{score} к {axis} (теперь: {context.user_data['scores'][axis]})", user_id)
-            log_to_file("stage1_scores.log", f"+{score} к {axis}", user_id)
+            # Старые оси
+            if axis in ["EXTERNAL", "INTERNAL", "SYMBOLIC", "MATERIAL"]:
+                context.user_data["scores"][axis] += score
+                log_debug(f"   +{score} к {axis} (теперь: {context.user_data['scores'][axis]})", user_id)
+                log_to_file("stage1_scores.log", f"+{score} к {axis}", user_id)
+            
+            # 👇 НОВЫЕ прямые баллы за типы
+            elif axis in ["SP", "IP", "IA", "SA"]:
+                # Добавляем в общий словарь scores
+                if axis not in context.user_data["scores"]:
+                    context.user_data["scores"][axis] = 0
+                context.user_data["scores"][axis] += score
+                log_debug(f"   +{score} к прямому типу {axis} (теперь: {context.user_data['scores'][axis]})", user_id)
+                log_to_file("stage1_scores.log", f"+{score} к {axis}", user_id)
         
         log_debug(f"✅ User {user_id}: Stage 1 Q{current} -> {option_id}", user_id)
         
@@ -313,7 +325,7 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
     finally:
         context.user_data["processing"] = False
         log_debug(f"✅ handle_stage_1_answer FINISHED", user_id)
-
+        
 async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Завершение ЭТАП 1 - МОТИВАЦИОННЫЙ ЭКРАН"""
     query = update.callback_query
