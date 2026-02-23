@@ -257,7 +257,7 @@ async def save_user_profile_background(user_id: int, profile_code: str):
         response = requests.post(
             f"{API_URL}/api/save-user-profile",
             json=payload,
-            timeout=5
+            timeout=10
         )
         
         logger.info(f"📥 Статус ответа: {response.status_code}")
@@ -453,7 +453,7 @@ async def create_payment_advanced(user_id: int, profile_code: str, amount: float
                             "profile_code": profile_code,
                             "status": "waiting"
                         },
-                        timeout=5
+                        timeout=10
                     )
                     
                     if update_response.status_code in [200, 201]:
@@ -1777,7 +1777,7 @@ async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_T
     try:
         response = requests.get(
             f"{API_URL}/api/payment-status/{payment_id}",
-            timeout=5
+            timeout=10
         )
         if response.status_code == 200:
             data = response.json()
