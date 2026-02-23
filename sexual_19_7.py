@@ -1727,7 +1727,8 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     """
     try:
         user = update.effective_user
-        logger.info(f"🔗🔗🔗 ПОЛЬЗОВАТЕЛЬ {user.id} ПЕРЕШЕЛ ПО ПРИГЛАШЕНИЮ 🔗🔗🔗")
+        user_id = user.id
+        logger.info(f"🔗🔗🔗 ПОЛЬЗОВАТЕЛЬ {user_id} ПЕРЕШЕЛ ПО ПРИГЛАШЕНИЮ 🔗🔗🔗")
         
         # Получаем код приглашения из аргументов
         args = context.args
@@ -1765,17 +1766,35 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.info(f"📊 buyer_profile = {buyer_profile}")
         
         # Сохраняем ДАННЫЕ ПРИГЛАШЕНИЯ (не профиль друга!)
-        context.user_data["current_invite"] = {
+        invite_data = {
             "invite_id": invite_code,
             "buyer_id": buyer_id,
             "buyer_profile": buyer_profile  # профиль создателя
         }
+        context.user_data["current_invite"] = invite_data
+        
+        # 👇 НОВОЕ: СОХРАНЯЕМ В БД
+        try:
+            save_response = requests.post(
+                f"{API_URL}/api/user-session/save",
+                json={
+                    "user_id": user_id,
+                    "invite_data": invite_data
+                },
+                timeout=5
+            )
+            if save_response.status_code == 200:
+                logger.info(f"✅ Сессия сохранена в БД для user_id={user_id}")
+            else:
+                logger.warning(f"⚠️ Не удалось сохранить сессию: {save_response.status_code}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения сессии: {e}")
+        
+        logger.info(f"✅ current_invite сохранен в память и БД для {user_id}")
         
         # 👇 ВАЖНО: НЕ сохраняем профиль создателя как профиль друга!
         # Не делаем: context.user_data["profile"] = ...
         # Не делаем: context.user_data["profile_data"] = ...
-        
-        logger.info(f"✅ current_invite сохранен: {context.user_data['current_invite']}")
         
         # Приветственное сообщение
         welcome_text = (
@@ -1809,7 +1828,8 @@ async def sexual_invite_start(update: Update, context: ContextTypes.DEFAULT_TYPE
             "Пожалуйста, попробуйте позже."
         )
         return RESULTS_SCREEN
-        # ============================================
+        
+# ============================================
 # 📋 КОПИРОВАНИЕ ПРИГЛАШЕНИЯ
 # ============================================
 
