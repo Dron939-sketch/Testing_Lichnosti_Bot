@@ -1089,33 +1089,44 @@ def format_intimate_profile_part3(profile_data: dict, user_name: str) -> str:
 
 # ===== ФУНКЦИЯ ДЛЯ РАЗБИЕНИЯ ДЛИННЫХ СООБЩЕНИЙ =====
 def split_long_message(text: str, max_length: int = 4000) -> List[str]:
-    """Разбивает длинное сообщение на части"""
+    """Разбивает длинное сообщение на части, НЕ разрезая слова"""
     if len(text) <= max_length:
         return [text]
     
     parts = []
     current_part = ""
-    lines = text.split('\n')
     
-    for line in lines:
-        if len(line) > max_length:
+    # Разбиваем по словам, а не по строкам
+    words = text.split(' ')
+    
+    for word in words:
+        # Проверяем, влезет ли следующее слово
+        if len(current_part) + len(word) + 1 <= max_length:
+            if current_part:
+                current_part += " " + word
+            else:
+                current_part = word
+        else:
+            # Текущая часть заполнена - сохраняем
             if current_part:
                 parts.append(current_part)
-                current_part = ""
-            for i in range(0, len(line), max_length):
-                parts.append(line[i:i+max_length])
-        else:
-            test_part = current_part + ("\n" if current_part else "") + line
-            if len(test_part) <= max_length:
-                current_part = test_part
-            else:
-                if current_part:
-                    parts.append(current_part)
-                current_part = line
+            
+            # Начинаем новую часть с текущего слова
+            current_part = word
     
+    # Добавляем последнюю часть
     if current_part:
         parts.append(current_part)
     
+    # Если какое-то слово длиннее max_length (редко, но бывает)
+    for i, part in enumerate(parts):
+        if len(part) > max_length:
+            # Разбиваем такое слово принудительно
+            long_word = part
+            parts[i] = long_word[:max_length]
+            parts.insert(i+1, long_word[max_length:])
+    
+    logger.debug(f"📄 Сообщение разбито на {len(parts)} частей")
     return parts
 
 # ===== БЕЗОПАСНАЯ ОТПРАВКА СООБЩЕНИЙ =====
