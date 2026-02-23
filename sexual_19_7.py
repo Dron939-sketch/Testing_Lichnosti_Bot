@@ -682,7 +682,7 @@ def save_invite_to_api(invite_data: dict) -> bool:
         response = requests.post(
             f"{API_URL}/api/sexual/create-invite",
             json=api_data,
-            timeout=5
+            timeout=10
         )
         
         if response.status_code in [200, 201]:
@@ -702,7 +702,7 @@ async def check_pending_payments(user_id: int, context: ContextTypes.DEFAULT_TYP
         # Получаем все платежи пользователя
         response = requests.get(
             f"{API_URL}/api/debug-user-payments/{user_id}",
-            timeout=5
+            timeout=10
         )
         
         if response.status_code == 200:
@@ -731,7 +731,7 @@ async def check_pending_payments(user_id: int, context: ContextTypes.DEFAULT_TYP
                                 "links": int(package_id),
                                 "amount": payment['amount']
                             },
-                            timeout=5
+                            timeout=10
                         )
                         
                         if response2.status_code == 200:
@@ -747,7 +747,7 @@ def update_free_used_in_api(user_id: int) -> bool:
         response = requests.post(
             f"{API_URL}/api/update-free-used",
             json={"user_id": user_id},
-            timeout=5
+            timeout=10
         )
         
         if response.status_code == 200:
@@ -766,7 +766,7 @@ def find_invite_in_api(invite_id: str) -> Optional[dict]:
     try:
         response = requests.get(
             f"{API_URL}/api/sexual/get-invite/{invite_id}",
-            timeout=5
+            timeout=10
         )
         
         if response.status_code == 200:
@@ -869,7 +869,7 @@ def get_user_invites_from_api(user_id: int) -> list:
     try:
         response = requests.get(
             f"{API_URL}/api/sexual/get-invites/{user_id}",
-            timeout=5
+            timeout=10
         )
         
         if response.status_code == 200:
@@ -896,7 +896,7 @@ def check_user_limits_from_api(user_id: int) -> dict:
         
         response = requests.get(
             f"{API_URL}/api/user-limits/{user_id}",
-            timeout=5
+            timeout=10
         )
         
         if response.status_code == 200:
@@ -2280,7 +2280,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Сделаем прямой запрос к API и посмотрим, что приходит
         import requests
         try:
-            response = requests.get(f"{API_URL}/api/user-limits/{user_id}", timeout=5)
+            response = requests.get(f"{API_URL}/api/user-limits/{user_id}", timeout=10)
             print(f"🔍 ПРЯМОЙ ОТВЕТ API: {response.json()}")
         except Exception as e:
             print(f"❌ Ошибка прямого запроса: {e}")
@@ -2720,7 +2720,7 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
         try:
             response = requests.get(
                 f"{API_URL}/api/payment-status/{payment_id}",
-                timeout=5
+                timeout=10
             )
             if response.status_code == 200:
                 data = response.json()
@@ -2749,7 +2749,7 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
                         "links": package["links"],
                         "amount": package['price']
                     },
-                    timeout=5
+                    timeout=10
                 )
                 
                 if response.status_code == 200:
@@ -2777,7 +2777,7 @@ async def check_package_callback(update: Update, context: ContextTypes.DEFAULT_T
                 response = requests.post(
                     f"{API_URL}/api/save-package-purchase",
                     json=purchase_data,
-                    timeout=5
+                    timeout=10
                 )
                 
                 if response.status_code == 200:
