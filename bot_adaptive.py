@@ -238,24 +238,45 @@ from base import VariaticaProfile
 async def save_user_profile_background(user_id: int, profile_code: str):
     """Сохраняет профиль пользователя в БД (фоновая задача)"""
     try:
-        logger.info(f"💾 Сохраняю профиль пользователя {user_id}: {profile_code}")
+        logger.info(f"💾💾💾 [НАЧАЛО] Сохраняю профиль пользователя {user_id}: {profile_code}")
+        logger.info(f"🔍 API_URL = {API_URL}")
         
+        # Проверяем, что profile_code не пустой
+        if not profile_code:
+            logger.error(f"❌ profile_code пустой для user_id={user_id}")
+            return
+        
+        # Формируем данные для отправки
+        payload = {
+            "user_id": user_id,
+            "profile_code": profile_code
+        }
+        logger.info(f"📦 Отправляю payload: {payload}")
+        
+        # Делаем запрос
         response = requests.post(
             f"{API_URL}/api/save-user-profile",
-            json={
-                "user_id": user_id,
-                "profile_code": profile_code
-            },
+            json=payload,
             timeout=5
         )
         
+        logger.info(f"📥 Статус ответа: {response.status_code}")
+        logger.info(f"📥 Тело ответа: {response.text[:200]}")
+        
         if response.status_code == 200:
-            logger.info(f"✅ Профиль {profile_code} сохранен для пользователя {user_id}")
+            logger.info(f"✅✅✅ Профиль {profile_code} сохранен для пользователя {user_id}")
         else:
-            logger.error(f"❌ Ошибка сохранения профиля: {response.status_code}")
+            logger.error(f"❌❌❌ Ошибка сохранения профиля: {response.status_code} - {response.text}")
             
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f"❌ ConnectionError: Не могу подключиться к {API_URL}")
+        logger.error(f"❌ Детали: {e}")
+    except requests.exceptions.Timeout as e:
+        logger.error(f"❌ Timeout: Превышено время ожидания ответа от {API_URL}")
+        logger.error(f"❌ Детали: {e}")
     except Exception as e:
-        logger.error(f"❌ Ошибка при сохранении профиля: {e}")
+        logger.error(f"❌ Неизвестная ошибка: {e}")
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
 
 # ============================================
 # ФУНКЦИИ ПЛАТЕЖНОЙ СИСТЕМЫ
@@ -745,7 +766,6 @@ async def show_results_screen(
         context.user_data["profile_data"] = profile_data
         logger.debug(f"✅ profile_data вычислен: {profile_data.get('display_name')}")
     
-    # 👇 ЭТА СТРОКА НА ТОМ ЖЕ УРОВНЕ, ЧТО И if not profile_data
     # Сохраняем профиль в БД
     if profile_data and profile_data.get('display_name'):
         asyncio.create_task(save_user_profile_background(
