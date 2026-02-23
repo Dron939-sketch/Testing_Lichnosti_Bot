@@ -2114,7 +2114,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
     user_name = user.first_name or "Пользователь"
+    
     logger.info(f"🚀 /start вызван пользователем {user_id} (@{user.username})")
+    
+    # ===== 👇 НОВЫЙ БЛОК: ВОССТАНОВЛЕНИЕ СЕССИИ ИЗ БД =====
+    try:
+        # Пытаемся восстановить сессию из БД
+        session_response = requests.get(
+            f"{API_URL}/api/user-session/get/{user_id}",
+            timeout=5
+        )
+        if session_response.status_code == 200:
+            session_data = session_response.json()
+            if session_data.get('invite_data'):
+                context.user_data["current_invite"] = session_data['invite_data']
+                logger.info(f"🔄 Восстановлена сессия из БД для user_id={user_id}: {session_data['invite_data']}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка восстановления сессии: {e}")
+    # ===== 👆 КОНЕЦ НОВОГО БЛОКА =====
     
     # Инициализируем тестовые данные для нового пользователя
     init_test_data(user_id)
@@ -2125,7 +2142,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await sexual_invite_start(update, context)
     # ===== КОНЕЦ 18+ =====
     
-        # ===== ПРОВЕРКА СУЩЕСТВУЮЩЕГО ПОЛЬЗОВАТЕЛЯ =====
+    # ===== ПРОВЕРКА СУЩЕСТВУЮЩЕГО ПОЛЬЗОВАТЕЛЯ =====
     # Получаем профиль пользователя из контекста
     profile = context.user_data.get("profile")
     profile_data = context.user_data.get("profile_data")
