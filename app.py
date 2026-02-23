@@ -2087,6 +2087,90 @@ def api_create_payment_advanced():
         logger.error(f"❌ Ошибка создания счета: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/user-session/save', methods=['POST'])
+def save_user_session_endpoint():
+    """Сохраняет сессию пользователя"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        invite_data = data.get('invite_data')
+        
+        if not user_id or not invite_data:
+            return jsonify({"success": False, "error": "Missing user_id or invite_data"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        INSERT INTO user_sessions (user_id, current_invite_data, last_activity)
+        VALUES (%s, %s, CURRENT_TIMESTAMP)
+        ON CONFLICT (user_id) DO UPDATE SET
+            current_invite_data = EXCLUDED.current_invite_data,
+            last_activity = CURRENT_TIMESTAMP
+        """, (user_id, json.dumps(invite_data)))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"✅ Сессия сохранена для user_id={user_id}")
+        return jsonify({"success": True}), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка сохранения сессии: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/user-session/get/<int:user_id>', methods=['GET'])
+def get_user_session_endpoint(user_id):
+    """Получает сессию пользователя"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT current_invite_data
+        FROM user_sessions
+        WHERE user_id = %s
+        """, (user_id,))
+        
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if result:
+            return jsonify({
+                "success": True,
+                "invite_data": json.loads(result[0]) if result[0] else None
+            })
+        else:
+            return jsonify({"success": True, "invite_data": None})
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения сессии: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/user-session/clear/<int:user_id>', methods=['POST'])
+def clear_user_session_endpoint(user_id):
+    """Очищает сессию пользователя"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM user_sessions WHERE user_id = %s", (user_id,))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"✅ Сессия очищена для user_id={user_id}")
+        return jsonify({"success": True}), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка очистки сессии: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/api/update-yookassa-id', methods=['POST'])
 def api_update_yookassa_id():
     """Обновляет ID платежа ЮKassa"""
