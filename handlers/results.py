@@ -48,9 +48,9 @@ async def show_results_screen(
             import requests
             from config import API_URL
             session_response = requests.get(
-                f"{API_URL}/api/user-session/get/{user_id}",
-                timeout=5
-            )
+    f"{API_URL}/api/user-session/get/{user_id}",  # 👈 ВСЁ ПРАВИЛЬНО!
+    timeout=5
+)
             if session_response.status_code == 200:
                 session_data = session_response.json()
                 if session_data.get('invite_data'):
