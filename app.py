@@ -820,6 +820,9 @@ def create_all_tables():
     """Создает все таблицы с нуля - БЕЗОПАСНАЯ ВЕРСИЯ"""
     logger.info("🗄️ Безопасное создание/проверка всех таблиц базы данных...")
     
+    # 👇 СНАЧАЛА СОЗДАЁМ ТАБЛИЦУ СЕССИЙ (если её нет)
+    create_user_sessions_table()
+    
     results = {
         "payments": create_payments_table(),
         "user_access": create_user_access_table(),
@@ -828,7 +831,8 @@ def create_all_tables():
         "recovery_log": create_recovery_log_table(),
         "sexual_access": create_sexual_access_tables(),
         "purchases_4f": create_4f_tables(),
-        "user_limits": create_user_limits_table()  # 👈 ДОБАВЛЕНО
+        "user_limits": create_user_limits_table(),
+        "user_sessions": True  # 👈 ДОБАВЛЯЕМ В РЕЗУЛЬТАТЫ
     }
     
     # 👇 ВАЖНО: вызываем функцию добавления колонок
@@ -845,7 +849,7 @@ def create_all_tables():
     else:
         logger.error(f"❌ Успешно создано/проверено только {success_count}/{len(results)} таблиц")
         return False
-
+        
 def update_existing_payments_with_profile():
     """Добавляет profile_code в существующие платежи"""
     try:
