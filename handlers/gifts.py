@@ -65,23 +65,23 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     if not context.user_data.get("has_shared", False):
-    logger.warning(f"❌ Пользователь {user_id} пытается открыть подарок без has_shared")
-    await query.answer(
-        "❌ Сначала поделитесь зеркалом с друзьями, чтобы получить подарок!", 
-        show_alert=True
-    )
-    from handlers.results import show_results_screen
-    return await show_results_screen(update, context, force_shared_view=True)  # 👈 ИСПРАВЛЕНО
+        logger.warning(f"❌ Пользователь {user_id} пытается открыть подарок без has_shared")
+        await query.answer(
+            "❌ Сначала поделитесь зеркалом с друзьями, чтобы получить подарок!", 
+            show_alert=True
+        )
+        from handlers.results import show_results_screen
+        return await show_results_screen(update, context, force_shared_view=True)  # 👈 ИСПРАВЛЕНО
 
-# Проверяем наличие ссылки
-if not GIFT_PDF_LINK:
-    logger.error(f"❌ GIFT_PDF_LINK не установлен для пользователя {user_id}")
-    await query.answer(
-        "❌ Ссылка на подарок временно недоступна. Пожалуйста, попробуйте позже.",
-        show_alert=True
-    )
-    from handlers.results import show_results_screen
-    return await show_results_screen(update, context, force_shared_view=True)
+    # Проверяем наличие ссылки
+    if not GIFT_PDF_LINK:
+        logger.error(f"❌ GIFT_PDF_LINK не установлен для пользователя {user_id}")
+        await query.answer(
+            "❌ Ссылка на подарок временно недоступна. Пожалуйста, попробуйте позже.",
+            show_alert=True
+        )
+        from handlers.results import show_results_screen
+        return await show_results_screen(update, context, force_shared_view=True)
     
     keyboard = [
         [InlineKeyboardButton("⚔️ Открыть сказку «Мастер Меча»", url=GIFT_PDF_LINK)],
