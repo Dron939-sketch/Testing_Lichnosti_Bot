@@ -1606,10 +1606,23 @@ async def show_results_screen(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """🔞 Мой интимный профиль - 3 ЧАСТИ, КНОПКИ НА ЧАСТИ 3"""
     try:
-        # ===== СОХРАНЯЕМ has_shared ПЕРЕД ВХОДОМ В 18+ =====
-        if "has_shared" in context.user_data:
-            context.user_data["temp_has_shared"] = context.user_data["has_shared"]
-            logger.info(f"💾 Сохранён has_shared={context.user_data['has_shared']} для восстановления")
+        # ===== СОХРАНЯЕМ ВСЕ ВАЖНЫЕ ДАННЫЕ ПЕРЕД ВХОДОМ В 18+ =====
+        important_data = {
+            "has_shared": context.user_data.get("has_shared", False),
+            "profile_data": context.user_data.get("profile_data"),
+            "profile": context.user_data.get("profile"),
+            "scores": context.user_data.get("scores"),
+            "stage1_current": context.user_data.get("stage1_current"),
+            "stage2_level_scores_dict": context.user_data.get("stage2_level_scores_dict"),
+            "stage3_level_scores": context.user_data.get("stage3_level_scores"),
+            "stage4_dilts_answers": context.user_data.get("stage4_dilts_answers"),
+            "actual_profile_key": context.user_data.get("actual_profile_key"),
+            "profile_card": context.user_data.get("profile_card"),
+        }
+        
+        # Сохраняем в специальный ключ для восстановления
+        context.user_data["sexual_module_backup"] = important_data
+        logger.info(f"💾 Сохранены данные перед входом в 18+: has_shared={important_data['has_shared']}")
         # ===== КОНЕЦ БЛОКА =====
         
         query = update.callback_query
