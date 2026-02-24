@@ -1608,7 +1608,6 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
     try:
         # ===== СОХРАНЯЕМ ВСЕ ВАЖНЫЕ ДАННЫЕ ПЕРЕД ВХОДОМ В 18+ =====
         important_data = {
-            "has_shared": context.user_data.get("has_shared", False),
             "profile_data": context.user_data.get("profile_data"),
             "profile": context.user_data.get("profile"),
             "scores": context.user_data.get("scores"),
