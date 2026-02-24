@@ -2393,6 +2393,8 @@ def main():
         application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
         application.add_handler(CallbackQueryHandler(noop_callback, pattern="^noop$"))
         print("✅ Callback-обработчики добавлены")
+         # 👇 👇 👇 ВОТ СЮДА ДОБАВЬТЕ ЭТУ СТРОКУ 👇 👇 👇
+        application.add_handler(CallbackQueryHandler(open_gift_screen, pattern="^open_gift$"))
         
         # ConversationHandler
         print("⏳ Создание ConversationHandler...")
