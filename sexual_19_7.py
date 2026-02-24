@@ -1623,6 +1623,8 @@ async def show_my_sexual_profile(update: Update, context: ContextTypes.DEFAULT_T
         # Сохраняем в специальный ключ для восстановления
         context.user_data["sexual_module_backup"] = important_data
         logger.info(f"💾 Сохранены данные перед входом в 18+: has_shared={important_data['has_shared']}")
+        context.user_data["coming_from_sexual"] = True
+        logger.info("🚩 Установлен флаг coming_from_sexual=True")
         # ===== КОНЕЦ БЛОКА =====
         
         query = update.callback_query
