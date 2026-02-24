@@ -36,25 +36,24 @@ async def show_results_screen(
     
     logger.info(f"📊 show_results_screen ВЫЗВАН для пользователя {user_id}")
     
-    # ===== 👇 ВОССТАНАВЛИВАЕМ has_shared ИЗ БЕКАПА 18+ МОДУЛЯ =====
-    sexual_backup = context.user_data.get("sexual_module_backup")
-    if sexual_backup:
-        # ВНИМАНИЕ: НЕ восстанавливаем has_shared из бекапа!
-        # has_shared должен оставаться в исходном состоянии (False, пока не сделан репост)
-        
-        # Восстанавливаем другие важные данные
-        for key in ["profile_data", "profile", "scores", "stage1_current", 
-                    "stage2_level_scores_dict", "stage3_level_scores", "stage4_dilts_answers",
-                    "actual_profile_key", "profile_card"]:
-            if key in sexual_backup:
-                context.user_data[key] = sexual_backup[key]
-        
-        # Логируем текущее значение has_shared для отладки
-        logger.info(f"🔍 ТЕКУЩЕЕ has_shared после восстановления (НЕ из бекапа): {context.user_data.get('has_shared', False)}")
+   # ===== 👇 ВОССТАНАВЛИВАЕМ has_shared ИЗ БЕКАПА 18+ МОДУЛЯ =====
+sexual_backup = context.user_data.get("sexual_module_backup")
+if sexual_backup:
+    if "has_shared" in sexual_backup:
+        context.user_data["has_shared"] = sexual_backup["has_shared"]
+        logger.info(f"🔄 Восстановлен has_shared={sexual_backup['has_shared']} из sexual_module_backup")
+    
+    # Восстанавливаем другие важные данные
+    for key in ["profile_data", "profile", "scores", "stage1_current", 
+                "stage2_level_scores_dict", "stage3_level_scores", "stage4_dilts_answers",
+                "actual_profile_key", "profile_card"]:
+        if key in sexual_backup:
+            context.user_data[key] = sexual_backup[key]
+    
     # Удаляем бекап после восстановления
     context.user_data.pop("sexual_module_backup", None)
     logger.info("🧹 Удален sexual_module_backup после восстановления")
-    # ===== 👆 КОНЕЦ БЛОКА =====
+# ===== 👆 КОНЕЦ БЛОКА =====
     
     # ===== 👇 НОВЫЙ БЛОК: ПРОВЕРКА current_invite и БД =====
     logger.info(f"🔍 ПРОВЕРКА current_invite В НАЧАЛЕ: {context.user_data.get('current_invite')}")
