@@ -70,8 +70,8 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Сначала поделитесь зеркалом с друзьями, чтобы получить подарок!", 
             show_alert=True
         )
-        from handlers.results import show_results_screen
-        return await show_results_screen(update, context, force_shared_view=True)  # 👈 ИСПРАВЛЕНО
+        from handlers import show_results_screen  # 👈 ИСПРАВЛЕНО
+        return await show_results_screen(update, context, force_shared_view=True)
 
     # Проверяем наличие ссылки
     if not GIFT_PDF_LINK:
@@ -80,7 +80,7 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Ссылка на подарок временно недоступна. Пожалуйста, попробуйте позже.",
             show_alert=True
         )
-        from handlers.results import show_results_screen
+        from handlers import show_results_screen  # 👈 ИСПРАВЛЕНО
         return await show_results_screen(update, context, force_shared_view=True)
     
     keyboard = [
