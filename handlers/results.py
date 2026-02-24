@@ -296,7 +296,7 @@ async def show_results_screen(
     if discrepancy_note:
         message_2 += f"{discrepancy_note}"
     
-   # КНОПКА 18+ ПРОФИЛЯ
+    # КНОПКА 18+ ПРОФИЛЯ
     sexual_button = [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_my_sexual_profile")]
     
     # Проверяем флаг возврата из 18+
@@ -331,7 +331,16 @@ async def show_results_screen(
         if coming_from_sexual:
             context.user_data.pop("coming_from_sexual", None)
             logger.info("🚩 Сброшен флаг coming_from_sexual")
-            
+    
+    # ===== 👇 ВАЖНО: ОТПРАВКА ВТОРОГО СООБЩЕНИЯ С КНОПКАМИ =====
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    logger.debug(f"📤 Отправка message_2 ({len(message_2)} символов) с {len(keyboard)} рядами кнопок")
+    await query.message.reply_text(message_2.strip(), reply_markup=reply_markup, parse_mode="HTML")
+    
+    logger.info(f"✅ Результаты показаны пользователю {user_id}")
+    return RESULTS
+
 async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к результатам"""
     query = update.callback_query
