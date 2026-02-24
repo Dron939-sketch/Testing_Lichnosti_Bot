@@ -1028,23 +1028,41 @@ async def show_results_screen(
     if discrepancy_note:
         message_2 += f"{discrepancy_note}"
     
-    # КНОПКА 18+ ПРОФИЛЯ
+        # КНОПКА 18+ ПРОФИЛЯ
     sexual_button = [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_my_sexual_profile")]
     
-    if not has_shared:
+    # Проверяем флаг возврата из 18+
+    coming_from_sexual = context.user_data.get("coming_from_sexual", False)
+    logger.info(f"🚩 coming_from_sexual = {coming_from_sexual}")
+    
+    # ЛОГИКА КНОПОК:
+    # 1. Если НЕТ репоста И НЕ вернулись из 18+ → показываем "Поделиться зеркалом"
+    # 2. ВО ВСЕХ ОСТАЛЬНЫХ СЛУЧАЯХ → сразу ссылка на подарок!
+    
+    if not has_shared and not coming_from_sexual:
+        # Случай 1: первый вход после теста (нет репоста, не из 18+)
         keyboard = [
             [InlineKeyboardButton("🪞 Поделиться зеркалом", callback_data="get_gift")],
             [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
             sexual_button
         ]
-        logger.debug(f"🔘 Клавиатура: без подарка (has_shared={has_shared})")
+        logger.info(f"🔘 Клавиатура: без подарка (has_shared={has_shared}, coming={coming_from_sexual})")
     else:
+        # Случай 2: ВСЕ ОСТАЛЬНЫЕ СИТУАЦИИ!
+        # - Если есть репост (has_shared=True)
+        # - Если вернулись из 18+ (coming_from_sexual=True)
+        # - И то и другое вместе
         keyboard = [
-            [InlineKeyboardButton("🎁 Получить сказку «Мастер Меча»", callback_data="open_gift")],
+            [InlineKeyboardButton("🎁 Получить сказку «Мастер Меча»", url=GIFT_PDF_LINK)],  # ← ПРЯМАЯ ССЫЛКА!
             [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
             sexual_button
         ]
-        logger.debug(f"🔘 Клавиатура: с подарком, has_shared={has_shared}")
+        logger.info(f"🔘 Клавиатура: СРАЗУ ССЫЛКА НА ПОДАРОК! (has_shared={has_shared}, coming={coming_from_sexual})")
+        
+        # Сбрасываем флаг после использования, чтобы он не влиял на следующие разы
+        if coming_from_sexual:
+            context.user_data.pop("coming_from_sexual", None)
+            logger.info("🚩 Сброшен флаг coming_from_sexual")
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
