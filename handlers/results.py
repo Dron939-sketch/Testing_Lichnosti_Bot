@@ -39,9 +39,8 @@ async def show_results_screen(
     # ===== 👇 ВОССТАНАВЛИВАЕМ has_shared ИЗ БЕКАПА 18+ МОДУЛЯ =====
     sexual_backup = context.user_data.get("sexual_module_backup")
     if sexual_backup:
-        if "has_shared" in sexual_backup:
-            context.user_data["has_shared"] = sexual_backup["has_shared"]
-            logger.info(f"🔄 Восстановлен has_shared={sexual_backup['has_shared']} из sexual_module_backup")
+        # ВНИМАНИЕ: НЕ восстанавливаем has_shared из бекапа!
+        # has_shared должен оставаться в исходном состоянии (False, пока не сделан репост)
         
         # Восстанавливаем другие важные данные
         for key in ["profile_data", "profile", "scores", "stage1_current", 
@@ -50,9 +49,11 @@ async def show_results_screen(
             if key in sexual_backup:
                 context.user_data[key] = sexual_backup[key]
         
-        # Удаляем бекап после восстановления
-        context.user_data.pop("sexual_module_backup", None)
-        logger.info("🧹 Удален sexual_module_backup после восстановления")
+        # Логируем текущее значение has_shared для отладки
+        logger.info(f"🔍 ТЕКУЩЕЕ has_shared после восстановления (НЕ из бекапа): {context.user_data.get('has_shared', False)}")
+    # Удаляем бекап после восстановления
+    context.user_data.pop("sexual_module_backup", None)
+    logger.info("🧹 Удален sexual_module_backup после восстановления")
     # ===== 👆 КОНЕЦ БЛОКА =====
     
     # ===== 👇 НОВЫЙ БЛОК: ПРОВЕРКА current_invite и БД =====
