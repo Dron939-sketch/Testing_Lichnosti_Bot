@@ -1988,7 +1988,11 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             return await buy_invite_packages_callback(update, context)
 
         # ===== 4. СОЗДАЕМ УНИКАЛЬНУЮ ССЫЛКУ =====
-        profile = context.user_data.get("profile", USER_PROFILE)
+        profile = context.user_data.get("profile")
+        if profile is None:
+            profile = USER_PROFILE
+            logger.warning(f"⚠️ profile отсутствует в user_data для пользователя {user_id}, используем USER_PROFILE")
+        
         invite_code = f"sex_{uuid.uuid4().hex[:8]}_{uuid.uuid4().hex[:4]}_{int(time.time())}"
         invite_url = f"https://t.me/{BOT_USERNAME}?start={invite_code}"
 
@@ -2012,7 +2016,7 @@ async def send_invite_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "invite_id": invite_code,
             "link": invite_url,
             "message": display_message,
-            "profile_code": profile['display_name'],
+            "profile_code": profile.get('display_name', 'SA-5_INT'),  # ← ИСПРАВЛЕНО!
             "status": "active",
             "created_at": datetime.now().timestamp(),
             "friend_id": None,
