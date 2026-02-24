@@ -36,7 +36,7 @@ async def show_results_screen(
     
     logger.info(f"📊 show_results_screen ВЫЗВАН для пользователя {user_id}")
     
-   # ===== 👇 ВОССТАНАВЛИВАЕМ has_shared ИЗ БЕКАПА 18+ МОДУЛЯ =====
+# ===== 👇 ВОССТАНАВЛИВАЕМ has_shared ИЗ БЕКАПА 18+ МОДУЛЯ =====
 sexual_backup = context.user_data.get("sexual_module_backup")
 if sexual_backup:
     if "has_shared" in sexual_backup:
