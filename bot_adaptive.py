@@ -1548,6 +1548,26 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return await show_results_screen(update, context, force_shared_view=True)
     
+    # 👇 НОВЫЙ ТЕКСТ ДЛЯ ПОДАРКА
+    gift_text = """⚔️ <b>ВАШ МЕЧ ГОТОВ!</b>
+
+📚 <b>Терапевтическая сказка «Мастер Меча»</b>
+
+Эта сказка работает именно с тем, что мешает вам
+«расправить плечи» на уровне убеждений.
+
+Она не «ломает» старые установки,
+а создаёт пространство для новых —
+тех, что позволяют стоять прямо и легко.
+
+💡 <b>Как читать для максимального эффекта:</b>
+1️⃣ Прочитайте перед сном
+2️⃣ Ищите в тексте «металл» (вашу истинную природу)
+3️⃣ Отмечайте «зазубрины» (ваши ограничения)
+4️⃣ Обращайте внимание на символы тяжести/лёгкости
+
+<i>Приятного чтения и лёгкости в плечах! 🪶✨</i>"""
+    
     keyboard = [
         [InlineKeyboardButton("⚔️ Открыть сказку «Мастер Меча»", url=GIFT_PDF_LINK)],
         [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results_after_gift")]
@@ -1557,59 +1577,13 @@ async def open_gift_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"🎁 User {user_id} opened gift (has_shared={context.user_data.get('has_shared', False)})")
     
     await query.edit_message_text(
-        GIFT_SCREEN_TEXT,
+        gift_text,  # ← ИСПОЛЬЗУЕМ НОВЫЙ ТЕКСТ
         reply_markup=reply_markup, 
         parse_mode="HTML"
     )
     
     logger.info(f"✅ Gift screen показан пользователю {user_id}")
     return OPEN_GIFT_SCREEN
-
-async def show_package_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ЭКРАН: ПОЛНОЕ ОПИСАНИЕ ПРОФИЛЯ"""
-    log_callback("show_package_screen", update, context)
-    query = update.callback_query
-    await query.answer()
-    
-    profile_data = context.user_data.get("profile_data")
-    logger.debug(f"📦 profile_data: {'есть' if profile_data else 'нет'}")
-    
-    # 👇 КЛАВИАТУРА ОПРЕДЕЛЯЕТСЯ ДО ВСЕХ УСЛОВИЙ
-    keyboard = [
-        [InlineKeyboardButton("🧠 Получить описание профиля за 690 ₽", callback_data="buy_package")],
-        [InlineKeyboardButton("⬅️ Вернуться к результатам", callback_data="back_to_results")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    if profile_data:
-        profile_code = f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}"
-        profile_info = f"\n📊 <b>Ваш профиль:</b> <code>{profile_code}</code>\n"
-        personal_note = f"\n<i>Это описание будет создано персонально для вас на основе ваших ответов.</i>"
-        logger.debug(f"📊 Профиль пользователя: {profile_code}")
-    else:
-        profile_info = "\n📊 <b>Профиль:</b> будет определен после теста\n"
-        personal_note = f"\n<i>После теста я подготовлю персональное описание именно для вас.</i>"
-        logger.debug("⚠️ profile_data отсутствует")
-    
-    package_text = (
-        f"💎 <b>ПОЛНЫЙ ПАКЕТ — 690 ₽</b>\n\n"
-        f"📘 <b>Полное описание твоего архетипа (15+ страниц)</b>\n"
-        f"   → Детальный анализ личности\n"
-        f"   → Ключевые паттерны поведения\n"
-        f"   → Твои сильные стороны и точки роста\n"
-        f"   → Потенциальные ограничения и как их обходить\n\n"
-        f"📖 <b>Персональная терапевтическая сказка</b>\n"
-        f"   → Поможет подружить твои внутренние противоречия 🤝\n\n"
-        f"📚 <b>Книга «ВАРИАТИКА. Библиотека человеческих паттернов» (PDF)</b>\n"
-        f"   → Покажет, какие формы может принимать твой профиль\n\n"
-        f"✅ <b>Мгновенный доступ после оплаты</b>\n"
-        f"💳 <b>Все способы оплаты:</b> СБП, ЮMoney, банковские карты\n\n"
-        f"{profile_info}"
-    )
-    
-    await query.edit_message_text(package_text, reply_markup=reply_markup, parse_mode="HTML")
-    logger.info(f"📦 Package screen показан пользователю {update.effective_user.id}")
-    return PACKAGE_SCREEN
 
 # ============================================
 # ФУНКЦИИ ПЛАТЕЖЕЙ (Callback handlers)
