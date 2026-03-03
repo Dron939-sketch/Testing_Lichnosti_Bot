@@ -237,21 +237,39 @@ def get_disk_link_by_profile(profile_code: str) -> str:
     # 1. Исходный формат
     possible_formats.append(clean_code)
     
-    # 2. Формат с дефисом между типом и уровнем (IP-4_EXP) - ЭТО НУЖНЫЙ ФОРМАТ!
+    # 2. Формат с дефисом (IP-4_EXP)
     if '_' in clean_code:
-        # Разбиваем на части
         parts = clean_code.split('_')
-        if len(parts) == 2:
+        if len(parts) >= 2:
             # IP_4_EXP -> IP-4_EXP
-            type_level = parts[0].replace('_', '-')  # IP_4 -> IP-4
-            suffix = parts[1]
-            possible_formats.append(f"{type_level}_{suffix}")
+            type_part = parts[0]
+            if type_part in ['SA', 'SP', 'IA', 'IP']:
+                # Проверяем, есть ли число во второй части
+                if len(parts) >= 2 and parts[1].isdigit():
+                    type_level = f"{type_part}-{parts[1]}"
+                    suffix = '_'.join(parts[2:]) if len(parts) > 2 else ''
+                    if suffix:
+                        possible_formats.append(f"{type_level}_{suffix}")
+                    else:
+                        possible_formats.append(type_level)
     
-    # 3. Полная замена _ на - (IP-4-EXP)
+    # 3. Формат SA-5_INT (с дефисом)
+    if '-' in clean_code:
+        possible_formats.append(clean_code)
+    
+    # 4. Полная замена - на _
+    possible_formats.append(clean_code.replace('-', '_'))
+    
+    # 5. Полная замена _ на -
     possible_formats.append(clean_code.replace('_', '-'))
     
-    # 4. Полная замена - на _ (IP_4_EXP)
-    possible_formats.append(clean_code.replace('-', '_'))
+    # 6. Специальные форматы для SP_4_sit, SA_3_sit и т.д.
+    if '_' in clean_code and len(clean_code.split('_')) == 3:
+        parts = clean_code.split('_')
+        # SP_4_sit -> SP-4_SIT
+        possible_formats.append(f"{parts[0]}-{parts[1]}_{parts[2]}")
+        # SP_4_sit -> SP-4-SIT
+        possible_formats.append(f"{parts[0]}-{parts[1]}-{parts[2]}")
     
     # Убираем дубликаты
     seen = set()
@@ -269,6 +287,17 @@ def get_disk_link_by_profile(profile_code: str) -> str:
             link = PROFILE_DISK_LINKS[fmt]
             logger.info(f"✅ НАЙДЕНО! {fmt} -> {link}")
             return link
+    
+    # Если ничего не нашли, пробуем собрать из частей
+    if '_' in clean_code:
+        parts = clean_code.split('_')
+        if len(parts) >= 2:
+            # Пробуем формат ТИП-УРОВЕНЬ_СУФФИКС
+            if parts[0] in ['SA', 'SP', 'IA', 'IP'] and parts[1].isdigit():
+                test_key = f"{parts[0]}-{parts[1]}_{parts[2] if len(parts) > 2 else ''}"
+                if test_key in PROFILE_DISK_LINKS:
+                    logger.info(f"✅ НАЙДЕНО (собранное)! {test_key}")
+                    return PROFILE_DISK_LINKS[test_key]
     
     # Если ничего не нашли
     logger.error(f"❌ НЕ НАЙДЕНО для '{profile_code}'!")
