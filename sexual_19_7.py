@@ -2380,7 +2380,7 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 """
             for idx, inv in enumerate(used_invites[:5], 1):
                 friend_name = inv.get("friend_name", "друг").replace('@', '')
-                friend_profile = inv.get("friend_profile", "SA-3_CON")
+                friend_profile = inv.get("target_profile_key", "SA-3_CON")
                 
                 # Получаем правильную ссылку на профиль друга
                 disk_link = get_disk_link_by_profile(friend_profile)
