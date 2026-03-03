@@ -221,87 +221,118 @@ EXAMPLE_DISK_LINK = PROFILE_DISK_LINKS["4F_EXAMPLE"]
 AUTHOR_TELEGRAM = "https://t.me/meysternlp"
 
 def get_disk_link_by_profile(profile_code: str) -> str:
-    """Поиск ссылки с поддержкой всех возможных форматов"""
+    """
+    Поиск ссылки ТОЛЬКО по типу и уровню, ИГНОРИРУЯ суффикс
+    Например: SP_4_sit, SP-4_SIT, SP_4_EXP → все будут искать SP_4_*
+    """
     if not profile_code:
         logger.warning("⚠️ profile_code пустой, использую default")
         return PROFILE_DISK_LINKS["default"]
     
     logger.info(f"🔍 ВХОДНОЙ КОД: '{profile_code}'")
     
-    # Приводим к верхнему регистру
+    # Приводим к верхнему регистру и очищаем
     clean_code = profile_code.upper().strip()
     
-    # Генерируем все возможные форматы
-    possible_formats = []
+    # Извлекаем тип и уровень (игнорируем суффикс)
+    # Поддерживаем форматы: SP_4_sit, SP-4_SIT, SP_4_EXP, SP-4_EXP
+    type_code = None
+    level = None
     
-    # 1. Исходный формат
-    possible_formats.append(clean_code)
-    
-    # 2. Формат с дефисом (IP-4_EXP)
+    # Пробуем формат с подчеркиванием: SP_4_sit
     if '_' in clean_code:
         parts = clean_code.split('_')
-        if len(parts) >= 2:
-            # IP_4_EXP -> IP-4_EXP
-            type_part = parts[0]
-            if type_part in ['SA', 'SP', 'IA', 'IP']:
-                # Проверяем, есть ли число во второй части
-                if len(parts) >= 2 and parts[1].isdigit():
-                    type_level = f"{type_part}-{parts[1]}"
-                    suffix = '_'.join(parts[2:]) if len(parts) > 2 else ''
-                    if suffix:
-                        possible_formats.append(f"{type_level}_{suffix}")
-                    else:
-                        possible_formats.append(type_level)
+        if len(parts) >= 2 and parts[0] in ['SA', 'SP', 'IA', 'IP'] and parts[1].isdigit():
+            type_code = parts[0]
+            level = parts[1]
+            logger.info(f"📊 Извлечено из формата с _: тип={type_code}, уровень={level}")
     
-    # 3. Формат SA-5_INT (с дефисом)
-    if '-' in clean_code:
-        possible_formats.append(clean_code)
+    # Пробуем формат с дефисом: SP-4_SIT или SP-4-SIT
+    if not type_code and '-' in clean_code:
+        # Сначала пробуем SP-4_SIT
+        if '_' in clean_code:
+            hyphen_parts = clean_code.split('-')
+            if len(hyphen_parts) >= 2:
+                possible_type = hyphen_parts[0]
+                rest = hyphen_parts[1]
+                if '_' in rest:
+                    level_part = rest.split('_')[0]
+                    if possible_type in ['SA', 'SP', 'IA', 'IP'] and level_part.isdigit():
+                        type_code = possible_type
+                        level = level_part
+                        logger.info(f"📊 Извлечено из формата -_: тип={type_code}, уровень={level}")
+        
+        # Если не нашли, пробуем SP-4-SIT
+        if not type_code and '-' in clean_code:
+            parts = clean_code.split('-')
+            if len(parts) >= 2 and parts[0] in ['SA', 'SP', 'IA', 'IP'] and parts[1].isdigit():
+                type_code = parts[0]
+                level = parts[1]
+                logger.info(f"📊 Извлечено из формата --: тип={type_code}, уровень={level}")
     
-    # 4. Полная замена - на _
-    possible_formats.append(clean_code.replace('-', '_'))
-    
-    # 5. Полная замена _ на -
-    possible_formats.append(clean_code.replace('_', '-'))
-    
-    # 6. Специальные форматы для SP_4_sit, SA_3_sit и т.д.
-    if '_' in clean_code and len(clean_code.split('_')) == 3:
-        parts = clean_code.split('_')
-        # SP_4_sit -> SP-4_SIT
-        possible_formats.append(f"{parts[0]}-{parts[1]}_{parts[2]}")
-        # SP_4_sit -> SP-4-SIT
-        possible_formats.append(f"{parts[0]}-{parts[1]}-{parts[2]}")
-    
-    # Убираем дубликаты
-    seen = set()
-    unique_formats = []
-    for fmt in possible_formats:
-        if fmt not in seen:
-            seen.add(fmt)
-            unique_formats.append(fmt)
-    
-    logger.info(f"📋 ПРОВЕРЯЕМ ФОРМАТЫ: {unique_formats}")
-    
-    # Пробуем каждый формат
-    for fmt in unique_formats:
-        if fmt in PROFILE_DISK_LINKS:
-            link = PROFILE_DISK_LINKS[fmt]
-            logger.info(f"✅ НАЙДЕНО! {fmt} -> {link}")
+    # Если смогли извлечь тип и уровень
+    if type_code and level:
+        # Ищем ЛЮБОЙ профиль с таким типом и уровнем (с любым суффиксом)
+        logger.info(f"🔍 Ищем любой профиль с типом {type_code} и уровнем {level}")
+        
+        # Все возможные суффиксы
+        suffixes = ['DEF', 'SIT', 'CON', 'EXP', 'INT', 'AUT', 'VAL', 'TRA', 'IDE']
+        
+        # Пробуем все комбинации
+        for suffix in suffixes:
+            # Формат с подчеркиванием: SP_4_SIT
+            test_key = f"{type_code}_{level}_{suffix}"
+            if test_key in PROFILE_DISK_LINKS:
+                link = PROFILE_DISK_LINKS[test_key]
+                logger.info(f"✅ НАЙДЕНО! {test_key} -> {link}")
+                return link
+            
+            # Формат с дефисом: SP-4_SIT
+            test_key2 = f"{type_code}-{level}_{suffix}"
+            if test_key2 in PROFILE_DISK_LINKS:
+                link = PROFILE_DISK_LINKS[test_key2]
+                logger.info(f"✅ НАЙДЕНО! {test_key2} -> {link}")
+                return link
+            
+            # Формат с двумя дефисами: SP-4-SIT
+            test_key3 = f"{type_code}-{level}-{suffix}"
+            if test_key3 in PROFILE_DISK_LINKS:
+                link = PROFILE_DISK_LINKS[test_key3]
+                logger.info(f"✅ НАЙДЕНО! {test_key3} -> {link}")
+                return link
+        
+        # Если не нашли с суффиксами, пробуем без суффикса
+        test_key = f"{type_code}_{level}"
+        if test_key in PROFILE_DISK_LINKS:
+            link = PROFILE_DISK_LINKS[test_key]
+            logger.info(f"✅ НАЙДЕНО (без суффикса)! {test_key} -> {link}")
+            return link
+        
+        test_key2 = f"{type_code}-{level}"
+        if test_key2 in PROFILE_DISK_LINKS:
+            link = PROFILE_DISK_LINKS[test_key2]
+            logger.info(f"✅ НАЙДЕНО (без суффикса)! {test_key2} -> {link}")
             return link
     
-    # Если ничего не нашли, пробуем собрать из частей
-    if '_' in clean_code:
-        parts = clean_code.split('_')
-        if len(parts) >= 2:
-            # Пробуем формат ТИП-УРОВЕНЬ_СУФФИКС
-            if parts[0] in ['SA', 'SP', 'IA', 'IP'] and parts[1].isdigit():
-                test_key = f"{parts[0]}-{parts[1]}_{parts[2] if len(parts) > 2 else ''}"
-                if test_key in PROFILE_DISK_LINKS:
-                    logger.info(f"✅ НАЙДЕНО (собранное)! {test_key}")
-                    return PROFILE_DISK_LINKS[test_key]
+    # Если не смогли извлечь или не нашли - пробуем исходные форматы
+    logger.warning(f"⚠️ Не удалось найти по типу/уровню, пробую исходные форматы")
+    
+    # Генерируем все возможные форматы исходного кода
+    possible_formats = []
+    possible_formats.append(clean_code)
+    possible_formats.append(clean_code.replace('_', '-'))
+    possible_formats.append(clean_code.replace('-', '_'))
+    
+    # Пробуем каждый формат
+    for fmt in possible_formats:
+        if fmt in PROFILE_DISK_LINKS:
+            link = PROFILE_DISK_LINKS[fmt]
+            logger.info(f"✅ НАЙДЕНО (прямое совпадение)! {fmt} -> {link}")
+            return link
     
     # Если ничего не нашли
     logger.error(f"❌ НЕ НАЙДЕНО для '{profile_code}'!")
-    logger.error(f"📋 ПЕРВЫЕ 10 КЛЮЧЕЙ: {list(PROFILE_DISK_LINKS.keys())[:10]}")
+    logger.error(f"📋 ДОСТУПНЫЕ КЛЮЧИ: {list(PROFILE_DISK_LINKS.keys())[:10]}...")
     
     return PROFILE_DISK_LINKS["default"]
 
