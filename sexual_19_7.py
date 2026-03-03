@@ -865,7 +865,7 @@ def update_invite_in_api(invite_id: str, friend_data: dict) -> bool:
 
 
 def get_user_invites_from_api(user_id: int) -> list:
-    """Получает все приглашения пользователя из БД"""
+    """Получает все приглашения пользователя из БД и нормализует ключи"""
     try:
         response = requests.get(
             f"{API_URL}/api/sexual/get-invites/{user_id}",
@@ -877,7 +877,46 @@ def get_user_invites_from_api(user_id: int) -> list:
             invites = data.get('invites', [])
             
             logger.info(f"✅ Получено {len(invites)} приглашений для пользователя {user_id}")
-            return invites
+            
+            # 👇 ВАЖНО: НОРМАЛИЗУЕМ КЛЮЧИ
+            normalized_invites = []
+            for inv in invites:
+                # Создаем копию с правильными ключами
+                norm_inv = inv.copy()
+                
+                # Нормализуем профиль друга
+                if 'friend_profile' in inv and inv['friend_profile']:
+                    norm_inv['friend_profile'] = inv['friend_profile']
+                elif 'target_profile_key' in inv and inv['target_profile_key']:
+                    norm_inv['friend_profile'] = inv['target_profile_key']
+                elif 'profile_key' in inv and inv['profile_key']:
+                    norm_inv['friend_profile'] = inv['profile_key']
+                else:
+                    norm_inv['friend_profile'] = 'SA-3_CON'
+                
+                # Нормализуем имя друга
+                if 'friend_name' in inv and inv['friend_name']:
+                    norm_inv['friend_name'] = inv['friend_name']
+                elif 'target_name' in inv and inv['target_name']:
+                    norm_inv['friend_name'] = inv['target_name']
+                else:
+                    norm_inv['friend_name'] = 'друг'
+                
+                # Нормализуем ID друга
+                if 'friend_id' in inv and inv['friend_id']:
+                    norm_inv['friend_id'] = inv['friend_id']
+                elif 'target_id' in inv and inv['target_id']:
+                    norm_inv['friend_id'] = inv['target_id']
+                
+                normalized_invites.append(norm_inv)
+            
+            # 👇 ЛОГИРУЕМ РЕЗУЛЬТАТ ДЛЯ ОТЛАДКИ
+            if normalized_invites:
+                logger.info("🔍 ПЕРВОЕ ПРИГЛАШЕНИЕ ПОСЛЕ НОРМАЛИЗАЦИИ:")
+                for key, value in normalized_invites[0].items():
+                    logger.info(f"   {key}: {value}")
+            
+            return normalized_invites
         else:
             logger.warning(f"⚠️ Не удалось получить приглашения: {response.status_code}")
             return []
