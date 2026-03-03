@@ -936,6 +936,57 @@ def check_user_limits_from_api(user_id: int) -> dict:
             'total_limit': 3,
             'available': 3
         }
+
+def check_user_limits_from_api(user_id: int) -> dict:
+    """
+    Проверяет лимиты пользователя через API.
+    Возвращает словарь с данными для унифицированной системы лимитов.
+    """
+    try:
+        logger.info(f"📊 Проверка лимитов для пользователя {user_id}")
+        
+        response = requests.get(
+            f"{API_URL}/api/user-limits/{user_id}",
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            limits = data.get('limits', {})
+            
+            used = limits.get('free_used', 0)  # Всего использовано ссылок
+            purchased = limits.get('total_purchased', 0)  # Всего куплено ссылок
+            
+            # НОВЫЙ РАСЧЕТ
+            total_limit = 3 + purchased
+            available = max(0, total_limit - used)
+            
+            result = {
+                'used': used,
+                'purchased': purchased,
+                'total_limit': total_limit,
+                'available': available
+            }
+            
+            logger.info(f"✅ Лимиты для {user_id}: использовано={used}, куплено={purchased}, доступно={available}")
+            return result
+        else:
+            logger.warning(f"⚠️ API вернул {response.status_code}, используем значения по умолчанию")
+            return {
+                'used': 0,
+                'purchased': 0,
+                'total_limit': 3,
+                'available': 3
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка при проверке лимитов: {e}")
+        return {
+            'used': 0,
+            'purchased': 0,
+            'total_limit': 3,
+            'available': 3
+        }
 # ===== ФУНКЦИИ ФОРМАТИРОВАНИЯ ИНТИМНОГО ПРОФИЛЯ =====
 def format_intimate_profile_part1(profile_data: dict, user_name: str) -> str:
     """Форматирует ПЕРВУЮ ЧАСТЬ интимного профиля"""
@@ -2326,26 +2377,18 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         user_id = query.from_user.id
         
-        # ===== ВРЕМЕННАЯ ОТЛАДКА =====
-        # Сделаем прямой запрос к API и посмотрим, что приходит
-        import requests
-        try:
-            response = requests.get(f"{API_URL}/api/user-limits/{user_id}", timeout=10)
-            print(f"🔍 ПРЯМОЙ ОТВЕТ API: {response.json()}")
-        except Exception as e:
-            print(f"❌ Ошибка прямого запроса: {e}")
-
-                # ===== ПОЛУЧАЕМ ЛИМИТЫ ИЗ БД =====
-        limits = check_user_limits_from_api(user_id)
-        used = limits.get('used', 0)
-        total_limit = limits.get('total_limit', 3)
-        available = limits.get('available', 0)
-        
         # Получаем приглашения пользователя
         invites = get_user_invites_from_api(user_id)
         context.user_data["sexual_invites"] = invites
         
+        # 👇 ВАЖНО: ФИЛЬТРУЕМ ТОЛЬКО ИСПОЛЬЗОВАННЫЕ (status = 'used')
         used_invites = [inv for inv in invites if inv.get("status") == "used"]
+        
+        # 👇 ЛОГИРУЕМ НАЙДЕННЫХ ДРУЗЕЙ
+        logger.info(f"🔍 Найдено использованных приглашений: {len(used_invites)}")
+        for inv in used_invites:
+            logger.info(f"   👤 {inv.get('friend_name')} - профиль: {inv.get('friend_profile')}")
+        
         total_invites = len(invites)
         total_reflections = len(used_invites)
         
@@ -2359,14 +2402,13 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         user_profile_link = get_disk_link_by_profile(profile_code)
         
-        # ===== ОБНОВЛЕННОЕ СООБЩЕНИЕ С ЛИМИТАМИ =====
+        # Формируем сообщение
         message = f"""<b>🪞 МОИ ОТРАЖЕНИЯ</b>
 ────────────────
 
 <b>📊 СТАТИСТИКА</b>
-🪞 Создано ссылок: {len(invites)} из {total_limit}
+🪞 Создано ссылок: {len(invites)}
 👥 Посмотрелись в зеркало: {total_reflections}
-💎 Осталось ссылок: {available}
 
 <b>🪞 МОЁ ОТРАЖЕНИЕ</b>
 📌 Профиль: {profile_code}
@@ -2379,8 +2421,14 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 <b>👥 ОТРАЖЕНИЯ ТЕХ КТО ПОСМОТРЕЛСЯ В ВАШЕ ЗЕРКАЛО ({total_reflections})</b>
 """
             for idx, inv in enumerate(used_invites[:5], 1):
-                friend_name = inv.get("friend_name", "друг").replace('@', '')
-                friend_profile = inv.get("target_profile_key", "SA-3_CON")
+                # 👇 ИСПРАВЛЕНО: правильные ключи из ваших данных
+                friend_name = inv.get("friend_name") or inv.get("target_name") or "друг"
+                friend_name = friend_name.replace('@', '')
+                
+                # 👇 ИСПРАВЛЕНО: используем friend_profile (с маленькой буквы)
+                friend_profile = inv.get("friend_profile") or "SA-3_CON"
+                
+                logger.info(f"👤 Друг #{idx}: {friend_name}, профиль: {friend_profile}")
                 
                 # Получаем правильную ссылку на профиль друга
                 disk_link = get_disk_link_by_profile(friend_profile)
@@ -2411,10 +2459,10 @@ async def my_invites_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 💫 Каждое отражение — ключ к человеку."""
 
         keyboard = [
-    [InlineKeyboardButton("🔗 СОЗДАТЬ ССЫЛКУ", callback_data="send_invite")],
-    [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")],
-    [InlineKeyboardButton("🔴 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")]
-]
+            [InlineKeyboardButton("🔗 СОЗДАТЬ ССЫЛКУ", callback_data="send_invite")],
+            [InlineKeyboardButton("🔞 В ИНТИМНЫЙ ПРОФИЛЬ", callback_data="back_to_sexual_profile")],
+            [InlineKeyboardButton("🔴 4F КЛЮЧИ 🔴", callback_data="four_f_main_menu")]
+        ]
 
         await query.edit_message_text(
             message,
