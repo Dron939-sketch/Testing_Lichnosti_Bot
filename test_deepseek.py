@@ -1,30 +1,33 @@
 #!/usr/bin/env python3
 """
-Тест DeepSeek API
+Тест DeepSeek API с ключом из Render
 Запуск: python test_deepseek.py
 """
 
 import os
-from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv()
-
 def test_deepseek():
-    api_key = os.getenv("DEEPSEEK_API_KEY")
+    """Тестирует подключение к DeepSeek API"""
+    
+    # Берем ключ из переменных окружения (Render)
+    api_key = os.getenv("OPENAI_API_KEY")
+    
     if not api_key:
-        print("❌ DEEPSEEK_API_KEY не найден в .env файле!")
+        print("❌ OPENAI_API_KEY не найден в переменных окружения!")
+        print("Добавьте ключ в Render через Dashboard → Environment")
         return
     
-    print(f"✅ DeepSeek ключ загружен: {api_key[:8]}...")
+    print(f"✅ Ключ из Render: {api_key[:8]}...")
     
-    # Создаем клиент для DeepSeek
-    client = OpenAI(
-        api_key=api_key,
-        base_url="https://api.deepseek.com"
-    )
-    
+    # Пробуем подключиться к DeepSeek (через OpenAI SDK)
     try:
+        # Вариант 1: Прямое подключение к DeepSeek
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.deepseek.com"
+        )
+        
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
@@ -33,15 +36,38 @@ def test_deepseek():
             max_tokens=50
         )
         
-        print("\n✅ DeepSeek работает!")
+        print("\n✅ DeepSeek РАБОТАЕТ!")
         print(f"Ответ: {response.choices[0].message.content}")
         
     except Exception as e:
-        print(f"\n❌ Ошибка: {e}")
+        print(f"\n❌ Ошибка DeepSeek: {e}")
+        
+        # Вариант 2: Пробуем OpenAI (если ключ от OpenAI)
+        try:
+            print("\n🔄 Пробую OpenAI...")
+            client = OpenAI(api_key=api_key)
+            
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "user", "content": "Say 'Hello from OpenAI!'"}
+                ],
+                max_tokens=50
+            )
+            
+            print("\n✅ OpenAI РАБОТАЕТ!")
+            print(f"Ответ: {response.choices[0].message.content}")
+            print("\n📌 Это ключ от OpenAI, а не DeepSeek")
+            
+        except Exception as e2:
+            print(f"\n❌ И OpenAI тоже не работает: {e2}")
+            print("\n🔑 ПРОБЛЕМА С КЛЮЧОМ:")
+            print("1. Убедитесь, что ключ активен")
+            print("2. Проверьте баланс на platform.openai.com")
+            print("3. Для DeepSeek нужен отдельный ключ с platform.deepseek.com")
 
 if __name__ == "__main__":
     print("="*60)
-    print("🔌 ТЕСТ ПОДКЛЮЧЕНИЯ К DEEPSEEK")
+    print("🔌 ТЕСТ ПОДКЛЮЧЕНИЯ")
     print("="*60)
     test_deepseek()
-  
