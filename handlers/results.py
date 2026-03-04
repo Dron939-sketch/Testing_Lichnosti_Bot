@@ -25,7 +25,48 @@ class ProfileNotFoundError(Exception):
     """Исключение для случая, когда профиль не найден"""
     pass
 
-# 🔥 НОВАЯ ФУНКЦИЯ: получает описание уровня стратегии
+# 🔥 Функция для краткого описания профиля
+def get_profile_summary(profile_data: dict, strategy_levels: dict) -> str:
+    """Возвращает краткое описание профиля (2-3 предложения)"""
+    
+    type_code = profile_data.get('type_code', 'IP')
+    
+    # Маппинг кодов на названия
+    type_names = {
+        "SP": "Силовик-Беспредельщик",
+        "IP": "Трудяга-Фермер",
+        "IA": "Умный-Бедный",
+        "SA": "Человек Возможностей"
+    }
+    
+    type_name = type_names.get(type_code, "Стратег")
+    
+    # Определяем доминанту по уровням
+    if strategy_levels:
+        dominant = max(strategy_levels.items(), key=lambda x: x[1])[0]
+        dom_emoji = "⚔️" if dominant == "СБ" else "🔧" if dominant == "ТФ" else "📚" if dominant == "УБ" else "🤝"
+        dom_level = strategy_levels[dominant]
+    else:
+        dominant = "ЧВ"
+        dom_emoji = "🤝"
+        dom_level = 3
+    
+    # Краткие описания по типам
+    summaries = {
+        "SP": "Вы строите свою жизнь через силу и действие. Прямолинейны, решительны, не боитесь конфликтов.",
+        "IP": "Ваша опора — труд и порядок. Надёжны, практичны, цените стабильность и результат.",
+        "IA": "Ваш мир — это мысли и смыслы. Глубоки, рефлексивны, ищете понимание там, где другие видят хаос.",
+        "SA": "Вы живёте в мире людей и связей. Общительны, гибки, умеете договариваться и влиять."
+    }
+    
+    base = summaries.get(type_code, "У вас уникальное сочетание стратегий.")
+    
+    # Добавляем про доминанту
+    dom_text = f"Ваша ведущая стратегия — {dom_emoji} {dominant} на уровне {dom_level}/6."
+    
+    return f"{base} {dom_text}"
+
+# 🔥 Функция: получает описание уровня стратегии
 def get_strategy_level_description(strategy: str, level: float) -> str:
     """Возвращает текстовое описание уровня стратегии"""
     
@@ -278,11 +319,15 @@ async def show_results_screen(
         discrepancy_note = get_discrepancy_note(profile_data, actual_profile_key)
         logger.info(f"📝 Примечание о конфликте: {'✅ Есть' if discrepancy_note else '❌ Нет'}")
     
-    # 🔥 ИЗМЕНЕНО: ФОРМИРУЕМ ПЕРВОЕ СООБЩЕНИЕ С ОСНОВНЫМ ПРОФИЛЕМ
+    # 🔥 ИЗМЕНЕНО: ФОРМИРУЕМ ПЕРВОЕ СООБЩЕНИЕ С КРАТКИМ ОПИСАНИЕМ
     message_1 = (
         f"🧠 <b>ВАШ ПРОФИЛЬ</b>\n\n"
         f"<i>Как ваш виртуальный психолог, я проанализировал ваши ответы.</i>\n\n"
     )
+    
+    # 🔥 НОВОЕ: ДОБАВЛЯЕМ КРАТКОЕ ОПИСАНИЕ
+    profile_summary = get_profile_summary(profile_data, final_strategy_levels)
+    message_1 += f"{profile_summary}\n\n"
     
     profile_header = profile_data.get('display_name', f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}")
     raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
