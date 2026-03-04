@@ -177,6 +177,17 @@ async def start_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["stage4_dilts_answers"] = []
         log_debug(f"📊 Инициализирован stage4_dilts_answers", user_id)
     
+    # 🔥 НОВОЕ: инициализируем счётчики для 5 уровней Дилтса
+    if "dilts_counts" not in context.user_data:
+        context.user_data["dilts_counts"] = {
+            "ENVIRONMENT": 0,
+            "BEHAVIOR": 0,
+            "CAPABILITIES": 0,
+            "VALUES": 0,
+            "IDENTITY": 0
+        }
+        log_debug(f"📊 Инициализирован dilts_counts с 5 уровнями", user_id)
+    
     log_debug(f"✅ stage4_current инициализирован: 0", user_id)
     
     return await ask_stage_4_question(update, context)
@@ -209,6 +220,7 @@ async def ask_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYP
     keyboard = []
     
     for option_id, option in question["options"].items():
+        # 🔥 ИЗМЕНЕНО: теперь 5 вариантов (a, b, c, d, e)
         unique_callback = generate_unique_callback("stage4", user_id, current, option_id)
         log_debug(f"   кнопка: {option['text'][:20]}... -> {unique_callback}", user_id)
         log_to_file("stage4_callbacks.log", f"Создан callback: {unique_callback}", user_id)
@@ -298,10 +310,25 @@ async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TY
             log_to_file("stage4_errors.log", f"Опция {option_id} не найдена", user_id)
             return STAGE_4
         
+        # 🔥 ИЗМЕНЕНО: теперь получаем dilts из option
         dilts = selected_option.get("dilts", "ENVIRONMENT")
+        
+        # 🔥 НОВОЕ: сохраняем в счётчики
+        if "dilts_counts" not in context.user_data:
+            context.user_data["dilts_counts"] = {
+                "ENVIRONMENT": 0,
+                "BEHAVIOR": 0,
+                "CAPABILITIES": 0,
+                "VALUES": 0,
+                "IDENTITY": 0
+            }
+        
+        context.user_data["dilts_counts"][dilts] += 1
+        
+        # Сохраняем также в список для обратной совместимости
         context.user_data["stage4_dilts_answers"].append(dilts)
         
-        log_debug(f"✅ + dilts={dilts}", user_id)
+        log_debug(f"✅ + dilts={dilts} (теперь всего: {context.user_data['dilts_counts'][dilts]})", user_id)
         log_to_file("stage4_scores.log", f"Q{current}: + dilts={dilts}", user_id)
         log_debug(f"   теперь stage4_answers: {context.user_data['stage4_dilts_answers']}", user_id)
         
@@ -330,17 +357,28 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
     dilts_answers = context.user_data.get("stage4_dilts_answers", [])
+    dilts_counts = context.user_data.get("dilts_counts", {})
     
     log_debug(f"🎯 finish_stage_4 вызван", user_id)
     log_to_file("stage4_finish.log", f"finish_stage_4 вызван", user_id)
     log_debug(f"📊 dilts_answers={dilts_answers}", user_id)
     log_to_file("stage4_finish.log", f"dilts_answers={dilts_answers}", user_id)
     
+    # 🔥 ЛОГИРУЕМ ИТОГОВЫЕ СЧЁТЧИКИ
+    if dilts_counts:
+        log_debug(f"📊 ИТОГОВЫЕ СЧЁТЧИКИ ДИЛТСА:", user_id)
+        total = sum(dilts_counts.values())
+        for level, count in dilts_counts.items():
+            percentage = (count / total * 100) if total > 0 else 0
+            log_debug(f"   {level}: {count} ({percentage:.1f}%)", user_id)
+            log_to_file("stage4_finish.log", f"{level}: {count} ({percentage:.1f}%)", user_id)
+    
     needs_clarification = need_clarification_stage4(dilts_answers)
     log_debug(f"📊 needs_clarification: {needs_clarification}", user_id)
     log_to_file("stage4_finish.log", f"needs_clarification: {needs_clarification}", user_id)
     
     if needs_clarification and not context.user_data.get("stage4_clarified", False):
+        context.user_data["stage4_clarified"] = True
         context.user_data["clarification_current"] = 0
         context.user_data["clarification_stage"] = "stage4"
         
@@ -348,6 +386,14 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_to_file("stage4_finish.log", f"Запуск уточнений stage4", user_id)
         from handlers.common import ask_clarification_question
         return await ask_clarification_question(update, context)
+    
+    # 🔥 ИЗМЕНЕНО: определяем доминирующий уровень Дилтса
+    if dilts_counts:
+        # Находим уровень с максимальным количеством
+        dominant_dilts = max(dilts_counts.items(), key=lambda x: x[1])[0]
+        context.user_data["dominant_dilts"] = dominant_dilts
+        log_debug(f"🏆 Доминирующий уровень Дилтса: {dominant_dilts}", user_id)
+        log_to_file("stage4_finish.log", f"Доминирующий уровень: {dominant_dilts}", user_id)
     
     profile_data = calculate_profile_final(context.user_data)
     context.user_data["profile_data"] = profile_data
