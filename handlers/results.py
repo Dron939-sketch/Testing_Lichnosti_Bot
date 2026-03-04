@@ -330,7 +330,7 @@ async def show_results_screen(
     
     # 🔥 КРАТКОЕ ОПИСАНИЕ
     profile_summary = get_profile_summary(profile_data, final_strategy_levels)
-    message_1 += f"{profile_summary}\n\n"
+    message_1 += f"{profile_summary}\n"
     
     # 🔥 БЛОК СТРАТЕГИЙ (ПЕРВЫЙ!)
     message_1 += f"\n📊 <b>ВАШ КОКТЕЙЛЬ СТРАТЕГИЙ</b>\n\n"
