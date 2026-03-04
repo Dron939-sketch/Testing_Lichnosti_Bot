@@ -25,6 +25,50 @@ class ProfileNotFoundError(Exception):
     """Исключение для случая, когда профиль не найден"""
     pass
 
+# 🔥 НОВАЯ ФУНКЦИЯ: получает описание уровня стратегии
+def get_strategy_level_description(strategy: str, level: float) -> str:
+    """Возвращает текстовое описание уровня стратегии"""
+    
+    if level >= 5.0:
+        if strategy == "СБ":
+            return "⚔️ <b>Мастер силы</b> — вы умеете применять силу точно и эффективно"
+        elif strategy == "ТФ":
+            return "🔧 <b>Организатор</b> — вы умеете управлять ресурсами и процессами"
+        elif strategy == "УБ":
+            return "📚 <b>Теоретик</b> — вы видите системы и закономерности"
+        else:  # ЧВ
+            return "🤝 <b>Связной</b> — вы в центре сети контактов и влияния"
+    
+    elif level >= 4.0:
+        if strategy == "СБ":
+            return "⚔️ <b>Защитник</b> — вы умеете защищать себя и близких"
+        elif strategy == "ТФ":
+            return "🔧 <b>Профессионал</b> — вы качественно делаете свою работу"
+        elif strategy == "УБ":
+            return "📚 <b>Эмпирик</b> — вы проверяете всё на практике"
+        else:  # ЧВ
+            return "🤝 <b>Партнёр</b> — вы умеете сотрудничать на равных"
+    
+    elif level >= 3.0:
+        if strategy == "СБ":
+            return "⚔️ <b>Провокатор</b> — вы проверяете границы, но пока не контролируете силу"
+        elif strategy == "ТФ":
+            return "🔧 <b>Труженик</b> — вы работаете, но пока не управляете"
+        elif strategy == "УБ":
+            return "📚 <b>Скептик</b> — вы ищете, но пока не находите"
+        else:  # ЧВ
+            return "🤝 <b>Манипулятор</b> — вы используете людей, но не строите партнёрства"
+    
+    else:
+        if strategy == "СБ":
+            return "⚔️ <b>Жертва</b> — сила не работала, вы ищете защиты"
+        elif strategy == "ТФ":
+            return "🔧 <b>Иждивенец</b> — труд не приносил результата"
+        elif strategy == "УБ":
+            return "📚 <b>Отрицатель</b> — мышление подавлено, вы избегаете сложностей"
+        else:  # ЧВ
+            return "🤝 <b>Зависимый</b> — отношения не работали, вы боитесь близости"
+
 async def show_results_screen(
     update: Update, 
     context: ContextTypes.DEFAULT_TYPE,
@@ -86,6 +130,39 @@ async def show_results_screen(
     if not profile_data:
         profile_data = calculate_profile_final(context.user_data)
         context.user_data["profile_data"] = profile_data
+    
+    # ===== 👇 НОВЫЙ БЛОК: ПОЛУЧАЕМ УРОВНИ ВСЕХ СТРАТЕГИЙ =====
+    # Из stage2
+    strategy_levels = context.user_data.get("strategy_levels", {})
+    
+    # Из stage3
+    behavioral_levels = context.user_data.get("behavioral_levels", {})
+    
+    # Из stage4
+    dilts_counts = context.user_data.get("dilts_counts", {})
+    dominant_dilts = context.user_data.get("dominant_dilts", "ENVIRONMENT")
+    
+    # Вычисляем средние для каждой стратегии
+    final_strategy_levels = {}
+    
+    # СБ: из stage2 + stage3
+    sb_values = strategy_levels.get("СБ", []) + behavioral_levels.get("СБ", [])
+    final_strategy_levels["СБ"] = round(sum(sb_values) / len(sb_values), 1) if sb_values else 3.0
+    
+    # ТФ: из stage2 + stage3
+    tf_values = strategy_levels.get("ТФ", []) + behavioral_levels.get("ТФ", [])
+    final_strategy_levels["ТФ"] = round(sum(tf_values) / len(tf_values), 1) if tf_values else 3.0
+    
+    # УБ: из stage2 + stage3
+    ub_values = strategy_levels.get("УБ", []) + behavioral_levels.get("УБ", [])
+    final_strategy_levels["УБ"] = round(sum(ub_values) / len(ub_values), 1) if ub_values else 3.0
+    
+    # ЧВ: из stage2 + stage3
+    chv_values = strategy_levels.get("ЧВ", []) + behavioral_levels.get("ЧВ", [])
+    final_strategy_levels["ЧВ"] = round(sum(chv_values) / len(chv_values), 1) if chv_values else 3.0
+    
+    logger.info(f"📊 ИТОГОВЫЕ УРОВНИ СТРАТЕГИЙ: {final_strategy_levels}")
+    # ===== 👆 КОНЕЦ НОВОГО БЛОКА =====
     
     # ===== 👇 НОВЫЙ БЛОК: ОБРАБОТКА ПРИГЛАШЕНИЯ =====
     if current_invite:
@@ -201,18 +278,11 @@ async def show_results_screen(
         discrepancy_note = get_discrepancy_note(profile_data, actual_profile_key)
         logger.info(f"📝 Примечание о конфликте: {'✅ Есть' if discrepancy_note else '❌ Нет'}")
     
+    # 🔥 ИЗМЕНЕНО: ФОРМИРУЕМ ПЕРВОЕ СООБЩЕНИЕ С ОСНОВНЫМ ПРОФИЛЕМ
     message_1 = (
-        f"🧠 <b>ВАШИ ПЕРВЫЕ ИНСАЙТЫ</b>\n\n"
+        f"🧠 <b>ВАШ ПРОФИЛЬ</b>\n\n"
         f"<i>Как ваш виртуальный психолог, я проанализировал ваши ответы.</i>\n\n"
-        f"Вот что я увидел:\n\n"
     )
-    
-    psychologist_comment = (
-        f"<i>На основе ваших ответов я вижу характерные паттерны мышления и поведения. "
-        f"Это хорошая отправная точка для самопознания.</i>\n\n"
-    )
-    
-    message_1 += psychologist_comment
     
     profile_header = profile_data.get('display_name', f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}")
     raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
@@ -229,21 +299,58 @@ async def show_results_screen(
     
     trigger = profile_card.get('trigger', '')
     if trigger:
-        if trigger.startswith('🔍 ЭТО ТЫ, ЕСЛИ...'):
-            trigger = trigger.replace('🔍 ЭТО ТЫ, ЕСЛИ...\n\n', '').replace('🔍 ЭТО ТЫ, ЕСЛИ...', '')
-        
-        message_1 += f"<b>🔍 ЭТО ВЫ, ЕСЛИ...</b>\n\n"
-        message_1 += f"{trigger}\n\n"
+        message_1 += f"<b>🔍 ЭТО ВЫ, ЕСЛИ...</b>\n\n{trigger}\n\n"
     
     pain = profile_card.get('pain', '')
     if pain:
-        pain_lines = pain.strip().split('\n')
-        if pain_lines and any(h in pain_lines[0] for h in ['СУТЬ ПРОБЛЕМЫ:', 'СУТЬ ПРОБЛЕМЫ']):
-            pain = '\n'.join(pain_lines[1:]) if len(pain_lines) > 1 else ""
-        
-        if pain.strip():
-            message_1 += f"<b>💔 СУТЬ ПРОБЛЕМЫ</b>\n\n"
-            message_1 += f"{pain.strip()}"
+        message_1 += f"<b>💔 СУТЬ ПРОБЛЕМЫ</b>\n\n{pain.strip()}\n\n"
+    
+    # 🔥 НОВОЕ: ДОБАВЛЯЕМ УРОВНИ ВСЕХ СТРАТЕГИЙ
+    message_1 += f"\n📊 <b>ВАШ КОКТЕЙЛЬ СТРАТЕГИЙ</b>\n\n"
+    
+    # Сортируем стратегии по убыванию
+    sorted_strategies = sorted(final_strategy_levels.items(), key=lambda x: x[1], reverse=True)
+    
+    for strategy, level in sorted_strategies:
+        emoji = "⚔️" if strategy == "СБ" else "🔧" if strategy == "ТФ" else "📚" if strategy == "УБ" else "🤝"
+        description = get_strategy_level_description(strategy, level)
+        message_1 += f"{emoji} <b>{strategy}:</b> {level}/6 — {description}\n"
+    
+    # 🔥 НОВОЕ: ДОБАВЛЯЕМ КООРДИНАТЫ
+    # Рассчитываем координаты из уровней стратегий
+    # x = ограничения (чем выше ТФ и УБ, тем больше ограничений)
+    # y = воображение (чем выше УБ и ЧВ, тем больше воображения)
+    x = (final_strategy_levels.get("ТФ", 3) + final_strategy_levels.get("УБ", 3)) / 2
+    y = (final_strategy_levels.get("УБ", 3) + final_strategy_levels.get("ЧВ", 3)) / 2
+    
+    message_1 += f"\n📍 <b>СИСТЕМА КООРДИНАТ</b>\n"
+    message_1 += f"• Воображение: {y:.1f}/10\n"
+    message_1 += f"• Ограничения: {x:.1f}/10\n"
+    
+    if x > 7:
+        message_1 += f"• Слишком много ограничений — пора освобождаться\n"
+    elif x < 3:
+        message_1 += f"• Слишком мало ограничений — нужна дисциплина\n"
+    
+    if y > 7:
+        message_1 += f"• Слишком много фантазий — пора действовать\n"
+    elif y < 3:
+        message_1 += f"• Слишком мало воображения — нужно мечтать\n"
+    
+    # 🔥 НОВОЕ: ДОБАВЛЯЕМ ДОМИНИРУЮЩИЙ УРОВЕНЬ ДИЛТСА
+    dilts_names = {
+        "ENVIRONMENT": "🌍 Окружение",
+        "BEHAVIOR": "👣 Поведение",
+        "CAPABILITIES": "🛠️ Способности",
+        "VALUES": "💎 Ценности",
+        "IDENTITY": "🧬 Идентичность"
+    }
+    
+    message_1 += f"\n🎯 <b>ТОЧКА НАПРЯЖЕНИЯ</b>\n"
+    message_1 += f"{dilts_names.get(dominant_dilts, '🌍 Окружение')}\n"
+    
+    if discrepancy_note:
+        message_1 += f"\n{discrepancy_note}"
 
     if message_1.strip():
         # Проверяем длину сообщения (лимит Telegram 4096 символов)
@@ -262,39 +369,23 @@ async def show_results_screen(
             await query.edit_message_text(message_1.strip(), parse_mode="HTML")
             await asyncio.sleep(0.5)
     
+    # 🔥 ИЗМЕНЕНО: ВТОРОЕ СООБЩЕНИЕ С ИНСТРУМЕНТАМИ
     message_2 = ""
     
     tool = profile_card.get('immediate_tool', '')
     if tool:
-        tool_lines = tool.strip().split('\n')
-        if tool_lines and any(h in tool_lines[0] for h in ['ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:', 'ПЕРВЫЙ ШАГ / ИНСТРУМЕНТ «ПРЯМО СЕЙЧАС»:']):
-            tool = '\n'.join(tool_lines[1:]) if len(tool_lines) > 1 else ""
-        
-        if tool.strip():
-            message_2 += f"<b>🛠 ПРАКТИЧЕСКИЙ ИНСТРУМЕНТ</b>\n\n"
-            message_2 += f"<i>Что можно сделать прямо сейчас:</i>\n\n"
-            message_2 += f"{tool.strip()}\n\n"
+        message_2 += f"<b>🛠 ПРАКТИЧЕСКИЙ ИНСТРУМЕНТ</b>\n\n"
+        message_2 += f"{tool.strip()}\n\n"
     
     cta = profile_card.get('cta', '')
     if cta:
-        cta_lines = cta.strip().split('\n')
-        if cta_lines and cta_lines[0].strip() == 'ЧТО ДАЛЬШЕ?':
-            cta = '\n'.join(cta_lines[1:]) if len(cta_lines) > 1 else ""
-        
-        if cta.strip():
-            message_2 += f"<b>🚀 СЛЕДУЮЩИЕ ШАГИ</b>\n\n"
-            message_2 += f"{cta.strip()}\n\n"
-    
-    message_2 += "\n"
+        message_2 += f"<b>🚀 СЛЕДУЮЩИЕ ШАГИ</b>\n\n"
+        message_2 += f"{cta.strip()}\n\n"
     
     message_2 += (
         f"🧠 <b>ЧТО ДАЛЬШЕ В НАШЕМ ПУТЕШЕСТВИИ?</b>\n\n"
         f"<i>Это только начало вашего пути к самопознанию.</i>\n\n"
     )
-    
-    # ПРИМЕЧАНИЕ О КОНФЛИКТЕ
-    if discrepancy_note:
-        message_2 += f"{discrepancy_note}"
     
     # КНОПКА 18+ ПРОФИЛЯ
     sexual_button = [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_my_sexual_profile")]
