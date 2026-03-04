@@ -215,7 +215,7 @@ async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYP
     for option_id, option in question["options"].items():
         # 🔥 ИЗМЕНЕНО: добавляем strategy в callback
         unique_callback = generate_unique_callback("stage3", user_id, current, option_id, strategy)
-        log_debug(f"   кнопка: {option['text'][:20]}... -> {unique_callback}", user_id)
+        log_debug(f"   кнопка: {option[:20]}... -> {unique_callback}", user_id)
         log_to_file("stage3_callbacks.log", f"Создан callback: {unique_callback}", user_id)
         keyboard.append([
             InlineKeyboardButton(option["text"], callback_data=unique_callback)
