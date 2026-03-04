@@ -318,7 +318,9 @@ def calculate_profile_final(context_data: dict) -> dict:
     logger.info(f"   Var Level: {var_level}")
     logger.info(f"   Dilts: {dominant_dilts} → {dilts_code}")
     logger.info(f"   Profile code: {profile_code}")
-    logger.info(f"   Coordinates: {coordinates}")
+    x_val = coordinates["x"]
+    y_val = coordinates["y"]
+    logger.info(f"   Coordinates: {{'x': {x_val:.1f}, 'y': {y_val:.1f}}}".replace(',', '.'))
     
     return {
         "type_code": type_code,
