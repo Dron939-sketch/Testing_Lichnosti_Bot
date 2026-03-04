@@ -66,9 +66,9 @@ async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"В ней уже встроены стереотипы, роли \n"
         f"и паттерны, которые вы когда-то переняли у других.\n\n"
         f"<b>Здесь мы исследуем:</b>\n"
-        f"• Где срабатывает автоматическое\n"
-        f"• Где мы следуем знакомым сценариям\n"
-        f"• А где уже возможен осознанный выбор\n\n"
+        f"• Ваши автоматические реакции\n"
+        f"• Как вы действуете в разных ситуациях\n"
+        f"• Какие стратегии поведения закреплены\n\n"
         f"📊 <b>Вопросов:</b> 8\n"
         f"⏱ <b>Время:</b> ~3 минуты\n\n"
     )
@@ -167,6 +167,16 @@ async def start_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["stage3_level_scores"] = []
         log_debug(f"📊 Инициализирован stage3_level_scores", user_id)
     
+    # 🔥 НОВОЕ: инициализируем словарь для хранения поведенческих уровней по стратегиям
+    if "behavioral_levels" not in context.user_data:
+        context.user_data["behavioral_levels"] = {
+            "СБ": [],
+            "ТФ": [],
+            "УБ": [],
+            "ЧВ": []
+        }
+        log_debug(f"📊 Инициализирован behavioral_levels", user_id)
+    
     log_debug(f"✅ stage3_current инициализирован: 0", user_id)
     
     return await ask_stage_3_question(update, context)
@@ -188,6 +198,10 @@ async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYP
         return await finish_stage_3(update, context)
     
     question = STAGE_3_QUESTIONS[current]
+    
+    # 🔥 ПОЛУЧАЕМ СТРАТЕГИЮ ВОПРОСА
+    strategy = question.get("strategy", "УБ")  # по умолчанию УБ
+    
     progress = calculate_progress(current + 1, len(STAGE_3_QUESTIONS))
     
     question_text = (
@@ -199,7 +213,8 @@ async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYP
     keyboard = []
     
     for option_id, option in question["options"].items():
-        unique_callback = generate_unique_callback("stage3", user_id, current, option_id)
+        # 🔥 ИЗМЕНЕНО: добавляем strategy в callback
+        unique_callback = generate_unique_callback("stage3", user_id, current, option_id, strategy)
         log_debug(f"   кнопка: {option['text'][:20]}... -> {unique_callback}", user_id)
         log_to_file("stage3_callbacks.log", f"Создан callback: {unique_callback}", user_id)
         keyboard.append([
@@ -268,11 +283,23 @@ async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TY
             log_to_file("stage3_errors.log", f"Неверный формат: {query.data}", user_id)
             return STAGE_3
         
-        current = int(parts[1])
-        option_id = parts[2]
+        # 🔥 ИЗМЕНЕНО: парсим с учётом strategy
+        if len(parts) == 4:
+            # Формат: stage3_0_a_СБ
+            current = int(parts[1])
+            option_id = parts[2]
+            strategy = parts[3]
+        elif len(parts) == 3:
+            # Старый формат для обратной совместимости
+            current = int(parts[1])
+            option_id = parts[2]
+            strategy = "УБ"  # по умолчанию
+        else:
+            log_debug(f"❌ Неверное количество частей: {len(parts)}", user_id)
+            return STAGE_3
         
-        log_debug(f"📥 Ответ на вопрос {current}, option={option_id}", user_id)
-        log_to_file("stage3_answers.log", f"Ответ на вопрос {current}, option={option_id}", user_id)
+        log_debug(f"📥 Ответ на вопрос {current}, option={option_id}, strategy={strategy}", user_id)
+        log_to_file("stage3_answers.log", f"Ответ на вопрос {current}, option={option_id}, strategy={strategy}", user_id)
         
         last_answered = context.user_data.get("stage3_last_answered", -1)
         if current <= last_answered:
@@ -289,7 +316,19 @@ async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TY
             return STAGE_3
         
         level = selected_option.get("level", 1)
+        
+        # 🔥 СОХРАНЯЕМ ДЛЯ ОБЩЕГО УРОВНЯ (как было)
         context.user_data["stage3_level_scores"].append(level)
+        
+        # 🔥 НОВОЕ: СОХРАНЯЕМ ПО СТРАТЕГИЯМ
+        if strategy in ["СБ", "ТФ", "УБ", "ЧВ"]:
+            if "behavioral_levels" not in context.user_data:
+                context.user_data["behavioral_levels"] = {
+                    "СБ": [], "ТФ": [], "УБ": [], "ЧВ": []
+                }
+            context.user_data["behavioral_levels"][strategy].append(level)
+            log_debug(f"   + уровень {level} к стратегии {strategy}", user_id)
+            log_to_file("stage3_strategies.log", f"Q{current}: +{level} к {strategy}", user_id)
         
         log_debug(f"✅ + уровень {level} к stage3_scores", user_id)
         log_to_file("stage3_scores.log", f"Q{current}: + уровень {level}", user_id)
@@ -328,11 +367,22 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_debug(f"📊 stage2_level={stage2_level}, stage3_scores={stage3_scores}", user_id)
     log_to_file("stage3_finish.log", f"stage2_level={stage2_level}, stage3_scores={stage3_scores}", user_id)
     
+    # 🔥 ЛОГИРУЕМ ПОВЕДЕНЧЕСКИЕ УРОВНИ ПО СТРАТЕГИЯМ
+    behavioral_levels = context.user_data.get("behavioral_levels", {})
+    if behavioral_levels:
+        log_debug(f"📊 ПОВЕДЕНЧЕСКИЕ УРОВНИ ПО СТРАТЕГИЯМ:", user_id)
+        for strategy, values in behavioral_levels.items():
+            if values:
+                avg = sum(values) / len(values)
+                log_debug(f"   {strategy}: {values} → среднее {avg:.1f}", user_id)
+                log_to_file("stage3_strategies.log", f"ИТОГО {strategy}: {values} → {avg:.1f}", user_id)
+    
     needs_clarification = need_clarification_stage3(stage2_level, stage3_scores)
     log_debug(f"📊 needs_clarification: {needs_clarification}", user_id)
     log_to_file("stage3_finish.log", f"needs_clarification: {needs_clarification}", user_id)
     
     if needs_clarification and not context.user_data.get("stage3_clarified", False):
+        context.user_data["stage3_clarified"] = True
         context.user_data["clarification_current"] = 0
         context.user_data["clarification_stage"] = "stage3"
         
