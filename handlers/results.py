@@ -393,9 +393,6 @@ async def show_results_screen(
     
     message_1 += f"\n🎯 <b>ТОЧКА НАПРЯЖЕНИЯ</b>\n"
     message_1 += f"{dilts_names.get(dominant_dilts, '🌍 Окружение')}\n"
-    
-    if discrepancy_note:
-        message_1 += f"\n{discrepancy_note}"
 
     if message_1.strip():
         # Проверяем длину сообщения (лимит Telegram 4096 символов)
@@ -431,6 +428,10 @@ async def show_results_screen(
         f"🧠 <b>ЧТО ДАЛЬШЕ В НАШЕМ ПУТЕШЕСТВИИ?</b>\n\n"
         f"<i>Это только начало вашего пути к самопознанию.</i>\n\n"
     )
+    
+    # 🔥 НОВОЕ: ДОБАВЛЯЕМ ПРИМЕЧАНИЕ В КОНЦЕ ВТОРОГО СООБЩЕНИЯ
+    if discrepancy_note:
+        message_2 += f"\n{discrepancy_note}\n"
     
     # КНОПКА 18+ ПРОФИЛЯ
     sexual_button = [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_my_sexual_profile")]
