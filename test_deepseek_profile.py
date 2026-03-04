@@ -12,6 +12,10 @@ def test_generate_profile():
     """Генерирует тестовый профиль через DeepSeek"""
     
     api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        print("❌ OPENAI_API_KEY не найден в переменных окружения!")
+        return
+    
     print(f"✅ Ключ загружен: {api_key[:8]}...")
     
     # Создаем клиент для DeepSeek
@@ -69,6 +73,10 @@ def test_generate_profile():
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
         print(f"\n💾 Профиль сохранён в {filename}")
+        
+        # Показываем полный JSON
+        print("\n📄 ПОЛНЫЙ JSON:")
+        print(json.dumps(result, indent=2, ensure_ascii=False))
         
     except json.JSONDecodeError as e:
         print(f"\n❌ Ошибка парсинга JSON: {e}")
