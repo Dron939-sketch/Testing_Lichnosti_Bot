@@ -1,5 +1,10 @@
 """
 Обработчики для ЭТАПА 2: Конфигурация мышления
+ИСПРАВЛЕННАЯ ВЕРСИЯ:
+✅ Добавлено сохранение ответов для AI
+✅ Добавлены метрики времени
+✅ Динамический подсчет вопросов для intro
+✅ Улучшена защита от повторных ответов
 """
 
 import logging
@@ -30,7 +35,6 @@ def log_debug(msg, user_id=None):
 def log_to_file(filename: str, data: any, user_id: int = None):
     """Безопасная запись в файл с преобразованием любого типа в строку"""
     try:
-        # 🔥 ПРЕОБРАЗУЕМ slice В СТРОКУ
         if isinstance(data, slice):
             data = f"slice({data.start}, {data.stop}, {data.step})"
         else:
@@ -43,9 +47,12 @@ def log_to_file(filename: str, data: any, user_id: int = None):
             f.write(f"{timestamp} {user_part} {data}\n")
     except Exception as e:
         print(f"❌ Ошибка записи в файл {filename}: {e}", file=sys.stderr)
-        
+
+# Время на вопрос в минутах (для расчета в intro)
+TIME_PER_QUESTION = 0.4
+
 async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Экран перед ЭТАПОМ 2"""
+    """Экран перед ЭТАПОМ 2 - с динамическим подсчетом вопросов"""
     query = update.callback_query
     user_id = update.effective_user.id
     
@@ -57,6 +64,12 @@ async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     await query.answer()
     
+    # 🔥 ДИНАМИЧЕСКИЙ ПОДСЧЕТ КОЛИЧЕСТВА ВОПРОСОВ
+    perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
+    questions = STAGE_2_QUESTIONS.get(perception_type, STAGE_2_QUESTIONS["СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ"])
+    total_questions = len(questions)
+    estimated_time = round(total_questions * TIME_PER_QUESTION)
+    
     intro_text = (
         f"🧠 <b>ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ</b>\n\n"
         f"Теперь исследуем ваш тип мышления внутри системы восприятия.\n\n"
@@ -64,8 +77,8 @@ async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"• Ваш текущий способ обработки информации\n"
         f"• Способ мышления\n"
         f"• Характерные паттерны мыслительных процессов\n\n"
-        f"📊 <b>Вопросов:</b> 16\n"  # 🔥 ИЗМЕНЕНО: было 8, стало 16
-        f"⏱ <b>Время:</b> ~6 минут\n\n"  # 🔥 ИЗМЕНЕНО
+        f"📊 <b>Вопросов:</b> {total_questions}\n"
+        f"⏱ <b>Время:</b> ~{estimated_time} минут\n\n"
     )
     
     keyboard = [
@@ -76,7 +89,7 @@ async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     await query.edit_message_text(intro_text, reply_markup=reply_markup, parse_mode="HTML")
     
-    log_debug(f"🔄 show_stage_2_intro → возвращаю STAGE_2 = {STAGE_2}", user_id)
+    log_debug(f"🔄 show_stage_2_intro → возвращаю STAGE_2 = {STAGE_2}, вопросов={total_questions}", user_id)
     return STAGE_2
 
 async def show_stage_2_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -144,9 +157,14 @@ async def start_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     context.user_data["stage2_current"] = 0
     context.user_data["stage2_last_answered"] = -1
+    context.user_data["stage2_start_time"] = time.time()  # для метрик
     
     context.user_data["conversation_state"] = STAGE_2
     log_debug(f"💾 Сохраняю состояние STAGE_2 = {STAGE_2}", user_id)
+    
+    # Инициализируем хранилище для AI
+    if "all_answers" not in context.user_data:
+        context.user_data["all_answers"] = []
     
     if "stage2_level_scores_dict" not in context.user_data:
         context.user_data["stage2_level_scores_dict"] = {
@@ -178,7 +196,7 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     current = context.user_data.get("stage2_current", 0)
     
     questions = STAGE_2_QUESTIONS.get(perception_type, STAGE_2_QUESTIONS["СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ"])
-    total_questions = len(questions)  # 🔥 теперь 16
+    total_questions = len(questions)
     
     log_debug(f"📝 ask_stage_2_question: current={current}, type={perception_type}, всего={total_questions}", user_id)
     log_to_file("stage2_questions.log", f"Вопрос {current+1}/{total_questions} type={perception_type}", user_id)
@@ -305,6 +323,9 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
         perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
         log_debug(f"   perception_type: {perception_type}", user_id)
         
+        question = STAGE_2_QUESTIONS.get(perception_type, STAGE_2_QUESTIONS["СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ"])[current]
+        answer_text = question["options"].get(selected_level, "неизвестно")
+        
         scoring_table = STAGE_2_SCORING.get(perception_type, {})
         log_debug(f"   scoring_table keys: {list(scoring_table.keys())}", user_id)
         
@@ -341,6 +362,21 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
             except ValueError:
                 log_debug(f"⚠️ Не удалось преобразовать {selected_level} в число", user_id)
         
+        # 👇 СОХРАНЯЕМ ОТВЕТ ДЛЯ AI
+        if "all_answers" not in context.user_data:
+            context.user_data["all_answers"] = []
+        
+        context.user_data["all_answers"].append({
+            'stage': 2,
+            'question_index': current,
+            'question': question['text'],
+            'answer': answer_text,
+            'option': selected_level,
+            'measures': measures,
+            'perception_type': perception_type
+        })
+        log_debug(f"   💾 Ответ сохранён для AI", user_id)
+        
         context.user_data["stage2_last_answered"] = current
         context.user_data["stage2_current"] = current + 1
         log_debug(f"   stage2_current увеличен до {current + 1}", user_id)
@@ -368,6 +404,13 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     log_debug(f"🎯 finish_stage_2 вызван", user_id)
     log_to_file("stage2_finish.log", f"finish_stage_2 вызван", user_id)
+    
+    # 👇 ЛОГИРУЕМ МЕТРИКИ ВРЕМЕНИ
+    if "stage2_start_time" in context.user_data:
+        elapsed = time.time() - context.user_data["stage2_start_time"]
+        logger.info(f"📊 User {user_id}: Stage 2 completed in {elapsed:.1f} seconds")
+        log_to_file("stage2_metrics.log", f"time:{elapsed:.1f}", user_id)
+    
     log_debug(f"📊 ИТОГОВЫЕ БАЛЛЫ ПО УРОВНЯМ:", user_id)
     for level in range(1, 10):
         score = level_scores_dict.get(str(level), 0)
