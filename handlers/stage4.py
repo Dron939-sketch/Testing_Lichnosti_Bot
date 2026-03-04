@@ -1,5 +1,11 @@
 """
 Обработчики для ЭТАПА 4: Конфликт логических уровней
+ИСПРАВЛЕННАЯ ВЕРСИЯ:
+✅ Добавлено сохранение ответов для AI
+✅ Добавлены метрики времени
+✅ Динамическое отображение количества вопросов
+✅ Улучшен экран аналитики
+✅ Константы для таймаутов
 """
 
 import logging
@@ -48,6 +54,11 @@ def log_to_file(filename: str, data: any, user_id: int = None):
     except Exception as e:
         print(f"❌ Ошибка записи в файл {filename}: {e}", file=sys.stderr)
 
+# Константы
+TOTAL_QUESTIONS = len(STAGE_4_QUESTIONS)  # 8 вопросов
+TIME_PER_QUESTION = 0.4  # минут на вопрос
+ANALYSIS_SCREEN_DELAY = 3  # секунд для экрана аналитики
+
 async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 4"""
     query = update.callback_query
@@ -61,6 +72,8 @@ async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     log_debug(f"💾 Сохраняю состояние STAGE_4 = {STAGE_4}", user_id)
     
     await query.answer()
+    
+    estimated_time = round(TOTAL_QUESTIONS * TIME_PER_QUESTION)
     
     intro_text = (
     f"🧠 <b>ЭТАП 4: ТОЧКА РОСТА</b>\n\n"
@@ -76,8 +89,8 @@ async def show_stage_4_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     f"🔍 Здесь мы найдём, где именно\n"
     f"могут возникать потенциальные точки напряжения\n"
     f"между вашей системой и системой, в которой вы находитесь.\n\n"
-    f"📊 <b>Вопросов:</b> 8\n"
-    f"⏱ <b>Время:</b> ~3 минуты"
+    f"📊 <b>Вопросов:</b> {TOTAL_QUESTIONS}\n"
+    f"⏱ <b>Время:</b> ~{estimated_time} минуты"
 )
     
     keyboard = [
@@ -167,10 +180,15 @@ async def start_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     context.user_data["stage4_current"] = 0
     context.user_data["stage4_last_answered"] = -1
+    context.user_data["stage4_start_time"] = time.time()  # для метрик
     
     # ✅ ВАЖНО: сохраняем состояние
     context.user_data["conversation_state"] = STAGE_4
     log_debug(f"💾 Сохраняю состояние STAGE_4 = {STAGE_4}", user_id)
+    
+    # Инициализируем хранилище для AI
+    if "all_answers" not in context.user_data:
+        context.user_data["all_answers"] = []
     
     # Инициализируем список ответов
     if "stage4_dilts_answers" not in context.user_data:
@@ -199,17 +217,17 @@ async def ask_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYP
     current = context.user_data.get("stage4_current", 0)
     
     log_debug(f"📝 ask_stage_4_question: current={current}", user_id)
-    log_to_file("stage4_questions.log", f"Вопрос {current+1}/8", user_id)
+    log_to_file("stage4_questions.log", f"Вопрос {current+1}/{TOTAL_QUESTIONS}", user_id)
     
     # ✅ ВАЖНО: сохраняем состояние
     context.user_data["conversation_state"] = STAGE_4
     
-    if current >= len(STAGE_4_QUESTIONS):
+    if current >= TOTAL_QUESTIONS:
         log_debug(f"🏁 Все вопросы заданы, завершаем этап 4", user_id)
         return await finish_stage_4(update, context)
     
     question = STAGE_4_QUESTIONS[current]
-    progress = calculate_progress(current + 1, len(STAGE_4_QUESTIONS))
+    progress = calculate_progress(current + 1, TOTAL_QUESTIONS)
     
     question_text = (
         f"🧠 <b>ЭТАП 4: КОНФЛИКТ ЛОГИЧЕСКИХ УРОВНЕЙ</b>\n\n"
@@ -237,7 +255,7 @@ async def ask_stage_4_question(update: Update, context: ContextTypes.DEFAULT_TYP
                 reply_markup=reply_markup, 
                 parse_mode="HTML"
             )
-            log_debug(f"✅ Вопрос {current+1}/{len(STAGE_4_QUESTIONS)} отправлен", user_id)
+            log_debug(f"✅ Вопрос {current+1}/{TOTAL_QUESTIONS} отправлен", user_id)
     except Exception as e:
         log_debug(f"❌ Ошибка при редактировании: {e}", user_id)
         try:
@@ -328,6 +346,20 @@ async def handle_stage_4_answer(update: Update, context: ContextTypes.DEFAULT_TY
         # Сохраняем также в список для обратной совместимости
         context.user_data["stage4_dilts_answers"].append(dilts)
         
+        # 👇 СОХРАНЯЕМ ОТВЕТ ДЛЯ AI
+        if "all_answers" not in context.user_data:
+            context.user_data["all_answers"] = []
+        
+        context.user_data["all_answers"].append({
+            'stage': 4,
+            'question_index': current,
+            'question': question['text'],
+            'answer': selected_option['text'],
+            'option': option_id,
+            'dilts': dilts
+        })
+        log_debug(f"   💾 Ответ сохранён для AI", user_id)
+        
         log_debug(f"✅ + dilts={dilts} (теперь всего: {context.user_data['dilts_counts'][dilts]})", user_id)
         log_to_file("stage4_scores.log", f"Q{current}: + dilts={dilts}", user_id)
         log_debug(f"   теперь stage4_answers: {context.user_data['stage4_dilts_answers']}", user_id)
@@ -363,6 +395,13 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_to_file("stage4_finish.log", f"finish_stage_4 вызван", user_id)
     log_debug(f"📊 dilts_answers={dilts_answers}", user_id)
     log_to_file("stage4_finish.log", f"dilts_answers={dilts_answers}", user_id)
+    
+    # 👇 ЛОГИРУЕМ МЕТРИКИ ВРЕМЕНИ
+    if "stage4_start_time" in context.user_data:
+        elapsed = time.time() - context.user_data["stage4_start_time"]
+        logger.info(f"📊 User {user_id}: Stage 4 completed in {elapsed:.1f} seconds")
+        log_to_file("stage4_metrics.log", f"time:{elapsed:.1f}", user_id)
+        log_to_file("stage4_metrics.log", f"answers:{len(dilts_answers)}", user_id)
     
     # 🔥 ЛОГИРУЕМ ИТОГОВЫЕ СЧЁТЧИКИ
     if dilts_counts:
@@ -401,10 +440,24 @@ async def finish_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_debug(f"✅ Stage 4 complete, profile={profile_data.get('display_name', 'unknown')}", user_id)
     log_to_file("stage4_finish.log", f"Stage 4 complete: {profile_data.get('display_name', 'unknown')}", user_id)
     
-    analysis_text = STAGE4_ANALYSIS_SCREEN
+    # 🔥 УЛУЧШЕННЫЙ ЭКРАН АНАЛИТИКИ
+    analysis_text = f"""
+🧠 <b>АНАЛИЗИРУЮ ДАННЫЕ</b>
+
+<b>Соединяются четыре слоя информации:</b>
+▸ ✅ Конфигурация восприятия — определена
+▸ ✅ Конфигурация мышления — проанализирована
+▸ ✅ Конфигурация поведения — обработана
+▸ ✅ Точка напряжения — найдена
+
+<b>Формирую ваш уникальный профиль...</b>
+
+⏳ Пожалуйста, подождите несколько секунд...
+"""
+    
     await query.edit_message_text(analysis_text.strip(), parse_mode="HTML")
     
-    await asyncio.sleep(3)
+    await asyncio.sleep(ANALYSIS_SCREEN_DELAY)
     
     from handlers.results import show_results_screen
     
