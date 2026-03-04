@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 test_generation.py - Тест генерации одного профиля
+ИСПРАВЛЕНО для OpenAI SDK >=1.0.0
 """
 
 import os
-import json
 from dotenv import load_dotenv
-import openai
+from openai import OpenAI
 
 # Загружаем ключи
 load_dotenv()
@@ -23,10 +23,13 @@ def test_generation():
     
     print(f"✅ API ключ загружен: {api_key[:8]}...")
     
-    # Пробуем самый простой запрос
+    # Создаем клиент (НОВЫЙ способ)
+    client = OpenAI(api_key=api_key)
+    
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # используем более дешевую модель для теста
+        # Используем НОВЫЙ синтаксис
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "user", "content": "Say 'Hello, World!' in JSON format"}
             ],
