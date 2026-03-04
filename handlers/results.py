@@ -18,6 +18,9 @@ from utils.text_utils import get_card_description_from_profile, format_profile_t
 # Импорт из 18+ модуля для ссылок
 from sexual_18_plus import get_disk_link_by_profile
 
+# Импорт вариативных блоков
+from profile_variants import PROFILE_VARIANTS
+
 # Импорт загрузчика и профилей
 from loader import loader
 
@@ -112,6 +115,47 @@ def get_strategy_level_description(strategy: str, level: float) -> str:
             return "📚 <b>Отрицатель</b> — мышление подавлено, вы избегаете сложностей"
         else:  # ЧВ
             return "🤝 <b>Зависимый</b> — отношения не работали, вы боитесь близости"
+
+# 🔥 Функция для определения квадранта по координатам
+def get_quadrant_info(x_signed: float, y_signed: float) -> tuple:
+    """
+    Определяет квадрант по координатам со знаком
+    Возвращает (название, эмодзи, описание)
+    """
+    if x_signed >= 0 and y_signed >= 0:
+        return ("Мыслительный (УБ)", "📚", "правый верхний — мышление и анализ")
+    elif x_signed < 0 and y_signed >= 0:
+        return ("Трудовой (ТФ)", "🔧", "левый верхний — труд и порядок")
+    elif x_signed < 0 and y_signed < 0:
+        return ("Силовой (СБ)", "⚔️", "левый нижний — сила и действие")
+    else:  # x_signed >= 0 and y_signed < 0
+        return ("Социальный (ЧВ)", "🤝", "правый нижний — связи и общение")
+
+# 🔥 Функция для добавления вариативных блоков
+def add_profile_variants(profile_card: dict, profile_code: str, strategy_levels: dict):
+    """Добавляет вариативные блоки в описание профиля"""
+    
+    if profile_code not in PROFILE_VARIANTS:
+        return
+    
+    variants = PROFILE_VARIANTS[profile_code]
+    
+    # Добавляем варианты в зависимости от уровней стратегий
+    if strategy_levels.get("ТФ", 0) > 4.0 and "high_tf" in variants:
+        profile_card["trigger"] += f"\n\n{variants['high_tf']['trigger']}"
+        profile_card["pain"] += f"\n\n{variants['high_tf']['pain']}"
+    
+    if strategy_levels.get("ЧВ", 0) > 4.0 and "high_chv" in variants:
+        profile_card["trigger"] += f"\n\n{variants['high_chv']['trigger']}"
+        profile_card["pain"] += f"\n\n{variants['high_chv']['pain']}"
+    
+    if strategy_levels.get("УБ", 0) > 4.0 and "high_ub" in variants:
+        profile_card["trigger"] += f"\n\n{variants['high_ub']['trigger']}"
+        profile_card["pain"] += f"\n\n{variants['high_ub']['pain']}"
+    
+    if strategy_levels.get("СБ", 0) < 3.0 and "low_sb" in variants:
+        profile_card["trigger"] += f"\n\n{variants['low_sb']['trigger']}"
+        profile_card["pain"] += f"\n\n{variants['low_sb']['pain']}"
 
 async def show_results_screen(
     update: Update, 
@@ -291,6 +335,10 @@ async def show_results_screen(
     profile_card = get_card_description_from_profile(profile, profile_data)
     context.user_data["profile_card"] = profile_card
     
+    # 🔥 ДОБАВЛЯЕМ ВАРИАТИВНЫЕ БЛОКИ
+    profile_code = f"{profile_data.get('type_code', '')}_{profile_data.get('level', '')}_{profile_data.get('dilts_code', '')}"
+    add_profile_variants(profile_card, profile_code, final_strategy_levels)
+    
     actual_profile_key = None
     try:
         if hasattr(profile, 'key'):
@@ -322,17 +370,17 @@ async def show_results_screen(
         discrepancy_note = get_discrepancy_note(profile_data, actual_profile_key)
         logger.info(f"📝 Примечание о конфликте: {'✅ Есть' if discrepancy_note else '❌ Нет'}")
     
-    # 🔥 ИЗМЕНЕНО: ФОРМИРУЕМ ПЕРВОЕ СООБЩЕНИЕ
+    # ===== ФОРМИРУЕМ ПЕРВОЕ СООБЩЕНИЕ =====
     message_1 = (
         f"🧠 <b>ВАШ ПРОФИЛЬ</b>\n\n"
         f"<i>Как ваш виртуальный психолог, я проанализировал ваши ответы.</i>\n\n"
     )
     
-    # 🔥 КРАТКОЕ ОПИСАНИЕ
+    # Краткое описание
     profile_summary = get_profile_summary(profile_data, final_strategy_levels)
     message_1 += f"{profile_summary}\n"
     
-    # 🔥 БЛОК СТРАТЕГИЙ (ПЕРВЫЙ!)
+    # БЛОК СТРАТЕГИЙ
     message_1 += f"\n📊 <b>ВАШ КОКТЕЙЛЬ СТРАТЕГИЙ</b>\n\n"
     
     # Сортируем стратегии по убыванию
@@ -345,33 +393,43 @@ async def show_results_screen(
         clean_desc = description.replace("<b>", "").replace("</b>", "")
         message_1 += f"{emoji} <b>{strategy}:</b> {level}/6 — {clean_desc}\n"
     
-    # 🔥 БЛОК КООРДИНАТ
+    # 🔥 БЛОК КООРДИНАТ СО ЗНАКАМИ
+    # Рассчитываем координаты из уровней стратегий
     x = (final_strategy_levels.get("ТФ", 3) + final_strategy_levels.get("УБ", 3)) / 2
     y = (final_strategy_levels.get("УБ", 3) + final_strategy_levels.get("ЧВ", 3)) / 2
     
-    message_1 += f"\n📍 <b>СИСТЕМА КООРДИНАТ</b>\n"
-    message_1 += f"• Воображение: {y:.1f}/10\n"
-    message_1 += f"• Ограничения: {x:.1f}/10\n"
+    # Конвертируем 0-10 в -10 до +10
+    x_signed = (x - 5) * 2
+    y_signed = (y - 5) * 2
     
-    # 🔥 БЛОК ТОЧКИ НАПРЯЖЕНИЯ
+    # Определяем квадрант
+    quadrant_name, quadrant_emoji, quadrant_desc = get_quadrant_info(x_signed, y_signed)
+    
+    message_1 += f"\n📍 <b>СИСТЕМА КООРДИНАТ</b>\n"
+    message_1 += f"Воображение: {y_signed:+.1f}\n"
+    message_1 += f"Ограничения: {x_signed:+.1f}\n\n"
+    message_1 += f"<b>Квадрант:</b> {quadrant_emoji} {quadrant_name}\n"
+    message_1 += f"• {quadrant_desc}\n"
+    
+    # БЛОК ТОЧКИ НАПРЯЖЕНИЯ
     dilts_names = {
-        "ENVIRONMENT": "🌍 Окружение",
-        "BEHAVIOR": "👣 Поведение",
-        "CAPABILITIES": "🛠️ Способности",
-        "VALUES": "💎 Ценности",
-        "IDENTITY": "🧬 Идентичность"
+        "ENVIRONMENT": "🌍 Окружение — проблема во внешних условиях",
+        "BEHAVIOR": "👣 Поведение — проблема в действиях",
+        "CAPABILITIES": "🛠️ Способности — не хватает навыков",
+        "VALUES": "💎 Ценности — конфликт мотивов",
+        "IDENTITY": "🧬 Идентичность — не знаете, кто вы"
     }
     
     message_1 += f"\n🎯 <b>ТОЧКА НАПРЯЖЕНИЯ</b>\n"
     message_1 += f"{dilts_names.get(dominant_dilts, '🌍 Окружение')}\n\n"
     
-    # 🔥 ЗАГОЛОВОК ПРОФИЛЯ
+    # ЗАГОЛОВОК ПРОФИЛЯ
     profile_header = profile_data.get('display_name', f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}")
     raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
     formatted_title = format_profile_title(raw_title, profile_header)
     message_1 += f"<b>{formatted_title}</b>\n\n"
     
-    # 🔥 ОСТАЛЬНОЕ ОПИСАНИЕ ИЗ ПРОФИЛЯ
+    # ОСТАЛЬНОЕ ОПИСАНИЕ ИЗ ПРОФИЛЯ
     archetype = profile_card.get('archetype', '')
     if archetype:
         message_1 += f"<i>{archetype}</i>\n\n"
@@ -405,7 +463,7 @@ async def show_results_screen(
             await query.edit_message_text(message_1.strip(), parse_mode="HTML")
             await asyncio.sleep(0.5)
     
-    # 🔥 ВТОРОЕ СООБЩЕНИЕ С ИНСТРУМЕНТАМИ
+    # ===== ВТОРОЕ СООБЩЕНИЕ С ИНСТРУМЕНТАМИ =====
     message_2 = ""
     
     tool = profile_card.get('immediate_tool', '')
@@ -423,7 +481,7 @@ async def show_results_screen(
         f"<i>Это только начало вашего пути к самопознанию.</i>\n\n"
     )
     
-    # 🔥 ПРИМЕЧАНИЕ В КОНЦЕ
+    # ПРИМЕЧАНИЕ В КОНЦЕ
     if discrepancy_note:
         message_2 += f"\n{discrepancy_note}\n"
     
@@ -434,8 +492,9 @@ async def show_results_screen(
     coming_from_sexual = context.user_data.get("coming_from_sexual", False)
     logger.info(f"🚩 coming_from_sexual = {coming_from_sexual}")
     
-    # ЛОГИКА КНОПОК:
+    # ЛОГИКА КНОПОК
     if not has_shared and not coming_from_sexual:
+        # Случай 1: первый вход после теста (нет репоста, не из 18+)
         keyboard = [
             [InlineKeyboardButton("🪞 Поделиться зеркалом", callback_data="get_gift")],
             [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
@@ -443,6 +502,7 @@ async def show_results_screen(
         ]
         logger.info(f"🔘 Клавиатура: без подарка (has_shared={has_shared}, coming={coming_from_sexual})")
     else:
+        # Случай 2: ВСЕ ОСТАЛЬНЫЕ СИТУАЦИИ!
         keyboard = [
             [InlineKeyboardButton("🎁 Получить сказку «Мастер Меча»", url=GIFT_PDF_LINK)],
             [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
@@ -454,7 +514,7 @@ async def show_results_screen(
             context.user_data.pop("coming_from_sexual", None)
             logger.info("🚩 Сброшен флаг coming_from_sexual")
     
-    # ===== 👇 ОТПРАВКА ВТОРОГО СООБЩЕНИЯ =====
+    # ОТПРАВКА ВТОРОГО СООБЩЕНИЯ
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     logger.debug(f"📤 Отправка message_2 ({len(message_2)} символов) с {len(keyboard)} рядами кнопок")
