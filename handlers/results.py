@@ -141,51 +141,78 @@ def get_detailed_strategy_description(strategy: str, level: float, all_levels: d
     else:
         return f"{context} {price}"
 
-def get_quadrant_description(x: float, y: float, all_levels: dict) -> str:
+def get_quadrant_description(x: float, y: float, all_levels: dict, profile_type: str = None) -> str:
     """
     Возвращает описание положения в системе координат
+    profile_type: тип профиля из этапа 1 ("SP", "IP", "IA", "SA")
     """
     # Определяем доминирующие стратегии
     sorted_strategies = sorted(all_levels.items(), key=lambda x: x[1], reverse=True)
     main = sorted_strategies[0][0]
     second = sorted_strategies[1][0]
     
-    # 🔥 ИСПРАВЛЕНО: определяем квадрант ТОЛЬКО если не в центре
-    if x > 0 and y > 0:
-        quadrant = "📚 МЫСЛИТЕЛЬНОМ"
-        desc = "вы ищете закономерности, анализируете, строите теории. Мир для вас — это текст, который нужно расшифровать."
-        strength = "видите то, что скрыто от других"
-        weakness = "можете застрять в анализе, так и не начав действовать"
-    elif x < 0 and y > 0:
-        quadrant = "🔧 ТРУДОВОМ"
-        desc = "вы создаёте порядок, накапливаете, организуете. Мир для вас — это материал, который нужно обработать."
-        strength = "надёжны и практичны"
-        weakness = "можете увязнуть в рутине, боясь нового"
-    elif x < 0 and y < 0:
-        quadrant = "⚔️ СИЛОВОМ"
-        desc = "вы действуете, защищаете, контролируете. Мир для вас — это поле, где нужно отстаивать своё место."
-        strength = "решительны и прямолинейны"
-        weakness = "можете быть излишне агрессивны, не доверяя другим"
-    elif x > 0 and y < 0:
-        quadrant = "🤝 СОЦИАЛЬНОМ"
-        desc = "вы общаетесь, влияете, строите связи. Мир для вас — это сеть, где важно быть на связи."
-        strength = "гибки и общительны"
-        weakness = "можете зависеть от чужого мнения, теряя себя"
+    # Маппинг типа профиля на квадрант
+    type_to_quadrant = {
+        "SP": "⚔️ СИЛОВОМ",
+        "IP": "🔧 ТРУДОВОМ",
+        "IA": "📚 МЫСЛИТЕЛЬНОМ",
+        "SA": "🤝 СОЦИАЛЬНОМ"
+    }
+    
+    # Описания квадрантов
+    quadrant_descriptions = {
+        "📚 МЫСЛИТЕЛЬНОМ": {
+            "desc": "вы ищете закономерности, анализируете, строите теории. Мир для вас — это текст, который нужно расшифровать.",
+            "strength": "видите то, что скрыто от других",
+            "weakness": "можете застрять в анализе, так и не начав действовать"
+        },
+        "🔧 ТРУДОВОМ": {
+            "desc": "вы создаёте порядок, накапливаете, организуете. Мир для вас — это материал, который нужно обработать.",
+            "strength": "надёжны и практичны",
+            "weakness": "можете увязнуть в рутине, боясь нового"
+        },
+        "⚔️ СИЛОВОМ": {
+            "desc": "вы действуете, защищаете, контролируете. Мир для вас — это поле, где нужно отстаивать своё место.",
+            "strength": "решительны и прямолинейны",
+            "weakness": "можете быть излишне агрессивны, не доверяя другим"
+        },
+        "🤝 СОЦИАЛЬНОМ": {
+            "desc": "вы общаетесь, влияете, строите связи. Мир для вас — это сеть, где важно быть на связи.",
+            "strength": "гибки и общительны",
+            "weakness": "можете зависеть от чужого мнения, теряя себя"
+        }
+    }
+    
+    # 🔥 ИСПРАВЛЕНО: используем тип профиля для определения квадранта
+    if profile_type and profile_type in type_to_quadrant:
+        quadrant = type_to_quadrant[profile_type]
+        desc = quadrant_descriptions[quadrant]["desc"]
+        strength = quadrant_descriptions[quadrant]["strength"]
+        weakness = quadrant_descriptions[quadrant]["weakness"]
     else:
-        # 🔥 СЛУЧАЙ ЦЕНТРА (0,0)
-        return (f"<b>Вы находитесь в ЦЕНТРЕ системы координат</b> — точке равновесия.\n\n"
-                f"Это значит, что у вас нет ярко выраженного перекоса ни в одну из сторон. "
-                f"Ваши стратегии сбалансированы, вы можете быть гибким и адаптироваться к разным ситуациям.\n\n"
-                f"• Ваша ведущая стратегия — {main}\n"
-                f"• Вторая по значимости — {second}\n\n"
-                f"Такое положение даёт вам уникальную способность — выбирать способ реакции в зависимости от контекста, "
-                f"не будучи заложником одной доминирующей стратегии.")
+        # Fallback на старую логику, если тип не указан
+        if x > 0 and y > 0:
+            quadrant = "📚 МЫСЛИТЕЛЬНОМ"
+        elif x < 0 and y > 0:
+            quadrant = "🔧 ТРУДОВОМ"
+        elif x < 0 and y < 0:
+            quadrant = "⚔️ СИЛОВОМ"
+        elif x > 0 and y < 0:
+            quadrant = "🤝 СОЦИАЛЬНОМ"
+        else:
+            # Центр
+            return (f"<b>Вы находитесь в ЦЕНТРЕ системы координат</b> — точке равновесия.\n\n"
+                    f"Ваши стратегии сбалансированы. Ведущая стратегия — {main}, вторая — {second}.")
+        
+        desc = quadrant_descriptions[quadrant]["desc"]
+        strength = quadrant_descriptions[quadrant]["strength"]
+        weakness = quadrant_descriptions[quadrant]["weakness"]
     
     # Определяем расстояние от центра
     distance = (x**2 + y**2)**0.5
     
     if distance < 1.0:
-        position_desc = f"Вы близки к центру, с небольшим уклоном в {quadrant} квадрант."
+        position_desc = f"Вы близки к центру, с уклоном в {quadrant} квадрант."
     elif abs(x) > abs(y):
         direction = "выше" if x > 0 else "ниже"
         position_desc = f"Ось ограничений у вас развита {direction} среднего (отклонение {abs(x):.1f})."
@@ -516,8 +543,9 @@ async def show_results_screen(
     message_1 += f"• Воображение: {y:+.1f} (от -6 до +6)\n"
     message_1 += f"• Ограничения: {x:+.1f} (от -6 до +6)\n\n"
     
-    # Описание квадранта
-    message_1 += get_quadrant_description(x, y, final_strategy_levels)
+    # 🔥 ИСПРАВЛЕНО: передаём тип профиля в функцию описания квадранта
+    profile_type = profile_data.get('type_code')  # "SP", "IP", "IA", "SA"
+    message_1 += get_quadrant_description(x, y, final_strategy_levels, profile_type)
     message_1 += "\n\n"
     
     # БЛОК ТОЧКИ НАПРЯЖЕНИЯ
