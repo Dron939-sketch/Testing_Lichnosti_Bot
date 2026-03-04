@@ -22,7 +22,7 @@ class IntimateProfileDataset:
             "files": []
         }
     
-    def load_all_profiles(self) -> List[Dict]:
+    def __init__(self, input_dir: str = "sexual_18"):
         """Загружает все JSON-профили из папки"""
         json_files = glob.glob(os.path.join(self.profiles_dir, "*.json"))
         print(f"📁 Найдено JSON-файлов: {len(json_files)}")
