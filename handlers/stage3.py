@@ -167,7 +167,7 @@ async def start_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["stage3_level_scores"] = []
         log_debug(f"📊 Инициализирован stage3_level_scores", user_id)
     
-    # 🔥 НОВОЕ: инициализируем словарь для хранения поведенческих уровней по стратегиям
+    # Инициализируем словарь для хранения поведенческих уровней по стратегиям
     if "behavioral_levels" not in context.user_data:
         context.user_data["behavioral_levels"] = {
             "СБ": [],
@@ -200,7 +200,7 @@ async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYP
     question = STAGE_3_QUESTIONS[current]
     
     # 🔥 ПОЛУЧАЕМ СТРАТЕГИЮ ВОПРОСА
-    strategy = question.get("strategy", "УБ")  # по умолчанию УБ
+    strategy = question.get("strategy", "УБ")
     
     progress = calculate_progress(current + 1, len(STAGE_3_QUESTIONS))
     
@@ -212,13 +212,13 @@ async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYP
     
     keyboard = []
     
-    for option_id, option in question["options"].items():
-        # 🔥 ИЗМЕНЕНО: добавляем strategy в callback
+    for option_id, option_text in question["options"].items():
+        # 🔥 ИСПРАВЛЕНО: option_text — это строка
         unique_callback = generate_unique_callback("stage3", user_id, current, option_id, strategy)
-        log_debug(f"   кнопка: {option[:20]}... -> {unique_callback}", user_id)
+        log_debug(f"   кнопка: {option_text[:20]}... -> {unique_callback}", user_id)
         log_to_file("stage3_callbacks.log", f"Создан callback: {unique_callback}", user_id)
         keyboard.append([
-            InlineKeyboardButton(option, callback_data=unique_callback)
+            InlineKeyboardButton(option_text, callback_data=unique_callback)
         ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -251,16 +251,7 @@ async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     user_id = update.effective_user.id
     
-    # 🔥🔥🔥 АВАРИЙНОЕ ЛОГИРОВАНИЕ
-    log_to_file("stage3_answers.log", f"ПОЛУЧЕН CALLBACK: {query.data}", user_id)
-    log_to_file("stage3_answers.log", f"stage3_current до: {context.user_data.get('stage3_current')}", user_id)
-    log_to_file("stage3_answers.log", f"stage3_last_answered: {context.user_data.get('stage3_last_answered')}", user_id)
-    
-    print("\n" + "🔥"*50, file=sys.stderr, flush=True)
-    print(f"🔥 handle_stage_3_answer CALLED", file=sys.stderr, flush=True)
-    print(f"🔥 callback: {query.data}", file=sys.stderr, flush=True)
-    print(f"🔥 user_id: {user_id}", file=sys.stderr, flush=True)
-    print("🔥"*50, file=sys.stderr, flush=True)
+    log_debug(f"🔥 handle_stage_3_answer CALLED с callback: {query.data}", user_id)
     
     try:
         await query.answer()
@@ -276,16 +267,14 @@ async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         parts = query.data.split("_")
         log_debug(f"   parts: {parts}", user_id)
-        log_to_file("stage3_answers.log", f"parts: {parts}", user_id)
         
         if len(parts) < 3 or parts[0] != "stage3":
             log_debug(f"❌ Неверный формат callback: {query.data}", user_id)
-            log_to_file("stage3_errors.log", f"Неверный формат: {query.data}", user_id)
             return STAGE_3
         
-        # 🔥 ИЗМЕНЕНО: парсим с учётом strategy
+        # Парсим callback
         if len(parts) == 4:
-            # Формат: stage3_0_a_СБ
+            # Формат: stage3_0_1_СБ
             current = int(parts[1])
             option_id = parts[2]
             strategy = parts[3]
@@ -293,34 +282,44 @@ async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TY
             # Старый формат для обратной совместимости
             current = int(parts[1])
             option_id = parts[2]
-            strategy = "УБ"  # по умолчанию
+            strategy = "УБ"
         else:
             log_debug(f"❌ Неверное количество частей: {len(parts)}", user_id)
             return STAGE_3
         
         log_debug(f"📥 Ответ на вопрос {current}, option={option_id}, strategy={strategy}", user_id)
-        log_to_file("stage3_answers.log", f"Ответ на вопрос {current}, option={option_id}, strategy={strategy}", user_id)
         
-        last_answered = context.user_data.get("stage3_last_answered", -1)
-        if current <= last_answered:
-            log_debug(f"⏭️ Вопрос {current} уже отвечен (last={last_answered})", user_id)
-            log_to_file("stage3_answers.log", f"Вопрос {current} уже отвечен", user_id)
-            return STAGE_3
+        # Получаем текущий индекс
+        stage3_current = context.user_data.get("stage3_current", 0)
         
+        # 🔥 ИСПРАВЛЕНО: проверяем, не отвечали ли уже на этот вопрос
+        if current < stage3_current:
+            log_debug(f"⏭️ Вопрос {current} уже отвечен (текущий индекс {stage3_current})", user_id)
+            # Всё равно переходим к следующему вопросу
+            return await ask_stage_3_question(update, context)
+        
+        # Получаем вопрос
         question = STAGE_3_QUESTIONS[current]
-        selected_option = question["options"].get(option_id)
+        option_text = question["options"].get(option_id)
         
-        if not selected_option:
+        if not option_text:
             log_debug(f"❌ Опция {option_id} не найдена", user_id)
-            log_to_file("stage3_errors.log", f"Опция {option_id} не найдена", user_id)
             return STAGE_3
         
-        level = selected_option.get("level", 1)
+        # 🔥 ИСПРАВЛЕНО: уровень — это номер опции (1-6)
+        try:
+            level = int(option_id)
+        except ValueError:
+            level = 1
         
-        # 🔥 СОХРАНЯЕМ ДЛЯ ОБЩЕГО УРОВНЯ (как было)
+        log_debug(f"   Уровень: {level}", user_id)
+        
+        # Сохраняем в общий список
+        if "stage3_level_scores" not in context.user_data:
+            context.user_data["stage3_level_scores"] = []
         context.user_data["stage3_level_scores"].append(level)
         
-        # 🔥 НОВОЕ: СОХРАНЯЕМ ПО СТРАТЕГИЯМ
+        # Сохраняем по стратегиям
         if strategy in ["СБ", "ТФ", "УБ", "ЧВ"]:
             if "behavioral_levels" not in context.user_data:
                 context.user_data["behavioral_levels"] = {
@@ -328,31 +327,26 @@ async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TY
                 }
             context.user_data["behavioral_levels"][strategy].append(level)
             log_debug(f"   + уровень {level} к стратегии {strategy}", user_id)
-            log_to_file("stage3_strategies.log", f"Q{current}: +{level} к {strategy}", user_id)
         
         log_debug(f"✅ + уровень {level} к stage3_scores", user_id)
-        log_to_file("stage3_scores.log", f"Q{current}: + уровень {level}", user_id)
         log_debug(f"   теперь stage3_scores: {context.user_data['stage3_level_scores']}", user_id)
         
-        context.user_data["stage3_last_answered"] = current
-        context.user_data["stage3_current"] = current + 1
-        log_debug(f"   stage3_current увеличен до {current + 1}", user_id)
-        log_to_file("stage3_answers.log", f"stage3_current теперь = {current + 1}", user_id)
+        # 🔥 ИСПРАВЛЕНО: обновляем индекс ТОЛЬКО если это новый вопрос
+        if current == stage3_current:
+            context.user_data["stage3_last_answered"] = current
+            context.user_data["stage3_current"] = current + 1
+            log_debug(f"   stage3_current увеличен до {current + 1}", user_id)
         
-        # ✅ ВАЖНО: сохраняем состояние
-        context.user_data["conversation_state"] = STAGE_3
-        
+        # Задаём следующий вопрос
         return await ask_stage_3_question(update, context)
         
     except Exception as e:
         log_debug(f"❌ Ошибка: {e}", user_id)
-        log_to_file("stage3_errors.log", f"Исключение: {e}", user_id)
         import traceback
-        traceback.print_exc(file=sys.stderr)
+        traceback.print_exc()
         return await ask_stage_3_question(update, context)
     finally:
         context.user_data["processing"] = False
-        log_debug(f"✅ handle_stage_3_answer FINISHED", user_id)
 
 async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Завершение ЭТАПА 3 - МОТИВАЦИОННЫЙ ЭКРАН"""
@@ -363,11 +357,9 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stage3_scores = context.user_data.get("stage3_level_scores", [])
     
     log_debug(f"🎯 finish_stage_3 вызван", user_id)
-    log_to_file("stage3_finish.log", f"finish_stage_3 вызван", user_id)
     log_debug(f"📊 stage2_level={stage2_level}, stage3_scores={stage3_scores}", user_id)
-    log_to_file("stage3_finish.log", f"stage2_level={stage2_level}, stage3_scores={stage3_scores}", user_id)
     
-    # 🔥 ЛОГИРУЕМ ПОВЕДЕНЧЕСКИЕ УРОВНИ ПО СТРАТЕГИЯМ
+    # Логируем поведенческие уровни по стратегиям
     behavioral_levels = context.user_data.get("behavioral_levels", {})
     if behavioral_levels:
         log_debug(f"📊 ПОВЕДЕНЧЕСКИЕ УРОВНИ ПО СТРАТЕГИЯМ:", user_id)
@@ -375,11 +367,9 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if values:
                 avg = sum(values) / len(values)
                 log_debug(f"   {strategy}: {values} → среднее {avg:.1f}", user_id)
-                log_to_file("stage3_strategies.log", f"ИТОГО {strategy}: {values} → {avg:.1f}", user_id)
     
     needs_clarification = need_clarification_stage3(stage2_level, stage3_scores)
     log_debug(f"📊 needs_clarification: {needs_clarification}", user_id)
-    log_to_file("stage3_finish.log", f"needs_clarification: {needs_clarification}", user_id)
     
     if needs_clarification and not context.user_data.get("stage3_clarified", False):
         context.user_data["stage3_clarified"] = True
@@ -387,7 +377,6 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["clarification_stage"] = "stage3"
         
         log_debug(f"🚀 Запуск уточнений stage3", user_id)
-        log_to_file("stage3_finish.log", f"Запуск уточнений stage3", user_id)
         from handlers.common import ask_clarification_question
         return await ask_clarification_question(update, context)
     
@@ -404,7 +393,6 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
         behavior_level = 6
     
     log_debug(f"✅ Stage 3 complete, final_level={final_level}, behavior_level={behavior_level}", user_id)
-    log_to_file("stage3_finish.log", f"Stage 3 complete: final_level={final_level}, behavior_level={behavior_level}", user_id)
     
     result_text = STAGE3_FEEDBACK.get(behavior_level, STAGE3_FEEDBACK[1])
     
@@ -414,5 +402,4 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(result_text.strip(), reply_markup=reply_markup, parse_mode="HTML")
     
     log_debug(f"🔄 finish_stage_3 → возвращаю STAGE_4 = {STAGE_4}", user_id)
-    log_to_file("stage3_finish.log", f"Возвращаю STAGE_4 = {STAGE_4}", user_id)
     return STAGE_4
