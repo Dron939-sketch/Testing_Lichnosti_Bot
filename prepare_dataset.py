@@ -1,28 +1,30 @@
 #!/usr/bin/env python3
 """
-Подготовка данных для обучения ИИ на ваших JSON-профилях
+prepare_dataset.py - Подготовка данных для обучения AI на ваших интимных профилях
+Запуск: python prepare_dataset.py
 """
 
-import json
 import os
+import json
 import glob
-from typing import Dict, List
 from datetime import datetime
+from typing import Dict, List, Any
 
-class VariaticaDataset:
-    def __init__(self, input_dir: str = "ai_training_data"):
-        self.input_dir = input_dir
+class IntimateProfileDataset:
+    def __init__(self, profiles_dir: str = "sexual_18"):
+        self.profiles_dir = profiles_dir
         self.profiles = []
         self.stats = {
             "total": 0,
             "by_type": {},
             "by_archetype": {},
-            "section_stats": {}
+            "sections_avg": {},
+            "files": []
         }
     
-    def scan_profiles(self):
-        """Сканирует все JSON-файлы в папке"""
-        json_files = glob.glob(f"{self.input_dir}/*.json")
+    def load_all_profiles(self) -> List[Dict]:
+        """Загружает все JSON-профили из папки"""
+        json_files = glob.glob(os.path.join(self.profiles_dir, "*.json"))
         print(f"📁 Найдено JSON-файлов: {len(json_files)}")
         
         for file_path in json_files:
@@ -32,128 +34,165 @@ class VariaticaDataset:
                 
                 # Проверяем, что это интимный профиль
                 if self._is_intimate_profile(data):
-                    self.profiles.append({
+                    profile_info = {
                         "file": os.path.basename(file_path),
                         "data": data,
                         "type": data.get('profile_type', 'unknown'),
-                        "archetype": data.get('archetype', 'unknown')
-                    })
-                    
-                    # Собираем статистику
-                    self._update_stats(data)
-                    
+                        "archetype": data.get('archetype', 'unknown'),
+                        "size": os.path.getsize(file_path)
+                    }
+                    self.profiles.append(profile_info)
+                    self.stats["files"].append(os.path.basename(file_path))
                     print(f"  ✅ {os.path.basename(file_path)}")
                 else:
                     print(f"  ⚠️ {os.path.basename(file_path)} - не интимный профиль")
                     
             except Exception as e:
-                print(f"  ❌ {os.path.basename(file_path)}: {e}")
+                print(f"  ❌ Ошибка чтения {os.path.basename(file_path)}: {e}")
         
-        print(f"\n✅ Загружено профилей: {len(self.profiles)}")
+        self.stats["total"] = len(self.profiles)
+        return self.profiles
     
     def _is_intimate_profile(self, data: dict) -> bool:
         """Проверяет, что это интимный профиль"""
         required = ["profile_type", "archetype", "role", "quote", "description", "sections"]
         return all(field in data for field in required)
     
-    def _update_stats(self, data: dict):
-        """Обновляет статистику"""
-        # По типу
-        p_type = data.get('profile_type', 'unknown')
-        self.stats["by_type"][p_type] = self.stats["by_type"].get(p_type, 0) + 1
+    def analyze_profiles(self):
+        """Анализирует структуру всех профилей"""
+        print("\n" + "="*60)
+        print("📊 АНАЛИЗ ПРОФИЛЕЙ")
+        print("="*60)
         
-        # По архетипу
-        arch = data.get('archetype', 'unknown')
-        self.stats["by_archetype"][arch] = self.stats["by_archetype"].get(arch, 0) + 1
-        
-        # По секциям
-        for section_name, section_data in data.get('sections', {}).items():
-            if section_name not in self.stats["section_stats"]:
-                self.stats["section_stats"][section_name] = {
-                    "count": 0,
-                    "avg_items": 0,
-                    "total_items": 0
-                }
+        # Статистика по типам
+        for profile in self.profiles:
+            p_type = profile['type']
+            self.stats["by_type"][p_type] = self.stats["by_type"].get(p_type, 0) + 1
             
-            stats = self.stats["section_stats"][section_name]
-            stats["count"] += 1
-            
-            if 'items' in section_data:
-                stats["total_items"] += len(section_data['items'])
-            elif 'content' in section_data:
-                words = len(section_data['content'].split())
-                stats["total_items"] += words // 20  # приблизительно
-    
-    def calculate_averages(self):
-        """Вычисляет средние значения"""
-        for section, stats in self.stats["section_stats"].items():
-            if stats["count"] > 0:
-                stats["avg_items"] = round(stats["total_items"] / stats["count"], 1)
+            arch = profile['archetype']
+            self.stats["by_archetype"][arch] = self.stats["by_archetype"].get(arch, 0) + 1
         
-        self.stats["total"] = len(self.profiles)
-    
-    def export_for_training(self, output_file: str = "variatica_training.jsonl"):
-        """
-        Экспортирует профили в формате для обучения
-        Каждая строка: {"messages": [{"role": "system", "content": ...}, ...]}
-        """
-        with open(output_file, 'w', encoding='utf-8') as f:
-            for profile in self.profiles:
-                data = profile['data']
-                
-                # Создаём системный промпт
-                system_prompt = f"""Ты создаешь интимные психологические профили для системы Variatica.
-Стиль: метафоричный, глубокий, с обращением на "ты", без осуждения.
-Структура: 15 секций (what_turns_on, what_turns_off, smells_tastes, sounds, dirty_details, fetishes, places, morning, secret_desires, whispers, core, compliments, tells, remains)."""
-
-                # Создаём пользовательский запрос
-                user_prompt = f"""Создай интимный профиль для:
-Тип: {data['profile_type']}
-Архетип: {data['archetype']}
-Роль: {data['role']}"""
-
-                # Создаём completion (весь профиль)
-                completion = json.dumps(data, ensure_ascii=False)
-                
-                # Формируем строку в формате OpenAI
-                line = json.dumps({
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                        {"role": "assistant", "content": completion}
-                    ]
-                }, ensure_ascii=False)
-                
-                f.write(line + '\n')
+        # Анализ секций
+        section_lengths = {}
+        section_counts = {}
         
-        print(f"\n✅ Датасет сохранён: {output_file}")
+        for profile in self.profiles:
+            sections = profile['data'].get('sections', {})
+            for section_name, section_data in sections.items():
+                if section_name not in section_lengths:
+                    section_lengths[section_name] = 0
+                    section_counts[section_name] = 0
+                
+                if 'items' in section_data:
+                    section_lengths[section_name] += len(section_data['items'])
+                elif 'content' in section_data:
+                    section_lengths[section_name] += len(section_data['content'].split())
+                
+                section_counts[section_name] += 1
+        
+        for section in section_lengths:
+            if section_counts[section] > 0:
+                self.stats["sections_avg"][section] = round(
+                    section_lengths[section] / section_counts[section], 1
+                )
     
     def print_stats(self):
         """Выводит статистику"""
-        print("\n" + "="*60)
-        print("📊 СТАТИСТИКА ПРОФИЛЕЙ")
-        print("="*60)
-        print(f"Всего профилей: {self.stats['total']}")
+        print(f"\n📊 ВСЕГО ПРОФИЛЕЙ: {self.stats['total']}")
         
         print("\n📌 ПО ТИПАМ:")
         for p_type, count in sorted(self.stats["by_type"].items()):
             print(f"  {p_type}: {count}")
         
-        print("\n🎭 ПО АРХЕТИПАМ:")
-        for arch, count in sorted(self.stats["by_archetype"].items()):
-            print(f"  {arch}: {count}")
+        print("\n🎭 ПО АРХЕТИПАМ (первые 10):")
+        for i, (arch, count) in enumerate(sorted(self.stats["by_archetype"].items())):
+            if i < 10:
+                print(f"  {arch}: {count}")
         
-        print("\n📏 СЕКЦИИ (среднее количество пунктов):")
-        for section, stats in sorted(self.stats["section_stats"].items()):
-            if stats["count"] > 0:
-                print(f"  {section:20} {stats['avg_items']:5.1f} пунктов (в {stats['count']} профилях)")
+        print("\n📏 СРЕДНЯЯ ДЛИНА СЕКЦИЙ:")
+        for section, avg in sorted(self.stats["sections_avg"].items()):
+            if avg > 0:
+                if section in ["dirty_details", "core"]:
+                    print(f"  {section:20} {avg:.1f} слов")
+                else:
+                    print(f"  {section:20} {avg:.1f} пунктов")
+    
+    def export_for_training(self, output_file: str = "intimate_profiles_dataset.jsonl"):
+        """Экспортирует профили в формате JSONL для обучения"""
+        print(f"\n📝 Экспорт в {output_file}...")
         
-        print("="*60)
+        with open(output_file, 'w', encoding='utf-8') as f:
+            for profile in self.profiles:
+                data = profile['data']
+                
+                # Создаем обучающий пример в формате OpenAI
+                example = {
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "Ты создаешь интимные психологические профили для системы Variatica. Стиль: метафоричный, глубокий, с обращением на 'ты', без осуждения. Структура: 15 секций (what_turns_on, what_turns_off, smells_tastes, sounds, dirty_details, fetishes, places, morning, secret_desires, whispers, core, compliments, tells, remains)."
+                        },
+                        {
+                            "role": "user",
+                            "content": f"Создай интимный профиль для типа {data['profile_type']} с архетипом {data['archetype']}."
+                        },
+                        {
+                            "role": "assistant",
+                            "content": json.dumps(data, ensure_ascii=False)
+                        }
+                    ]
+                }
+                
+                f.write(json.dumps(example, ensure_ascii=False) + '\n')
+        
+        print(f"✅ Экспортировано {len(self.profiles)} профилей")
+        return output_file
+    
+    def create_prompts_file(self, output_file: str = "prompts_for_generation.txt"):
+        """Создает файл с промптами для генерации новых профилей"""
+        print(f"\n📝 Создание файла с промптами: {output_file}")
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write("="*80 + "\n")
+            f.write("ПРОМПТЫ ДЛЯ ГЕНЕРАЦИИ ИНТИМНЫХ ПРОФИЛЕЙ\n")
+            f.write("="*80 + "\n\n")
+            
+            for profile in self.profiles:
+                data = profile['data']
+                f.write(f"ТИП: {data['profile_type']}\n")
+                f.write(f"АРХЕТИП: {data['archetype']}\n")
+                f.write(f"РОЛЬ: {data['role']}\n")
+                f.write(f"ЦИТАТА: {data['quote']}\n")
+                f.write("-"*40 + "\n\n")
+
+def main():
+    print("="*80)
+    print("🧠 ПОДГОТОВКА ДАННЫХ ДЛЯ ОБУЧЕНИЯ AI")
+    print("="*80)
+    
+    # Создаем датасет
+    dataset = IntimateProfileDataset("sexual_18")
+    
+    # Загружаем все профили
+    profiles = dataset.load_all_profiles()
+    
+    if not profiles:
+        print("❌ Не найдено ни одного профиля!")
+        return
+    
+    # Анализируем
+    dataset.analyze_profiles()
+    dataset.print_stats()
+    
+    # Экспортируем
+    dataset.export_for_training()
+    dataset.create_prompts_file()
+    
+    print("\n" + "="*80)
+    print("✅ ГОТОВО! Файлы созданы:")
+    print("   - intimate_profiles_dataset.jsonl  (для обучения AI)")
+    print("   - prompts_for_generation.txt       (промпты для генерации)")
+    print("="*80)
 
 if __name__ == "__main__":
-    # Создаём датасет
-    dataset = VariaticaDataset("ai_training_data")
-    dataset.scan_profiles()
-    dataset.calculate_averages()
-    dataset.print_stats()
-    dataset.export_for_training()
+    main()
