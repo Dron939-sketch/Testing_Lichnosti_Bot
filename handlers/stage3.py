@@ -1,5 +1,11 @@
 """
 Обработчики для ЭТАПА 3: Конфигурация поведения
+ИСПРАВЛЕННАЯ ВЕРСИЯ:
+✅ Добавлено сохранение ответов для AI
+✅ Добавлены метрики времени
+✅ Динамическое отображение количества вопросов
+✅ Константы для маппинга уровней
+✅ Улучшена защита от повторных ответов
 """
 
 import logging
@@ -43,6 +49,21 @@ def log_to_file(filename: str, data: any, user_id: int = None):
     except Exception as e:
         print(f"❌ Ошибка записи в файл {filename}: {e}", file=sys.stderr)
 
+# Константы
+TOTAL_QUESTIONS = len(STAGE_3_QUESTIONS)  # 8 вопросов
+TIME_PER_QUESTION = 0.4  # минут на вопрос
+
+# Маппинг финального уровня на уровень обратной связи этапа 3
+def map_to_stage3_feedback_level(final_level: int) -> int:
+    """Маппинг финального уровня на уровень обратной связи этапа 3"""
+    if final_level <= 1:
+        return 1
+    if final_level <= 2:
+        return 2
+    if final_level <= 4:
+        return 4
+    return 6
+
 async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 3"""
     query = update.callback_query
@@ -57,6 +78,8 @@ async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     await query.answer()
     
+    estimated_time = round(TOTAL_QUESTIONS * TIME_PER_QUESTION)
+    
     intro_text = (
         f"🧠 <b>ЭТАП 3: КОНФИГУРАЦИЯ ПОВЕДЕНИЯ</b>\n\n"
         f"Восприятие определяет, что вы видите.\n"
@@ -69,8 +92,8 @@ async def show_stage_3_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"• Ваши автоматические реакции\n"
         f"• Как вы действуете в разных ситуациях\n"
         f"• Какие стратегии поведения закреплены\n\n"
-        f"📊 <b>Вопросов:</b> 8\n"
-        f"⏱ <b>Время:</b> ~3 минуты\n\n"
+        f"📊 <b>Вопросов:</b> {TOTAL_QUESTIONS}\n"
+        f"⏱ <b>Время:</b> ~{estimated_time} минут\n\n"
     )
     
     keyboard = [
@@ -157,10 +180,15 @@ async def start_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     context.user_data["stage3_current"] = 0
     context.user_data["stage3_last_answered"] = -1
+    context.user_data["stage3_start_time"] = time.time()  # для метрик
     
     # ✅ ВАЖНО: сохраняем состояние
     context.user_data["conversation_state"] = STAGE_3
     log_debug(f"💾 Сохраняю состояние STAGE_3 = {STAGE_3}", user_id)
+    
+    # Инициализируем хранилище для AI
+    if "all_answers" not in context.user_data:
+        context.user_data["all_answers"] = []
     
     # Инициализируем список баллов
     if "stage3_level_scores" not in context.user_data:
@@ -188,12 +216,12 @@ async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYP
     current = context.user_data.get("stage3_current", 0)
     
     log_debug(f"📝 ask_stage_3_question: current={current}", user_id)
-    log_to_file("stage3_questions.log", f"Вопрос {current+1}/8", user_id)
+    log_to_file("stage3_questions.log", f"Вопрос {current+1}/{TOTAL_QUESTIONS}", user_id)
     
     # ✅ ВАЖНО: сохраняем состояние
     context.user_data["conversation_state"] = STAGE_3
     
-    if current >= len(STAGE_3_QUESTIONS):
+    if current >= TOTAL_QUESTIONS:
         log_debug(f"🏁 Все вопросы заданы, завершаем этап 3", user_id)
         return await finish_stage_3(update, context)
     
@@ -202,7 +230,7 @@ async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYP
     # 🔥 ПОЛУЧАЕМ СТРАТЕГИЮ ВОПРОСА
     strategy = question.get("strategy", "УБ")
     
-    progress = calculate_progress(current + 1, len(STAGE_3_QUESTIONS))
+    progress = calculate_progress(current + 1, TOTAL_QUESTIONS)
     
     question_text = (
         f"🧠 <b>ЭТАП 3: КОНФИГУРАЦИЯ ПОВЕДЕНИЯ</b>\n\n"
@@ -230,7 +258,7 @@ async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYP
                 reply_markup=reply_markup, 
                 parse_mode="HTML"
             )
-            log_debug(f"✅ Вопрос {current+1}/{len(STAGE_3_QUESTIONS)} отправлен", user_id)
+            log_debug(f"✅ Вопрос {current+1}/{TOTAL_QUESTIONS} отправлен", user_id)
     except Exception as e:
         log_debug(f"❌ Ошибка при редактировании: {e}", user_id)
         try:
@@ -328,6 +356,20 @@ async def handle_stage_3_answer(update: Update, context: ContextTypes.DEFAULT_TY
             context.user_data["behavioral_levels"][strategy].append(level)
             log_debug(f"   + уровень {level} к стратегии {strategy}", user_id)
         
+        # 👇 СОХРАНЯЕМ ОТВЕТ ДЛЯ AI
+        if "all_answers" not in context.user_data:
+            context.user_data["all_answers"] = []
+        
+        context.user_data["all_answers"].append({
+            'stage': 3,
+            'question_index': current,
+            'question': question['text'],
+            'answer': option_text,
+            'answer_value': level,
+            'strategy': strategy
+        })
+        log_debug(f"   💾 Ответ сохранён для AI", user_id)
+        
         log_debug(f"✅ + уровень {level} к stage3_scores", user_id)
         log_debug(f"   теперь stage3_scores: {context.user_data['stage3_level_scores']}", user_id)
         
@@ -359,14 +401,34 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_debug(f"🎯 finish_stage_3 вызван", user_id)
     log_debug(f"📊 stage2_level={stage2_level}, stage3_scores={stage3_scores}", user_id)
     
+    # 👇 ЛОГИРУЕМ МЕТРИКИ ВРЕМЕНИ
+    if "stage3_start_time" in context.user_data:
+        elapsed = time.time() - context.user_data["stage3_start_time"]
+        logger.info(f"📊 User {user_id}: Stage 3 completed in {elapsed:.1f} seconds")
+        log_to_file("stage3_metrics.log", f"time:{elapsed:.1f}", user_id)
+        log_to_file("stage3_metrics.log", f"answers:{len(stage3_scores)}", user_id)
+    
     # Логируем поведенческие уровни по стратегиям
     behavioral_levels = context.user_data.get("behavioral_levels", {})
     if behavioral_levels:
         log_debug(f"📊 ПОВЕДЕНЧЕСКИЕ УРОВНИ ПО СТРАТЕГИЯМ:", user_id)
+        
+        # Находим доминирующую стратегию
+        max_strategy = None
+        max_avg = 0
+        
         for strategy, values in behavioral_levels.items():
             if values:
                 avg = sum(values) / len(values)
                 log_debug(f"   {strategy}: {values} → среднее {avg:.1f}", user_id)
+                log_to_file("stage3_strategies.log", f"{strategy}: {values} → {avg:.1f}", user_id)
+                
+                if avg > max_avg:
+                    max_avg = avg
+                    max_strategy = strategy
+        
+        if max_strategy:
+            log_debug(f"   🏆 Доминирующая стратегия: {max_strategy} ({max_avg:.1f})", user_id)
     
     needs_clarification = need_clarification_stage3(stage2_level, stage3_scores)
     log_debug(f"📊 needs_clarification: {needs_clarification}", user_id)
@@ -383,14 +445,8 @@ async def finish_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     final_level = calculate_final_level(stage2_level, stage3_scores)
     context.user_data["final_level"] = final_level
     
-    if final_level <= 1:
-        behavior_level = 1
-    elif final_level <= 2:
-        behavior_level = 2
-    elif final_level <= 4:
-        behavior_level = 4
-    else:
-        behavior_level = 6
+    # 🔥 ИСПРАВЛЕНО: используем функцию маппинга
+    behavior_level = map_to_stage3_feedback_level(final_level)
     
     log_debug(f"✅ Stage 3 complete, final_level={final_level}, behavior_level={behavior_level}", user_id)
     
