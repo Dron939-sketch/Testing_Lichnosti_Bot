@@ -218,7 +218,7 @@ async def ask_stage_3_question(update: Update, context: ContextTypes.DEFAULT_TYP
         log_debug(f"   кнопка: {option[:20]}... -> {unique_callback}", user_id)
         log_to_file("stage3_callbacks.log", f"Создан callback: {unique_callback}", user_id)
         keyboard.append([
-            InlineKeyboardButton(option["text"], callback_data=unique_callback)
+            InlineKeyboardButton(option, callback_data=unique_callback)
         ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
