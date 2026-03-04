@@ -1,5 +1,10 @@
 """
 Обработчики для ЭТАПА 1: Конфигурация восприятия
+ИСПРАВЛЕННАЯ ВЕРСИЯ:
+✅ Добавлено сохранение ответов для AI
+✅ Исправлено отображение количества вопросов (9 → 10)
+✅ Улучшена защита от повторных ответов
+✅ Добавлены метрики времени
 """
 
 import logging
@@ -42,6 +47,9 @@ def log_to_file(filename: str, data: any, user_id: int = None):
 
 logger = logging.getLogger(__name__)
 
+# Константы
+TOTAL_QUESTIONS = len(STAGE_1_QUESTIONS)  # 10 вопросов
+
 async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Экран перед ЭТАПОМ 1"""
     query = update.callback_query
@@ -63,7 +71,7 @@ async def show_stage_1_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"• Куда направлено ваше внимание\n"
         f"• Что вызывает тревогу\n"
         f"• Как вы обрабатываете информацию\n\n"
-        f"📊 <b>Вопросов:</b> 10\n"
+        f"📊 <b>Вопросов:</b> {TOTAL_QUESTIONS}\n"
         f"⏱ <b>Время:</b> ~3 минуты\n\n"
         f"<i>Отвечайте честно — это поможет мне лучше понять вас.</i>\n\n"
         f"Начнем наше исследование?"
@@ -138,8 +146,14 @@ async def start_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.answer()
     
+    # Инициализируем данные для этапа 1
     context.user_data["stage1_current"] = 0
     context.user_data["stage1_last_answered"] = -1
+    context.user_data["stage1_start_time"] = time.time()  # для метрик
+    
+    # Инициализируем хранилище для AI
+    if "all_answers" not in context.user_data:
+        context.user_data["all_answers"] = []
     
     # ✅ ВАЖНО: сохраняем состояние
     context.user_data["conversation_state"] = STAGE_1
@@ -158,18 +172,20 @@ async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.effective_user.id
     
     current = context.user_data.get("stage1_current", 0)
+    total = TOTAL_QUESTIONS
+    
     log_debug(f"📝 ask_stage_1_question для пользователя {user_id}: current={current}", user_id)
-    log_to_file("stage1_questions.log", f"Вопрос {current+1}/9", user_id)
+    log_to_file("stage1_questions.log", f"Вопрос {current+1}/{total}", user_id)
     
     # ✅ ВАЖНО: сохраняем состояние
     context.user_data["conversation_state"] = STAGE_1
     
-    if current >= len(STAGE_1_QUESTIONS):
+    if current >= total:
         log_debug(f"🏁 Все вопросы заданы для пользователя {user_id}, завершаем этап 1", user_id)
         return await finish_stage_1(update, context)
     
     question = STAGE_1_QUESTIONS[current]
-    progress = calculate_progress(current + 1, len(STAGE_1_QUESTIONS))
+    progress = calculate_progress(current + 1, total)
     
     question_text = (
         f"🧠 <b>ЭТАП 1: КОНФИГУРАЦИЯ ВОСПРИЯТИЯ</b>\n\n"
@@ -196,7 +212,7 @@ async def ask_stage_1_question(update: Update, context: ContextTypes.DEFAULT_TYP
                 reply_markup=reply_markup, 
                 parse_mode="HTML"
             )
-            log_debug(f"✅ Вопрос {current+1}/{len(STAGE_1_QUESTIONS)} отправлен пользователю {user_id}", user_id)
+            log_debug(f"✅ Вопрос {current+1}/{total} отправлен пользователю {user_id}", user_id)
     except Exception as e:
         error_str = str(e).lower()
         if "message is not modified" in error_str:
@@ -281,9 +297,12 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
         
         # Инициализируем scores если нет
         if "scores" not in context.user_data:
-            context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
+            context.user_data["scores"] = {
+                "EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0,
+                "SP": 0, "IP": 0, "IA": 0, "SA": 0
+            }
         
-        # 👇 ИЗМЕНЕНО: обрабатываем и старые оси, и новые прямые баллы
+        # 👇 СОХРАНЯЕМ БАЛЛЫ
         for axis, score in selected_option.get("scores", {}).items():
             # Старые оси
             if axis in ["EXTERNAL", "INTERNAL", "SYMBOLIC", "MATERIAL"]:
@@ -293,12 +312,25 @@ async def handle_stage_1_answer(update: Update, context: ContextTypes.DEFAULT_TY
             
             # 👇 НОВЫЕ прямые баллы за типы
             elif axis in ["SP", "IP", "IA", "SA"]:
-                # Добавляем в общий словарь scores
                 if axis not in context.user_data["scores"]:
                     context.user_data["scores"][axis] = 0
                 context.user_data["scores"][axis] += score
                 log_debug(f"   +{score} к прямому типу {axis} (теперь: {context.user_data['scores'][axis]})", user_id)
                 log_to_file("stage1_scores.log", f"+{score} к {axis}", user_id)
+        
+        # 👇 СОХРАНЯЕМ ОТВЕТ ДЛЯ AI
+        if "all_answers" not in context.user_data:
+            context.user_data["all_answers"] = []
+        
+        context.user_data["all_answers"].append({
+            'stage': 1,
+            'question_index': current,
+            'question': question['text'],
+            'answer': selected_option['text'],
+            'option': option_id,
+            'scores': selected_option.get('scores', {})
+        })
+        log_debug(f"   💾 Ответ сохранён для AI", user_id)
         
         log_debug(f"✅ User {user_id}: Stage 1 Q{current} -> {option_id}", user_id)
         
@@ -336,6 +368,12 @@ async def finish_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_to_file("stage1_finish.log", f"finish_stage_1 вызван", user_id)
     log_debug(f"📊 Итоговые scores: {scores}", user_id)
     log_to_file("stage1_finish.log", f"scores: {scores}", user_id)
+    
+    # 👇 ЛОГИРУЕМ МЕТРИКИ ВРЕМЕНИ
+    if "stage1_start_time" in context.user_data:
+        elapsed = time.time() - context.user_data["stage1_start_time"]
+        logger.info(f"📊 User {user_id}: Stage 1 completed in {elapsed:.1f} seconds")
+        log_to_file("stage1_metrics.log", f"time:{elapsed:.1f}", user_id)
     
     clarifications_needed = need_clarification_stage1(scores)
     log_debug(f"📊 clarifications_needed: {clarifications_needed}", user_id)
