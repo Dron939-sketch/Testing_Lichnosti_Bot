@@ -84,27 +84,38 @@ async def show_results_screen(
     
     logger.info(f"📊 show_results_screen ВЫЗВАН для пользователя {user_id}")
     
-    # ===== ВОССТАНАВЛИВАЕМ has_shared ИЗ БЕКАПА 18+ МОДУЛЯ =====
+    # ===== ПОКАЗЫВАЕМ СООБЩЕНИЕ О ЗАГРУЗКЕ =====
+    analysis_text = f"""
+🧠 <b>АНАЛИЗИРУЮ ДАННЫЕ</b>
+
+<b>Соединяются четыре слоя информации:</b>
+▸ ✅ Конфигурация восприятия — определена
+▸ ✅ Конфигурация мышления — проанализирована
+▸ ✅ Конфигурация поведения — обработана
+▸ ✅ Точка напряжения — найдена
+
+<b>Формирую ваш уникальный профиль...</b>
+
+⏳ Пожалуйста, подождите несколько секунд...
+"""
+    await query.edit_message_text(analysis_text, parse_mode="HTML")
+    
+    # ===== ВОССТАНАВЛИВАЕМ has_shared ИЗ БЕКАПА =====
     sexual_backup = context.user_data.get("sexual_module_backup")
     if sexual_backup:
         if "has_shared" in sexual_backup:
             context.user_data["has_shared"] = sexual_backup["has_shared"]
-            logger.info(f"🔄 Восстановлен has_shared={sexual_backup['has_shared']} из sexual_module_backup")
+            logger.info(f"🔄 Восстановлен has_shared={sexual_backup['has_shared']}")
         
-        # Восстанавливаем другие важные данные
         for key in ["profile_data", "profile", "scores", "stage1_current", 
                     "stage2_level_scores_dict", "stage3_level_scores", "stage4_dilts_answers",
                     "actual_profile_key", "profile_card"]:
             if key in sexual_backup:
                 context.user_data[key] = sexual_backup[key]
         
-        # Удаляем бекап
         context.user_data.pop("sexual_module_backup", None)
-        logger.info("🧹 Удален sexual_module_backup")
     
     # ===== ПРОВЕРКА current_invite =====
-    logger.info(f"🔍 ПРОВЕРКА current_invite: {context.user_data.get('current_invite')}")
-    
     current_invite = context.user_data.get("current_invite")
     
     if not current_invite:
@@ -118,9 +129,8 @@ async def show_results_screen(
                 if session_data.get('invite_data'):
                     current_invite = session_data['invite_data']
                     context.user_data["current_invite"] = current_invite
-                    logger.info(f"🔄 Нашли сессию в БД для user_id={user_id}: {current_invite}")
         except Exception as e:
-            logger.error(f"❌ Ошибка проверки сессии в БД: {e}")
+            logger.error(f"❌ Ошибка проверки сессии: {e}")
     
     has_shared = context.user_data.get("has_shared", False) or force_shared_view
     profile_data = context.user_data.get("profile_data")
@@ -132,10 +142,7 @@ async def show_results_screen(
     # ===== ПОЛУЧАЕМ УРОВНИ СТРАТЕГИЙ =====
     strategy_levels = context.user_data.get("strategy_levels", {})
     behavioral_levels = context.user_data.get("behavioral_levels", {})
-    dilts_counts = context.user_data.get("dilts_counts", {})
-    dominant_dilts = context.user_data.get("dominant_dilts", "ENVIRONMENT")
     
-    # Вычисляем средние для каждой стратегии
     final_strategy_levels = {}
     
     sb_values = strategy_levels.get("СБ", []) + behavioral_levels.get("СБ", [])
@@ -150,216 +157,184 @@ async def show_results_screen(
     chv_values = strategy_levels.get("ЧВ", []) + behavioral_levels.get("ЧВ", [])
     final_strategy_levels["ЧВ"] = round(sum(chv_values) / len(chv_values), 1) if chv_values else 3.0
     
-    logger.info(f"📊 ИТОГОВЫЕ УРОВНИ СТРАТЕГИЙ: {final_strategy_levels}")
-    
     # ===== ОБРАБОТКА ПРИГЛАШЕНИЯ =====
     if current_invite:
-        logger.info(f"🔍 Найдено активное приглашение: {current_invite}")
-        
+        asyncio.create_task(handle_invite_async(
+            current_invite, 
+            user_id, 
+            update.effective_user.username or update.effective_user.first_name,
+            profile_data.get('display_name', 'unknown'),
+            context
+        ))
+    
+    # ===== ПОЛУЧАЕМ ОТВЕТЫ ПОЛЬЗОВАТЕЛЯ =====
+    user_answers = context.user_data.get('all_answers', [])
+    profile_type = profile_data.get('display_name')
+    
+    # ===== ЗАПУСКАЕМ ГЕНЕРАЦИЮ В ФОНЕ =====
+    async def generate_and_show():
+        """Фоновая задача для генерации профиля"""
+        try:
+            # Пробуем сгенерировать персонализированный профиль
+            personalized = None
+            if user_answers and profile_type:
+                personalized = await asyncio.to_thread(
+                    ai_generator.generate_personalized_profile,
+                    profile_type=profile_type,
+                    user_answers=user_answers,
+                    user_name=user_name
+                )
+            
+            # Если не получилось - берем обычный
+            if not personalized:
+                message = await get_regular_profile(profile_data, final_strategy_levels)
+            else:
+                message = personalized
+            
+            # Отправляем результат
+            await send_profile_result(query, message, has_shared, context)
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка в фоновой генерации: {e}")
+            # В случае ошибки показываем обычный профиль
+            message = await get_regular_profile(profile_data, final_strategy_levels)
+            await send_profile_result(query, message, has_shared, context)
+    
+    # Запускаем фоновую задачу
+    asyncio.create_task(generate_and_show())
+    
+    return RESULTS
+
+async def handle_invite_async(invite_data, user_id, username, profile_name, context):
+    """Фоновая обработка приглашения"""
+    try:
         friend_data = {
             "target_id": user_id,
-            "target_name": update.effective_user.username or update.effective_user.first_name,
-            "target_profile": profile_data.get('display_name', 'unknown')
+            "target_name": username,
+            "target_profile": profile_name
         }
         
-        try:
-            success = update_invite_in_api(current_invite["invite_id"], friend_data)
+        success = update_invite_in_api(invite_data["invite_id"], friend_data)
+        
+        if success:
+            try:
+                requests.post(
+                    f"{API_URL}/api/user-session/clear/{user_id}",
+                    timeout=5
+                )
+            except:
+                pass
             
-            if success:
-                logger.info(f"✅ Приглашение {current_invite['invite_id']} обновлено")
+            buyer_id = invite_data.get("buyer_id")
+            if buyer_id:
+                profile_link = get_disk_link_by_profile(profile_name)
+                message_text = (
+                    f"👤 <b>🪞 НОВОЕ ОТРАЖЕНИЕ!</b>\n\n"
+                    f"✨ @{username} посмотрелся в зеркало!\n"
+                    f"📊 <b>Профиль:</b> <code>{profile_name}</code>\n"
+                    f"📁 <b>Материалы профиля:</b>\n{profile_link}"
+                )
                 
-                try:
-                    requests.post(
-                        f"{API_URL}/api/user-session/clear/{user_id}",
-                        timeout=5
-                    )
-                    logger.info(f"🧹 Сессия в БД очищена для user_id={user_id}")
-                except Exception as e:
-                    logger.error(f"❌ Ошибка очистки сессии: {e}")
+                keyboard = [[InlineKeyboardButton("👥 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")]]
                 
-                context.user_data.pop("current_invite", None)
-                
-                buyer_id = current_invite.get("buyer_id")
-                if buyer_id:
-                    try:
-                        username = update.effective_user.username or update.effective_user.first_name
-                        profile_name = profile_data.get('display_name', 'неизвестно')
-                        profile_link = get_disk_link_by_profile(profile_name)
-                        
-                        message_text = (
-                            f"👤 <b>🪞 НОВОЕ ОТРАЖЕНИЕ!</b>\n\n"
-                            f"✨ @{username} посмотрелся в зеркало!\n"
-                            f"📊 <b>Профиль:</b> <code>{profile_name}</code>\n"
-                            f"📁 <b>Материалы профиля:</b>\n"
-                            f"{profile_link}"
-                        )
-                        
-                        keyboard = [[
-                            InlineKeyboardButton("👥 МОИ ОТРАЖЕНИЯ", callback_data="my_invites")
-                        ]]
-                        
-                        await context.bot.send_message(
-                            chat_id=buyer_id,
-                            text=message_text,
-                            parse_mode="HTML",
-                            reply_markup=InlineKeyboardMarkup(keyboard)
-                        )
-                        logger.info(f"✅ Уведомление отправлено {buyer_id}")
-                    except Exception as e:
-                        logger.error(f"❌ Ошибка отправки уведомления: {e}")
-        except Exception as e:
-            logger.error(f"❌ Ошибка при обновлении приглашения: {e}")
-    
-    # ===== ПОЛУЧАЕМ ОТВЕТЫ ПОЛЬЗОВАТЕЛЯ ДЛЯ AI =====
-    user_answers = context.user_data.get('all_answers', [])
-    profile_type = profile_data.get('display_name')  # например "IA_3_con"
-    
-    # ===== ГЕНЕРИРУЕМ ПЕРСОНАЛИЗИРОВАННЫЙ ПРОФИЛЬ =====
-    personalized_profile = None
-    try:
-        if user_answers and profile_type:
-            logger.info(f"🤖 Генерация персонализированного профиля для {profile_type}")
-            personalized_profile = ai_generator.generate_personalized_profile(
-                profile_type=profile_type,
-                user_answers=user_answers,
-                user_name=user_name
-            )
+                await context.bot.send_message(
+                    chat_id=buyer_id,
+                    text=message_text,
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
     except Exception as e:
-        logger.error(f"❌ Ошибка AI генерации: {e}")
-        personalized_profile = None
-    
-    # ===== ЕСЛИ AI НЕ СРАБОТАЛ - ЗАГРУЖАЕМ ОБЫЧНЫЙ ПРОФИЛЬ =====
-    if not personalized_profile:
-        try:
-            profile = get_profile_fallback(profile_data)
-            profile_card = get_card_description_from_profile(profile, profile_data)
-            context.user_data["profile_card"] = profile_card
-            
-            # Добавляем вариативные блоки
-            profile_code = f"{profile_data.get('type_code', '')}_{profile_data.get('level', '')}_{profile_data.get('dilts_code', '')}"
-            add_profile_variants(profile_card, profile_code, final_strategy_levels)
-            
-            # Формируем сообщение из профиля
-            message = ""
-            
-            # Заголовок
-            profile_header = profile_data.get('display_name', f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}")
-            raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
-            formatted_title = format_profile_title(raw_title, profile_header)
-            message += f"<b>{formatted_title}</b>\n\n"
-            
-            # Архетип
-            archetype = profile_card.get('archetype', '')
-            if archetype:
-                message += f"<i>{archetype}</i>\n\n"
-            
-            # Цитата
-            quote = profile_card.get('quote', '')
-            if quote:
-                message += f"<b>💬 ЦИТАТА:</b>\n{quote}\n\n"
-            
-            # Триггер
-            trigger = profile_card.get('trigger', '')
-            if trigger:
-                if trigger.startswith('🔍 ЭТО ТЫ, ЕСЛИ...'):
-                    trigger = trigger.replace('🔍 ЭТО ТЫ, ЕСЛИ...\n\n', '').replace('🔍 ЭТО ТЫ, ЕСЛИ...', '')
-                message += f"<b>🔍 ЭТО ВЫ, ЕСЛИ...</b>\n\n{trigger}\n\n"
-            
-            # Боль
-            pain = profile_card.get('pain', '')
-            if pain:
-                pain_lines = pain.strip().split('\n')
-                if pain_lines and any(h in pain_lines[0] for h in ['СУТЬ ПРОБЛЕМЫ:', 'СУТЬ ПРОБЛЕМЫ']):
-                    pain = '\n'.join(pain_lines[1:]) if len(pain_lines) > 1 else ""
-                if pain.strip():
-                    message += f"<b>💔 СУТЬ ПРОБЛЕМЫ</b>\n\n{pain.strip()}\n\n"
-            
-            # Инструмент
-            tool = profile_card.get('immediate_tool', '')
-            if tool:
-                message += f"<b>🛠 ПРАКТИЧЕСКИЙ ИНСТРУМЕНТ</b>\n\n{tool.strip()}\n\n"
-            
-            # Следующие шаги
-            cta = profile_card.get('cta', '')
-            if cta:
-                message += f"<b>🚀 СЛЕДУЮЩИЕ ШАГИ</b>\n\n{cta.strip()}\n\n"
-            
-        except ProfileNotFoundError as e:
-            error_text = (
-                f"🧠 <b>К сожалению, возникла техническая ошибка</b>\n\n"
-                f"Как ваш виртуальный психолог, я не смог обработать все данные.\n\n"
-                f"Попробуйте пройти тест заново:\n"
-                f"/start\n\n"
-                f"<i>Приношу извинения за неудобства.</i>"
-            )
-            await query.edit_message_text(error_text, parse_mode="HTML")
-            return ConversationHandler.END
-    else:
-        # Используем сгенерированный AI профиль
-        message = personalized_profile
-    
-    # ===== СОХРАНЯЕМ ДЛЯ AI =====
-    if "all_answers" not in context.user_data:
-        context.user_data["all_answers"] = []
-    
-    context.user_data["all_answers"].append({
-        'stage': 'results',
-        'profile_code': profile_data.get('display_name'),
-        'has_shared': has_shared,
-        'used_ai': bool(personalized_profile),
-        'timestamp': time.time()
-    })
-    
-    # ===== ОТПРАВКА СООБЩЕНИЯ =====
-    if message.strip():
-        if len(message.strip()) > 4000:
+        logger.error(f"❌ Ошибка обработки приглашения: {e}")
+
+async def get_regular_profile(profile_data, strategy_levels):
+    """Загружает обычный профиль из файла"""
+    try:
+        profile = get_profile_fallback(profile_data)
+        profile_card = get_card_description_from_profile(profile, profile_data)
+        
+        profile_code = f"{profile_data.get('type_code', '')}_{profile_data.get('level', '')}_{profile_data.get('dilts_code', '')}"
+        add_profile_variants(profile_card, profile_code, strategy_levels)
+        
+        message = ""
+        profile_header = profile_data.get('display_name', f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}")
+        raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
+        formatted_title = format_profile_title(raw_title, profile_header)
+        message += f"<b>{formatted_title}</b>\n\n"
+        
+        archetype = profile_card.get('archetype', '')
+        if archetype:
+            message += f"<i>{archetype}</i>\n\n"
+        
+        quote = profile_card.get('quote', '')
+        if quote:
+            message += f"<b>💬 ЦИТАТА:</b>\n{quote}\n\n"
+        
+        trigger = profile_card.get('trigger', '')
+        if trigger:
+            if trigger.startswith('🔍 ЭТО ТЫ, ЕСЛИ...'):
+                trigger = trigger.replace('🔍 ЭТО ТЫ, ЕСЛИ...\n\n', '').replace('🔍 ЭТО ТЫ, ЕСЛИ...', '')
+            message += f"<b>🔍 ЭТО ВЫ, ЕСЛИ...</b>\n\n{trigger}\n\n"
+        
+        pain = profile_card.get('pain', '')
+        if pain:
+            pain_lines = pain.strip().split('\n')
+            if pain_lines and any(h in pain_lines[0] for h in ['СУТЬ ПРОБЛЕМЫ:', 'СУТЬ ПРОБЛЕМЫ']):
+                pain = '\n'.join(pain_lines[1:]) if len(pain_lines) > 1 else ""
+            if pain.strip():
+                message += f"<b>💔 СУТЬ ПРОБЛЕМЫ</b>\n\n{pain.strip()}\n\n"
+        
+        tool = profile_card.get('immediate_tool', '')
+        if tool:
+            message += f"<b>🛠 ПРАКТИЧЕСКИЙ ИНСТРУМЕНТ</b>\n\n{tool.strip()}\n\n"
+        
+        cta = profile_card.get('cta', '')
+        if cta:
+            message += f"<b>🚀 СЛЕДУЮЩИЕ ШАГИ</b>\n\n{cta.strip()}\n\n"
+        
+        return message
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка загрузки профиля: {e}")
+        return "🧠 Ваш профиль готовится..."
+
+async def send_profile_result(query, message, has_shared, context):
+    """Отправляет результат пользователю"""
+    try:
+        if len(message) > 4000:
             parts = [message[i:i+4000] for i in range(0, len(message), 4000)]
             await query.edit_message_text(parts[0], parse_mode="HTML")
             for part in parts[1:]:
                 await query.message.reply_text(part, parse_mode="HTML")
                 await asyncio.sleep(0.5)
         else:
-            await query.edit_message_text(message.strip(), parse_mode="HTML")
-            await asyncio.sleep(0.5)
-    
-    # ===== ПРИМЕЧАНИЕ О КОНФЛИКТЕ =====
-    message_2 = ""
-    if hasattr(profile_data, 'actual_profile_key'):
-        discrepancy_note = get_discrepancy_note(profile_data, profile_data.get('actual_profile_key'))
-        if discrepancy_note:
-            message_2 += f"\n{discrepancy_note}\n"
-    
-    # ===== КНОПКИ =====
-    sexual_button = [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_my_sexual_profile")]
-    
-    coming_from_sexual = context.user_data.get("coming_from_sexual", False)
-    logger.info(f"🚩 coming_from_sexual = {coming_from_sexual}")
-    
-    if not has_shared and not coming_from_sexual:
-        keyboard = [
-            [InlineKeyboardButton("🪞 Поделиться зеркалом", callback_data="get_gift")],
-            [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
-            sexual_button
-        ]
-    else:
-        keyboard = [
-            [InlineKeyboardButton("🎁 Получить сказку «Мастер Меча»", url=GIFT_PDF_LINK)],
-            [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
-            sexual_button
-        ]
-        if coming_from_sexual:
-            context.user_data.pop("coming_from_sexual", None)
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    if message_2:
-        await query.message.reply_text(message_2.strip(), reply_markup=reply_markup, parse_mode="HTML")
-    else:
+            await query.edit_message_text(message, parse_mode="HTML")
+        
+        # Кнопки
+        sexual_button = [InlineKeyboardButton("🔞 Мой интимный профиль", callback_data="show_my_sexual_profile")]
+        
+        coming_from_sexual = context.user_data.get("coming_from_sexual", False)
+        
+        if not has_shared and not coming_from_sexual:
+            keyboard = [
+                [InlineKeyboardButton("🪞 Поделиться зеркалом", callback_data="get_gift")],
+                [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
+                sexual_button
+            ]
+        else:
+            keyboard = [
+                [InlineKeyboardButton("🎁 Получить сказку «Мастер Меча»", url=GIFT_PDF_LINK)],
+                [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
+                sexual_button
+            ]
+            if coming_from_sexual:
+                context.user_data.pop("coming_from_sexual", None)
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.reply_text("🧠 Что дальше?", reply_markup=reply_markup, parse_mode="HTML")
-    
-    logger.info(f"✅ Результаты показаны пользователю {user_id}")
-    return RESULTS
-
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка отправки результата: {e}")
+        await query.edit_message_text("🧠 Ваш профиль готов. Нажмите кнопку ниже.", reply_markup=reply_markup)
 async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к результатам"""
     query = update.callback_query
