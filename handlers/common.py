@@ -1,5 +1,10 @@
 """
 Общие обработчики для уточняющих вопросов и навигации
+ИСПРАВЛЕННАЯ ВЕРСИЯ:
+✅ Защита от повторных ответов
+✅ Сохранение ответов для AI
+✅ Упрощенная логика для stage1
+✅ Метрики времени
 """
 
 import logging
@@ -22,6 +27,9 @@ def log_debug(msg, user_id=None):
     print(f"🔍 {timestamp} {user_part} {msg}", file=sys.stderr, flush=True)
     logger.debug(msg)
 
+# Константы
+CLARIFICATION_TIMEOUT = 3600  # 1 час на прохождение уточнений
+
 async def ask_clarification_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Задаёт уточняющий вопрос"""
     query = update.callback_query
@@ -30,6 +38,10 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
     log_debug(f"🔥 ask_clarification_question STARTED", user_id)
     log_debug(f"   callback_data: {query.data}", user_id)
     log_debug(f"   user_data: {context.user_data}", user_id)
+    
+    # Инициализируем время начала, если это первый вопрос
+    if "clarification_start_time" not in context.user_data:
+        context.user_data["clarification_start_time"] = time.time()
     
     clarification_stage = context.user_data.get("clarification_stage")
     current = context.user_data.get("clarification_current", 0)
@@ -40,34 +52,42 @@ async def ask_clarification_question(update: Update, context: ContextTypes.DEFAU
     context.user_data["conversation_state"] = CLARIFICATION
     log_debug(f"💾 Сохраняю состояние CLARIFICATION = {CLARIFICATION}", user_id)
     
+    # Инициализируем хранилище для AI
+    if "all_answers" not in context.user_data:
+        context.user_data["all_answers"] = []
+    
+    # Инициализируем хранилище отвеченных вопросов
+    if "clarification_answered" not in context.user_data:
+        context.user_data["clarification_answered"] = {}
+    
     if clarification_stage == "stage1":
-        clarifications = context.user_data.get("stage1_clarifications", [])
-        log_debug(f"   stage1_clarifications: {clarifications}", user_id)
+        # 🔥 УПРОЩЕННАЯ ЛОГИКА: создаем плоский список всех вопросов
+        if "stage1_pending_questions" not in context.user_data:
+            clarifications = context.user_data.get("stage1_clarifications", [])
+            pending = []
+            for c_type in clarifications:
+                questions = CLARIFICATION_QUESTIONS.get(f"stage1_{c_type}", [])
+                for q in questions:
+                    pending.append({
+                        'type': c_type,
+                        'question': q
+                    })
+            context.user_data["stage1_pending_questions"] = pending
+            context.user_data["clarification_current"] = 0
+            log_debug(f"   создано {len(pending)} вопросов для stage1", user_id)
         
-        if current >= len(clarifications):
-            log_debug(f"   ✅ Все уточнения stage1 завершены, возврат к finish_stage_1", user_id)
+        pending = context.user_data.get("stage1_pending_questions", [])
+        current = context.user_data.get("clarification_current", 0)
+        
+        if current >= len(pending):
+            log_debug(f"   ✅ Все уточнения stage1 завершены", user_id)
             context.user_data["stage1_clarified"] = True
+            context.user_data.pop("stage1_pending_questions", None)
             from handlers.stage1 import finish_stage_1
             return await finish_stage_1(update, context)
         
-        clarification_type = clarifications[current]
-        log_debug(f"   clarification_type: {clarification_type}", user_id)
-        
-        # 👇 ИНДЕКС ДЛЯ КОНКРЕТНОГО ТИПА
-        type_index_key = f"stage1_{clarification_type}_index"
-        type_current = context.user_data.get(type_index_key, 0)
-        log_debug(f"   type_current for {clarification_type}: {type_current}", user_id)
-        
-        questions = CLARIFICATION_QUESTIONS.get(f"stage1_{clarification_type}", [])
-        log_debug(f"   questions found: {len(questions)}", user_id)
-        
-        if type_current >= len(questions):
-            log_debug(f"   ✅ Все вопросы типа {clarification_type} отвечены, переходим к следующему", user_id)
-            context.user_data["clarification_current"] = current + 1
-            context.user_data[type_index_key] = 0  # сбрасываем
-            return await ask_clarification_question(update, context)
-        
-        question = questions[type_current]  # 👈 БЕРЕМ ПО ИНДЕКСУ ТИПА
+        question_data = pending[current]
+        question = question_data['question']
         log_debug(f"   question id: {question.get('id')}", user_id)
         
     elif clarification_stage == "stage2":
@@ -193,6 +213,18 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
     
     await query.answer()
     
+    # 👇 ЗАЩИТА ОТ ПОВТОРНЫХ ОТВЕТОВ
+    answered_key = query.data
+    if context.user_data.get('clarification_answered', {}).get(answered_key):
+        log_debug(f"⏭️ Ответ уже был обработан", user_id)
+        return await ask_clarification_question(update, context)
+    
+    if context.user_data.get("processing", False):
+        log_debug(f"⏭️ Пропускаем повторное нажатие", user_id)
+        return CLARIFICATION
+    
+    context.user_data["processing"] = True
+    
     try:
         parts = query.data.split("_")
         log_debug(f"   parts: {parts}", user_id)
@@ -207,39 +239,43 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
         
         log_debug(f"   stage={stage}, current={current}, option_id={option_id}", user_id)
         
-        # 👇 ОБРАБОТКА ДЛЯ stage1 (сложная логика с несколькими вопросами)
+        # 👇 ОБРАБОТКА ДЛЯ stage1 (новая упрощенная логика)
         if stage == "stage1":
-            clarifications = context.user_data.get("stage1_clarifications", [])
-            if current < len(clarifications):
-                clarification_type = clarifications[current]
-                type_index_key = f"stage1_{clarification_type}_index"
-                type_current = context.user_data.get(type_index_key, 0)
+            pending = context.user_data.get("stage1_pending_questions", [])
+            if current < len(pending):
+                question_data = pending[current]
+                question = question_data['question']
+                option = question["options"].get(option_id)
                 
-                questions = CLARIFICATION_QUESTIONS.get(f"stage1_{clarification_type}", [])
-                if type_current < len(questions):
-                    question = questions[type_current]
-                    option = question["options"].get(option_id)
-                    
-                    if option and "scores" in option:
-                        if "level" in option["scores"]:
-                            level_score = option["scores"]["level"]
-                            if "clarification_scores" not in context.user_data:
-                                context.user_data["clarification_scores"] = {}
-                            context.user_data["clarification_scores"][question.get("id")] = level_score
-                            log_debug(f"✅ Сохранен level {level_score}", user_id)
-                        else:
-                            for axis, score in option["scores"].items():
-                                context.user_data["scores"][axis] += score
-                                log_debug(f"✅ +{score} к {axis}", user_id)
+                if option and "scores" in option:
+                    if "level" in option["scores"]:
+                        level_score = option["scores"]["level"]
+                        if "clarification_scores" not in context.user_data:
+                            context.user_data["clarification_scores"] = {}
+                        context.user_data["clarification_scores"][question.get("id")] = level_score
+                        log_debug(f"✅ Сохранен level {level_score}", user_id)
+                    else:
+                        for axis, score in option["scores"].items():
+                            if "scores" not in context.user_data:
+                                context.user_data["scores"] = {}
+                            context.user_data["scores"][axis] = context.user_data["scores"].get(axis, 0) + score
+                            log_debug(f"✅ +{score} к {axis}", user_id)
                 
-                # Увеличиваем индекс для этого типа
-                context.user_data[type_index_key] = type_current + 1
-                log_debug(f"   type_index for {clarification_type}: {type_current} -> {type_current + 1}", user_id)
+                # 👇 СОХРАНЯЕМ ОТВЕТ ДЛЯ AI
+                if "all_answers" not in context.user_data:
+                    context.user_data["all_answers"] = []
                 
-                # Проверяем, все ли вопросы этого типа отвечены
-                if type_current + 1 >= len(questions):
-                    log_debug(f"   ✅ Все вопросы типа {clarification_type} отвечены", user_id)
-                    context.user_data["clarification_current"] = current + 1
+                context.user_data["all_answers"].append({
+                    'stage': 'clarification',
+                    'substage': 'stage1',
+                    'question_index': current,
+                    'question': question['text'],
+                    'answer': option['text'] if isinstance(option, dict) else question['options'][option_id],
+                    'option': option_id,
+                    'scores': option.get('scores', {}) if isinstance(option, dict) else {}
+                })
+                
+                context.user_data["clarification_current"] = current + 1
             
             return await ask_clarification_question(update, context)
         
@@ -257,6 +293,20 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
                     
                     context.user_data["stage2_level_scores_dict"][str(level_score)] += 3
                     log_debug(f"✅ +3 к уровню {level_score}", user_id)
+                
+                # 👇 СОХРАНЯЕМ ОТВЕТ ДЛЯ AI
+                if "all_answers" not in context.user_data:
+                    context.user_data["all_answers"] = []
+                
+                context.user_data["all_answers"].append({
+                    'stage': 'clarification',
+                    'substage': 'stage2',
+                    'question_index': current,
+                    'question': question['text'],
+                    'answer': option['text'] if isinstance(option, dict) else question['options'][option_id],
+                    'option': option_id,
+                    'scores': option.get('scores', {}) if isinstance(option, dict) else {}
+                })
             
             new_index = current + 1
             context.user_data["clarification_current"] = new_index
@@ -274,11 +324,28 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
         elif stage == "stage3":
             questions = CLARIFICATION_QUESTIONS.get("stage3_discrepancy", [])
             if current < len(questions):
+                question = questions[current]
                 selected_level = int(option_id)
+                option = question["options"].get(option_id)
+                
                 if "stage3_level_scores" not in context.user_data:
                     context.user_data["stage3_level_scores"] = []
                 context.user_data["stage3_level_scores"].append(selected_level)
                 log_debug(f"✅ + уровень {selected_level} к stage3_scores", user_id)
+                
+                # 👇 СОХРАНЯЕМ ОТВЕТ ДЛЯ AI
+                if "all_answers" not in context.user_data:
+                    context.user_data["all_answers"] = []
+                
+                context.user_data["all_answers"].append({
+                    'stage': 'clarification',
+                    'substage': 'stage3',
+                    'question_index': current,
+                    'question': question['text'],
+                    'answer': option if isinstance(option, str) else question['options'][option_id],
+                    'option': option_id,
+                    'value': selected_level
+                })
             
             context.user_data["clarification_current"] = current + 1
             return await ask_clarification_question(update, context)
@@ -295,9 +362,28 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
                         context.user_data["stage4_dilts_answers"] = []
                     context.user_data["stage4_dilts_answers"].append(dilts)
                     log_debug(f"✅ + dilts={dilts}", user_id)
+                    
+                    # 👇 СОХРАНЯЕМ ОТВЕТ ДЛЯ AI
+                    if "all_answers" not in context.user_data:
+                        context.user_data["all_answers"] = []
+                    
+                    context.user_data["all_answers"].append({
+                        'stage': 'clarification',
+                        'substage': 'stage4',
+                        'question_index': current,
+                        'question': question['text'],
+                        'answer': option['text'],
+                        'option': option_id,
+                        'dilts': dilts
+                    })
             
             context.user_data["clarification_current"] = current + 1
             return await ask_clarification_question(update, context)
+        
+        # 👇 ОТМЕЧАЕМ ВОПРОС КАК ОТВЕЧЕННЫЙ
+        clarification_answered = context.user_data.get('clarification_answered', {})
+        clarification_answered[query.data] = True
+        context.user_data['clarification_answered'] = clarification_answered
         
         return CLARIFICATION
         
@@ -306,3 +392,6 @@ async def handle_clarification_answer(update: Update, context: ContextTypes.DEFA
         import traceback
         traceback.print_exc(file=sys.stderr)
         return await ask_clarification_question(update, context)
+    finally:
+        context.user_data["processing"] = False
+        log_debug(f"✅ handle_clarification_answer FINISHED", user_id)
