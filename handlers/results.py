@@ -39,17 +39,20 @@ def get_profile_summary(profile_data: dict, strategy_levels: dict) -> str:
         "SA": "Человек Возможностей"
     }
     
-    type_name = type_names.get(type_code, "Стратег")
+    # Маппинг типа профиля на доминирующую стратегию
+    type_to_strategy = {
+        "SP": "СБ",
+        "IP": "ТФ",
+        "IA": "УБ",
+        "SA": "ЧВ"
+    }
     
-    # Определяем доминанту по уровням
-    if strategy_levels:
-        dominant = max(strategy_levels.items(), key=lambda x: x[1])[0]
-        dom_emoji = "⚔️" if dominant == "СБ" else "🔧" if dominant == "ТФ" else "📚" if dominant == "УБ" else "🤝"
-        dom_level = strategy_levels[dominant]
-    else:
-        dominant = "ЧВ"
-        dom_emoji = "🤝"
-        dom_level = 3
+    # Определяем ведущую стратегию из типа профиля (а не из чисел!)
+    dominant_strategy = type_to_strategy.get(type_code, "ЧВ")
+    dom_emoji = "⚔️" if dominant_strategy == "СБ" else "🔧" if dominant_strategy == "ТФ" else "📚" if dominant_strategy == "УБ" else "🤝"
+    
+    # Берём уровень из strategy_levels, если есть, иначе 3.0
+    dom_level = strategy_levels.get(dominant_strategy, 3.0)
     
     # Краткие описания по типам
     summaries = {
@@ -61,8 +64,8 @@ def get_profile_summary(profile_data: dict, strategy_levels: dict) -> str:
     
     base = summaries.get(type_code, "У вас уникальное сочетание стратегий.")
     
-    # Добавляем про доминанту
-    dom_text = f"Ваша ведущая стратегия — {dom_emoji} {dominant} на уровне {dom_level}/6."
+    # Добавляем про ведущую стратегию из типа профиля
+    dom_text = f"Ваша ведущая стратегия — {dom_emoji} {dominant_strategy} на уровне {dom_level}/6."
     
     return f"{base} {dom_text}"
 
