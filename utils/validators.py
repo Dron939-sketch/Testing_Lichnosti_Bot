@@ -17,6 +17,20 @@ def need_clarification_stage1(scores):
     symbolic = scores.get("SYMBOLIC", 0)
     material = scores.get("MATERIAL", 0)
     
+    # 🔥 ИЗМЕНЕНО: учитываем прямые баллы SP/IP/IA/SA
+    sp = scores.get("SP", 0)
+    ip = scores.get("IP", 0)
+    ia = scores.get("IA", 0)
+    sa = scores.get("SA", 0)
+    
+    # Если есть прямые баллы, они имеют приоритет
+    if sp + ip + ia + sa > 0:
+        # Если есть явный лидер с отрывом
+        direct_scores = [sp, ip, ia, sa]
+        sorted_direct = sorted(direct_scores, reverse=True)
+        if sorted_direct[0] - sorted_direct[1] >= 2:
+            return False
+    
     clarifications = []
     
     # Если разница между external и internal <= 2, нужно уточнение
@@ -68,7 +82,7 @@ def need_clarification_stage3(stage2_level, stage3_scores):
         logger.debug("❌ stage3_scores пуст, уточнения нужны")
         return True
     
-    # Если не все 8 вопросов отвечены
+    # 🔥 ИЗМЕНЕНО: теперь ожидаем 8 вопросов (было 8)
     if len(stage3_scores) < 8:
         logger.debug(f"❌ Неполный набор ответов: {len(stage3_scores)}/8")
         return True
@@ -95,6 +109,11 @@ def need_clarification_stage4(dilts_answers):
     if not dilts_answers:
         return False
     
+    # 🔥 ИЗМЕНЕНО: теперь ожидаем 8 вопросов
+    if len(dilts_answers) < 8:
+        logger.debug(f"❌ Неполный набор ответов: {len(dilts_answers)}/8")
+        return True
+    
     # Подсчитываем частоту каждого уровня Дилтса
     counter = Counter(dilts_answers)
     most_common = counter.most_common(2)
@@ -104,3 +123,74 @@ def need_clarification_stage4(dilts_answers):
         return most_common[0][1] == most_common[1][1]
     
     return False
+
+# 🔥 НОВАЯ ФУНКЦИЯ: проверка необходимости уточнений для стратегий
+def need_clarification_strategies(strategy_levels: dict) -> bool:
+    """
+    Проверяет, нужны ли уточнения для стратегий
+    Возвращает True, если есть противоречия
+    """
+    if not strategy_levels:
+        return False
+    
+    # Проверяем, все ли стратегии имеют данные
+    for strategy in ["СБ", "ТФ", "УБ", "ЧВ"]:
+        if strategy not in strategy_levels or not strategy_levels[strategy]:
+            logger.debug(f"❌ Нет данных для стратегии {strategy}")
+            return True
+    
+    # Проверяем на слишком близкие значения (коктейль неясен)
+    values = [sum(strategy_levels[s]) / len(strategy_levels[s]) if strategy_levels[s] else 0 
+              for s in ["СБ", "ТФ", "УБ", "ЧВ"]]
+    
+    # Сортируем по убыванию
+    sorted_values = sorted(values, reverse=True)
+    
+    # Если первая и вторая стратегии слишком близки (разница < 0.5)
+    if sorted_values[0] - sorted_values[1] < 0.5:
+        logger.debug(f"❌ Слишком близкие значения: {sorted_values[0]:.1f} vs {sorted_values[1]:.1f}")
+        return True
+    
+    return False
+
+# 🔥 НОВАЯ ФУНКЦИЯ: проверка согласованности этапов
+def check_stages_coherence(context_data: dict) -> list:
+    """
+    Проверяет согласованность между этапами
+    Возвращает список предупреждений
+    """
+    warnings = []
+    
+    # Получаем данные
+    perception_type = context_data.get("perception_type")
+    strategy_levels = context_data.get("strategy_levels", {})
+    behavioral_levels = context_data.get("behavioral_levels", {})
+    dilts_counts = context_data.get("dilts_counts", {})
+    
+    # Проверяем соответствие доминанты
+    if perception_type and strategy_levels:
+        # Маппинг восприятия на стратегии
+        type_to_strategy = {
+            "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ": "ЧВ",
+            "ЭКЗИСТЕНЦИАЛЬНО-РЕФЛЕКСИВНЫЙ": "УБ",
+            "ИНСТРУМЕНТАЛЬНО-ДОСТИЖЕНЧЕСКИЙ": "СБ",
+            "СТРУКТУРНО-АНАЛИТИЧЕСКИЙ": "ТФ"
+        }
+        
+        expected_strategy = type_to_strategy.get(perception_type)
+        
+        if expected_strategy:
+            # Находим стратегию с максимальным уровнем
+            all_values = {}
+            for s in ["СБ", "ТФ", "УБ", "ЧВ"]:
+                values = strategy_levels.get(s, []) + behavioral_levels.get(s, [])
+                if values:
+                    all_values[s] = sum(values) / len(values)
+            
+            if all_values:
+                dominant = max(all_values.items(), key=lambda x: x[1])[0]
+                
+                if dominant != expected_strategy:
+                    warnings.append(f"⚠️ Доминанта восприятия ({perception_type}) не совпадает с доминантой стратегий ({dominant})")
+    
+    return warnings
