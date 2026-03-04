@@ -319,21 +319,56 @@ async def show_results_screen(
         discrepancy_note = get_discrepancy_note(profile_data, actual_profile_key)
         logger.info(f"📝 Примечание о конфликте: {'✅ Есть' if discrepancy_note else '❌ Нет'}")
     
-    # 🔥 ИЗМЕНЕНО: ФОРМИРУЕМ ПЕРВОЕ СООБЩЕНИЕ С КРАТКИМ ОПИСАНИЕМ
+    # 🔥 ИЗМЕНЕНО: ФОРМИРУЕМ ПЕРВОЕ СООБЩЕНИЕ
     message_1 = (
         f"🧠 <b>ВАШ ПРОФИЛЬ</b>\n\n"
         f"<i>Как ваш виртуальный психолог, я проанализировал ваши ответы.</i>\n\n"
     )
     
-    # 🔥 НОВОЕ: ДОБАВЛЯЕМ КРАТКОЕ ОПИСАНИЕ
+    # 🔥 КРАТКОЕ ОПИСАНИЕ
     profile_summary = get_profile_summary(profile_data, final_strategy_levels)
     message_1 += f"{profile_summary}\n\n"
     
+    # 🔥 БЛОК СТРАТЕГИЙ (ПЕРВЫЙ!)
+    message_1 += f"\n📊 <b>ВАШ КОКТЕЙЛЬ СТРАТЕГИЙ</b>\n\n"
+    
+    # Сортируем стратегии по убыванию
+    sorted_strategies = sorted(final_strategy_levels.items(), key=lambda x: x[1], reverse=True)
+    
+    for strategy, level in sorted_strategies:
+        emoji = "⚔️" if strategy == "СБ" else "🔧" if strategy == "ТФ" else "📚" if strategy == "УБ" else "🤝"
+        description = get_strategy_level_description(strategy, level)
+        # Убираем теги <b> для компактности
+        clean_desc = description.replace("<b>", "").replace("</b>", "")
+        message_1 += f"{emoji} <b>{strategy}:</b> {level}/6 — {clean_desc}\n"
+    
+    # 🔥 БЛОК КООРДИНАТ
+    x = (final_strategy_levels.get("ТФ", 3) + final_strategy_levels.get("УБ", 3)) / 2
+    y = (final_strategy_levels.get("УБ", 3) + final_strategy_levels.get("ЧВ", 3)) / 2
+    
+    message_1 += f"\n📍 <b>СИСТЕМА КООРДИНАТ</b>\n"
+    message_1 += f"• Воображение: {y:.1f}/10\n"
+    message_1 += f"• Ограничения: {x:.1f}/10\n"
+    
+    # 🔥 БЛОК ТОЧКИ НАПРЯЖЕНИЯ
+    dilts_names = {
+        "ENVIRONMENT": "🌍 Окружение",
+        "BEHAVIOR": "👣 Поведение",
+        "CAPABILITIES": "🛠️ Способности",
+        "VALUES": "💎 Ценности",
+        "IDENTITY": "🧬 Идентичность"
+    }
+    
+    message_1 += f"\n🎯 <b>ТОЧКА НАПРЯЖЕНИЯ</b>\n"
+    message_1 += f"{dilts_names.get(dominant_dilts, '🌍 Окружение')}\n\n"
+    
+    # 🔥 ЗАГОЛОВОК ПРОФИЛЯ
     profile_header = profile_data.get('display_name', f"{profile_data['type_code']}_{profile_data['level']}_{profile_data['dilts_code']}")
     raw_title = profile_card.get('title', f"Профиль {profile_data['level']}")
     formatted_title = format_profile_title(raw_title, profile_header)
     message_1 += f"<b>{formatted_title}</b>\n\n"
     
+    # 🔥 ОСТАЛЬНОЕ ОПИСАНИЕ ИЗ ПРОФИЛЯ
     archetype = profile_card.get('archetype', '')
     if archetype:
         message_1 += f"<i>{archetype}</i>\n\n"
@@ -349,50 +384,6 @@ async def show_results_screen(
     pain = profile_card.get('pain', '')
     if pain:
         message_1 += f"<b>💔 СУТЬ ПРОБЛЕМЫ</b>\n\n{pain.strip()}\n\n"
-    
-    # 🔥 НОВОЕ: ДОБАВЛЯЕМ УРОВНИ ВСЕХ СТРАТЕГИЙ
-    message_1 += f"\n📊 <b>ВАШ КОКТЕЙЛЬ СТРАТЕГИЙ</b>\n\n"
-    
-    # Сортируем стратегии по убыванию
-    sorted_strategies = sorted(final_strategy_levels.items(), key=lambda x: x[1], reverse=True)
-    
-    for strategy, level in sorted_strategies:
-        emoji = "⚔️" if strategy == "СБ" else "🔧" if strategy == "ТФ" else "📚" if strategy == "УБ" else "🤝"
-        description = get_strategy_level_description(strategy, level)
-        message_1 += f"{emoji} <b>{strategy}:</b> {level}/6 — {description}\n"
-    
-    # 🔥 НОВОЕ: ДОБАВЛЯЕМ КООРДИНАТЫ
-    # Рассчитываем координаты из уровней стратегий
-    # x = ограничения (чем выше ТФ и УБ, тем больше ограничений)
-    # y = воображение (чем выше УБ и ЧВ, тем больше воображения)
-    x = (final_strategy_levels.get("ТФ", 3) + final_strategy_levels.get("УБ", 3)) / 2
-    y = (final_strategy_levels.get("УБ", 3) + final_strategy_levels.get("ЧВ", 3)) / 2
-    
-    message_1 += f"\n📍 <b>СИСТЕМА КООРДИНАТ</b>\n"
-    message_1 += f"• Воображение: {y:.1f}/10\n"
-    message_1 += f"• Ограничения: {x:.1f}/10\n"
-    
-    if x > 7:
-        message_1 += f"• Слишком много ограничений — пора освобождаться\n"
-    elif x < 3:
-        message_1 += f"• Слишком мало ограничений — нужна дисциплина\n"
-    
-    if y > 7:
-        message_1 += f"• Слишком много фантазий — пора действовать\n"
-    elif y < 3:
-        message_1 += f"• Слишком мало воображения — нужно мечтать\n"
-    
-    # 🔥 НОВОЕ: ДОБАВЛЯЕМ ДОМИНИРУЮЩИЙ УРОВЕНЬ ДИЛТСА
-    dilts_names = {
-        "ENVIRONMENT": "🌍 Окружение",
-        "BEHAVIOR": "👣 Поведение",
-        "CAPABILITIES": "🛠️ Способности",
-        "VALUES": "💎 Ценности",
-        "IDENTITY": "🧬 Идентичность"
-    }
-    
-    message_1 += f"\n🎯 <b>ТОЧКА НАПРЯЖЕНИЯ</b>\n"
-    message_1 += f"{dilts_names.get(dominant_dilts, '🌍 Окружение')}\n"
 
     if message_1.strip():
         # Проверяем длину сообщения (лимит Telegram 4096 символов)
@@ -411,7 +402,7 @@ async def show_results_screen(
             await query.edit_message_text(message_1.strip(), parse_mode="HTML")
             await asyncio.sleep(0.5)
     
-    # 🔥 ИЗМЕНЕНО: ВТОРОЕ СООБЩЕНИЕ С ИНСТРУМЕНТАМИ
+    # 🔥 ВТОРОЕ СООБЩЕНИЕ С ИНСТРУМЕНТАМИ
     message_2 = ""
     
     tool = profile_card.get('immediate_tool', '')
@@ -429,7 +420,7 @@ async def show_results_screen(
         f"<i>Это только начало вашего пути к самопознанию.</i>\n\n"
     )
     
-    # 🔥 НОВОЕ: ДОБАВЛЯЕМ ПРИМЕЧАНИЕ В КОНЦЕ ВТОРОГО СООБЩЕНИЯ
+    # 🔥 ПРИМЕЧАНИЕ В КОНЦЕ
     if discrepancy_note:
         message_2 += f"\n{discrepancy_note}\n"
     
@@ -441,11 +432,7 @@ async def show_results_screen(
     logger.info(f"🚩 coming_from_sexual = {coming_from_sexual}")
     
     # ЛОГИКА КНОПОК:
-    # 1. Если НЕТ репоста И НЕ вернулись из 18+ → показываем "Поделиться зеркалом"
-    # 2. ВО ВСЕХ ОСТАЛЬНЫХ СЛУЧАЯХ → сразу ссылка на подарок!
-    
     if not has_shared and not coming_from_sexual:
-        # Случай 1: первый вход после теста (нет репоста, не из 18+)
         keyboard = [
             [InlineKeyboardButton("🪞 Поделиться зеркалом", callback_data="get_gift")],
             [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
@@ -453,23 +440,18 @@ async def show_results_screen(
         ]
         logger.info(f"🔘 Клавиатура: без подарка (has_shared={has_shared}, coming={coming_from_sexual})")
     else:
-        # Случай 2: ВСЕ ОСТАЛЬНЫЕ СИТУАЦИИ!
-        # - Если есть репост (has_shared=True)
-        # - Если вернулись из 18+ (coming_from_sexual=True)
-        # - И то и другое вместе
         keyboard = [
-            [InlineKeyboardButton("🎁 Получить сказку «Мастер Меча»", url=GIFT_PDF_LINK)],  # ← ПРЯМАЯ ССЫЛКА!
+            [InlineKeyboardButton("🎁 Получить сказку «Мастер Меча»", url=GIFT_PDF_LINK)],
             [InlineKeyboardButton("📖 Полное описание профиля", callback_data="show_package")],
             sexual_button
         ]
         logger.info(f"🔘 Клавиатура: СРАЗУ ССЫЛКА НА ПОДАРОК! (has_shared={has_shared}, coming={coming_from_sexual})")
         
-        # Сбрасываем флаг после использования, чтобы он не влиял на следующие разы
         if coming_from_sexual:
             context.user_data.pop("coming_from_sexual", None)
             logger.info("🚩 Сброшен флаг coming_from_sexual")
     
-    # ===== 👇 ВАЖНО: ОТПРАВКА ВТОРОГО СООБЩЕНИЯ С КНОПКАМИ =====
+    # ===== 👇 ОТПРАВКА ВТОРОГО СООБЩЕНИЯ =====
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     logger.debug(f"📤 Отправка message_2 ({len(message_2)} символов) с {len(keyboard)} рядами кнопок")
@@ -485,7 +467,6 @@ async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"⬅️ back_to_results ВЫЗВАН для пользователя {user_id}")
     
-    # 👇 ВОССТАНАВЛИВАЕМ has_shared (НОВЫЙ КОД)
     if "temp_has_shared" in context.user_data:
         context.user_data["has_shared"] = context.user_data.pop("temp_has_shared")
         logger.info(f"🔄 Восстановлен has_shared = {context.user_data['has_shared']}")
@@ -549,10 +530,8 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.answer("🔄 Перезапускаю тест...")
     
-    # Очищаем данные пользователя
     context.user_data.clear()
     
-    # Инициализируем новые данные
     context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
     context.user_data["stage1_current"] = 0
     context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
@@ -561,13 +540,11 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["processing"] = False
     context.user_data["has_shared"] = False
     
-    # Инициализируем хранилище приглашений
     from sexual_18_plus import get_user_invites
     context.user_data["sexual_invites"] = get_user_invites(user_id)
     
     logger.info(f"User {user_id} перезапустил тест")
     
-    # Переходим к первому этапу
     from handlers.stage1 import show_stage_1_intro
     return await show_stage_1_intro(update, context)
 
