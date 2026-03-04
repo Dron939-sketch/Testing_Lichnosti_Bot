@@ -1,4 +1,3 @@
-# utils/calculations.py
 """
 Функции для расчета профиля и уровней
 """
@@ -55,6 +54,7 @@ def determine_perception_type(scores):
     
     type_data = PERCEPTION_TYPES.get((focus, anxiety), PERCEPTION_TYPES[("EXTERNAL", "SYMBOLIC")])
     return type_data["name"]
+
 def get_type_code(perception_type: str) -> str:
     """Код типа (SA/IA/SP/IP)"""
     type_map = {
@@ -174,50 +174,170 @@ def check_profile_coherence(profile_level: int, dilts_level: str, actual_suffix:
         "expected_dilts": expected_dilts,
     }
 
+# 🔥 НОВАЯ ФУНКЦИЯ: рассчитывает уровни всех 4 стратегий
+def calculate_strategy_levels(context_data: dict) -> dict:
+    """Рассчитывает уровни всех 4 стратегий (СБ, ТФ, УБ, ЧВ)"""
+    
+    strategy_levels = context_data.get("strategy_levels", {})
+    behavioral_levels = context_data.get("behavioral_levels", {})
+    
+    result = {}
+    
+    for strategy in ["СБ", "ТФ", "УБ", "ЧВ"]:
+        # Собираем все значения из этапа 2 и этапа 3
+        values = strategy_levels.get(strategy, []) + behavioral_levels.get(strategy, [])
+        
+        if values:
+            # Вычисляем среднее
+            avg = sum(values) / len(values)
+            result[strategy] = round(avg, 1)
+        else:
+            # Если данных нет, используем значение по умолчанию
+            result[strategy] = 3.0
+    
+    logger.info(f"📊 ИТОГОВЫЕ УРОВНИ СТРАТЕГИЙ: {result}")
+    return result
+
+# 🔥 НОВАЯ ФУНКЦИЯ: рассчитывает координаты в системе Воображение vs Ограничения
+def calculate_coordinates(strategy_levels: dict) -> dict:
+    """Рассчитывает координаты (x, y) на основе уровней стратегий"""
+    
+    # x = ограничения (чем выше ТФ и УБ, тем больше ограничений)
+    x = (strategy_levels.get("ТФ", 3) + strategy_levels.get("УБ", 3)) / 2
+    
+    # y = воображение (чем выше УБ и ЧВ, тем больше воображения)
+    y = (strategy_levels.get("УБ", 3) + strategy_levels.get("ЧВ", 3)) / 2
+    
+    # Нормализуем к шкале 0-10
+    x = min(10, max(0, x * 1.5))  # 1-6 → 0-9, добавляем запас
+    y = min(10, max(0, y * 1.5))
+    
+    return {
+        "x": round(x, 1),
+        "y": round(y, 1)
+    }
+
+# 🔥 НОВАЯ ФУНКЦИЯ: определяет доминанту по уровням стратегий
+def determine_dominant_from_levels(strategy_levels: dict) -> str:
+    """Определяет доминирующую стратегию по максимальному уровню"""
+    
+    if not strategy_levels:
+        return "ЧВ"  # значение по умолчанию
+    
+    dominant = max(strategy_levels.items(), key=lambda x: x[1])[0]
+    return dominant
+
+# 🔥 НОВАЯ ФУНКЦИЯ: конвертирует уровень 1-6 в уровень 1-9 для Вариатики
+def convert_to_var_level(level: float) -> int:
+    """Конвертирует уровень 1-6 в уровень 1-9 для Вариатики"""
+    
+    level_map = {
+        1: 1, 1.5: 2,
+        2: 2, 2.5: 3,
+        3: 3, 3.5: 4,
+        4: 4, 4.5: 5,
+        5: 6, 5.5: 7,
+        6: 8, 6.0: 9
+    }
+    
+    # Находим ближайший ключ
+    closest = min(level_map.keys(), key=lambda x: abs(x - level))
+    return level_map[closest]
+
+# 🔥 ИЗМЕНЕНО: обновлённая финальная функция расчёта
 def calculate_profile_final(context_data: dict) -> dict:
     """ФИНАЛЬНЫЙ алгоритм расчета профиля"""
+    
+    # 1. Базовый тип восприятия (из этапа 1)
     perception_type = context_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
     type_code = get_type_code(perception_type)
     
+    # 2. Уровни всех 4 стратегий
+    strategy_levels = calculate_strategy_levels(context_data)
+    
+    # 3. Доминирующая стратегия
+    dominant_strategy = determine_dominant_from_levels(strategy_levels)
+    
+    # 4. Уровень доминанты
+    dom_level = strategy_levels[dominant_strategy]
+    
+    # 5. Уровень мышления из этапа 2 (оригинальные вопросы)
     level_scores_dict = context_data.get("stage2_level_scores_dict", {})
-    stage2_level = calculate_thinking_level_by_scores(level_scores_dict)
+    thinking_level = calculate_thinking_level_by_scores(level_scores_dict)
     
+    # 6. Поведенческий уровень из этапа 3
     stage3_scores = context_data.get("stage3_level_scores", [])
-    final_level = calculate_final_level(stage2_level, stage3_scores)
-    final_level = max(1, min(9, final_level))
+    final_level = calculate_final_level(thinking_level, stage3_scores)
     
-    # 👇 НОВОЕ: учитываем clarification_scores
+    # 7. Корректировка с учётом уточнений
     clarification_scores = context_data.get("clarification_scores", {})
     if clarification_scores:
         avg_clarification = sum(clarification_scores.values()) / len(clarification_scores)
         logger.info(f"📊 clarification_scores: {clarification_scores}, avg={avg_clarification:.2f}")
-        # Корректируем уровень с учетом уточнений (с небольшим весом)
         final_level = int(round(final_level * 0.8 + avg_clarification * 0.2))
         final_level = max(1, min(9, final_level))
         logger.info(f"📊 После clarification: final_level={final_level}")
     
+    # 8. Проблемный уровень Дилтса из этапа 4
     dilts_answers = context_data.get("stage4_dilts_answers", [])
-    dilts_level = determine_dilts_level(dilts_answers)
-    dilts_code = get_dilts_code(dilts_level)
+    dilts_counts = context_data.get("dilts_counts", {})
     
-    coherence = check_profile_coherence(final_level, dilts_level)
+    if dilts_counts:
+        dominant_dilts = max(dilts_counts.items(), key=lambda x: x[1])[0]
+    else:
+        dominant_dilts = determine_dilts_level(dilts_answers)
+    
+    dilts_code = get_dilts_code(dominant_dilts)
+    
+    # 9. Конвертация в уровень Вариатики
+    var_level = convert_to_var_level(dom_level)
+    
+    # 10. Координаты
+    coordinates = calculate_coordinates(strategy_levels)
+    
+    # 11. Согласованность
+    coherence = check_profile_coherence(final_level, dominant_dilts)
+    
+    # 12. Итоговый код профиля
+    # Маппинг русских названий на коды
+    dom_to_code = {
+        "СБ": "SP",
+        "ТФ": "IP",
+        "УБ": "IA",
+        "ЧВ": "SA"
+    }
+    dom_code = dom_to_code.get(dominant_strategy, type_code)
+    
+    profile_code = f"{dom_code}_{var_level}_{dilts_code}"
     
     logger.info(f" FINAL PROFILE CALCULATION:")
-    logger.info(f"   Type: {type_code} ({perception_type})")
-    logger.info(f"   Level: {final_level} ({get_level_name(final_level)})")
-    logger.info(f"   Dilts: {dilts_level} ({dilts_code})")
-    logger.info(f"   Coherence: {coherence['is_coherent']}")
+    logger.info(f"   Type: {perception_type} → {type_code}")
+    logger.info(f"   Dominant: {dominant_strategy} = {dom_level}")
+    logger.info(f"   Var Level: {var_level}")
+    logger.info(f"   Dilts: {dominant_dilts} → {dilts_code}")
+    logger.info(f"   Profile code: {profile_code}")
+    logger.info(f"   Coordinates: {coordinates}")
     
     return {
         "type_code": type_code,
         "level": final_level,
-        "dilts_level": dilts_level,
+        "dilts_level": dominant_dilts,
         "dilts_code": dilts_code,
-        "display_name": f"{type_code}_{final_level}_{dilts_code}",
+        "display_name": profile_code.upper(),
         "level_name": get_level_name(final_level),
         "type_name": perception_type,
         "coherence": coherence,
-        "stage2_level": stage2_level,
+        
+        # Новые поля
+        "dominant_strategy": dominant_strategy,
+        "dominant_level": dom_level,
+        "strategy_levels": strategy_levels,
+        "coordinates": coordinates,
+        "var_level": var_level,
+        "profile_code": profile_code,
+        
+        # Для обратной совместимости
+        "stage2_level": thinking_level,
         "stage3_avg": (sum(stage3_scores) / len(stage3_scores)) if stage3_scores else None,
         "clarification_avg": (sum(clarification_scores.values()) / len(clarification_scores)) if clarification_scores else None,
     }
