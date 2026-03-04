@@ -27,7 +27,6 @@ def log_debug(msg, user_id=None):
     logger.debug(msg)
 
 # 🔥 Функция для записи в файл на Render
-
 def log_to_file(filename: str, data: any, user_id: int = None):
     """Безопасная запись в файл с преобразованием любого типа в строку"""
     try:
@@ -65,8 +64,8 @@ async def show_stage_2_intro(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"• Ваш текущий способ обработки информации\n"
         f"• Способ мышления\n"
         f"• Характерные паттерны мыслительных процессов\n\n"
-        f"📊 <b>Вопросов:</b> 8\n"
-        f"⏱ <b>Время:</b> ~4 минуты\n\n"
+        f"📊 <b>Вопросов:</b> 16\n"  # 🔥 ИЗМЕНЕНО: было 8, стало 16
+        f"⏱ <b>Время:</b> ~6 минут\n\n"  # 🔥 ИЗМЕНЕНО
     )
     
     keyboard = [
@@ -156,6 +155,16 @@ async def start_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         log_debug(f"📊 Инициализирован stage2_level_scores_dict", user_id)
     
+    # 🔥 НОВОЕ: инициализируем словарь для хранения уровней всех стратегий
+    if "strategy_levels" not in context.user_data:
+        context.user_data["strategy_levels"] = {
+            "СБ": [],
+            "ТФ": [],
+            "УБ": [],
+            "ЧВ": []
+        }
+        log_debug(f"📊 Инициализирован strategy_levels", user_id)
+    
     log_debug(f"✅ stage2_current инициализирован: 0", user_id)
     
     return await ask_stage_2_question(update, context)
@@ -168,19 +177,24 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     perception_type = context.user_data.get("perception_type", "СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ")
     current = context.user_data.get("stage2_current", 0)
     
-    log_debug(f"📝 ask_stage_2_question: current={current}, type={perception_type}", user_id)
-    log_to_file("stage2_questions.log", f"Вопрос {current+1}/8 type={perception_type}", user_id)
+    questions = STAGE_2_QUESTIONS.get(perception_type, STAGE_2_QUESTIONS["СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ"])
+    total_questions = len(questions)  # 🔥 теперь 16
+    
+    log_debug(f"📝 ask_stage_2_question: current={current}, type={perception_type}, всего={total_questions}", user_id)
+    log_to_file("stage2_questions.log", f"Вопрос {current+1}/{total_questions} type={perception_type}", user_id)
     
     context.user_data["conversation_state"] = STAGE_2
     
-    questions = STAGE_2_QUESTIONS.get(perception_type, STAGE_2_QUESTIONS["СОЦИАЛЬНО-АФФИЛИАТИВНЫЙ"])
-    
-    if current >= len(questions):
+    if current >= total_questions:
         log_debug(f"🏁 Все вопросы заданы, завершаем этап 2", user_id)
         return await finish_stage_2(update, context)
     
     question = questions[current]
-    progress = calculate_progress(current + 1, len(questions))
+    
+    # 🔥 ПОЛУЧАЕМ, ЧТО ИЗМЕРЯЕТ ВОПРОС
+    measures = question.get("measures", "thinking")
+    
+    progress = calculate_progress(current + 1, total_questions)
     
     question_text = (
         f"🧠 <b>ЭТАП 2: КОНФИГУРАЦИЯ МЫШЛЕНИЯ</b>\n\n"
@@ -191,7 +205,8 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
     keyboard = []
     
     for level_num, answer_text in question["options"].items():
-        unique_callback = generate_unique_callback("stage2", user_id, current, level_num)
+        # 🔥 ИЗМЕНЕНО: добавляем measures в callback
+        unique_callback = generate_unique_callback("stage2", user_id, current, level_num, measures)
         log_debug(f"   кнопка: {answer_text[:20]}... -> {unique_callback}", user_id)
         log_to_file("stage2_callbacks.log", f"Создан callback: {unique_callback}", user_id)
         keyboard.append([
@@ -207,7 +222,7 @@ async def ask_stage_2_question(update: Update, context: ContextTypes.DEFAULT_TYP
                 reply_markup=reply_markup, 
                 parse_mode="HTML"
             )
-            log_debug(f"✅ Вопрос {current+1}/{len(questions)} отправлен", user_id)
+            log_debug(f"✅ Вопрос {current+1}/{total_questions} отправлен", user_id)
     except Exception as e:
         log_debug(f"❌ Ошибка при редактировании: {e}", user_id)
         try:
@@ -263,11 +278,23 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
             log_to_file("stage2_errors.log", f"Неверный формат: {query.data}", user_id)
             return STAGE_2
         
-        current = int(parts[1])
-        selected_level = parts[2]
+        # 🔥 ИЗМЕНЕНО: парсим с учётом measures
+        if len(parts) == 4:
+            # Формат: stage2_0_1_thinking
+            current = int(parts[1])
+            selected_level = parts[2]
+            measures = parts[3]
+        elif len(parts) == 3:
+            # Старый формат для обратной совместимости
+            current = int(parts[1])
+            selected_level = parts[2]
+            measures = "thinking"
+        else:
+            log_debug(f"❌ Неверное количество частей: {len(parts)}", user_id)
+            return STAGE_2
         
-        log_debug(f"📥 Ответ на вопрос {current}, level={selected_level}", user_id)
-        log_to_file("stage2_answers.log", f"Ответ на вопрос {current}, level={selected_level}", user_id)
+        log_debug(f"📥 Ответ на вопрос {current}, level={selected_level}, measures={measures}", user_id)
+        log_to_file("stage2_answers.log", f"Ответ на вопрос {current}, level={selected_level}, measures={measures}", user_id)
         
         last_answered = context.user_data.get("stage2_last_answered", -1)
         if current <= last_answered:
@@ -281,7 +308,8 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
         scoring_table = STAGE_2_SCORING.get(perception_type, {})
         log_debug(f"   scoring_table keys: {list(scoring_table.keys())}", user_id)
         
-        if current in scoring_table and selected_level in scoring_table[current]:
+        # 🔥 СОХРАНЯЕМ ДЛЯ УРОВНЯ МЫШЛЕНИЯ (оригинальные вопросы)
+        if measures == "thinking" and current in scoring_table and selected_level in scoring_table[current]:
             log_debug(f"   ✅ Найдены баллы для current={current}, level={selected_level}", user_id)
             
             if "stage2_level_scores_dict" not in context.user_data:
@@ -296,10 +324,22 @@ async def handle_stage_2_answer(update: Update, context: ContextTypes.DEFAULT_TY
             log_debug(f"   +{points} к уровню {selected_level}", user_id)
             log_debug(f"   теперь уровень {selected_level}: {context.user_data['stage2_level_scores_dict'][selected_level]}", user_id)
             log_to_file("stage2_scores.log", f"Q{current}: +{points} к уровню {selected_level}", user_id)
-        else:
-            log_debug(f"⚠️ Нет баллов для type={perception_type}, current={current}, level={selected_level}", user_id)
-            log_debug(f"   доступные ключи для current={current}: {list(scoring_table.get(current, {}).keys())}", user_id)
-            log_to_file("stage2_errors.log", f"Нет баллов: type={perception_type}, current={current}, level={selected_level}", user_id)
+        
+        # 🔥 НОВОЕ: СОХРАНЯЕМ ДЛЯ СТРАТЕГИЙ
+        if measures in ["СБ", "ТФ", "УБ", "ЧВ"]:
+            if "strategy_levels" not in context.user_data:
+                context.user_data["strategy_levels"] = {
+                    "СБ": [], "ТФ": [], "УБ": [], "ЧВ": []
+                }
+            
+            # Преобразуем выбранный уровень в число и сохраняем
+            try:
+                value = int(selected_level)
+                context.user_data["strategy_levels"][measures].append(value)
+                log_debug(f"   +{value} к стратегии {measures}", user_id)
+                log_to_file("stage2_strategies.log", f"Q{current}: +{value} к {measures}", user_id)
+            except ValueError:
+                log_debug(f"⚠️ Не удалось преобразовать {selected_level} в число", user_id)
         
         context.user_data["stage2_last_answered"] = current
         context.user_data["stage2_current"] = current + 1
@@ -334,6 +374,16 @@ async def finish_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if score > 0:
             log_debug(f"   Уровень {level}: {score} баллов", user_id)
             log_to_file("stage2_finish.log", f"Уровень {level}: {score}", user_id)
+    
+    # 🔥 ЛОГИРУЕМ УРОВНИ СТРАТЕГИЙ
+    strategy_levels = context.user_data.get("strategy_levels", {})
+    if strategy_levels:
+        log_debug(f"📊 УРОВНИ СТРАТЕГИЙ:", user_id)
+        for strategy, values in strategy_levels.items():
+            if values:
+                avg = sum(values) / len(values)
+                log_debug(f"   {strategy}: {values} → среднее {avg:.1f}", user_id)
+                log_to_file("stage2_strategies.log", f"ИТОГО {strategy}: {values} → {avg:.1f}", user_id)
     
     needs_clarification = need_clarification_stage2(level_scores_dict)
     log_debug(f"📊 needs_clarification: {needs_clarification}", user_id)
