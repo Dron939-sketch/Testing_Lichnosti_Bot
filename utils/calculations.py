@@ -200,8 +200,6 @@ def calculate_strategy_levels(context_data: dict) -> dict:
 
 # 🔥 НОВАЯ ФУНКЦИЯ: рассчитывает координаты в системе Воображение vs Ограничения
 def calculate_coordinates(strategy_levels: dict) -> dict:
-    """Рассчитывает координаты (x, y) на основе уровней стратегий"""
-    
     # x = ограничения (чем выше ТФ и УБ, тем больше ограничений)
     x = (strategy_levels.get("ТФ", 3) + strategy_levels.get("УБ", 3)) / 2
     
@@ -209,12 +207,16 @@ def calculate_coordinates(strategy_levels: dict) -> dict:
     y = (strategy_levels.get("УБ", 3) + strategy_levels.get("ЧВ", 3)) / 2
     
     # Нормализуем к шкале 0-10
-    x = min(10, max(0, x * 1.5))  # 1-6 → 0-9, добавляем запас
+    x = min(10, max(0, x * 1.5))
     y = min(10, max(0, y * 1.5))
     
+    # ✅ ПРИНУДИТЕЛЬНОЕ ФОРМАТИРОВАНИЕ С ТОЧКОЙ
+    x_str = f"{x:.1f}".replace(',', '.')
+    y_str = f"{y:.1f}".replace(',', '.')
+    
     return {
-        "x": round(x, 1),
-        "y": round(y, 1)
+        "x": float(x_str),
+        "y": float(y_str)
     }
 
 # 🔥 НОВАЯ ФУНКЦИЯ: определяет доминанту по уровням стратегий
