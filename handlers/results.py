@@ -129,6 +129,7 @@ async def show_results_screen(
                 if session_data.get('invite_data'):
                     current_invite = session_data['invite_data']
                     context.user_data["current_invite"] = current_invite
+                    logger.info(f"✅ Восстановлен current_invite из БД: {current_invite}")
         except Exception as e:
             logger.error(f"❌ Ошибка проверки сессии: {e}")
     
@@ -138,6 +139,7 @@ async def show_results_screen(
     if not profile_data:
         profile_data = calculate_profile_final(context.user_data)
         context.user_data["profile_data"] = profile_data
+        logger.info(f"✅ profile_data рассчитан: {profile_data.get('display_name')}")
     
     # ===== ПОЛУЧАЕМ УРОВНИ СТРАТЕГИЙ =====
     strategy_levels = context.user_data.get("strategy_levels", {})
@@ -157,6 +159,8 @@ async def show_results_screen(
     chv_values = strategy_levels.get("ЧВ", []) + behavioral_levels.get("ЧВ", [])
     final_strategy_levels["ЧВ"] = round(sum(chv_values) / len(chv_values), 1) if chv_values else 3.0
     
+    logger.info(f"📊 ИТОГОВЫЕ УРОВНИ СТРАТЕГИЙ: {final_strategy_levels}")
+    
     # ===== ОБРАБОТКА ПРИГЛАШЕНИЯ =====
     if current_invite:
         asyncio.create_task(handle_invite_async(
@@ -171,36 +175,49 @@ async def show_results_screen(
     user_answers = context.user_data.get('all_answers', [])
     profile_type = profile_data.get('display_name')
     
+    logger.info(f"📝 Получено ответов для AI: {len(user_answers)}, профиль: {profile_type}")
+    
     # ===== ЗАПУСКАЕМ ГЕНЕРАЦИЮ В ФОНЕ =====
     async def generate_and_show():
         """Фоновая задача для генерации профиля"""
         try:
+            logger.info(f"🤖 Запуск фоновой генерации для {profile_type}")
+            
             # Пробуем сгенерировать персонализированный профиль
             personalized = None
             if user_answers and profile_type:
+                logger.info(f"🤖 Вызов AI-генератора для {profile_type}")
                 personalized = await asyncio.to_thread(
                     ai_generator.generate_personalized_profile,
                     profile_type=profile_type,
                     user_answers=user_answers,
                     user_name=user_name
                 )
+                logger.info(f"✅ AI-генерация завершена, результат: {bool(personalized)}")
             
             # Если не получилось - берем обычный
             if not personalized:
+                logger.info(f"📦 Загрузка обычного профиля для {profile_type}")
                 message = await get_regular_profile(profile_data, final_strategy_levels)
             else:
+                logger.info(f"✨ Используем сгенерированный профиль")
                 message = personalized
             
             # Отправляем результат
+            logger.info(f"📤 Отправка результата пользователю {user_id}")
             await send_profile_result(query, message, has_shared, context)
+            logger.info(f"✅ Результат успешно отправлен")
             
         except Exception as e:
             logger.error(f"❌ Ошибка в фоновой генерации: {e}")
+            import traceback
+            traceback.print_exc()
             # В случае ошибки показываем обычный профиль
             message = await get_regular_profile(profile_data, final_strategy_levels)
             await send_profile_result(query, message, has_shared, context)
     
     # Запускаем фоновую задачу
+    logger.info(f"🚀 Запуск фоновой задачи для пользователя {user_id}")
     asyncio.create_task(generate_and_show())
     
     return RESULTS
@@ -222,8 +239,9 @@ async def handle_invite_async(invite_data, user_id, username, profile_name, cont
                     f"{API_URL}/api/user-session/clear/{user_id}",
                     timeout=5
                 )
-            except:
-                pass
+                logger.info(f"🧹 Сессия в БД очищена для user_id={user_id}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка очистки сессии: {e}")
             
             buyer_id = invite_data.get("buyer_id")
             if buyer_id:
@@ -243,6 +261,7 @@ async def handle_invite_async(invite_data, user_id, username, profile_name, cont
                     parse_mode="HTML",
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
+                logger.info(f"✅ Уведомление отправлено {buyer_id}")
     except Exception as e:
         logger.error(f"❌ Ошибка обработки приглашения: {e}")
 
@@ -295,6 +314,8 @@ async def get_regular_profile(profile_data, strategy_levels):
         
     except Exception as e:
         logger.error(f"❌ Ошибка загрузки профиля: {e}")
+        import traceback
+        traceback.print_exc()
         return "🧠 Ваш профиль готовится..."
 
 async def send_profile_result(query, message, has_shared, context):
@@ -334,7 +355,10 @@ async def send_profile_result(query, message, has_shared, context):
         
     except Exception as e:
         logger.error(f"❌ Ошибка отправки результата: {e}")
+        import traceback
+        traceback.print_exc()
         await query.edit_message_text("🧠 Ваш профиль готов. Нажмите кнопку ниже.", reply_markup=reply_markup)
+
 async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к результатам"""
     query = update.callback_query
@@ -401,8 +425,26 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.answer("🔄 Перезапускаю тест...")
     
+    # Сохраняем важные данные
+    saved_limits = context.user_data.get("invite_limits", {})
+    saved_invites = context.user_data.get("sexual_invites", [])
+    
     context.user_data.clear()
     
+    # Восстанавливаем лимиты
+    if saved_limits:
+        context.user_data["invite_limits"] = saved_limits
+    else:
+        context.user_data["invite_limits"] = {
+            "free_used": 0,
+            "total_purchased": 0,
+            "paid_packages": []
+        }
+    
+    if saved_invites:
+        context.user_data["sexual_invites"] = saved_invites
+    
+    # Инициализируем данные для теста
     context.user_data["scores"] = {"EXTERNAL": 0, "INTERNAL": 0, "SYMBOLIC": 0, "MATERIAL": 0}
     context.user_data["stage1_current"] = 0
     context.user_data["stage2_level_scores_dict"] = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0}
@@ -410,6 +452,10 @@ async def restart_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["stage4_dilts_answers"] = []
     context.user_data["processing"] = False
     context.user_data["has_shared"] = False
+    
+    # Инициализируем хранилище для AI
+    if "all_answers" not in context.user_data:
+        context.user_data["all_answers"] = []
     
     context.user_data["sexual_invites"] = get_user_invites(user_id)
     
