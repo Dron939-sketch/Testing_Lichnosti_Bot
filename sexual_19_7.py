@@ -143,7 +143,7 @@ logger.info(f"📁 Корень проекта: {PROJECT_ROOT}")
 # ===== КОНСТАНТЫ =====
 RESULTS_SCREEN = RESULTS  # Алиас для совместимости
 
-SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━━━"
+SEXUAL_DIVIDER = "━━━━━━━━━━━━━━━━━━"
 FREE_FRIEND_LIMIT = 2
 FRIEND_ACCESS_PRICE = 99
 FOUR_F_PRICE = 1
